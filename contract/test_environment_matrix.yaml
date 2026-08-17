@@ -218,6 +218,7 @@ invariants_matrix:
       - "app/src/test/java/com/example/Phase1ItemIsolationTest.kt"
       - "app/src/test/java/com/example/Phase1OrphanHandlingTest.kt"
       - "app/src/test/java/com/example/Phase1FirestoreDocumentIdentityTest.kt"
+      - "app/src/test/java/com/example/Phase1RestoreTransportReconstructionTest.kt"
       - "app/src/androidTest/java/com/example/RestoreImportInstrumentedTest.kt"
       - "scripts/scan_forbidden_patterns.py"
     tier_rationale: >
@@ -296,6 +297,15 @@ test_suites:
     path: "app/src/test/java/com/example/Phase1FirestoreDocumentIdentityTest.kt"
     environment: "ROBOLECTRIC"
     tier_purpose: "Phase 1 Deterministic Firestore Document Identity and Idempotency tests (INV-01 / INV-13 / P1-G2-REQ-04)"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+      - "INV-13"
+
+  - name: "Phase1RestoreTransportReconstructionTest"
+    path: "app/src/test/java/com/example/Phase1RestoreTransportReconstructionTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Phase 1 Restore Transport Reconstruction Decision Table tests (INV-13 / P1-G2-REQ-05)"
     associated_invariants:
       - "INV-01"
       - "INV-05"

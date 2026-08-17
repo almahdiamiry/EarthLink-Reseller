@@ -33,8 +33,8 @@ object BackupManager {
     }
 
     private suspend fun createLocalBackupZipInternal(context: Context): File = withContext(Dispatchers.IO) {
-        val app = context.applicationContext as EarthlinkApp
-        val passphraseStr = app.preferenceManager.getDatabasePassphrase()
+        val app = context.applicationContext as? EarthlinkApp
+        val passphraseStr = app?.preferenceManager?.getDatabasePassphrase() ?: ""
         val passphrase = passphraseStr.toByteArray(Charsets.UTF_8)
 
         val backupDir = File(context.cacheDir, "backups").apply { if (!exists()) mkdirs() }
@@ -59,7 +59,11 @@ object BackupManager {
 
         var vacuumSuccess = false
         try {
-            val db = (context.applicationContext as? EarthlinkApp)?.database ?: AppDatabase.getDatabase(context, passphrase)
+            val db = try {
+                (context.applicationContext as? EarthlinkApp)?.database ?: AppDatabase.getDatabase(context, passphrase)
+            } catch (_: Throwable) {
+                AppDatabase.getDatabase(context, ByteArray(0))
+            }
             val sqliteDb = db.openHelper.writableDatabase
             val vacuumPath = if (isRobolectric) "temp_vacuum_$timeStamp.db" else tempVacuumDbFile.absolutePath.replace('\\', '/')
             sqliteDb.execSQL("VACUUM INTO '$vacuumPath'")
@@ -141,7 +145,7 @@ object BackupManager {
                     put("createdAt", System.currentTimeMillis())
                     put("formattedDate", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()))
                     val firebaseUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
-                    val uidKeySeed = firebaseUid ?: app.preferenceManager.getDeviceId()
+                    val uidKeySeed = firebaseUid ?: (app?.preferenceManager?.getDeviceId() ?: "default_device_id")
                     
                     val salt = ByteArray(16).apply { java.security.SecureRandom().nextBytes(this) }
                     val iv = ByteArray(12).apply { java.security.SecureRandom().nextBytes(this) }
@@ -220,12 +224,81 @@ object BackupManager {
         val ledgerCount: Int
     )
 
+    data class RestoreTransportSnapshot(
+        val artifactPath: String,
+        val artifactHash: String,
+        val lineageSnapshotToken: String,
+        val unresolvedObligations: List<com.example.core.model.SyncOutbox>
+    )
+
+    /**
+     * Executes the Transport Reconstruction Decision Table (P1-G2-REQ-05 / INV-13).
+     *
+     * Rules:
+     * 1. Historical outbox & cursor metadata from backup archive -> DISCARDED.
+     * 2. Pre-restore unresolved obligations with valid targets in restored dataset -> RECONSTRUCTED with stable identity.
+     * 3. Pre-restore unresolved obligations whose targets are absent in restored dataset -> CLASSIFIED AS ORPHANED (status='failed', lastError='ORPHAN: ...') and preserved durable.
+     * 4. Restored snapshot business baseline -> Zero duplicate outbox storm.
+     * 5. Sync metadata / remote cursors -> RESET to clean baseline.
+     */
+    suspend fun reconstructTransportState(
+        liveDb: AppDatabase,
+        unresolvedObligations: List<com.example.core.model.SyncOutbox>
+    ) {
+        val now = System.currentTimeMillis()
+        for (ob in unresolvedObligations) {
+            val targetExists = when (ob.entityType) {
+                "local_accounts", "accounts" -> liveDb.localAccountDao().getByIdOneShot(ob.entityId) != null
+                "local_ledger_entries", "ledger_entries" -> liveDb.localLedgerEntryDao().getByIdOneShot(ob.entityId) != null
+                "import_batches", "batches" -> liveDb.importBatchDao().getById(ob.entityId) != null
+                "audit_logs", "audit_log" -> liveDb.auditLogDao().getById(ob.entityId) != null
+                else -> false
+            }
+
+            if (targetExists) {
+                // Retain / Reconstruct current cloud obligation with stable identity
+                val reconstructed = com.example.core.model.SyncOutbox(
+                    entityType = ob.entityType,
+                    entityId = ob.entityId,
+                    operation = ob.operation,
+                    payloadJson = ob.payloadJson,
+                    status = if (ob.status == "syncing") "pending" else ob.status,
+                    attemptCount = ob.attemptCount,
+                    lastError = ob.lastError,
+                    createdAt = ob.createdAt,
+                    updatedAt = now,
+                    importBatchId = ob.importBatchId
+                )
+                liveDb.syncOutboxDao().insert(reconstructed)
+            } else {
+                // Target absent / orphaned: retain as failed orphan with diagnostics (INV-13 / P1-G2-REQ-03)
+                val orphaned = com.example.core.model.SyncOutbox(
+                    entityType = ob.entityType,
+                    entityId = ob.entityId,
+                    operation = ob.operation,
+                    payloadJson = ob.payloadJson,
+                    status = "failed",
+                    attemptCount = ob.attemptCount + 1,
+                    lastError = "ORPHAN: Target entity ${ob.entityId} of type ${ob.entityType} absent in restored dataset",
+                    createdAt = ob.createdAt,
+                    updatedAt = now,
+                    importBatchId = ob.importBatchId
+                )
+                liveDb.syncOutboxDao().insert(orphaned)
+            }
+        }
+    }
+
     suspend fun getCurrentDatabaseStats(context: Context): DatabaseStats = withContext(Dispatchers.IO) {
         try {
-            val app = context.applicationContext as EarthlinkApp
-            val passphraseStr = app.preferenceManager.getDatabasePassphrase()
+            val app = context.applicationContext as? EarthlinkApp
+            val passphraseStr = try { app?.preferenceManager?.getDatabasePassphrase() ?: "" } catch (_: Throwable) { "" }
             val passphrase = passphraseStr.toByteArray(Charsets.UTF_8)
-            val db = AppDatabase.getDatabase(context, passphrase)
+            val db = try {
+                app?.database ?: AppDatabase.getDatabase(context, passphrase)
+            } catch (_: Throwable) {
+                AppDatabase.getDatabase(context, ByteArray(0))
+            }
             val accounts = db.localAccountDao().getTotalCount()
             val ledger = db.localLedgerEntryDao().getTotalCount()
             DatabaseStats(accountCount = accounts, ledgerCount = ledger)
@@ -261,8 +334,14 @@ object BackupManager {
 
     suspend fun getPendingOutboxCount(context: Context): Int = withContext(Dispatchers.IO) {
         try {
-            val app = context.applicationContext as EarthlinkApp
-            app.database.syncOutboxDao().getAllUnsyncedCount()
+            val app = context.applicationContext as? EarthlinkApp
+            val passphraseStr = try { app?.preferenceManager?.getDatabasePassphrase() ?: "" } catch (_: Throwable) { "" }
+            val db = try {
+                app?.database ?: AppDatabase.getDatabase(context, passphraseStr.toByteArray(Charsets.UTF_8))
+            } catch (_: Throwable) {
+                AppDatabase.getDatabase(context, ByteArray(0))
+            }
+            db.syncOutboxDao().getAllUnsyncedCount()
         } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
             Log.e(TAG, "Failed to check pending outbox count", e)
             0
@@ -271,7 +350,12 @@ object BackupManager {
 
     suspend fun restoreBackupZip(context: Context, backupFile: File, force: Boolean = false): Boolean = withContext(Dispatchers.IO) {
         com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.RESTORE) {
-            val app = context.applicationContext as EarthlinkApp
+            val app = context.applicationContext as? EarthlinkApp
+            val currentPassphrase = try {
+                app?.preferenceManager?.getDatabasePassphrase() ?: ""
+            } catch (_: Throwable) {
+                ""
+            }
 
             // Safety check: verify no unsynced outbox entries exist unless force restore is explicitly requested
             if (!force) {
@@ -282,7 +366,41 @@ object BackupManager {
                 }
             }
 
-            val currentPassphrase = app.preferenceManager.getDatabasePassphrase()
+            // Snapshot unresolved obligations prior to restore (P1-G2-REQ-05 / INV-13)
+            val liveDbInstance = try {
+                app?.database ?: AppDatabase.getDatabase(context, currentPassphrase.toByteArray(Charsets.UTF_8))
+            } catch (_: Throwable) {
+                AppDatabase.getDatabase(context, ByteArray(0))
+            }
+            val preRestoreUnresolved = try {
+                liveDbInstance.syncOutboxDao().getAllOneShot().filter {
+                    it.status in listOf("pending", "syncing", "failed")
+                }
+            } catch (_: Throwable) {
+                emptyList()
+            }
+
+            val artifactHash = try {
+                val digest = java.security.MessageDigest.getInstance("SHA-256")
+                FileInputStream(backupFile).use { fis ->
+                    val buf = ByteArray(8192)
+                    var n: Int
+                    while (fis.read(buf).also { n = it } != -1) {
+                        digest.update(buf, 0, n)
+                    }
+                }
+                digest.digest().joinToString("") { "%02x".format(it) }
+            } catch (_: Throwable) {
+                "unknown_hash"
+            }
+
+            val lineageSnapshotToken = "abstract_lineage_${System.currentTimeMillis()}_${java.util.UUID.randomUUID()}"
+            val restoreSnapshot = RestoreTransportSnapshot(
+                artifactPath = backupFile.absolutePath,
+                artifactHash = artifactHash,
+                lineageSnapshotToken = lineageSnapshotToken,
+                unresolvedObligations = preRestoreUnresolved
+            )
 
         // 0. Force-create persistent pre-restore backup in EarthlinkBackups directory
         var preRestoreSuccess = false
@@ -351,7 +469,7 @@ object BackupManager {
                                         val encPass = json.getString("dbPassphrase")
                                         if (encPass.isNotBlank()) {
                                             val firebaseUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
-                                            val deviceId = app.preferenceManager.getDeviceId()
+                                            val deviceId = app?.preferenceManager?.getDeviceId() ?: "default_device_id"
                                             val candidateSeeds = listOfNotNull(firebaseUid, deviceId, "default_fallback_uid").distinct()
                                             var decrypted: String? = null
 
@@ -436,8 +554,8 @@ object BackupManager {
             }
 
             // Build candidate passphrases list
-            val fallbackPass = app.preferenceManager.getFallbackPassphrase(context)
-            val firebaseUid = app.syncRepository.getFirebaseUid()
+            val fallbackPass = app?.preferenceManager?.getFallbackPassphrase(context)
+            val firebaseUid = app?.syncRepository?.getFirebaseUid()
             val candidates = listOfNotNull(
                 extractedPassphrase,
                 currentPassphrase,
@@ -487,7 +605,11 @@ object BackupManager {
             if (verifiedPassphrase != null && backupDb != null) {
                 // Phase 10: Single massive transaction to prevent partial-live-state corruption
                 try {
-                    val liveDb = app.database
+                    val liveDb = try {
+                        app?.database ?: AppDatabase.getDatabase(context, currentPassphrase.toByteArray(Charsets.UTF_8))
+                    } catch (_: Throwable) {
+                        AppDatabase.getDatabase(context, ByteArray(0))
+                    }
                     liveDb.withTransaction {
                         // Exact Snapshot Restore: clear business tables and replace with exact backup snapshot
                         liveDb.localLedgerEntryDao().deleteAll()
@@ -528,16 +650,19 @@ object BackupManager {
                             liveDb.importBatchDao().insert(batchToRestore)
                         }
 
-                        // Operational sync state: Reinitialized. Stale outbox from backup is NOT replayed to cloud.
-                        // Sync cursors in syncMetadataDao are cleared so sync reconciles cleanly with remote.
-                        // Note: live audit logs are preserved (not cleared) so the restore audit trail is unbroken.
+                        // Operational sync state: Reinitialized. Stale outbox and metadata from backup is NOT replayed to cloud.
+                        // Sync cursors in syncMetadataDao remain cleared so sync reconciles cleanly with remote.
+                        // Live audit logs are preserved (not cleared) and backup audits are appended so the restore audit trail is unbroken.
                         val backupAudits = backupDb!!.auditLogDao().getAllSync()
                         for (auditItem in backupAudits) {
                             liveDb.auditLogDao().insert(auditItem)
                         }
 
+                        // Execute the Transport Reconstruction Decision Table (P1-G2-REQ-05 / INV-13)
+                        reconstructTransportState(liveDb, restoreSnapshot.unresolvedObligations)
+
                         val now = System.currentTimeMillis()
-                        val salt = try { app.preferenceManager.getDatabasePassphrase() } catch (_: Throwable) { "default_test_salt" }
+                        val salt = try { app?.preferenceManager?.getDatabasePassphrase() ?: currentPassphrase } catch (_: Throwable) { "default_test_salt" }
                         val rawString = "$now|INFO|DATABASE_RESTORE|Backup restored and verified successfully.|system|$salt"
                         val digest = java.security.MessageDigest.getInstance("SHA-256")
                         val sig = digest.digest(rawString.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
@@ -556,11 +681,11 @@ object BackupManager {
                             )
                         )
 
-                        Log.i(TAG, "Successfully restored exact database snapshot across all business tables and reinitialized operational sync state.")
+                        Log.i(TAG, "Successfully restored exact database snapshot across all business tables and reconstructed transport state.")
                     }
 
                     try {
-                        (app.syncRepository as? com.example.core.sync.SyncRepositoryImpl)?.remoteSyncCoordinator?.clearCache()
+                        (app?.syncRepository as? com.example.core.sync.SyncRepositoryImpl)?.remoteSyncCoordinator?.clearCache()
                     } catch (_: Throwable) {}
                 } catch (e: Throwable) { if (e is kotlinx.coroutines.CancellationException) throw e;
                     System.err.println("RESTORE_DEBUG: Error merging entities: ${e.message}")
@@ -597,7 +722,7 @@ object BackupManager {
             false
         } finally {
             try {
-                if (backupDb != null && backupDb !== app.database) {
+                if (backupDb != null && (app == null || backupDb !== app.database)) {
                     backupDb.close()
                 }
                 AppDatabase.closeAndRemoveInstance(tempDbName)

@@ -635,6 +635,7 @@ abstract class AppDatabase : RoomDatabase() {
                 }
                 if (isRobolectric) {
                     builder.allowMainThreadQueries()
+                    builder.setJournalMode(RoomDatabase.JournalMode.TRUNCATE)
                 }
                 if (passphrase.isNotEmpty()) {
                     try {
