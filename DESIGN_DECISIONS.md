@@ -359,12 +359,12 @@ When anonymous Firebase users authenticate via Google or Email sign-in, creating
 * **Decision:** The remote version domain is strictly derived from authoritative Firestore server timestamps (`updatedAt`, `deletedAt`). Local device timestamps are never used as substitutes for server versions during conflict resolution.
 * **Consequences:** Resolves all clock-skew conflicts deterministically across multi-device synchronizations.
 
-## ADR-028: Canonical Mutation Exclusivity through DataOperationCoordinator [FROZEN-TARGET COMPATIBLE]
-> **Status**: FROZEN-TARGET COMPATIBLE. Governs mutation exclusivity.
-* **Status:** Accepted (Permanent)
-* **Context:** Direct uncoordinated database writes or parallel operations (e.g. backup during import, or restore during realtime sync) lead to race conditions, table locking, or corrupted states.
-* **Decision:** Every synchronized mutation or high-impact maintenance action MUST execute exclusively through `DataOperationCoordinator` under an explicit `DataOperationMode`.
-* **Consequences:** Guarantees transactional isolation, thread safety, and zero concurrent state clobbering.
+## ADR-028: Implementation Mutation Exclusivity through DataOperationCoordinator [SUBORDINATE TO INV-11]
+> **Status**: SUBORDINATE TO FROZEN INV-11. Implementation mutual-exclusion mechanism only; not a canonical architecture authority or generic sync state machine.
+* **Status:** Accepted (Implementation Mechanism Subordinate to INV-11)
+* **Context:** Direct uncoordinated database writes or parallel high-impact maintenance operations (e.g. backup during import, or restore during realtime sync) lead to race conditions, table locking, or corrupted states.
+* **Decision:** `DataOperationCoordinator` serves as an implementation mutual-exclusion mechanism subordinate to frozen `INV-11` (Direct Atomic Room with short local transactions and minimal maintenance exclusion), not a canonical architecture authority or a generic sync state machine. High-impact maintenance actions (backup, restore, bulk import) acquire exclusive operation modes via `DataOperationCoordinator` to prevent concurrent collisions, while standard CRUD/ledger mutations rely on direct Room atomic transactions per `INV-11`.
+* **Consequences:** Guarantees maintenance safety and prevents concurrent destructive collisions without introducing an uncoordinated secondary sync authority or heavyweight sync state machine.
 
 ## ADR-029: Snapshot Restoration Protocol [SUPERSEDED BY FROZEN AUTHORITY]
 > **Status**: SUPERSEDED BY FROZEN AUTHORITY. Governed by G3 Restore specifications in `docs/authority/`.
