@@ -311,6 +311,54 @@ interface AuditLogDao {
     suspend fun clearAll()
 }
 
+@Dao
+interface PendingExternalOperationDao {
+    @Query("SELECT * FROM pending_external_operations WHERE status = 'PENDING' ORDER BY createdAt ASC")
+    fun getPendingFlow(): Flow<List<PendingExternalOperation>>
+
+    @Query("SELECT * FROM pending_external_operations WHERE status = 'PENDING' ORDER BY createdAt ASC")
+    suspend fun getPendingOperations(): List<PendingExternalOperation>
+
+    @Query("SELECT * FROM pending_external_operations WHERE businessTransactionId = :businessTransactionId LIMIT 1")
+    suspend fun getByBusinessTransactionId(businessTransactionId: String): PendingExternalOperation?
+
+    @Query("SELECT * FROM pending_external_operations WHERE operationIntentId = :operationIntentId LIMIT 1")
+    suspend fun getByOperationIntentId(operationIntentId: String): PendingExternalOperation?
+
+    @Query("SELECT * FROM pending_external_operations WHERE accountId = :accountId ORDER BY createdAt DESC")
+    suspend fun getByAccountId(accountId: String): List<PendingExternalOperation>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(operation: PendingExternalOperation): Long
+
+    @Update
+    suspend fun update(operation: PendingExternalOperation)
+
+    @Transaction
+    suspend fun upsert(operation: PendingExternalOperation) {
+        if (getByBusinessTransactionId(operation.businessTransactionId) != null) {
+            update(operation)
+        } else {
+            insert(operation)
+        }
+    }
+
+    @Query("UPDATE pending_external_operations SET status = :status, updatedAt = :updatedAt, lastError = :lastError WHERE businessTransactionId = :businessTransactionId")
+    suspend fun updateStatus(businessTransactionId: String, status: String, updatedAt: Long = System.currentTimeMillis(), lastError: String? = null)
+
+    @Query("DELETE FROM pending_external_operations WHERE businessTransactionId = :businessTransactionId")
+    suspend fun deleteByBusinessTransactionId(businessTransactionId: String)
+
+    @Query("DELETE FROM pending_external_operations WHERE operationIntentId = :operationIntentId")
+    suspend fun deleteByOperationIntentId(operationIntentId: String)
+
+    @Query("DELETE FROM pending_external_operations")
+    suspend fun deleteAll()
+
+    @Query("SELECT * FROM pending_external_operations")
+    suspend fun getAllOneShot(): List<PendingExternalOperation>
+}
+
 @Database(
     entities = [
         LocalAccount::class,
@@ -318,7 +366,8 @@ interface AuditLogDao {
         ImportBatch::class,
         SyncOutbox::class,
         SyncData::class,
-        AuditLog::class
+        AuditLog::class,
+        PendingExternalOperation::class
     ],
     version = AppDatabase.VERSION,
     exportSchema = true
@@ -330,9 +379,10 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun syncOutboxDao(): SyncOutboxDao
     abstract fun syncMetadataDao(): SyncMetadataDao
     abstract fun auditLogDao(): AuditLogDao
+    abstract fun pendingExternalOperationDao(): PendingExternalOperationDao
 
     companion object {
-        const val VERSION = 11
+        const val VERSION = 12
 
         @Volatile
         private var INSTANCE: AppDatabase? = null
@@ -605,6 +655,31 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_11_12 = object : androidx.room.migration.Migration(11, 12) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `pending_external_operations` (
+                        `businessTransactionId` TEXT NOT NULL,
+                        `operationIntentId` TEXT NOT NULL,
+                        `accountId` TEXT NOT NULL,
+                        `operationType` TEXT NOT NULL,
+                        `amountIqd` INTEGER NOT NULL,
+                        `payloadJson` TEXT NOT NULL,
+                        `status` TEXT NOT NULL,
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        `lastError` TEXT,
+                        PRIMARY KEY(`businessTransactionId`)
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_pending_external_operations_operationIntentId` ON `pending_external_operations` (`operationIntentId`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_pending_external_operations_businessTransactionId` ON `pending_external_operations` (`businessTransactionId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_pending_external_operations_accountId` ON `pending_external_operations` (`accountId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_pending_external_operations_status` ON `pending_external_operations` (`status`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_pending_external_operations_createdAt` ON `pending_external_operations` (`createdAt`)")
+            }
+        }
+
         private val INSTANCES = java.util.concurrent.ConcurrentHashMap<String, AppDatabase>()
 
         fun getDatabase(context: Context, passphrase: ByteArray, dbName: String = "earthlink_reseller_db"): AppDatabase {
@@ -620,7 +695,7 @@ abstract class AppDatabase : RoomDatabase() {
                 val dbFile = context.applicationContext.getDatabasePath(dbName)
                 dbFile.parentFile?.mkdirs()
                 val builder = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, dbName)
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onOpen(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                             super.onOpen(db)

@@ -192,6 +192,7 @@ invariants_matrix:
       - "INSTRUMENTED"
     primary_suites:
       - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+      - "app/src/test/java/com/example/Phase1G1PendingOperationDurabilityTest.kt"
       - "app/src/androidTest/java/com/example/CoordinatorInstrumentedTest.kt"
     tier_rationale: >
       Ensures exclusive coordinator execution with mutex ownership locks across JVM and Android instrumentation.
@@ -309,6 +310,16 @@ test_suites:
     associated_invariants:
       - "INV-01"
       - "INV-05"
+      - "INV-13"
+
+  - name: "Phase1G1PendingOperationDurabilityTest"
+    path: "app/src/test/java/com/example/Phase1G1PendingOperationDurabilityTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Phase 1 G1 Durable Pending Operation & Call-Path Durability test suite (INV-11 / G1)"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+      - "INV-11"
       - "INV-13"
 
   - name: "Phase2ServerConfirmedLifecycleTest"

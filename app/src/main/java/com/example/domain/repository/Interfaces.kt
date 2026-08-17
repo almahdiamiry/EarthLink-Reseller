@@ -76,6 +76,15 @@ interface LocalLedgerRepository {
     suspend fun recordAccountRenewal(account: LocalAccount, newPriceIqd: Double, chargeNote: String, payNote: String?, idempotencyKey: String? = null): LocalLedgerEntry
     suspend fun recordAccountPayment(account: LocalAccount, amount: Double, note: String?, idempotencyKey: String? = null): LocalLedgerEntry
     suspend fun recordAccountDebt(account: LocalAccount, amount: Double, note: String?, idempotencyKey: String? = null): LocalLedgerEntry
+
+    // G1 Durable Pending Operation methods
+    suspend fun recordPendingOperation(operation: PendingExternalOperation): PendingExternalOperation
+    suspend fun getPendingOperationByIntentId(operationIntentId: String): PendingExternalOperation?
+    suspend fun getPendingOperationByTransactionId(businessTransactionId: String): PendingExternalOperation?
+    suspend fun getAllPendingOperations(): List<PendingExternalOperation>
+    suspend fun markPendingOperationFailed(businessTransactionId: String, error: String)
+    suspend fun completePendingOperation(businessTransactionId: String, accountId: String, ledgerEntryId: String? = null)
+    suspend fun deletePendingOperation(businessTransactionId: String)
 }
 
 interface UtowerImportRepository {

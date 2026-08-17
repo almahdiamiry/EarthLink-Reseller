@@ -1126,7 +1126,8 @@ class LocalLedgerRepositoryImpl(
     private val database: AppDatabase,
     private val ledgerDao: LocalLedgerEntryDao,
     private val accountDao: LocalAccountDao,
-    private val outboxDao: SyncOutboxDao
+    private val outboxDao: SyncOutboxDao,
+    private val pendingDao: PendingExternalOperationDao = database.pendingExternalOperationDao()
 ) : LocalLedgerRepository {
 
     private val moshi = Moshi.Builder().build()
@@ -1135,6 +1136,59 @@ class LocalLedgerRepositoryImpl(
 
     override fun getLedgerForAccount(accountId: String): Flow<List<LocalLedgerEntry>> =
         ledgerDao.getByAccountId(accountId).distinctUntilChanged()
+
+    override suspend fun recordPendingOperation(operation: PendingExternalOperation): PendingExternalOperation {
+        return com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
+            database.withTransaction {
+                val existingByIntent = pendingDao.getByOperationIntentId(operation.operationIntentId)
+                if (existingByIntent != null) {
+                    return@withTransaction existingByIntent
+                }
+                val existingByTx = pendingDao.getByBusinessTransactionId(operation.businessTransactionId)
+                if (existingByTx != null) {
+                    return@withTransaction existingByTx
+                }
+                pendingDao.insert(operation)
+                operation
+            }
+        }
+    }
+
+    override suspend fun getPendingOperationByIntentId(operationIntentId: String): PendingExternalOperation? {
+        return pendingDao.getByOperationIntentId(operationIntentId)
+    }
+
+    override suspend fun getPendingOperationByTransactionId(businessTransactionId: String): PendingExternalOperation? {
+        return pendingDao.getByBusinessTransactionId(businessTransactionId)
+    }
+
+    override suspend fun getAllPendingOperations(): List<PendingExternalOperation> {
+        return pendingDao.getPendingOperations()
+    }
+
+    override suspend fun markPendingOperationFailed(businessTransactionId: String, error: String) {
+        com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
+            database.withTransaction {
+                pendingDao.updateStatus(businessTransactionId, "FAILED", System.currentTimeMillis(), error)
+            }
+        }
+    }
+
+    override suspend fun completePendingOperation(businessTransactionId: String, accountId: String, ledgerEntryId: String?) {
+        com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
+            database.withTransaction {
+                pendingDao.updateStatus(businessTransactionId, "COMPLETED", System.currentTimeMillis())
+            }
+        }
+    }
+
+    override suspend fun deletePendingOperation(businessTransactionId: String) {
+        com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
+            database.withTransaction {
+                pendingDao.deleteByBusinessTransactionId(businessTransactionId)
+            }
+        }
+    }
 
     private suspend fun saveAccountInternal(account: LocalAccount): LocalAccount {
         val existing = accountDao.getByIdOneShot(account.id)
@@ -1273,11 +1327,16 @@ class LocalLedgerRepositoryImpl(
                 val savedAcc = saveAccountInternal(accountWithPrice)
                 val renewalPrice = accountWithPrice.currentPriceIqd
                 require(renewalPrice > 0.0) { "Renewal price must be greater than zero." }
-                val chargeId = if (idempotencyKey != null) "charge_$idempotencyKey" else null
+                val chargeId = if (idempotencyKey != null) {
+                    if (idempotencyKey.startsWith("tx_") || idempotencyKey.startsWith("charge_")) idempotencyKey else "charge_$idempotencyKey"
+                } else null
                 val payId = if (idempotencyKey != null) "pay_$idempotencyKey" else null
                 val chargeEntry = addDebtInternal(savedAcc.id, renewalPrice, chargeNote, chargeId)
                 if (payNote != null) {
                     addPaymentInternal(savedAcc.id, renewalPrice, payNote, payId)
+                }
+                if (idempotencyKey != null) {
+                    pendingDao.updateStatus(idempotencyKey, "COMPLETED", System.currentTimeMillis())
                 }
                 chargeEntry
             }
@@ -1294,7 +1353,11 @@ class LocalLedgerRepositoryImpl(
         return com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
             database.withTransaction {
                 val savedAcc = saveAccountInternal(account)
-                addPaymentInternal(savedAcc.id, amount, note, idempotencyKey)
+                val entry = addPaymentInternal(savedAcc.id, amount, note, idempotencyKey)
+                if (idempotencyKey != null) {
+                    pendingDao.updateStatus(idempotencyKey, "COMPLETED", System.currentTimeMillis())
+                }
+                entry
             }
         }
     }
@@ -1309,7 +1372,11 @@ class LocalLedgerRepositoryImpl(
         return com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
             database.withTransaction {
                 val savedAcc = saveAccountInternal(account)
-                addDebtInternal(savedAcc.id, amount, note, idempotencyKey)
+                val entry = addDebtInternal(savedAcc.id, amount, note, idempotencyKey)
+                if (idempotencyKey != null) {
+                    pendingDao.updateStatus(idempotencyKey, "COMPLETED", System.currentTimeMillis())
+                }
+                entry
             }
         }
     }

@@ -314,24 +314,40 @@ class EarthlinkSearchViewModel(
         }
     }
 
-    fun createTestUser(username: String, phone: String, fullName: String, pkgIndex: Int) {
+    fun createTestUser(username: String, phone: String, fullName: String, pkgIndex: Int, intentId: String? = null) {
         viewModelScope.launch {
             _isActionLoading.value = true
             _error.value = null
+            val opIntentId = intentId ?: java.util.UUID.randomUUID().toString()
+            val businessTxId = "tx_" + opIntentId
             try {
                 val available = gateway.checkUsernameAvailable(username)
                 if (!available) {
                     _error.value = "Username $username is already taken."
                     return@launch
                 }
+                localLedgerRepository.recordPendingOperation(
+                    PendingExternalOperation(
+                        businessTransactionId = businessTxId,
+                        operationIntentId = opIntentId,
+                        accountId = username,
+                        operationType = "ACTIVATION",
+                        amountIqd = 0L,
+                        payloadJson = "{\"username\":\"$username\",\"phone\":\"$phone\",\"fullName\":\"$fullName\",\"pkgIndex\":$pkgIndex,\"isTest\":true}",
+                        status = "PENDING"
+                    )
+                )
                 val generatedPassword = gateway.createTestUser(username, phone, fullName, pkgIndex)
                 if (generatedPassword != null) {
+                    localLedgerRepository.completePendingOperation(businessTxId, username)
                     _actionSuccess.value = "Test subscriber $username created successfully.\nPassword: $generatedPassword"
                     audit.logAction("CREATE_TEST_USER", "USER", username, "Created test user successfully")
                 } else {
+                    localLedgerRepository.markPendingOperationFailed(businessTxId, "Test user creation failed")
                     _error.value = "Test user creation failed."
                 }
             } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+                localLedgerRepository.markPendingOperationFailed(businessTxId, e.message ?: "Unknown error")
                 _error.value = e.message
             } finally {
                 _isActionLoading.value = false
@@ -339,24 +355,40 @@ class EarthlinkSearchViewModel(
         }
     }
 
-    fun createUserUsingDeposit(username: String, phone: String, fullName: String, pkgIndex: Int, depositPass: String) {
+    fun createUserUsingDeposit(username: String, phone: String, fullName: String, pkgIndex: Int, depositPass: String, intentId: String? = null) {
         viewModelScope.launch {
             _isActionLoading.value = true
             _error.value = null
+            val opIntentId = intentId ?: java.util.UUID.randomUUID().toString()
+            val businessTxId = "tx_" + opIntentId
             try {
                 val available = gateway.checkUsernameAvailable(username)
                 if (!available) {
                     _error.value = "Username $username is already taken."
                     return@launch
                 }
+                localLedgerRepository.recordPendingOperation(
+                    PendingExternalOperation(
+                        businessTransactionId = businessTxId,
+                        operationIntentId = opIntentId,
+                        accountId = username,
+                        operationType = "ACTIVATION",
+                        amountIqd = 0L,
+                        payloadJson = "{\"username\":\"$username\",\"phone\":\"$phone\",\"fullName\":\"$fullName\",\"pkgIndex\":$pkgIndex}",
+                        status = "PENDING"
+                    )
+                )
                 val generatedPassword = gateway.createUserUsingDeposit(username, phone, fullName, pkgIndex, depositPass)
                 if (generatedPassword != null) {
+                    localLedgerRepository.completePendingOperation(businessTxId, username)
                     _actionSuccess.value = "Paid subscriber $username created successfully.\nPassword: $generatedPassword"
                     audit.logAction("CREATE_PAID_USER", "USER", username, "Created subscriber using reseller deposit")
                 } else {
+                    localLedgerRepository.markPendingOperationFailed(businessTxId, "Subscriber creation failed")
                     _error.value = "Subscriber creation failed."
                 }
             } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+                localLedgerRepository.markPendingOperationFailed(businessTxId, e.message ?: "Unknown error")
                 _error.value = e.message
             } finally {
                 _isActionLoading.value = false
@@ -369,18 +401,53 @@ class EarthlinkSearchViewModel(
         depositPass: String,
         price: Double? = null,
         note: String? = null,
-        onSuccessCallback: (suspend () -> Unit)? = null
+        intentId: String? = null,
+        onSuccessCallback: (suspend (String) -> Unit)? = null
     ) {
         viewModelScope.launch {
             _isActionLoading.value = true
             _error.value = null
+            val opIntentId = intentId ?: java.util.UUID.randomUUID().toString()
+            val businessTxId = "tx_" + opIntentId
+            val finalPrice = price ?: 40000.0
+            val finalNote = note ?: ""
+
             try {
+                // 1. Durably record PendingExternalOperation prior to external API dispatch (G1 / INV-11)
+                localLedgerRepository.recordPendingOperation(
+                    PendingExternalOperation(
+                        businessTransactionId = businessTxId,
+                        operationIntentId = opIntentId,
+                        accountId = userId,
+                        operationType = "REFILL",
+                        amountIqd = finalPrice.toLong(),
+                        payloadJson = "{\"userId\":\"$userId\",\"price\":$finalPrice,\"note\":\"$finalNote\"}",
+                        status = "PENDING"
+                    )
+                )
+
+                // 2. Dispatch external ISP operation
                 val success = gateway.refillUserDeposit(userId, depositPass)
                 if (success) {
                     try {
-                        onSuccessCallback?.invoke()
+                        if (onSuccessCallback != null) {
+                            onSuccessCallback.invoke(businessTxId)
+                        } else {
+                            val localAcc = localAccountRepository.findAccountByUsernameOrIdOneShot(userId)
+                            if (localAcc != null) {
+                                localLedgerRepository.recordAccountRenewal(
+                                    account = localAcc,
+                                    newPriceIqd = finalPrice,
+                                    chargeNote = if (finalNote.isNotBlank()) "[RENEW] ${finalNote.trim()}" else "[RENEW]",
+                                    payNote = null,
+                                    idempotencyKey = businessTxId
+                                )
+                            } else {
+                                localLedgerRepository.completePendingOperation(businessTxId, userId)
+                            }
+                        }
                     } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                        android.util.Log.e("EarthlinkSearchViewModel", "Failed to execute onSuccessCallback after renewal", e)
+                        android.util.Log.e("EarthlinkSearchViewModel", "Failed to execute atomic post-call materialization after renewal", e)
                     }
 
                     _actionSuccess.value = if (prefs.getLanguage() == "ar") {
@@ -388,9 +455,6 @@ class EarthlinkSearchViewModel(
                     } else {
                         "Subscriber $userId was renewed successfully."
                     }
-                    
-                    val finalPrice = price ?: 40000.0
-                    val finalNote = note ?: ""
                     
                     val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
                     val dateStr = sdf.format(java.util.Date())
@@ -420,9 +484,11 @@ class EarthlinkSearchViewModel(
                     )
                     _selectedUser.value?.userIndex?.let { loadUserDetail(it, _selectedUser.value?.userIDLower) }
                 } else {
+                    localLedgerRepository.markPendingOperationFailed(businessTxId, "Refill action failed on server")
                     _error.value = "Refill action failed."
                 }
             } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+                localLedgerRepository.markPendingOperationFailed(businessTxId, e.message ?: "Unknown error")
                 val isNetworkIssue = e.message?.contains("Network unavailable", ignoreCase = true) == true || 
                                      e.message?.contains("Connection error", ignoreCase = true) == true || 
                                      e.message?.contains("ConnectException", ignoreCase = true) == true || 
@@ -444,20 +510,36 @@ class EarthlinkSearchViewModel(
         }
     }
 
-    fun extendUser(userIndex: Int, userId: String) {
+    fun extendUser(userIndex: Int, userId: String, intentId: String? = null) {
         viewModelScope.launch {
             _isActionLoading.value = true
             _error.value = null
+            val opIntentId = intentId ?: java.util.UUID.randomUUID().toString()
+            val businessTxId = "tx_" + opIntentId
             try {
+                localLedgerRepository.recordPendingOperation(
+                    PendingExternalOperation(
+                        businessTransactionId = businessTxId,
+                        operationIntentId = opIntentId,
+                        accountId = userId,
+                        operationType = "RENEWAL",
+                        amountIqd = 0L,
+                        payloadJson = "{\"userIndex\":$userIndex,\"userId\":\"$userId\"}",
+                        status = "PENDING"
+                    )
+                )
                 val success = gateway.extendUser(userIndex)
                 if (success) {
+                    localLedgerRepository.completePendingOperation(businessTxId, userId)
                     _actionSuccess.value = "Subscription for $userId extended successfully."
                     audit.logAction("EXTEND_USER", "USER", userId, "Extended subscriber duration")
                     loadUserDetail(userIndex, _selectedUser.value?.userIDLower)
                 } else {
+                    localLedgerRepository.markPendingOperationFailed(businessTxId, "Extension failed on server")
                     _error.value = "Extension failed."
                 }
             } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+                localLedgerRepository.markPendingOperationFailed(businessTxId, e.message ?: "Unknown error")
                 val isNetworkIssue = e.message?.contains("Network unavailable", ignoreCase = true) == true || 
                                      e.message?.contains("Connection error", ignoreCase = true) == true || 
                                      e.message?.contains("ConnectException", ignoreCase = true) == true || 

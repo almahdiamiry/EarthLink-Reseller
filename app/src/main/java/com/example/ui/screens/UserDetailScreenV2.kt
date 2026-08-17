@@ -558,7 +558,7 @@ fun UserDetailScreenV2(
                                             depositPass = depositPass,
                                             price = parsedPrice,
                                             note = noteVal,
-                                            onSuccessCallback = {
+                                            onSuccessCallback = { txId ->
                                                 try {
                                                     val chargeNote = if (noteVal.isNotBlank()) "[RENEW] ${noteVal.trim()}" else "[RENEW]"
                                                     val payNote = if (isWasil) (if (noteVal.isNotBlank()) "[RENEW_PAY] ${noteVal.trim()}" else "[RENEW_PAY]") else null
@@ -567,7 +567,8 @@ fun UserDetailScreenV2(
                                                         account = accToUse,
                                                         newPriceIqd = parsedPrice,
                                                         chargeNote = chargeNote,
-                                                        payNote = payNote
+                                                        payNote = payNote,
+                                                        idempotencyKey = txId
                                                     )
                                                 } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
                                                     android.util.Log.e("UserDetailScreen", "Failed to add ledger entry", e)

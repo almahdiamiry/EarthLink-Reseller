@@ -483,4 +483,38 @@ data class AuditLog(
     @ColumnInfo(defaultValue = "USER_ACTION") val origin: String = AuditOrigin.USER_ACTION.name
 )
 
+/**
+ * PendingExternalOperation: Durable Pending-Operation Record for Financial ISP Operations (G1 / INV-11).
+ * Records intent and pre-allocated transaction ID before external API dispatch.
+ * Status values:
+ * - "PENDING": Recorded locally prior to external call dispatch
+ * - "RESOLVING": In the process of atomic post-call materialization / inspection
+ * - "COMPLETED": Confirmed successful external execution and atomically materialized into local ledger + outbox
+ * - "FAILED": Confirmed external failure; resolved without local ledger mutation
+ */
+@Entity(
+    tableName = "pending_external_operations",
+    indices = [
+        Index(value = ["operationIntentId"], unique = true),
+        Index(value = ["businessTransactionId"], unique = true),
+        Index(value = ["accountId"]),
+        Index(value = ["status"]),
+        Index(value = ["createdAt"])
+    ]
+)
+@JsonClass(generateAdapter = true)
+data class PendingExternalOperation(
+    @PrimaryKey val businessTransactionId: String = java.util.UUID.randomUUID().toString(),
+    val operationIntentId: String = java.util.UUID.randomUUID().toString(),
+    val accountId: String,
+    val operationType: String, // "ACTIVATION", "RENEWAL", "REFILL"
+    val amountIqd: Long = 0L,
+    val payloadJson: String = "{}",
+    val status: String = "PENDING", // "PENDING", "RESOLVING", "COMPLETED", "FAILED"
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+    val lastError: String? = null
+)
+
 typealias StringComponents = String
+
