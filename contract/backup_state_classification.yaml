@@ -1,0 +1,55 @@
+# Backup & Restore State Classification Contract
+# Authoritative Invariant Source: PRODUCTION_INVARIANTS.md (INV-01, INV-04, INV-11, INV-12, INV-13)
+# Closure Contract Reference: RC-5 / B6/D-05
+
+version: "1.0.0"
+description: "Authoritative classification and restore policy for all database tables and entities in Earthlink Reseller App"
+
+classifications:
+  BUSINESS_SNAPSHOT:
+    description: "Core business entities representing authoritative local snapshot baseline. Restored from backup as exact snapshot state."
+    restore_policy: "TRUNCATE_AND_REPLACE"
+    sync_policy: "Baseline restored without generating local outbox items; sync reconciles against remote using authoritative server version domain."
+    tables:
+      - table_name: "local_accounts"
+        entity_class: "com.example.core.model.LocalAccount"
+        classification: "BUSINESS_SNAPSHOT"
+        restore_action: "RESTORE_SNAPSHOT"
+        notes: "Restored as authoritative baseline. Outbox entries are cleared to prevent re-enqueueing."
+      - table_name: "local_ledger_entries"
+        entity_class: "com.example.core.model.LocalLedgerEntry"
+        classification: "BUSINESS_SNAPSHOT"
+        restore_action: "RESTORE_SNAPSHOT"
+        notes: "Historical and snapshot ledger entries restored as baseline. Zero outbox re-emission."
+
+  SNAPSHOT_METADATA_AND_CONTROL:
+    description: "Lifecycle and metadata tracking records. Historical completed records preserved as snapshot reference; incomplete/in-progress items quarantined."
+    restore_policy: "SANITIZE_AND_RESTORE"
+    sync_policy: "Completed batches remain historical snapshots. Incomplete batches are marked failed/quarantined to prevent remote sync eligibility or resume."
+    tables:
+      - table_name: "import_batches"
+        entity_class: "com.example.core.model.ImportBatch"
+        classification: "CONTROL_STATE"
+        restore_action: "QUARANTINE_INCOMPLETE_RESTORE_COMPLETED"
+        notes: "Completed batches ('completed') restored intact; in-progress or non-completed batches ('in_progress', 'running', 'failed/resumable') are marked as 'failed'/'quarantined' so they never trigger remote synchronization."
+      - table_name: "audit_log"
+        entity_class: "com.example.core.model.AuditLog"
+        classification: "CONTROL_STATE"
+        restore_action: "APPEND_PRESERVE_TRAIL"
+        notes: "Live audit logs are preserved; backup audit logs are merged, and a new DATABASE_RESTORE audit log entry with RESTORE_EVENT origin is created."
+
+  OPERATIONAL_SYNC_STATE:
+    description: "Transient runtime synchronization queues, cursors, and metadata. MUST NEVER be restored from backup into active state."
+    restore_policy: "RESET_AND_CLEAR"
+    sync_policy: "Outbox is completely cleared to prevent replaying stale operations. Sync metadata and remote cursors are reset to force clean reconciliation."
+    tables:
+      - table_name: "sync_outbox"
+        entity_class: "com.example.core.model.SyncOutbox"
+        classification: "OPERATIONAL_SYNC_STATE"
+        restore_action: "CLEAR_ON_RESTORE"
+        notes: "Never restored from backup. Live outbox cleared to eliminate replay loops and prevent stale mutations from propagating to Firestore."
+      - table_name: "sync_metadata"
+        entity_class: "com.example.core.model.SyncData"
+        classification: "OPERATIONAL_SYNC_STATE"
+        restore_action: "CLEAR_ON_RESTORE"
+        notes: "Never restored from backup. Live sync metadata and cursors cleared to trigger fresh, authoritative synchronization."

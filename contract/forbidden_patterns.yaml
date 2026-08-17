@@ -1,0 +1,160 @@
+# Earthlink Reseller App — Forbidden Architectural Pattern Registry
+# Authoritative Invariant Source: PRODUCTION_INVARIANTS.md (INV-01 .. INV-16)
+# Version: 1.1.0
+
+patterns:
+  - id: "RC-1-remote-version-fallback"
+    invariant: "INV-06"
+    description: "Forbidden local timestamp fallback when remote version is absent"
+    check_type: "regex"
+    file_glob: "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt"
+    forbidden_regexes:
+      - "\\?\\:\\s*existing\\?\\.(updatedAt|createdAt)"
+    explanation: "INV-06 mandates authoritative server timestamps. Local createdAt/updatedAt must never serve as remote version fallback."
+
+  - id: "RC-1-v2-inline-version-resolution"
+    invariant: "INV-06"
+    description: "Forbidden inline local timestamp fallback or resolution outside resolveLocalVersion()"
+    check_type: "regex"
+    file_glob: "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt"
+    allowed_in_functions:
+      - "resolveLocalVersion"
+    forbidden_regexes:
+      - "(existing|duplicate)\\?\\.(updatedAt|createdAt|occurredAt)"
+      - "(existing|duplicate)\\?\\.takeIf\\s*\\{[^}]*\\}\\?\\.(updatedAt|createdAt|occurredAt)"
+      - "storedMetaTs\\s*\\?\\:"
+    explanation: "INV-06 mandates that all local version resolution must happen solely inside resolveLocalVersion(). Inline resolution or fallback outside this function is forbidden."
+
+  - id: "RC-1-v3-push-without-version-record"
+    invariant: "INV-06"
+    description: "Successful push and server-confirmed version capture must be separate lifecycle steps"
+    check_type: "semantic_combo"
+    file_glob: "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    required_symbols:
+      - "markSucceeded"
+      - "metadataDao.put"
+      - "Source.SERVER"
+    forbidden_regexes:
+      - "metadataDao\\.put\\([^)]*(System\\.currentTimeMillis|updatedAt|createdAt|occurredAt)"
+    explanation: "INV-06 mandates that server-confirmed remote versions must be captured from Source.SERVER read-back, never fabricated from local timestamps during markSucceeded."
+
+  - id: "RC-3-settings-device-clock"
+    invariant: "INV-06"
+    description: "Forbidden device clock usage for distributed settings winner selection"
+    check_type: "semantic_combo"
+    file_glob: "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    required_symbols:
+      - "getSettingsLocalMutatedAt"
+      - "System.currentTimeMillis"
+      - "remoteUpdatedAt"
+    forbidden_regexes:
+      - "(localMutatedAt|mutatedAt)\\s*>\\s*remoteUpdatedAt"
+      - "System\\.currentTimeMillis\\(\\)\\s*>\\s*remote"
+    explanation: "INV-06 mandates remote server timestamps for conflict resolution. Local device-clock timestamps must never determine distributed winner selection."
+
+  - id: "RC-4-coordinator-bypass"
+    invariant: "INV-11"
+    description: "Forbidden currentMode bypass check in BackupManager"
+    check_type: "regex"
+    file_glob: "app/src/main/java/com/example/core/backup/BackupManager.kt"
+    forbidden_regexes:
+      - "DataOperationCoordinator\\.currentMode\\s*==\\s*DataOperationMode\\.(RESTORE|BACKUP)"
+      - "currentMode\\s*==\\s*DataOperationMode\\.(RESTORE|BACKUP)"
+    explanation: "INV-11 requires canonical operation mode acquisition; checking currentMode to bypass lock is forbidden."
+
+  - id: "RC-6-release-dry-run"
+    invariant: "INV-15"
+    description: "Forbidden --dry-run bypass in release build verification and production gates"
+    check_type: "regex"
+    file_glob: "scripts/production_gate.*"
+    forbidden_regexes:
+      - "assembleRelease\\s+--dry-run"
+      - "--dry-run"
+    explanation: "INV-15 mandates real fail-closed release verification; --dry-run bypasses actual artifact build."
+
+  - id: "INV-03-direct-firestore-ui"
+    invariant: "INV-03"
+    description: "Forbidden direct Firestore call in ViewModels or UI layer"
+    check_type: "regex"
+    file_glob: "app/src/main/java/com/example/ui/**/*.kt"
+    forbidden_regexes:
+      - "FirebaseFirestore\\.getInstance"
+      - "Firebase\\.firestore"
+    explanation: "INV-03 mandates Room as single local source of truth; UI layer must not directly call Firestore."
+
+  - id: "INV-16-hardcoded-closure-status"
+    invariant: "INV-16"
+    description: "Forbidden hardcoded CLOSED status claims in reports or scripts without machine evidence"
+    check_type: "regex"
+    file_glob: "scripts/render_certification_report.py"
+    forbidden_regexes:
+      - "[\"']status[\"']\\s*:\\s*[\"']CLOSED[\"']"
+      - "report_status\\s*=\\s*[\"']CLOSED[\"']"
+    explanation: "INV-16 requires closure status to be derived strictly from machine evidence verification."
+
+  - id: "PHASE2-PENDING-REMOTE-VERSION"
+    invariant: "INV-06"
+    description: "Pending-write branches must never establish authoritative remote_version"
+    check_type: "semantic_combo"
+    file_glob: "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    required_symbols:
+      - "hasPendingWrites"
+      - "metadataDao"
+    forbidden_regexes:
+      - "hasPendingWrites\\(\\)[^{}]*metadataDao\\.put"
+    explanation: "INV-06 mandates that snapshots with pending local writes must never write authoritative remote versions."
+
+  - id: "PHASE2-CACHE-VERSION"
+    invariant: "INV-06"
+    description: "Cache/local snapshots must not establish authoritative remote_version"
+    check_type: "semantic_combo"
+    file_glob: "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    required_symbols:
+      - "isFromCache"
+      - "metadataDao"
+    forbidden_regexes:
+      - "isFromCache[^{}]*metadataDao\\.put"
+    explanation: "INV-06 mandates that cache-only reads must not establish authoritative remote versions."
+
+  - id: "PHASE2-LOCAL-TIMESTAMP-VERSION"
+    invariant: "INV-06"
+    description: "Business/device timestamps must never become authoritative remote_version"
+    check_type: "semantic_combo"
+    file_glob: "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt"
+    required_symbols:
+      - "resolveLocalVersion"
+    forbidden_regexes:
+      - "remoteVersion\\s*=\\s*System\\.currentTimeMillis"
+      - "remoteVersion\\s*=\\s*existing\\.(updatedAt|createdAt|occurredAt)"
+    explanation: "INV-06 forbids using device clock or business entity timestamps as authoritative remote_version."
+
+  - id: "PHASE2-VERSION-AHEAD-OF-STATE"
+    invariant: "INV-06"
+    description: "remote_version must not advance beyond the state represented locally"
+    check_type: "behavioral_fixture"
+    fixture_file: "app/src/test/java/com/example/Phase2RemoteVersionAdversarialTest.kt"
+    fixture_method: "caseD_versionAheadOfLocalState_cannotPersistVersionWithoutApplyingState"
+    explanation: "INV-06 requires local entity state and remote_version metadata to be updated consistently together, verified via mandatory behavioral fixture."
+
+  - id: "PHASE2-REPLAY-AFTER-CAPTURE-FAILURE"
+    invariant: "INV-06"
+    description: "Successful push must not be replayed because version capture failed"
+    check_type: "behavioral_fixture"
+    fixture_file: "app/src/test/java/com/example/Phase2RemoteVersionAdversarialTest.kt"
+    fixture_method: "caseF_replayAfterCaptureFailure_neverReplaysSuccessfulPush"
+    explanation: "INV-06 requires successful server commits to mark outbox items succeeded without re-enqueueing, verified via mandatory behavioral fixture."
+
+  - id: "RC-5-direct-settings-sync-caller"
+    invariant: "INV-10"
+    description: "Forbidden direct invocation of syncUserSettings() outside canonical SyncRepository triggerSettingsSync()"
+    check_type: "regex"
+    file_glob: "app/src/main/java/**/*.kt"
+    allowed_in_functions:
+      - "triggerSettingsSync"
+      - "syncUserSettings"
+    forbidden_regexes:
+      - "\\.syncUserSettings\\("
+      - "syncUserSettings\\("
+    explanation: "INV-10 / Phase 5 mandates that settings synchronization must be initiated solely through canonical triggerSettingsSync(uid, reason)."
+
+

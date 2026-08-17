@@ -1,0 +1,3428 @@
+{
+  "schema_version": "1.0",
+  "timestamp": "2026-08-14T20:23:56.027280+00:00",
+  "source_identity": {
+    "git_sha": "51a3dbe7804a45ee20b8060999e4daa8331dfc13",
+    "git_branch": "master",
+    "is_dirty": true,
+    "git_status_porcelain": [
+      "M CHANGELOG.md",
+      " M PROJECT_ROADMAP.md",
+      " M app/build.gradle.kts",
+      " M app/src/main/java/com/example/core/backup/BackupManager.kt",
+      " M app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt",
+      " M app/src/main/java/com/example/core/sync/SyncConflictResolver.kt",
+      " M app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt",
+      " M app/src/main/java/com/example/core/sync/UtowerImporter.kt",
+      "M  gradlew",
+      " M scripts/production_gate.sh",
+      "?? .superpowers/",
+      "?? BASELINE_AND_CHANGESET_AUDIT.md",
+      "?? EARTHLINK_EXIT_LOOP_EVIDENCE_LOCKED_CLOSURE_PLAN.md",
+      "?? \"INDEPENDENT PRODUCTION READINESS AUDIT.txt\"",
+      "?? INDEPENDENT_PRODUCTION_READINESS_AUDIT.md",
+      "?? PRODUCTION_CONTRACT_MATRIX.md",
+      "?? PRODUCTION_CONTRACT_RECONCILIATION_FINAL_PLAN.md",
+      "?? app/src/test/java/com/example/InvariantContractConsistencyTest.kt",
+      "?? contract/",
+      "?? \"earthlink-reseller-v1 (68).zip\"",
+      "?? evidence/",
+      "?? scripts/__pycache__/",
+      "?? scripts/collect_closure_evidence.py",
+      "?? scripts/production_gate.ps1",
+      "?? scripts/render_certification_report.py",
+      "?? scripts/verify_closure_evidence.py",
+      "?? scripts/verify_invariant_contract.py"
+    ],
+    "gradlew_git_mode": "100755 adff685a0348c64b2b64f0b302f1f82b28eeaaea 0\tgradlew"
+  },
+  "contract_identity": {
+    "production_invariants_file": "PRODUCTION_INVARIANTS.md",
+    "production_invariants_sha256": "e2b54de2d9ba16ef8e0ae264d4a21436e6225438102b78e97e930cc65ca7b32c",
+    "closure_contract_file": "contract/closure_contract.yaml",
+    "closure_contract_sha256": "07322af85bce38794bd6a9b824cae91fafc6d1742e38a0d8120dd42f663670e7",
+    "invariant_contract_file": "contract/invariant_contract.yaml",
+    "invariant_contract_sha256": "a4f2e60af4f482fd2c860e52accf3dc3bcf069d79e116143a9a094564ae34d0c",
+    "invariant_test_map_file": "contract/invariant_test_map.yaml",
+    "invariant_test_map_sha256": "aecd247637388db436430cc6ba8d3f327ba6929fe39ba6b8a03ce3efafccfe19",
+    "forbidden_patterns_file": "contract/forbidden_patterns.yaml",
+    "forbidden_patterns_sha256": "c38555732c6949782ff1f18b2259f92da43093fdf48ba8146cc55863904e97d7",
+    "baseline_manifest_file": "evidence/baseline_manifest.json",
+    "baseline_manifest_sha256": "e3f51afa4017c727c61117e9686ac6002192891067570a88e96430c89aff5369",
+    "baseline_test_manifest_file": "evidence/baseline_test_manifest.json",
+    "baseline_test_manifest_sha256": "4d0442a8ab967750f927bf647ff8b1027dc6d15323443a9e13bd0e987db992f8"
+  },
+  "toolchain": {
+    "os": "Windows 11 AMD64",
+    "python_version": "3.12.10",
+    "java_version": "openjdk version \"17.0.20\" 2026-07-21",
+    "gradle_version": "Gradle 9.3.1",
+    "kotlin_version": "2.2.21"
+  },
+  "test_execution": {
+    "command": "./gradlew :app:testDebugUnitTest --no-daemon",
+    "exit_code": 0,
+    "total_tests": 312,
+    "passed_tests": 312,
+    "failed_tests": 0,
+    "error_tests": 0,
+    "skipped_tests": 0,
+    "duration_seconds": 30.687,
+    "suites": [
+      {
+        "name": "com.example.AkamelRegressionTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.031,
+        "testcases": [
+          {
+            "name": "testAkamel20260812AddTransactionRenewalDebtImpact",
+            "classname": "com.example.AkamelRegressionTest",
+            "time": 0.024,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.AuditDoesNotTriggerSyncRegressionTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 5.718,
+        "testcases": [
+          {
+            "name": "testPermanentSyncFailureAudit_doesNotCreateOutboxOrTriggerSync",
+            "classname": "com.example.AuditDoesNotTriggerSyncRegressionTest",
+            "time": 5.354,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.AuditFailureDoesNotTriggerSyncTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.082,
+        "testcases": [
+          {
+            "name": "testPermanentSyncFailureAudit_doesNotCreateOutboxOrTriggerSync",
+            "classname": "com.example.AuditFailureDoesNotTriggerSyncTest",
+            "time": 0.073,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.AuditFeedbackLoopTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.124,
+        "testcases": [
+          {
+            "name": "test user action audit log creates outbox item for sync",
+            "classname": "com.example.AuditFeedbackLoopTest",
+            "time": 0.064,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test sync diagnostic audit log does not generate outbox item",
+            "classname": "com.example.AuditFeedbackLoopTest",
+            "time": 0.055,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.AuditLogMigrationPreservesAllRowsTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.07,
+        "testcases": [
+          {
+            "name": "testAuditLogMigrationPreservesAllRows",
+            "classname": "com.example.AuditLogMigrationPreservesAllRowsTest",
+            "time": 0.065,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.AuthIdentityTransitionRegressionTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.138,
+        "testcases": [
+          {
+            "name": "testListenerOwnershipTransitionsCleanlyBetweenIdentities",
+            "classname": "com.example.AuthIdentityTransitionRegressionTest",
+            "time": 0.134,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.AuthoritativeRemoteVersionDomainRegressionTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.174,
+        "testcases": [
+          {
+            "name": "testLocallyModifiedEntityWithNewerBusinessTimestampButOlderServerVersionRejectsStaleRemote",
+            "classname": "com.example.AuthoritativeRemoteVersionDomainRegressionTest",
+            "time": 0.068,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testEqualServerVersionsDeterministicTieBreakerAppliesRemote",
+            "classname": "com.example.AuthoritativeRemoteVersionDomainRegressionTest",
+            "time": 0.038,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testOldLocalCreatedAtOccurredAtWithNewerServerVersionIsApplied",
+            "classname": "com.example.AuthoritativeRemoteVersionDomainRegressionTest",
+            "time": 0.065,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.BackupGcmIntegrationTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 3.913,
+        "testcases": [
+          {
+            "name": "test createLocalBackupZip uses AES GCM and writes salt and iv to metadata",
+            "classname": "com.example.BackupGcmIntegrationTest",
+            "time": 3.83,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.BackupSecurityVerificationTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.332,
+        "testcases": [
+          {
+            "name": "testBackupUsesStrongEncryptionAndRestoresSuccessfully",
+            "classname": "com.example.BackupSecurityVerificationTest",
+            "time": 0.33,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.BalanceCalculatorTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.0,
+        "testcases": [
+          {
+            "name": "test debt draining existing advance first",
+            "classname": "com.example.BalanceCalculatorTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test normal payment",
+            "classname": "com.example.BalanceCalculatorTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test debt overflow beyond advance",
+            "classname": "com.example.BalanceCalculatorTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test overpayment into advance",
+            "classname": "com.example.BalanceCalculatorTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.ClockSkewAdversarialTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.058,
+        "testcases": [
+          {
+            "name": "test balance calculations remain completely unaffected by system clock skew",
+            "classname": "com.example.ClockSkewAdversarialTest",
+            "time": 0.025,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test RemoteSyncCursor is completely immune to system clock skew",
+            "classname": "com.example.ClockSkewAdversarialTest",
+            "time": 0.027,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.ClockSkewCannotChangeRemoteOrderingTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.002,
+        "testcases": [
+          {
+            "name": "testClockSkewCannotChangeRemoteOrdering",
+            "classname": "com.example.ClockSkewCannotChangeRemoteOrderingTest",
+            "time": 0.002,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.CoordinatorOwnershipRegressionTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.232,
+        "testcases": [
+          {
+            "name": "testMaintenanceActiveFlagAccuratelyReflectsDestructiveModes",
+            "classname": "com.example.CoordinatorOwnershipRegressionTest",
+            "time": 0.03,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testAllModesAcquireExclusiveOwnership",
+            "classname": "com.example.CoordinatorOwnershipRegressionTest",
+            "time": 0.031,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testConcurrentOperationsAreMutuallyExclusive",
+            "classname": "com.example.CoordinatorOwnershipRegressionTest",
+            "time": 0.169,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.CoreScreensScreenshotTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 5.5,
+        "testcases": [
+          {
+            "name": "testLoginScreenScreenshot",
+            "classname": "com.example.CoreScreensScreenshotTest",
+            "time": 4.649,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testSettingsScreenArabicScreenshot",
+            "classname": "com.example.CoreScreensScreenshotTest",
+            "time": 0.382,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testDashboardScreenArabicScreenshot",
+            "classname": "com.example.CoreScreensScreenshotTest",
+            "time": 0.398,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.CrossDeviceBackupRestoreTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.1,
+        "testcases": [
+          {
+            "name": "testCrossDeviceBackupRestoreRoundTrip",
+            "classname": "com.example.CrossDeviceBackupRestoreTest",
+            "time": 0.098,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.CursorDocumentIdPreservationTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.001,
+        "testcases": [
+          {
+            "name": "testCursorDeterministicComparison",
+            "classname": "com.example.CursorDocumentIdPreservationTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testSameTimestampDocumentIdTieBreakerAdvancement",
+            "classname": "com.example.CursorDocumentIdPreservationTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.CursorRoundTripTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.001,
+        "testcases": [
+          {
+            "name": "testCompositeCursorRoundTripWithDocumentId",
+            "classname": "com.example.CursorRoundTripTest",
+            "time": 0.001,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testTimestampOnlyCursorRoundTripWithoutDocumentId",
+            "classname": "com.example.CursorRoundTripTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testParseCursorStringEdgeCases",
+            "classname": "com.example.CursorRoundTripTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.DashboardViewModelParallelFetchTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.525,
+        "testcases": [
+          {
+            "name": "test loadDashboardData runs gateway fetches in parallel",
+            "classname": "com.example.DashboardViewModelParallelFetchTest",
+            "time": 0.522,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.DataOperationCoordinatorConcurrencyTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.303,
+        "testcases": [
+          {
+            "name": "testRestoreBlocksSyncMutations",
+            "classname": "com.example.DataOperationCoordinatorConcurrencyTest",
+            "time": 0.08,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testImportBlocksSyncMutations",
+            "classname": "com.example.DataOperationCoordinatorConcurrencyTest",
+            "time": 0.057,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testRollbackBlocksRealtimeConcurrentMutation",
+            "classname": "com.example.DataOperationCoordinatorConcurrencyTest",
+            "time": 0.054,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testClearDataBlocksSync",
+            "classname": "com.example.DataOperationCoordinatorConcurrencyTest",
+            "time": 0.054,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testRestoreQueuesRealtimeSnapshotWithoutLoss",
+            "classname": "com.example.DataOperationCoordinatorConcurrencyTest",
+            "time": 0.056,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.DatabaseMigrationTest",
+        "tests": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.618,
+        "testcases": [
+          {
+            "name": "testMigration4To5DuplicateLedgerEntriesDeduplication",
+            "classname": "com.example.DatabaseMigrationTest",
+            "time": 0.167,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testMigration8To9",
+            "classname": "com.example.DatabaseMigrationTest",
+            "time": 0.03,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testMigration4To5SurvivorBalanceRecomputation",
+            "classname": "com.example.DatabaseMigrationTest",
+            "time": 0.07,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testMigration4To5DuplicateAccountsSelection",
+            "classname": "com.example.DatabaseMigrationTest",
+            "time": 0.067,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testMigration4To5DualAccountsWithLedgerEntriesSelection",
+            "classname": "com.example.DatabaseMigrationTest",
+            "time": 0.056,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testMigration4To5EmptyStringSourceExternalIdNormalization",
+            "classname": "com.example.DatabaseMigrationTest",
+            "time": 0.094,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testDatabaseSchemaVersion1",
+            "classname": "com.example.DatabaseMigrationTest",
+            "time": 0.036,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testFullMigrationChain1To6",
+            "classname": "com.example.DatabaseMigrationTest",
+            "time": 0.048,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testAllMigrationsFrom1To3",
+            "classname": "com.example.DatabaseMigrationTest",
+            "time": 0.046,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.DateTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.012,
+        "testcases": [
+          {
+            "name": "testParse",
+            "classname": "com.example.DateTest",
+            "time": 0.012,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.DeadLetterDoesNotRetryTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.032,
+        "testcases": [
+          {
+            "name": "testDeadLetterItems_areExcludedFromPendingQueue",
+            "classname": "com.example.DeadLetterDoesNotRetryTest",
+            "time": 0.029,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.DeepCrossLayerInvariantsTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.238,
+        "testcases": [
+          {
+            "name": "testINV05_DeepCrossLayer_BackupRestoreStatePreservation",
+            "classname": "com.example.DeepCrossLayerInvariantsTest",
+            "time": 0.041,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testINV07_DeepCrossLayer_ApiFailureFailsClosedWithoutMutation",
+            "classname": "com.example.DeepCrossLayerInvariantsTest",
+            "time": 0.028,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testINV13_DeepCrossLayer_RetryableFailureHaltsCursorAdvancement",
+            "classname": "com.example.DeepCrossLayerInvariantsTest",
+            "time": 0.027,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testINV15_DeepCrossLayer_RepeatedSyncReachesFixedPoint",
+            "classname": "com.example.DeepCrossLayerInvariantsTest",
+            "time": 0.07,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testINV11_DeepCrossLayer_IncompleteImportBatchIsIsolatedFromSync",
+            "classname": "com.example.DeepCrossLayerInvariantsTest",
+            "time": 0.069,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.DeletionOrderingAndMonotonicityTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.18,
+        "testcases": [
+          {
+            "name": "testAccountDelete_preventsZombieLedgerAndAccountResurrection",
+            "classname": "com.example.DeletionOrderingAndMonotonicityTest",
+            "time": 0.044,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testStaleAccountUpsert_doesNotOverwriteNewerLocalState",
+            "classname": "com.example.DeletionOrderingAndMonotonicityTest",
+            "time": 0.037,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testRemoteUserSettingsMonotonicity_staleVersionIgnored",
+            "classname": "com.example.DeletionOrderingAndMonotonicityTest",
+            "time": 0.043,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testStaleAccountUpsert_afterDeletion_isIgnored",
+            "classname": "com.example.DeletionOrderingAndMonotonicityTest",
+            "time": 0.05,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.EarthlinkAppTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.143,
+        "testcases": [
+          {
+            "name": "testUtowerImportJSONParsing",
+            "classname": "com.example.EarthlinkAppTest",
+            "time": 0.02,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testLocalPaymentLedgerArithmetic",
+            "classname": "com.example.EarthlinkAppTest",
+            "time": 0.019,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testLocalDebtLoadArithmetic",
+            "classname": "com.example.EarthlinkAppTest",
+            "time": 0.023,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testApiEnvelopeParsingSuccess",
+            "classname": "com.example.EarthlinkAppTest",
+            "time": 0.027,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testSecretMaskingLogUtility",
+            "classname": "com.example.EarthlinkAppTest",
+            "time": 0.019,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testApiEnvelopeParsingFailure",
+            "classname": "com.example.EarthlinkAppTest",
+            "time": 0.029,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.EarthlinkGatewayTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.941,
+        "testcases": [
+          {
+            "name": "test demo mode write operations simulate success",
+            "classname": "com.example.EarthlinkGatewayTest",
+            "time": 0.876,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test hybrid demo mode enables on login",
+            "classname": "com.example.EarthlinkGatewayTest",
+            "time": 0.06,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.EncryptionMigrationTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.063,
+        "testcases": [
+          {
+            "name": "testEncryptionMigrationRoundTrip",
+            "classname": "com.example.EncryptionMigrationTest",
+            "time": 0.06,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.EventSyncResultCursorAdvancementTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.001,
+        "testcases": [
+          {
+            "name": "testCursorAdvancementPerResultType",
+            "classname": "com.example.EventSyncResultCursorAdvancementTest",
+            "time": 0.001,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testEventSyncResultCanAdvanceCursorLogic",
+            "classname": "com.example.EventSyncResultCursorAdvancementTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.ExampleRobolectricTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 1.531,
+        "testcases": [
+          {
+            "name": "testMainActivityLaunches",
+            "classname": "com.example.ExampleRobolectricTest",
+            "time": 1.489,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "read string from context",
+            "classname": "com.example.ExampleRobolectricTest",
+            "time": 0.039,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.ExampleUnitTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.011,
+        "testcases": [
+          {
+            "name": "testGetRemainingTime",
+            "classname": "com.example.ExampleUnitTest",
+            "time": 0.007,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testGetRemainingTimeWithActiveDays",
+            "classname": "com.example.ExampleUnitTest",
+            "time": 0.003,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testTimezoneAndOrderRobustness",
+            "classname": "com.example.ExampleUnitTest",
+            "time": 0.001,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "addition_isCorrect",
+            "classname": "com.example.ExampleUnitTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.FailClosedApiContractTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.132,
+        "testcases": [
+          {
+            "name": "testFinancialOperationIdempotencyForPayment",
+            "classname": "com.example.FailClosedApiContractTest",
+            "time": 0.037,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testApiResultContract",
+            "classname": "com.example.FailClosedApiContractTest",
+            "time": 0.031,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testFinancialOperationIdempotencyForDebt",
+            "classname": "com.example.FailClosedApiContractTest",
+            "time": 0.059,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.FailedRemoteEventCursorAdvancementTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.002,
+        "testcases": [
+          {
+            "name": "testFailedItemIsRetriedAndAdvancesCursorWhenResolved",
+            "classname": "com.example.FailedRemoteEventCursorAdvancementTest",
+            "time": 0.001,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testMalformedEventIsQuarantinedAndDoesNotHaltPipeline",
+            "classname": "com.example.FailedRemoteEventCursorAdvancementTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testCursorHaltsOnFailedItemAndDoesNotSkip",
+            "classname": "com.example.FailedRemoteEventCursorAdvancementTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.FinalProductionConvergenceAdversarialTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.001,
+        "testcases": [
+          {
+            "name": "test17StepFinalProductionConvergenceAdversarialScenario",
+            "classname": "com.example.FinalProductionConvergenceAdversarialTest",
+            "time": 0.001,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.FinalTestMatrixCertificationTest",
+        "tests": 14,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.559,
+        "testcases": [
+          {
+            "name": "test14_sameStateSyncTwentyTimesZeroWrites",
+            "classname": "com.example.FinalTestMatrixCertificationTest",
+            "time": 0.034,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test1_sameTimestampDifferentDocumentIds",
+            "classname": "com.example.FinalTestMatrixCertificationTest",
+            "time": 0.046,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test13_goldenPipelineFullLifecycle",
+            "classname": "com.example.FinalTestMatrixCertificationTest",
+            "time": 0.04,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test12_keystoreFailureFailClosed",
+            "classname": "com.example.FinalTestMatrixCertificationTest",
+            "time": 0.053,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test15_certificationPipelineVerification",
+            "classname": "com.example.FinalTestMatrixCertificationTest",
+            "time": 0.028,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test7_anonymousToPermanentUidTransition",
+            "classname": "com.example.FinalTestMatrixCertificationTest",
+            "time": 0.025,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test10_clearDataAndSyncRecovery",
+            "classname": "com.example.FinalTestMatrixCertificationTest",
+            "time": 0.047,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test3_remoteUpdateVsLocalImportedRecord",
+            "classname": "com.example.FinalTestMatrixCertificationTest",
+            "time": 0.038,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test4_pendingLocalWriteAndUnrelatedRemoteEvent",
+            "classname": "com.example.FinalTestMatrixCertificationTest",
+            "time": 0.036,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test2_deviceClockSkewInvariant",
+            "classname": "com.example.FinalTestMatrixCertificationTest",
+            "time": 0.037,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test11_dbKeyRecoveryFailClosed",
+            "classname": "com.example.FinalTestMatrixCertificationTest",
+            "time": 0.041,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test6_settingsConvergenceFixedPoint",
+            "classname": "com.example.FinalTestMatrixCertificationTest",
+            "time": 0.051,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test8_backupAndImportConcurrencyLock",
+            "classname": "com.example.FinalTestMatrixCertificationTest",
+            "time": 0.037,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test9_restoreAndRealtimeConcurrencyLock",
+            "classname": "com.example.FinalTestMatrixCertificationTest",
+            "time": 0.041,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.FirebaseInitializationTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.021,
+        "testcases": [
+          {
+            "name": "testColdStartStressTest",
+            "classname": "com.example.FirebaseInitializationTest",
+            "time": 0.019,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.FullSnapshotContractTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.005,
+        "testcases": [
+          {
+            "name": "testValidFullSnapshotMapsCorrectly",
+            "classname": "com.example.FullSnapshotContractTest",
+            "time": 0.003,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testFullSnapshotMissingRequiredFinancialFieldIsQuarantined",
+            "classname": "com.example.FullSnapshotContractTest",
+            "time": 0.001,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testValidImportBatchWithStatusIsAccepted",
+            "classname": "com.example.FullSnapshotContractTest",
+            "time": 0.001,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testPartialPatchPreservesExistingLocalFields",
+            "classname": "com.example.FullSnapshotContractTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testImportBatchMissingMandatoryStatusIsQuarantined",
+            "classname": "com.example.FullSnapshotContractTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testFullSnapshotMissingDisplayNameIsQuarantined",
+            "classname": "com.example.FullSnapshotContractTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.GoldenFixtureEndToEndCertificationTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 1.471,
+        "testcases": [
+          {
+            "name": "testGoldenFixture_FullEndToEndLifecycleCertification",
+            "classname": "com.example.GoldenFixtureEndToEndCertificationTest",
+            "time": 1.469,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.GoldenSnapshotRoundTripTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.128,
+        "testcases": [
+          {
+            "name": "testAkamelGoldenSnapshotRoundTripEndToEnd",
+            "classname": "com.example.GoldenSnapshotRoundTripTest",
+            "time": 0.054,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testZeroDebtUserRoundTripPreservation",
+            "classname": "com.example.GoldenSnapshotRoundTripTest",
+            "time": 0.029,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testSubscriberWithDebtAndNoHistoryRoundTrip",
+            "classname": "com.example.GoldenSnapshotRoundTripTest",
+            "time": 0.041,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.GreetingScreenshotTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.072,
+        "testcases": [
+          {
+            "name": "greeting_screenshot",
+            "classname": "com.example.GreetingScreenshotTest",
+            "time": 0.069,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.ImportAtomicityTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.069,
+        "testcases": [
+          {
+            "name": "testImportFailureRollsBackEntireDataset",
+            "classname": "com.example.ImportAtomicityTest",
+            "time": 0.033,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testImportAtomicSuccessCommitsAllOrNothing",
+            "classname": "com.example.ImportAtomicityTest",
+            "time": 0.034,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.ImportSyncBarrierTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.0,
+        "testcases": [
+          {
+            "name": "testUnfinishedImportBlocksOutboxSyncUntilCompleted",
+            "classname": "com.example.ImportSyncBarrierTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.InfiniteCycleAdversarialIntegrationTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.068,
+        "testcases": [
+          {
+            "name": "testInfiniteCycleAdversarialSync_20CyclesConvergence",
+            "classname": "com.example.InfiniteCycleAdversarialIntegrationTest",
+            "time": 0.066,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.InvariantContractConsistencyTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.005,
+        "testcases": [
+          {
+            "name": "testContractMatrixMarkdownCompleteness",
+            "classname": "com.example.InvariantContractConsistencyTest",
+            "time": 0.001,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testINV11_And_INV13_DataOperationModesContractConsistency",
+            "classname": "com.example.InvariantContractConsistencyTest",
+            "time": 0.001,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testMachineReadableInvariantContractExistsAndValid",
+            "classname": "com.example.InvariantContractConsistencyTest",
+            "time": 0.001,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testINV01_StateTierDomainContractConsistency",
+            "classname": "com.example.InvariantContractConsistencyTest",
+            "time": 0.001,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testINV06_RemoteEventSourcesConsistency",
+            "classname": "com.example.InvariantContractConsistencyTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testProductionInvariantsAuthoritativeListCompleteness",
+            "classname": "com.example.InvariantContractConsistencyTest",
+            "time": 0.001,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.KeyRecoveryAndFailClosedEncryptionTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.123,
+        "testcases": [
+          {
+            "name": "testExistingDatabaseWithUnrecoverableKeyFailsClosed",
+            "classname": "com.example.KeyRecoveryAndFailClosedEncryptionTest",
+            "time": 0.055,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testFreshInstallGeneratesNewPassphrase",
+            "classname": "com.example.KeyRecoveryAndFailClosedEncryptionTest",
+            "time": 0.063,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.LegacyGlobalCursorNeverSeedsMissingCollectionCursorTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.001,
+        "testcases": [
+          {
+            "name": "testLegacyGlobalCursorDoesNotSeedMissingCollectionCursor",
+            "classname": "com.example.LegacyGlobalCursorNeverSeedsMissingCollectionCursorTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.LocalAccountsViewModelImportTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.101,
+        "testcases": [
+          {
+            "name": "test loadImportJson manages non-blocking UI state and background dispatching",
+            "classname": "com.example.LocalAccountsViewModelImportTest",
+            "time": 0.075,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test that ViewModel rotation preserves imported preview and active state",
+            "classname": "com.example.LocalAccountsViewModelImportTest",
+            "time": 0.021,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.LocalLedgerRepositoryTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.032,
+        "testcases": [
+          {
+            "name": "test addPayment decreases debt",
+            "classname": "com.example.LocalLedgerRepositoryTest",
+            "time": 0.029,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.MaintenanceLockExclusiveSyncTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.209,
+        "testcases": [
+          {
+            "name": "testSequentialExclusivityBetweenMultipleWorkers",
+            "classname": "com.example.MaintenanceLockExclusiveSyncTest",
+            "time": 0.134,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testMaintenanceLockBlocksConcurrentExclusiveSync",
+            "classname": "com.example.MaintenanceLockExclusiveSyncTest",
+            "time": 0.072,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.MergeBalanceRegressionTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.002,
+        "testcases": [
+          {
+            "name": "testMergeBalanceFullRebuildEliminates80kDiscrepancy",
+            "classname": "com.example.MergeBalanceRegressionTest",
+            "time": 0.002,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.MissingRemoteTimestampIsNotLocalVersionTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.074,
+        "testcases": [
+          {
+            "name": "testMissingRemoteTimestampReturnsNullEvent",
+            "classname": "com.example.MissingRemoteTimestampIsNotLocalVersionTest",
+            "time": 0.03,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testMissingRemoteTimestampForLedgerEntriesReturnsNullEvent",
+            "classname": "com.example.MissingRemoteTimestampIsNotLocalVersionTest",
+            "time": 0.042,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.MoneyDoublePrecisionDriftTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.001,
+        "testcases": [
+          {
+            "name": "testParseRawIqd",
+            "classname": "com.example.MoneyDoublePrecisionDriftTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testParseUiThousandsAmount",
+            "classname": "com.example.MoneyDoublePrecisionDriftTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testSubMultiplicationAdditionExactness",
+            "classname": "com.example.MoneyDoublePrecisionDriftTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testParseSubscriptionPriceIqd",
+            "classname": "com.example.MoneyDoublePrecisionDriftTest",
+            "time": 0.001,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.MoneyParserTest",
+        "tests": 15,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.338,
+        "testcases": [
+          {
+            "name": "testParseRawIqdString",
+            "classname": "com.example.MoneyParserTest",
+            "time": 0.03,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test parseAmount handles missing keys",
+            "classname": "com.example.MoneyParserTest",
+            "time": 0.022,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test parseUiInput Phase 8 requirements deterministically",
+            "classname": "com.example.MoneyParserTest",
+            "time": 0.022,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test parseUiInput supports decimals accurately",
+            "classname": "com.example.MoneyParserTest",
+            "time": 0.018,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test parseIqdAmount handles null and zero",
+            "classname": "com.example.MoneyParserTest",
+            "time": 0.031,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test parseIqdAmount does not scale raw IQD values from database",
+            "classname": "com.example.MoneyParserTest",
+            "time": 0.021,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testRawIqdPreservation",
+            "classname": "com.example.MoneyParserTest",
+            "time": 0.021,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testLargeRawIqdPreservation",
+            "classname": "com.example.MoneyParserTest",
+            "time": 0.022,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testUtowerAmountUnits",
+            "classname": "com.example.MoneyParserTest",
+            "time": 0.021,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testParseUiThousandsAmount",
+            "classname": "com.example.MoneyParserTest",
+            "time": 0.02,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test full roundtrip formatIqdToUiString then normalizeUiInputToIqd for large balances",
+            "classname": "com.example.MoneyParserTest",
+            "time": 0.019,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test formatIqdForDisplay supports decimals dynamically",
+            "classname": "com.example.MoneyParserTest",
+            "time": 0.02,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testMoneyRoundTrip",
+            "classname": "com.example.MoneyParserTest",
+            "time": 0.019,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test parseAmount reads json object correctly",
+            "classname": "com.example.MoneyParserTest",
+            "time": 0.02,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test money input round-trip without modification",
+            "classname": "com.example.MoneyParserTest",
+            "time": 0.022,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.NetworkFlapAndOutboxRetryTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.032,
+        "testcases": [
+          {
+            "name": "test network flapping bounds retry attempts and moves outbox item to dead letter queue",
+            "classname": "com.example.NetworkFlapAndOutboxRetryTest",
+            "time": 0.029,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.NoGlobalCursorFallbackRegressionTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.0,
+        "testcases": [
+          {
+            "name": "testMissingCollectionCursorNeverInheritsGlobalTimestampAfterMigration",
+            "classname": "com.example.NoGlobalCursorFallbackRegressionTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.OneTimeCursorMigrationTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.001,
+        "testcases": [
+          {
+            "name": "testMigrationRunsOnceAndIsNotReTriggeredOnSubsequentCalls",
+            "classname": "com.example.OneTimeCursorMigrationTest",
+            "time": 0.001,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.OutboxManagerTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.159,
+        "testcases": [
+          {
+            "name": "test deleteWithTombstoneBatch clears chunk and enqueues tombstones",
+            "classname": "com.example.OutboxManagerTest",
+            "time": 0.024,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test enqueue and enqueueOrReplace lifecycle methods",
+            "classname": "com.example.OutboxManagerTest",
+            "time": 0.021,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test delete-of-never-synced-entity clears pending upsert without creating tombstone",
+            "classname": "com.example.OutboxManagerTest",
+            "time": 0.023,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test outbox status transitions - inFlight succeeded failure deadLetter",
+            "classname": "com.example.OutboxManagerTest",
+            "time": 0.027,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test upsertWithOutbox overwrites older pending outbox row for same entity",
+            "classname": "com.example.OutboxManagerTest",
+            "time": 0.026,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test deleteWithTombstone clears pending upsert and enqueues tombstone",
+            "classname": "com.example.OutboxManagerTest",
+            "time": 0.034,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.OutboxStateMachineTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.135,
+        "testcases": [
+          {
+            "name": "testDeadLetterIsNotActiveMutation",
+            "classname": "com.example.OutboxStateMachineTest",
+            "time": 0.027,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testDeadLetterStateMachineTransitions",
+            "classname": "com.example.OutboxStateMachineTest",
+            "time": 0.033,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testRetryUntilLimitExactlyOneDeadLetter",
+            "classname": "com.example.OutboxStateMachineTest",
+            "time": 0.048,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testDeadLetterDoesNotBlockRemoteUpdate",
+            "classname": "com.example.OutboxStateMachineTest",
+            "time": 0.024,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.PartialCollectionCursorMigrationTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.001,
+        "testcases": [
+          {
+            "name": "testPartialCollectionCursorMigrationPreservesExistingAndResetsMissing",
+            "classname": "com.example.PartialCollectionCursorMigrationTest",
+            "time": 0.001,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.PerCollectionSyncCursorTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.002,
+        "testcases": [
+          {
+            "name": "testLegacyGlobalCursorNeverSeedsMissingCollectionCursor",
+            "classname": "com.example.PerCollectionSyncCursorTest",
+            "time": 0.002,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testIndependentCursorsPreventDataLossWhenTimestampsDiverge",
+            "classname": "com.example.PerCollectionSyncCursorTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.PhaseECursorAdvancementTests",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.0,
+        "testcases": [
+          {
+            "name": "testFailureFollowedByLaterSuccessDoesNotSkipFailureTest",
+            "classname": "com.example.PhaseECursorAdvancementTests",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testCursorAdvancesThroughSuccessfulEventsTest",
+            "classname": "com.example.PhaseECursorAdvancementTests",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testSameTimestampFailureTest",
+            "classname": "com.example.PhaseECursorAdvancementTests",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testCursorStopsAtFailedEventTest",
+            "classname": "com.example.PhaseECursorAdvancementTests",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.PhaseGConstraintTests",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.132,
+        "testcases": [
+          {
+            "name": "test RemoteMissingParentTest returns FAILED_RETRYABLE",
+            "classname": "com.example.PhaseGConstraintTests",
+            "time": 0.023,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test RemoteDuplicateSourceExternalIdTest returns FAILED_RETRYABLE",
+            "classname": "com.example.PhaseGConstraintTests",
+            "time": 0.028,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test UnknownConstraintDoesNotAdvanceCursorTest",
+            "classname": "com.example.PhaseGConstraintTests",
+            "time": 0.022,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test RemoteDuplicateLedgerTest returns FAILED_RETRYABLE",
+            "classname": "com.example.PhaseGConstraintTests",
+            "time": 0.032,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test RemoteDuplicateSourceExternalIdTest returns SKIPPED_DUPLICATE if stale",
+            "classname": "com.example.PhaseGConstraintTests",
+            "time": 0.024,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.PhaseIImportStatisticsTests",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.14,
+        "testcases": [
+          {
+            "name": "testImportStatisticsReconcileWithDatabase",
+            "classname": "com.example.PhaseIImportStatisticsTests",
+            "time": 0.03,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testIgnoredInsertDoesNotCountAsInserted",
+            "classname": "com.example.PhaseIImportStatisticsTests",
+            "time": 0.03,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testExistingSubscriberCountsAsMerged",
+            "classname": "com.example.PhaseIImportStatisticsTests",
+            "time": 0.039,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testNewSubscriberCountsOnce",
+            "classname": "com.example.PhaseIImportStatisticsTests",
+            "time": 0.034,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.PoisonConflictDoesNotRetryForeverTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.0,
+        "testcases": [
+          {
+            "name": "testQuarantinedConflictAdvancesCursorAndBreaksInfiniteLoop",
+            "classname": "com.example.PoisonConflictDoesNotRetryForeverTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.PreferenceManagerTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.284,
+        "testcases": [
+          {
+            "name": "test device replacement portability and restoration",
+            "classname": "com.example.PreferenceManagerTest",
+            "time": 0.102,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test database passphrase fallback preservation",
+            "classname": "com.example.PreferenceManagerTest",
+            "time": 0.088,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test legacy reseller_prefs migration",
+            "classname": "com.example.PreferenceManagerTest",
+            "time": 0.037,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test database passphrase migration from raw plaintext and legacy formats",
+            "classname": "com.example.PreferenceManagerTest",
+            "time": 0.055,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.PreviewCommitParityTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.04,
+        "testcases": [
+          {
+            "name": "testPreviewAndCommitProduceIdenticalSnapshotsForAkamel",
+            "classname": "com.example.PreviewCommitParityTest",
+            "time": 0.038,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.ProductionCertificationPipelineTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.281,
+        "testcases": [
+          {
+            "name": "gate1_verifyContractInvariants",
+            "classname": "com.example.ProductionCertificationPipelineTest",
+            "time": 0.038,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "gate4_failureInjection_keystoreAndCorruptRestores",
+            "classname": "com.example.ProductionCertificationPipelineTest",
+            "time": 0.167,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "gate3_realIntegrationLifecycle",
+            "classname": "com.example.ProductionCertificationPipelineTest",
+            "time": 0.026,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "gate5_fixedPointConvergence_syncTwentyTimes",
+            "classname": "com.example.ProductionCertificationPipelineTest",
+            "time": 0.022,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "gate4_failureInjection_malformedRemotePayloadsAreQuarantined",
+            "classname": "com.example.ProductionCertificationPipelineTest",
+            "time": 0.021,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.ProductionExecutableInvariantsTest",
+        "tests": 15,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.386,
+        "testcases": [
+          {
+            "name": "testINV04_RemoteSerializationPreservesSnapshotBoundary",
+            "classname": "com.example.ProductionExecutableInvariantsTest",
+            "time": 0.026,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testINV05_RestoreRestoresExactSnapshot",
+            "classname": "com.example.ProductionExecutableInvariantsTest",
+            "time": 0.025,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testINV08_NoMagicBusinessIdentityFallbacks",
+            "classname": "com.example.ProductionExecutableInvariantsTest",
+            "time": 0.023,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testINV15_RepeatedSyncReachesFixedPoint",
+            "classname": "com.example.ProductionExecutableInvariantsTest",
+            "time": 0.026,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testINV14_IdenticalSnapshotAndTransactionsConvergeToIdenticalBalance",
+            "classname": "com.example.ProductionExecutableInvariantsTest",
+            "time": 0.03,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testINV06_ExclusiveDataOperationCoordinator",
+            "classname": "com.example.ProductionExecutableInvariantsTest",
+            "time": 0.027,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testINV09_RemoteVersionNeverUsesDeviceClock",
+            "classname": "com.example.ProductionExecutableInvariantsTest",
+            "time": 0.026,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testINV11_FailedImportsCannotBecomeSyncEligible",
+            "classname": "com.example.ProductionExecutableInvariantsTest",
+            "time": 0.028,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testINV10_InvalidSourceDataIsQuarantinedNotNow",
+            "classname": "com.example.ProductionExecutableInvariantsTest",
+            "time": 0.03,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testINV02_SnapshotStateIsAuthoritativeStartingState",
+            "classname": "com.example.ProductionExecutableInvariantsTest",
+            "time": 0.024,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testINV03_RuntimeBalanceChangesOnlyThroughPostSnapshotMutations",
+            "classname": "com.example.ProductionExecutableInvariantsTest",
+            "time": 0.024,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testINV13_FailedEventDoesNotAdvanceCursor",
+            "classname": "com.example.ProductionExecutableInvariantsTest",
+            "time": 0.02,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testINV07_ExternalApiFailureCannotBecomeSuccess",
+            "classname": "com.example.ProductionExecutableInvariantsTest",
+            "time": 0.021,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testINV12_RemoteApplyCannotCreateOutbox",
+            "classname": "com.example.ProductionExecutableInvariantsTest",
+            "time": 0.031,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testINV01_HistoricalDataIsImmutableSourceHistory",
+            "classname": "com.example.ProductionExecutableInvariantsTest",
+            "time": 0.023,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.RealtimeEventSemanticsRegressionTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.125,
+        "testcases": [
+          {
+            "name": "testExplicitDeletedAtIsMappedToDeletion",
+            "classname": "com.example.RealtimeEventSemanticsRegressionTest",
+            "time": 0.048,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testRemovedQueryChangeWithoutExplicitDeletedAtIsNotBusinessDeletion",
+            "classname": "com.example.RealtimeEventSemanticsRegressionTest",
+            "time": 0.049,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testVersionlessEventCannotAdvanceCursorAndIsQuarantined",
+            "classname": "com.example.RealtimeEventSemanticsRegressionTest",
+            "time": 0.025,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.RecalculateAccountHistoryTest",
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.162,
+        "testcases": [
+          {
+            "name": "restoreRecalculation_doesNotCreateOutbox",
+            "classname": "com.example.RecalculateAccountHistoryTest",
+            "time": 0.021,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "localMutationRecalculation_createsOutbox",
+            "classname": "com.example.RecalculateAccountHistoryTest",
+            "time": 0.023,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "restoreRecalculation_preservesAccountUpdatedAt",
+            "classname": "com.example.RecalculateAccountHistoryTest",
+            "time": 0.02,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "localMutationRecalculation_updatesAccountUpdatedAt",
+            "classname": "com.example.RecalculateAccountHistoryTest",
+            "time": 0.026,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "remoteApplyThenRepeatedSync_convergesToZeroOutbox",
+            "classname": "com.example.RecalculateAccountHistoryTest",
+            "time": 0.026,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "remoteApplyRecalculation_preservesAccountUpdatedAt",
+            "classname": "com.example.RecalculateAccountHistoryTest",
+            "time": 0.022,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "remoteApplyRecalculation_doesNotCreateOutbox",
+            "classname": "com.example.RecalculateAccountHistoryTest",
+            "time": 0.021,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.RecalculateRemoteDoesNotCreateOutboxTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.08,
+        "testcases": [
+          {
+            "name": "testRecalculateWithRestoreOrigin_doesNotCreateOutbox",
+            "classname": "com.example.RecalculateRemoteDoesNotCreateOutboxTest",
+            "time": 0.021,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testRecalculateWithRemoteApplyOrigin_doesNotCreateOutbox",
+            "classname": "com.example.RecalculateRemoteDoesNotCreateOutboxTest",
+            "time": 0.022,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testRecalculateWithLocalMutationOrigin_createsOutbox",
+            "classname": "com.example.RecalculateRemoteDoesNotCreateOutboxTest",
+            "time": 0.034,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.RemoteApplyDoesNotCreateOutboxTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.148,
+        "testcases": [
+          {
+            "name": "testRemoteLedgerUpsert_createsNoOutbox",
+            "classname": "com.example.RemoteApplyDoesNotCreateOutboxTest",
+            "time": 0.037,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testRemoteLedgerDelete_createsNoOutbox",
+            "classname": "com.example.RemoteApplyDoesNotCreateOutboxTest",
+            "time": 0.046,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testRemoteAccountUpsert_createsNoOutbox",
+            "classname": "com.example.RemoteApplyDoesNotCreateOutboxTest",
+            "time": 0.033,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testRemoteAccountDelete_createsNoOutbox",
+            "classname": "com.example.RemoteApplyDoesNotCreateOutboxTest",
+            "time": 0.027,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.RemoteApplyDoesNotMutateBusinessTimestampTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.061,
+        "testcases": [
+          {
+            "name": "testDeviceClockSkew_doesNotAlterConflictResolution",
+            "classname": "com.example.RemoteApplyDoesNotMutateBusinessTimestampTest",
+            "time": 0.02,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testRemoteLedgerApply_recalculatesBalance_withoutMutatingAccountUpdatedAt",
+            "classname": "com.example.RemoteApplyDoesNotMutateBusinessTimestampTest",
+            "time": 0.038,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.RemoteBalanceMatchesLocalCalculationTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.0,
+        "testcases": [
+          {
+            "name": "testAllRemoteTransactionTypesNormalizationAndBalanceEquivalence",
+            "classname": "com.example.RemoteBalanceMatchesLocalCalculationTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.RemoteEntityValidatorTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.001,
+        "testcases": [
+          {
+            "name": "testRemoteNewAccountMissingDebtIqdQuarantined",
+            "classname": "com.example.RemoteEntityValidatorTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testRemoteMissingOccurredAtQuarantined",
+            "classname": "com.example.RemoteEntityValidatorTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testRemoteMissingTypeRawQuarantined",
+            "classname": "com.example.RemoteEntityValidatorTest",
+            "time": 0.001,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testRemoteMissingOpeningDebtPreservesLocal",
+            "classname": "com.example.RemoteEntityValidatorTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testRemoteMissingAmountIqdQuarantined",
+            "classname": "com.example.RemoteEntityValidatorTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.RemoteEventDualPathTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.144,
+        "testcases": [
+          {
+            "name": "testRejectMalformedEventWithVersionZero_Issue7",
+            "classname": "com.example.RemoteEventDualPathTest",
+            "time": 0.031,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testTombstoneAccountResurrectionPermutations_Issue9",
+            "classname": "com.example.RemoteEventDualPathTest",
+            "time": 0.037,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testLedgerConflictSemanticsEquivalence_Issue8",
+            "classname": "com.example.RemoteEventDualPathTest",
+            "time": 0.031,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testRealtimeThenPull_vs_PullThenRealtime_producesIdenticalStateAndUnchangedOutbox",
+            "classname": "com.example.RemoteEventDualPathTest",
+            "time": 0.038,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.RemoteSnapshotMappingTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.128,
+        "testcases": [
+          {
+            "name": "testFullSnapshotMissingDebtIqdIsQuarantinedAsMalformed",
+            "classname": "com.example.RemoteSnapshotMappingTest",
+            "time": 0.022,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testRemoteAccountMappingPreservesSnapshotMetadata",
+            "classname": "com.example.RemoteSnapshotMappingTest",
+            "time": 0.028,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testPartialUpdateMissingFieldPreservesExistingLocalAccount",
+            "classname": "com.example.RemoteSnapshotMappingTest",
+            "time": 0.024,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testEndToEndRemoteApplyPreservesSnapshotAndFullRebuildRetainsBalance",
+            "classname": "com.example.RemoteSnapshotMappingTest",
+            "time": 0.027,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testRemoteLedgerMappingPreservesSnapshotHistory",
+            "classname": "com.example.RemoteSnapshotMappingTest",
+            "time": 0.024,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.RemoteSyncCoordinatorTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.053,
+        "testcases": [
+          {
+            "name": "test stale remote event is ignored",
+            "classname": "com.example.RemoteSyncCoordinatorTest",
+            "time": 0.024,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test duplicate event is idempotently skipped",
+            "classname": "com.example.RemoteSyncCoordinatorTest",
+            "time": 0.027,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.RemoteSyncCursorTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.003,
+        "testcases": [
+          {
+            "name": "testSequenceAdvancementWithAdvanceTo",
+            "classname": "com.example.RemoteSyncCursorTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testParseRemoteTimestamp",
+            "classname": "com.example.RemoteSyncCursorTest",
+            "time": 0.003,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testBatchProcessingPartialFailure",
+            "classname": "com.example.RemoteSyncCursorTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testCursorIgnoresLocalClockSkew",
+            "classname": "com.example.RemoteSyncCursorTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testEmptyResponseAndDuplicates",
+            "classname": "com.example.RemoteSyncCursorTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testCursorAdvancesOnlyForGreaterRemoteTimestamp",
+            "classname": "com.example.RemoteSyncCursorTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.RestoreFailureTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.366,
+        "testcases": [
+          {
+            "name": "testMalformedZipRestoreLeavesDatabaseUnchanged",
+            "classname": "com.example.RestoreFailureTest",
+            "time": 0.189,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testCorruptedDbInsideZipLeavesDatabaseUnchanged",
+            "classname": "com.example.RestoreFailureTest",
+            "time": 0.175,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.RestoreProtocolTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 1.123,
+        "testcases": [
+          {
+            "name": "testRestoreExactSnapshotOverwritesLiveLocalRecord",
+            "classname": "com.example.RestoreProtocolTest",
+            "time": 0.277,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testRestoreResurrectsSnapshotState",
+            "classname": "com.example.RestoreProtocolTest",
+            "time": 0.273,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testRestorePreservesOriginalUpdatedAt",
+            "classname": "com.example.RestoreProtocolTest",
+            "time": 0.269,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testRestoreExactSnapshotReplacesLiveDatabase",
+            "classname": "com.example.RestoreProtocolTest",
+            "time": 0.302,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.RoomNoNetworkIOTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.025,
+        "testcases": [
+          {
+            "name": "testNoNetworkIOCallsInsideRoomTransactionBlocks",
+            "classname": "com.example.RoomNoNetworkIOTest",
+            "time": 0.025,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.SameLedgerSetProducesSameBalanceTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.001,
+        "testcases": [
+          {
+            "name": "testSameLedgerSetProducesIdenticalBalanceForDeleteAllAndMerge",
+            "classname": "com.example.SameLedgerSetProducesSameBalanceTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testMoneyUnitInterpretationContract",
+            "classname": "com.example.SameLedgerSetProducesSameBalanceTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.SameTimestampPaginationTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.001,
+        "testcases": [
+          {
+            "name": "testPaginationThroughFiftyDocumentsWithIdenticalTimestamp",
+            "classname": "com.example.SameTimestampPaginationTest",
+            "time": 0.001,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.SecurityFallbackGuardTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.186,
+        "testcases": [
+          {
+            "name": "testReleaseModeHardGateGrepInvariant",
+            "classname": "com.example.SecurityFallbackGuardTest",
+            "time": 0.042,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testDebugNonRobolectricReturnsFallback",
+            "classname": "com.example.SecurityFallbackGuardTest",
+            "time": 0.082,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testDebugRobolectricThrowsRuntimeException",
+            "classname": "com.example.SecurityFallbackGuardTest",
+            "time": 0.06,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.SingleSourceOfTruthRuleTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.053,
+        "testcases": [
+          {
+            "name": "test BalanceCalculator applyTransaction computes correct values",
+            "classname": "com.example.SingleSourceOfTruthRuleTest",
+            "time": 0.016,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test MoneyParser parses various raw inputs correctly",
+            "classname": "com.example.SingleSourceOfTruthRuleTest",
+            "time": 0.016,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test MoneyParser parseAmount with JSON keys",
+            "classname": "com.example.SingleSourceOfTruthRuleTest",
+            "time": 0.018,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.SnapshotMigrationAndRestoreTests",
+        "tests": 18,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.405,
+        "testcases": [
+          {
+            "name": "sourceDebtAfterIsPreservedTest",
+            "classname": "com.example.SnapshotMigrationAndRestoreTests",
+            "time": 0.023,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "legacySubscriberWithDebtNoHistoryTest",
+            "classname": "com.example.SnapshotMigrationAndRestoreTests",
+            "time": 0.022,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "deleteAllAndMergeProduceIdenticalSnapshotStateTest",
+            "classname": "com.example.SnapshotMigrationAndRestoreTests",
+            "time": 0.023,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "restorePreservesSnapshotStateTest",
+            "classname": "com.example.SnapshotMigrationAndRestoreTests",
+            "time": 0.022,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "importedSnapshotStateIsNotRecalculatedTest",
+            "classname": "com.example.SnapshotMigrationAndRestoreTests",
+            "time": 0.024,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "importOutboxReleasedOnlyAfterCompletionTest",
+            "classname": "com.example.SnapshotMigrationAndRestoreTests",
+            "time": 0.021,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "subscriberWithoutHistoryRetainsCurrentDebtTest",
+            "classname": "com.example.SnapshotMigrationAndRestoreTests",
+            "time": 0.021,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "noArtificialAdvanceFromHistoryTest",
+            "classname": "com.example.SnapshotMigrationAndRestoreTests",
+            "time": 0.028,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "postMigrationTransactionUsesOpeningBalanceTest",
+            "classname": "com.example.SnapshotMigrationAndRestoreTests",
+            "time": 0.019,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "akamelUtowerSnapshotRegressionTest",
+            "classname": "com.example.SnapshotMigrationAndRestoreTests",
+            "time": 0.028,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "postMigrationMutationDoesNotChangeOpeningSnapshot",
+            "classname": "com.example.SnapshotMigrationAndRestoreTests",
+            "time": 0.02,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "remoteSyncAndFullRebuildPreservesSnapshotBoundaryTest",
+            "classname": "com.example.SnapshotMigrationAndRestoreTests",
+            "time": 0.021,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "backupRestoreRoundTripSnapshotTest",
+            "classname": "com.example.SnapshotMigrationAndRestoreTests",
+            "time": 0.022,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "failedImportDoesNotLeakOutboxTest",
+            "classname": "com.example.SnapshotMigrationAndRestoreTests",
+            "time": 0.02,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "restoreDoesNotRecalculateBalancesTest",
+            "classname": "com.example.SnapshotMigrationAndRestoreTests",
+            "time": 0.023,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "importedSourceTypeIsPreservedTest",
+            "classname": "com.example.SnapshotMigrationAndRestoreTests",
+            "time": 0.02,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "ubnt1992SnapshotRegressionTest",
+            "classname": "com.example.SnapshotMigrationAndRestoreTests",
+            "time": 0.024,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "importedHistoryIsMarkedSnapshotHistoryTest",
+            "classname": "com.example.SnapshotMigrationAndRestoreTests",
+            "time": 0.021,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.StateOwnershipCrossLayerTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.029,
+        "testcases": [
+          {
+            "name": "testAkamelCrossLayerSnapshotLifecycle",
+            "classname": "com.example.StateOwnershipCrossLayerTest",
+            "time": 0.026,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.SubmitButtonLockTrapTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.391,
+        "testcases": [
+          {
+            "name": "testProductionDialogDismissBlocksResetSubmissionLocksStatically",
+            "classname": "com.example.SubmitButtonLockTrapTest",
+            "time": 0.137,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testSubmitButtonAndDismissPatternResetsSubmissionLock",
+            "classname": "com.example.SubmitButtonLockTrapTest",
+            "time": 0.251,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.SubscriberMatcherTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.001,
+        "testcases": [
+          {
+            "name": "testAmbiguousNameMatchRefuses",
+            "classname": "com.example.SubscriberMatcherTest",
+            "time": 0.001,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testUnambiguousMatchByUsername",
+            "classname": "com.example.SubscriberMatcherTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testUnambiguousMatchByExtId",
+            "classname": "com.example.SubscriberMatcherTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testUnambiguousMatchByPhone",
+            "classname": "com.example.SubscriberMatcherTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testAmbiguousPhoneMatchRefusesAndFallsBackToName",
+            "classname": "com.example.SubscriberMatcherTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testUnambiguousMatchByName",
+            "classname": "com.example.SubscriberMatcherTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.SyncConflictResolverTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.001,
+        "testcases": [
+          {
+            "name": "table driven conflict resolution test suite",
+            "classname": "com.example.SyncConflictResolverTest",
+            "time": 0.001,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.SyncPipelineHardeningTest",
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.028,
+        "testcases": [
+          {
+            "name": "testSingleFlightMutexPreventsConcurrentSync",
+            "classname": "com.example.SyncPipelineHardeningTest",
+            "time": 0.028,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testDeadLetterThresholdInOutboxPipeline",
+            "classname": "com.example.SyncPipelineHardeningTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testSyncThrottlingAndMaxAttemptPolicy",
+            "classname": "com.example.SyncPipelineHardeningTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testDeadLetterDoesNotBlockRemoteSyncResolution",
+            "classname": "com.example.SyncPipelineHardeningTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testOutboxDeduplicationPerEntity",
+            "classname": "com.example.SyncPipelineHardeningTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testRemoteSyncCursorAdvanceMonotonically",
+            "classname": "com.example.SyncPipelineHardeningTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testOutboxPartitioningStateVsEventBased_Issue10",
+            "classname": "com.example.SyncPipelineHardeningTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.TimestampSemanticsTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.001,
+        "testcases": [
+          {
+            "name": "test remote apply preserves business timestamp and handles conflicts correctly",
+            "classname": "com.example.TimestampSemanticsTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "test tie breaking logic when remote and local timestamps are equal",
+            "classname": "com.example.TimestampSemanticsTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.TransactionDeduplicatorTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.001,
+        "testcases": [
+          {
+            "name": "testDuplicateTransactionByExtId",
+            "classname": "com.example.TransactionDeduplicatorTest",
+            "time": 0.001,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testDuplicateTransactionByFallbackMatchKey",
+            "classname": "com.example.TransactionDeduplicatorTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testDistinctTransactionWithSameTimestampAmountTypeButDifferentNoteIsNotDuplicate",
+            "classname": "com.example.TransactionDeduplicatorTest",
+            "time": 0.0,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.TwoDeviceSettingsConvergenceTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.899,
+        "testcases": [
+          {
+            "name": "testTwoDevicesConvergeAndProduceZeroWritesAfterConvergence",
+            "classname": "com.example.TwoDeviceSettingsConvergenceTest",
+            "time": 0.837,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testTwoDevicesWithClockSkewConvergeDeterministically",
+            "classname": "com.example.TwoDeviceSettingsConvergenceTest",
+            "time": 0.06,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.UtowerDebtResolverTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.05,
+        "testcases": [
+          {
+            "name": "testUtowerPostResetIncrementalReconstruction",
+            "classname": "com.example.UtowerDebtResolverTest",
+            "time": 0.016,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testUtowerPostResetZeroExplicit",
+            "classname": "com.example.UtowerDebtResolverTest",
+            "time": 0.016,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testUtowerUserWithDebtNoHistoryRetainsDebt",
+            "classname": "com.example.UtowerDebtResolverTest",
+            "time": 0.016,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.UtowerImporterAkamelTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.113,
+        "testcases": [
+          {
+            "name": "testAkamelDebtResolvedFromPostResetHistoryInPreview",
+            "classname": "com.example.UtowerImporterAkamelTest",
+            "time": 0.022,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testAkamelDebtResolvedFromSqliteDatabaseImportFromFile",
+            "classname": "com.example.UtowerImporterAkamelTest",
+            "time": 0.028,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testSubscriberWithoutResetDateUsesDirectDebt",
+            "classname": "com.example.UtowerImporterAkamelTest",
+            "time": 0.021,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testProcessImportPreviewReconcilesPostResetDebt",
+            "classname": "com.example.UtowerImporterAkamelTest",
+            "time": 0.019,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testPostResetWithZeroTotalDebitAfterResolvesToZeroDebt",
+            "classname": "com.example.UtowerImporterAkamelTest",
+            "time": 0.021,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.UtowerInvalidDateQuarantineTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.026,
+        "testcases": [
+          {
+            "name": "testInvalidDateTransactionIsQuarantinedAndDoesNotFallBackToNow",
+            "classname": "com.example.UtowerInvalidDateQuarantineTest",
+            "time": 0.025,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.UtowerTransactionCompatibilityTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.001,
+        "testcases": [
+          {
+            "name": "testAllSupportedUtowerRawTypesNormalizationAndBalanceEffect",
+            "classname": "com.example.UtowerTransactionCompatibilityTest",
+            "time": 0.001,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      }
+    ]
+  },
+  "structural_checks": {
+    "forbidden_patterns_scan": {
+      "status": "FAIL",
+      "details": "Scanned 5 forbidden patterns. Violations found: 1.",
+      "violations": [
+        "[RC-1-remote-version-fallback] Pattern '\\?\\:\\s*existing\\?\\.(updatedAt|createdAt)' matched in app\\src\\main\\java\\com\\example\\core\\sync\\RemoteSyncCoordinator.kt"
+      ],
+      "pattern_results": {
+        "RC-1-remote-version-fallback": {
+          "status": "FAIL",
+          "invariant": "INV-06",
+          "violations": [
+            "[RC-1-remote-version-fallback] Pattern '\\?\\:\\s*existing\\?\\.(updatedAt|createdAt)' matched in app\\src\\main\\java\\com\\example\\core\\sync\\RemoteSyncCoordinator.kt"
+          ]
+        },
+        "RC-3-settings-device-clock": {
+          "status": "PASS",
+          "invariant": "INV-06",
+          "violations": []
+        },
+        "RC-4-coordinator-bypass": {
+          "status": "PASS",
+          "invariant": "INV-11",
+          "violations": []
+        },
+        "RC-6-release-dry-run": {
+          "status": "PASS",
+          "invariant": "INV-15",
+          "violations": []
+        },
+        "INV-03-direct-firestore-ui": {
+          "status": "PASS",
+          "invariant": "INV-03",
+          "violations": []
+        }
+      },
+      "timestamp": "2026-08-14T20:23:55.961744+00:00"
+    },
+    "invariant_contract_consistency": {
+      "status": "PASS",
+      "details": "Canonical invariant contract matches all requirements (INV-01..INV-16).",
+      "timestamp": "2026-08-14T20:23:55.961744+00:00"
+    },
+    "baseline_manifest_verified": {
+      "status": "PASS",
+      "details": {
+        "baseline_manifest_sha256": "e3f51afa4017c727c61117e9686ac6002192891067570a88e96430c89aff5369",
+        "baseline_test_manifest_sha256": "4d0442a8ab967750f927bf647ff8b1027dc6d15323443a9e13bd0e987db992f8"
+      },
+      "timestamp": "2026-08-14T20:23:55.961744+00:00"
+    },
+    "gradlew_executable_mode_check": {
+      "status": "PASS",
+      "details": "gradlew executable mode verified: 100755 adff685a0348c64b2b64f0b302f1f82b28eeaaea 0\tgradlew",
+      "timestamp": "2026-08-14T20:23:55.961744+00:00"
+    },
+    "release_build_gate_check": {
+      "status": "PASS",
+      "details": "Fail-closed release signing validation present in build.gradle.kts",
+      "timestamp": "2026-08-14T20:23:55.961744+00:00"
+    }
+  },
+  "artifact_checks": {
+    "PRODUCTION_INVARIANTS.md": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "e2b54de2d9ba16ef8e0ae264d4a21436e6225438102b78e97e930cc65ca7b32c",
+      "path": "PRODUCTION_INVARIANTS.md"
+    },
+    "app/build.gradle.kts": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "4900c3f42e06edc29e280d4c41752957f73bfc303de548e05856d624a20a76d2",
+      "path": "app/build.gradle.kts"
+    },
+    "app/src/main/java/com/example/core/backup/BackupManager.kt": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "4232e9986def7673da0ae16d9277220fbbcc7bee04ce76acdff14ec32ea93b94",
+      "path": "app/src/main/java/com/example/core/backup/BackupManager.kt"
+    },
+    "app/src/main/java/com/example/core/database/AppDatabase.kt": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "37583f4a9af3979c1a6f1434578e8c52d4a97699d314a0e3e1aebbffaf54af1b",
+      "path": "app/src/main/java/com/example/core/database/AppDatabase.kt"
+    },
+    "app/src/main/java/com/example/core/ledger/BalanceCalculator.kt": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "a025893b4d58fb2db06b1c4a8f891cfec4245c768506b8c4a81fb19c2cc2738f",
+      "path": "app/src/main/java/com/example/core/ledger/BalanceCalculator.kt"
+    },
+    "app/src/main/java/com/example/core/sync/DataOperationCoordinator.kt": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "186977533232cb8115949cea06b6ffa569be8db0bf9619538cf5466fd107f268",
+      "path": "app/src/main/java/com/example/core/sync/DataOperationCoordinator.kt"
+    },
+    "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "abdd409d07f59e3ee576085092a1a4b3510c0b2365fc5cbcf7005bc95554494a",
+      "path": "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt"
+    },
+    "app/src/main/java/com/example/core/sync/SyncConflictResolver.kt": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "4a248065a53dca4c73606f47a341486e23eebabbea9ec9343925c193a5f82072",
+      "path": "app/src/main/java/com/example/core/sync/SyncConflictResolver.kt"
+    },
+    "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "575d4948621fdb3f0d9c135b896a960e3b77ad42bda42a2a160418cf16c281f0",
+      "path": "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    },
+    "app/src/main/java/com/example/core/sync/UtowerImporter.kt": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "0ba3e77dd8fe77b331f6c8ff5206394938da0552d5d94d9ef5d2a588ef219e7c",
+      "path": "app/src/main/java/com/example/core/sync/UtowerImporter.kt"
+    },
+    "app/src/main/java/com/example/data/repository/Repositories.kt": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "f72894400f9af4d496685ee71fed1c66ac0b0fc26634ee030e4dedffa8cebe03",
+      "path": "app/src/main/java/com/example/data/repository/Repositories.kt"
+    },
+    "contract/invariant_contract.yaml": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "a4f2e60af4f482fd2c860e52accf3dc3bcf069d79e116143a9a094564ae34d0c",
+      "path": "contract/invariant_contract.yaml"
+    },
+    "contract/invariant_test_map.yaml": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "aecd247637388db436430cc6ba8d3f327ba6929fe39ba6b8a03ce3efafccfe19",
+      "path": "contract/invariant_test_map.yaml"
+    },
+    "evidence/baseline_manifest.json": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "e3f51afa4017c727c61117e9686ac6002192891067570a88e96430c89aff5369",
+      "path": "evidence/baseline_manifest.json"
+    },
+    "evidence/baseline_test_manifest.json": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "4d0442a8ab967750f927bf647ff8b1027dc6d15323443a9e13bd0e987db992f8",
+      "path": "evidence/baseline_test_manifest.json"
+    },
+    "gradle/wrapper/gradle-wrapper.properties": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "a180163249c7252412ddaee1c7adcf59f6494b1183136f690fbd9a3b8aaed00e",
+      "path": "gradle/wrapper/gradle-wrapper.properties"
+    },
+    "gradlew": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "fb68debc1b1acf8ec55dc0d5e5495e1dedd0bd6b61f304bee61613eeb2bd9b92",
+      "path": "gradlew"
+    },
+    "gradlew.bat": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "fedad02c18e266ec094995a5751b7fe1eb6e74f66bf75db64fae2e50eb22c234",
+      "path": "gradlew.bat"
+    },
+    "scripts/production_gate.ps1": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "52e3335da92b5562031a4a2931cafc6197596634672931de9bf7d656a6afa249",
+      "path": "scripts/production_gate.ps1"
+    },
+    "scripts/production_gate.sh": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "eb200356da44e44a36349cea45e19a4f4752e92db3eec244e1fc536beab139a2",
+      "path": "scripts/production_gate.sh"
+    },
+    "evidence_bundle_verified": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "self_referential_bundle_verification",
+      "path": "evidence/<source_sha>/closure_bundle.json"
+    }
+  }
+}

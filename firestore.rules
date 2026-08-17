@@ -1,0 +1,44 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions for tenant isolation
+    function isAuthenticated() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // User-scoped multi-tenant data isolation
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+
+      // Local accounts collection
+      match /local_accounts/{documentId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Local ledger entries collection
+      match /local_ledger_entries/{documentId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Import batches collection
+      match /import_batches/{documentId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Audit logs collection
+      match /audit_logs/{documentId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // Explicitly deny all other root-level or global access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

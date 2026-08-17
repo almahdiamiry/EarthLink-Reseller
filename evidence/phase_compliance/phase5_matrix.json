@@ -1,0 +1,80 @@
+{
+  "phase": 5,
+  "requirements": [
+    {
+      "requirement_id": "P5-REQ-01",
+      "phase": 5,
+      "source_anchor": "Root-Cause Phase 5: Settings Sync Caller Unification / Canonical triggerSettingsSync",
+      "requirement": "Single canonical entry point triggerSettingsSync(uid, reason) in SyncRepository for all settings synchronization triggers with descriptive reason tags.",
+      "blocking": true,
+      "production_code_location": "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt:1235-1245",
+      "behavioral_test_location": "app/src/test/java/com/example/Phase5SettingsSyncUnifiedCallerTest.kt:triggerReasons_areDescriptiveAndDocumented",
+      "adversarial_fixture_location": null,
+      "registry_location": null,
+      "evidence_reference": "evidence/ROOT_CAUSE_PHASE5_VERIFICATION.md",
+      "source_identity": "HEAD",
+      "status": "PASS",
+      "failure_reason": null
+    },
+    {
+      "requirement_id": "P5-REQ-02",
+      "phase": 5,
+      "source_anchor": "Root-Cause Phase 5: UI & ViewModel Caller Migration",
+      "requirement": "All direct calls to syncUserSettings() in AuthViewModel.kt and SyncRepositoryImpl.kt migrated to canonical triggerSettingsSync(uid, reason).",
+      "blocking": true,
+      "production_code_location": "app/src/main/java/com/example/ui/viewmodels/AuthViewModel.kt:66,145",
+      "behavioral_test_location": "app/src/test/java/com/example/Phase5SettingsSyncUnifiedCallerTest.kt:structuralGuard_zeroDirectSyncUserSettingsCallersOutsideTrigger",
+      "adversarial_fixture_location": null,
+      "registry_location": "contract/forbidden_patterns.yaml",
+      "evidence_reference": "evidence/ROOT_CAUSE_PHASE5_VERIFICATION.md",
+      "source_identity": "HEAD",
+      "status": "PASS",
+      "failure_reason": null
+    },
+    {
+      "requirement_id": "P5-REQ-03",
+      "phase": 5,
+      "source_anchor": "Root-Cause Phase 5: Interface Encapsulation",
+      "requirement": "SyncRepository interface in Interfaces.kt exposes triggerSettingsSync(uid, reason) and encapsulates syncUserSettings as internal implementation.",
+      "blocking": true,
+      "production_code_location": "app/src/main/java/com/example/domain/repository/Interfaces.kt:117",
+      "behavioral_test_location": "app/src/test/java/com/example/Phase5SettingsSyncUnifiedCallerTest.kt:syncRepositoryInterface_exposesOnlyTriggerSettingsSync",
+      "adversarial_fixture_location": null,
+      "registry_location": null,
+      "evidence_reference": "evidence/ROOT_CAUSE_PHASE5_VERIFICATION.md",
+      "source_identity": "HEAD",
+      "status": "PASS",
+      "failure_reason": null
+    },
+    {
+      "requirement_id": "P5-REQ-04",
+      "phase": 5,
+      "source_anchor": "Root-Cause Phase 5: Permanent Forbidden Registry Rule RC-5",
+      "requirement": "Permanent forbidden registry rule RC-5-direct-settings-sync-caller enforcing that syncUserSettings() is never called outside triggerSettingsSync.",
+      "blocking": true,
+      "production_code_location": "contract/forbidden_patterns.yaml:RC-5-direct-settings-sync-caller",
+      "behavioral_test_location": "scripts/test_forbidden_pattern_registry.py:test_adversarial_rc5_direct_settings_sync_caller_detection_and_exemption",
+      "adversarial_fixture_location": "scripts/test_forbidden_pattern_registry.py",
+      "registry_location": "contract/forbidden_patterns.yaml",
+      "evidence_reference": "evidence/ROOT_CAUSE_PHASE5_VERIFICATION.md",
+      "source_identity": "HEAD",
+      "status": "PASS",
+      "failure_reason": null
+    },
+    {
+      "requirement_id": "P5-REQ-05",
+      "phase": 5,
+      "source_anchor": "Root-Cause Phase 5: Behavioral Concurrency & Guard Suite",
+      "requirement": "Dedicated behavioral test suite in Phase5SettingsSyncUnifiedCallerTest.kt verifying mutex serialization, reason tracking, and structural guard enforcement.",
+      "blocking": true,
+      "production_code_location": "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt",
+      "behavioral_test_location": "app/src/test/java/com/example/Phase5SettingsSyncUnifiedCallerTest.kt:concurrentTriggers_serializeUnderMutexSafely",
+      "adversarial_fixture_location": null,
+      "registry_location": null,
+      "evidence_reference": "evidence/ROOT_CAUSE_PHASE5_VERIFICATION.md",
+      "source_identity": "HEAD",
+      "status": "PASS",
+      "failure_reason": null
+    }
+  ]
+}

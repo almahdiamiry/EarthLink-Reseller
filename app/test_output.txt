@@ -1,0 +1,8 @@
+Testing: 11/12/2026 10:15:30
+  MATCHED yyyy/MM/dd HH:mm:ss -> Thu Jun 17 10:15:30 UTC 17
+Testing: 11-12-2026 10:15:30
+  MATCHED yyyy-MM-dd HH:mm:ss -> Thu Jun 17 10:15:30 UTC 17
+Testing: 2026-12-11 10:15:30
+  MATCHED yyyy-MM-dd HH:mm:ss -> Fri Dec 11 10:15:30 UTC 2026
+Testing: 11/12/2026
+  MATCHED yyyy/MM/dd -> Thu Jun 17 00:00:00 UTC 17

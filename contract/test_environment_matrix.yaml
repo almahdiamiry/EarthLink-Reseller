@@ -1,0 +1,448 @@
+# Earthlink Reseller App — Test Environment Matrix
+# Authoritative Invariant Source: PRODUCTION_INVARIANTS.md
+# Schema Version: 1.0.0
+
+schema_version: "1.0.0"
+authoritative_source: "PRODUCTION_INVARIANTS.md"
+governing_plan: "docs/authority/G1-G8 Consolidated Architecture Summary.md"
+phase_requirements_manifest: "contract/phase_requirements.yaml"
+
+environments:
+  JVM:
+    name: "Pure JVM Unit Testing"
+    runtime: "Java Virtual Machine (Local)"
+    description: >
+      Headless, highly deterministic unit tests executing on the standard JVM without Android OS shadows.
+      Used for domain models, math/money calculations, state machines, conflict algorithms, and cursor logic.
+    characteristics:
+      - "Zero Android framework dependencies"
+      - "Sub-second execution speed"
+      - "Pure mathematical and state-machine verification"
+
+  ROBOLECTRIC:
+    name: "Robolectric Android Simulation"
+    runtime: "Robolectric 4.x / Android SDK Shadow on JVM"
+    description: >
+      Simulated Android environment executing on the JVM with full support for Android SQLite Room databases,
+      SharedPreferences, Coroutines, ViewModels, and lifecycle events without physical device hardware.
+    characteristics:
+      - "Full Room SQLite database in-memory execution"
+      - "Multi-coroutine and concurrency simulation"
+      - "Cross-layer end-to-end component integration"
+
+  INSTRUMENTED:
+    name: "Android Runtime Instrumentation"
+    runtime: "Android OS Hardware / Emulated Device (androidTest)"
+    description: >
+      Tests executing directly on the real Android OS runtime (`app/src/androidTest/`).
+      Validates physical concurrency, real multi-threaded SQLCipher locking, Android filesystem sandboxing,
+      and WorkManager scheduler integration.
+    characteristics:
+      - "Physical Android OS concurrency and thread scheduling"
+      - "Real multi-threaded file and database locking"
+      - "Android WorkManager service integration"
+
+  STRUCTURAL:
+    name: "Static Analysis & Contract Verification"
+    runtime: "Python 3 / Shell Scripts"
+    description: >
+      Static analysis scripts, forbidden pattern AST/regex linters, and invariant contract validators.
+      Verifies source-level integrity, ensures forbidden anti-patterns never enter the codebase,
+      and enforces schema adherence.
+    characteristics:
+      - "Regex and AST code scans"
+      - "Contract schema validation"
+      - "Cryptographic hash and manifest verification"
+
+  HISTORICAL:
+    name: "Historical Baseline & Golden Fixtures"
+    runtime: "Robolectric / JVM Golden Fixture Validation"
+    description: >
+      Tests and fixtures that preserve immutable historical baseline records, verify uTower legacy import
+      reproducibility, and validate that snapshot round-trips produce identical balance derivations.
+    characteristics:
+      - "Immutable golden source payload verification"
+      - "Zero-drift baseline derivation tests"
+      - "Legacy import backwards compatibility"
+
+invariants_matrix:
+  - id: "INV-01"
+    name: "Four Distinct State Tiers"
+    required_tiers:
+      - "JVM"
+      - "ROBOLECTRIC"
+      - "STRUCTURAL"
+    primary_suites:
+      - "app/src/test/java/com/example/ResolveLocalVersionTest.kt"
+      - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+      - "scripts/scan_forbidden_patterns.py"
+    tier_rationale: >
+      Validates state tier partitioning (Historical, Snapshot, Runtime, Remote) across pure JVM domain models,
+      Robolectric lifecycle tests, and structural pattern scans.
+
+  - id: "INV-02"
+    name: "Historical Source Immutability"
+    required_tiers:
+      - "JVM"
+      - "ROBOLECTRIC"
+      - "INSTRUMENTED"
+    primary_suites:
+      - "app/src/test/java/com/example/ResolveLocalVersionTest.kt"
+      - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+      - "app/src/androidTest/java/com/example/RestoreImportInstrumentedTest.kt"
+    tier_rationale: >
+      Guarantees raw imported historical ledger and uTower records are immutable after commit across Robolectric SQLite
+      and Android runtime instrumentation.
+
+  - id: "INV-03"
+    name: "Single Source of Truth"
+    required_tiers:
+      - "JVM"
+      - "ROBOLECTRIC"
+      - "STRUCTURAL"
+    primary_suites:
+      - "app/src/test/java/com/example/ResolveLocalVersionTest.kt"
+      - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+      - "scripts/scan_forbidden_patterns.py"
+    tier_rationale: >
+      Enforces Room database as single source of truth for UI state, preventing bypass writes.
+
+  - id: "INV-04"
+    name: "Historical + Snapshot Balance Identity"
+    required_tiers:
+      - "JVM"
+      - "ROBOLECTRIC"
+    primary_suites:
+      - "app/src/test/java/com/example/ResolveLocalVersionTest.kt"
+      - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+    tier_rationale: >
+      Validates that current balance is strictly equal to baseline snapshot plus runtime ledger deltas.
+
+  - id: "INV-05"
+    name: "Outbox Queue as Exclusive Sync Producer"
+    required_tiers:
+      - "JVM"
+      - "ROBOLECTRIC"
+      - "STRUCTURAL"
+    primary_suites:
+      - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+      - "app/src/test/java/com/example/Phase2RemoteVersionAdversarialTest.kt"
+      - "scripts/scan_forbidden_patterns.py"
+    tier_rationale: >
+      Guarantees every remote write originates from an Outbox entry and respects strict outbox state transitions.
+
+  - id: "INV-06"
+    name: "Remote Version Monotonicity"
+    required_tiers:
+      - "JVM"
+      - "ROBOLECTRIC"
+      - "STRUCTURAL"
+    primary_suites:
+      - "app/src/test/java/com/example/ResolveLocalVersionTest.kt"
+      - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+      - "app/src/test/java/com/example/Phase2RemoteVersionAdversarialTest.kt"
+      - "scripts/scan_forbidden_patterns.py"
+    tier_rationale: >
+      Enforces server-assigned remote_version monotonicity and forbids local timestamp promotion.
+
+  - id: "INV-07"
+    name: "Cursor Monotonicity and Lossless Sync"
+    required_tiers:
+      - "ROBOLECTRIC"
+    primary_suites:
+      - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+    tier_rationale: >
+      Guarantees pull cursors advance monotonically without skipping remote events or losing state.
+
+  - id: "INV-08"
+    name: "Realtime Event Mirror Parity"
+    required_tiers:
+      - "ROBOLECTRIC"
+      - "STRUCTURAL"
+    primary_suites:
+      - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+      - "app/src/test/java/com/example/Phase2RemoteVersionAdversarialTest.kt"
+    tier_rationale: >
+      Guarantees realtime snapshots produce identical state transitions to catch-up pull sync.
+
+  - id: "INV-09"
+    name: "Tombstone Monotonicity & Deletion Integrity"
+    required_tiers:
+      - "ROBOLECTRIC"
+    primary_suites:
+      - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+    tier_rationale: >
+      Guarantees deletions create authoritative tombstones and propagate across devices without state revive loops.
+
+  - id: "INV-10"
+    name: "Multi-Node Convergence Identity"
+    required_tiers:
+      - "ROBOLECTRIC"
+    primary_suites:
+      - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+      - "app/src/test/java/com/example/Phase2RemoteVersionAdversarialTest.kt"
+    tier_rationale: >
+      Guarantees all nodes applying the same set of remote events converge to identical balances.
+
+  - id: "INV-11"
+    name: "Single Active Sync Coordinator"
+    required_tiers:
+      - "ROBOLECTRIC"
+      - "INSTRUMENTED"
+    primary_suites:
+      - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+      - "app/src/androidTest/java/com/example/CoordinatorInstrumentedTest.kt"
+    tier_rationale: >
+      Ensures exclusive coordinator execution with mutex ownership locks across JVM and Android instrumentation.
+
+  - id: "INV-12"
+    name: "Non-Mutative Audit Logging"
+    required_tiers:
+      - "ROBOLECTRIC"
+      - "STRUCTURAL"
+    primary_suites:
+      - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+      - "scripts/scan_forbidden_patterns.py"
+    tier_rationale: >
+      Guarantees audit log creation never mutates business domain state or triggers sync loops.
+
+  - id: "INV-13"
+    name: "Atomic Restore and State Isolation"
+    required_tiers:
+      - "INSTRUMENTED"
+    primary_suites:
+      - "app/src/androidTest/java/com/example/RestoreImportInstrumentedTest.kt"
+    tier_rationale: >
+      Guarantees backup restore is atomic, wipes existing runtime state, and resets sync cursors safely.
+
+  - id: "INV-14"
+    name: "Fail-Closed Encryption & Key Recovery"
+    required_tiers:
+      - "ROBOLECTRIC"
+      - "STRUCTURAL"
+    primary_suites:
+      - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+      - "scripts/scan_forbidden_patterns.py"
+    tier_rationale: >
+      Guarantees database fails closed when encryption key recovery is unviable.
+
+  - id: "INV-15"
+    name: "Immutable Golden Fixture Verification"
+    required_tiers:
+      - "JVM"
+      - "STRUCTURAL"
+    primary_suites:
+      - "app/src/test/java/com/example/ResolveLocalVersionTest.kt"
+      - "scripts/verify_invariant_contract.py"
+    tier_rationale: >
+      Ensures golden fixture definitions match expected schema and cryptographic hashes.
+
+  - id: "INV-16"
+    name: "Deterministic Test Environment Matrix"
+    required_tiers:
+      - "STRUCTURAL"
+    primary_suites:
+      - "scripts/verify_test_environment_matrix.py"
+    tier_rationale: >
+      Verifies test environment matrix contract adherence and prevents silent coverage removal.
+
+# Required Phase 1 and Phase 2 Active Test Suites
+test_suites:
+  - name: "ResolveLocalVersionTest"
+    path: "app/src/test/java/com/example/ResolveLocalVersionTest.kt"
+    environment: "JVM"
+    tier_purpose: "Phase 1 Single Source of Truth for Local Version Resolution (P1-REQ-01..P1-REQ-09)"
+    associated_invariants:
+      - "INV-01"
+      - "INV-02"
+      - "INV-03"
+      - "INV-04"
+      - "INV-06"
+
+  - name: "Phase2ServerConfirmedLifecycleTest"
+    path: "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Phase 2 Server-Confirmed remote_version Lifecycle behavioral tests (P2-REQ-01..P2-REQ-18, Tests 1-16)"
+    associated_invariants:
+      - "INV-01"
+      - "INV-02"
+      - "INV-03"
+      - "INV-04"
+      - "INV-05"
+      - "INV-06"
+      - "INV-07"
+      - "INV-08"
+      - "INV-09"
+      - "INV-10"
+      - "INV-11"
+      - "INV-12"
+      - "INV-14"
+
+  - name: "Phase2RemoteVersionAdversarialTest"
+    path: "app/src/test/java/com/example/Phase2RemoteVersionAdversarialTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Phase 2 Adversarial / False-Pass Protection fixtures (P2-REQ-14, Cases A-F)"
+    associated_invariants:
+      - "INV-05"
+      - "INV-06"
+      - "INV-08"
+      - "INV-10"
+
+  - name: "CoordinatorInstrumentedTest"
+    path: "app/src/androidTest/java/com/example/CoordinatorInstrumentedTest.kt"
+    environment: "INSTRUMENTED"
+    tier_purpose: "Android OS Instrumented test for coordinator locking and execution"
+    associated_invariants:
+      - "INV-11"
+
+  - name: "ExampleInstrumentedTest"
+    path: "app/src/androidTest/java/com/example/ExampleInstrumentedTest.kt"
+    environment: "INSTRUMENTED"
+    tier_purpose: "Android OS Context and package initialization sanity test"
+    associated_invariants:
+      - "INV-01"
+
+  - name: "RestoreImportInstrumentedTest"
+    path: "app/src/androidTest/java/com/example/RestoreImportInstrumentedTest.kt"
+    environment: "INSTRUMENTED"
+    tier_purpose: "Android OS Instrumented test for database restore and import atomicity"
+    associated_invariants:
+      - "INV-02"
+      - "INV-13"
+
+  - name: "WorkManagerRetryInstrumentedTest"
+    path: "app/src/androidTest/java/com/example/WorkManagerRetryInstrumentedTest.kt"
+    environment: "INSTRUMENTED"
+    tier_purpose: "Android OS WorkManager background sync scheduler retry test"
+    associated_invariants:
+      - "INV-05"
+
+  - name: "scan_forbidden_patterns"
+    path: "scripts/scan_forbidden_patterns.py"
+    environment: "STRUCTURAL"
+    tier_purpose: "Structural pattern scan for forbidden code practices and anti-patterns"
+    associated_invariants:
+      - "INV-01"
+      - "INV-03"
+      - "INV-05"
+      - "INV-06"
+      - "INV-12"
+
+  - name: "verify_invariant_contract"
+    path: "scripts/verify_invariant_contract.py"
+    environment: "STRUCTURAL"
+    tier_purpose: "Structural validation of invariant definitions and mapping integrity"
+    associated_invariants:
+      - "INV-15"
+
+  - name: "verify_test_environment_matrix"
+    path: "scripts/verify_test_environment_matrix.py"
+    environment: "STRUCTURAL"
+    tier_purpose: "Structural validation of test environment matrix contract and zero unmapped files"
+    associated_invariants:
+      - "INV-16"
+
+  - name: "verify_closure_evidence"
+    path: "scripts/verify_closure_evidence.py"
+    environment: "STRUCTURAL"
+    tier_purpose: "Structural verification of closure evidence bundles and hashes"
+    associated_invariants:
+      - "INV-16"
+
+  - name: "collect_closure_evidence"
+    path: "scripts/collect_closure_evidence.py"
+    environment: "STRUCTURAL"
+    tier_purpose: "Evidence bundle generator for phase closure proof"
+    associated_invariants:
+      - "INV-16"
+
+  - name: "render_certification_report"
+    path: "scripts/render_certification_report.py"
+    environment: "STRUCTURAL"
+    tier_purpose: "Renders Markdown certification report from evidence json"
+    associated_invariants:
+      - "INV-16"
+
+  - name: "test_forbidden_pattern_registry"
+    path: "scripts/test_forbidden_pattern_registry.py"
+    environment: "STRUCTURAL"
+    tier_purpose: "Unit test for forbidden pattern registry scanner"
+    associated_invariants:
+      - "INV-05"
+
+  - name: "check_use_blocks"
+    path: "scripts/check_use_blocks.sh"
+    environment: "STRUCTURAL"
+    tier_purpose: "Shell check for Resource .use {} blocks"
+    associated_invariants:
+      - "INV-03"
+
+  - name: "production_gate_sh"
+    path: "scripts/production_gate.sh"
+    environment: "STRUCTURAL"
+    tier_purpose: "Main shell production gate script"
+    associated_invariants:
+      - "INV-16"
+
+  - name: "production_gate_ps1"
+    path: "scripts/production_gate.ps1"
+    environment: "STRUCTURAL"
+    tier_purpose: "PowerShell production gate script"
+    associated_invariants:
+      - "INV-16"
+
+  - name: "run_verified_command"
+    path: "scripts/run_verified_command.py"
+    environment: "STRUCTURAL"
+    tier_purpose: "Command runner enforcing verification"
+    associated_invariants:
+      - "INV-16"
+
+  - name: "test_gate_adversarial_failures"
+    path: "scripts/test_gate_adversarial_failures.py"
+    environment: "STRUCTURAL"
+    tier_purpose: "Meta-gate test verifying gate catches adversarial failures"
+    associated_invariants:
+      - "INV-16"
+
+  - name: "test_verified_runner_fixtures"
+    path: "scripts/test_verified_runner_fixtures.py"
+    environment: "STRUCTURAL"
+    tier_purpose: "Fixtures for verified command runner"
+    associated_invariants:
+      - "INV-16"
+
+  - name: "Phase5SettingsSyncUnifiedCallerTest"
+    path: "app/src/test/java/com/example/Phase5SettingsSyncUnifiedCallerTest.kt"
+    environment: "JVM"
+    tier_purpose: "Phase 5 Settings Sync Unified Caller behavioral & structural guard test suite (P5-REQ-05)"
+    associated_invariants:
+      - "INV-10"
+
+  - name: "analyze_concurrency"
+    path: "scripts/analyze_concurrency.sh"
+    environment: "STRUCTURAL"
+    tier_purpose: "Concurrency analysis script"
+    associated_invariants:
+      - "INV-11"
+
+# Required Phase 3 Pending Test Suites (Preserved for Phase 3 Execution)
+phase3_required_suites:
+  - name: "Phase3CoordinatorMutexTokenTest"
+    path: "app/src/test/java/com/example/Phase3CoordinatorMutexTokenTest.kt"
+    phase_requirement_id: "P3-REQ-03"
+    environment: "ROBOLECTRIC"
+    status: "PENDING_PHASE_3_EXECUTION"
+    description: "Phase 3 Coordinator Mutex Token Re-entrancy behavioral tests"
+    associated_invariants:
+      - "INV-11"
+
+  - name: "DataOperationCoordinatorConcurrencyTest"
+    path: "app/src/test/java/com/example/DataOperationCoordinatorConcurrencyTest.kt"
+    phase_requirement_id: "P3-REQ-04"
+    environment: "ROBOLECTRIC"
+    status: "PENDING_PHASE_3_EXECUTION"
+    description: "Phase 3 DataOperationCoordinator concurrency invariant tests"
+    associated_invariants:
+      - "INV-11"
+      - "INV-13"

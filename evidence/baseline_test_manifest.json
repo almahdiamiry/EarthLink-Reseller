@@ -1,0 +1,496 @@
+{
+  "schema_version": "1.0",
+  "test_count": 98,
+  "tests": {
+    "app/src/test/java/com/example/AkamelRegressionTest.kt": {
+      "sha256": "6eaefd13a2580b3e40efe9818408ac10aa6a2f5e00bf10cb044a5af3191d08bc",
+      "size_bytes": 1009,
+      "filename": "AkamelRegressionTest.kt"
+    },
+    "app/src/test/java/com/example/AuditDoesNotTriggerSyncRegressionTest.kt": {
+      "sha256": "1c7a3ea78aab6ca942ae55aa9a1850806947f78ec17edc0bec13aedfddeabcc6",
+      "size_bytes": 4945,
+      "filename": "AuditDoesNotTriggerSyncRegressionTest.kt"
+    },
+    "app/src/test/java/com/example/AuditFailureDoesNotTriggerSyncTest.kt": {
+      "sha256": "72f643945f058223f6aa9df1cb2699d7ff539b917123e98c138b8a9f6304f08c",
+      "size_bytes": 4906,
+      "filename": "AuditFailureDoesNotTriggerSyncTest.kt"
+    },
+    "app/src/test/java/com/example/AuditFeedbackLoopTest.kt": {
+      "sha256": "3a24266e866a84e6252dac135b6602dc84a8cae0260a17b4cc82b76b36625540",
+      "size_bytes": 2637,
+      "filename": "AuditFeedbackLoopTest.kt"
+    },
+    "app/src/test/java/com/example/AuditLogMigrationPreservesAllRowsTest.kt": {
+      "sha256": "d7c99644b47648470c09a543fd7e40f1a40cc190b6c3e97fc680a7073f1c4c30",
+      "size_bytes": 4568,
+      "filename": "AuditLogMigrationPreservesAllRowsTest.kt"
+    },
+    "app/src/test/java/com/example/AuthIdentityTransitionRegressionTest.kt": {
+      "sha256": "b17fa952c92f07625416f39a3b178fb2665611c153416a8c80a852d4d951cf4d",
+      "size_bytes": 2803,
+      "filename": "AuthIdentityTransitionRegressionTest.kt"
+    },
+    "app/src/test/java/com/example/AuthoritativeRemoteVersionDomainRegressionTest.kt": {
+      "sha256": "f98e5b087f012a1cf06649658e513f308cadd7b74ebf6fdff92d412f5e3990a3",
+      "size_bytes": 7344,
+      "filename": "AuthoritativeRemoteVersionDomainRegressionTest.kt"
+    },
+    "app/src/test/java/com/example/BackupGcmIntegrationTest.kt": {
+      "sha256": "f47ab10fd30f6966daaae2fc468a2b221b3da317e6961f61ddba3d2eb838a111",
+      "size_bytes": 3189,
+      "filename": "BackupGcmIntegrationTest.kt"
+    },
+    "app/src/test/java/com/example/BackupSecurityVerificationTest.kt": {
+      "sha256": "d9d8a86e51023dd0d5a09398b2830e16758c82d143e581b1e92a6b32a90ec866",
+      "size_bytes": 5024,
+      "filename": "BackupSecurityVerificationTest.kt"
+    },
+    "app/src/test/java/com/example/BalanceCalculatorTest.kt": {
+      "sha256": "d015487065f68fcc2349d6ccb19919aacf0081c22f09d37c0b2e724b63546545",
+      "size_bytes": 2854,
+      "filename": "BalanceCalculatorTest.kt"
+    },
+    "app/src/test/java/com/example/ClockSkewAdversarialTest.kt": {
+      "sha256": "4d5a4e0fccd5cb59cba6279c9a6f63e38f6e2084c2826a15096dbf60ec439563",
+      "size_bytes": 4173,
+      "filename": "ClockSkewAdversarialTest.kt"
+    },
+    "app/src/test/java/com/example/ClockSkewCannotChangeRemoteOrderingTest.kt": {
+      "sha256": "3df7009414952b9ff3467cd3248f4015cd4893b0ef9ae02106bc9ed7e661ac98",
+      "size_bytes": 1331,
+      "filename": "ClockSkewCannotChangeRemoteOrderingTest.kt"
+    },
+    "app/src/test/java/com/example/CoordinatorOwnershipRegressionTest.kt": {
+      "sha256": "860554f4d4ec41d7bc820fc5e18bd28f7472d2c1b2a67f3b17aec8238c5f6016",
+      "size_bytes": 3465,
+      "filename": "CoordinatorOwnershipRegressionTest.kt"
+    },
+    "app/src/test/java/com/example/CoreScreensScreenshotTest.kt": {
+      "sha256": "271f5e4a6e89ab30f002bdaaaf8cbe16874bd37187a21c9414c311a3817a085e",
+      "size_bytes": 4787,
+      "filename": "CoreScreensScreenshotTest.kt"
+    },
+    "app/src/test/java/com/example/CrossDeviceBackupRestoreTest.kt": {
+      "sha256": "b2de777801d31ed5f8c7548e4379d51d9f2adc5797ff59395f8633e52ec8097c",
+      "size_bytes": 2565,
+      "filename": "CrossDeviceBackupRestoreTest.kt"
+    },
+    "app/src/test/java/com/example/CursorDocumentIdPreservationTest.kt": {
+      "sha256": "67c984f15800e115fd69ccbc6746539a7b8ea2838589f665b2c8dde02229fc8a",
+      "size_bytes": 1781,
+      "filename": "CursorDocumentIdPreservationTest.kt"
+    },
+    "app/src/test/java/com/example/CursorRoundTripTest.kt": {
+      "sha256": "59e3b598ed22aa3adf8ebfad4407433eb141b49ce217abaed3cd78b457a17285",
+      "size_bytes": 1784,
+      "filename": "CursorRoundTripTest.kt"
+    },
+    "app/src/test/java/com/example/DashboardViewModelParallelFetchTest.kt": {
+      "sha256": "551e4e92286fb5197925a6c6373023d4b8c72a5516c1b1b7aca3a8c697192d13",
+      "size_bytes": 6330,
+      "filename": "DashboardViewModelParallelFetchTest.kt"
+    },
+    "app/src/test/java/com/example/DataOperationCoordinatorConcurrencyTest.kt": {
+      "sha256": "196957a6fba85fabafdfaddb4cc105f7225ab1c802af00569e1fd6a364ddb0ba",
+      "size_bytes": 8141,
+      "filename": "DataOperationCoordinatorConcurrencyTest.kt"
+    },
+    "app/src/test/java/com/example/DatabaseMigrationTest.kt": {
+      "sha256": "689f2d3a533f0dd6dd51f8d4e8fec2833dc96fe8c5d3073b6b0d9e753d9889b2",
+      "size_bytes": 24312,
+      "filename": "DatabaseMigrationTest.kt"
+    },
+    "app/src/test/java/com/example/DateTest.kt": {
+      "sha256": "cd759487114269cdc800466b2fb0ff6766afe80e6ff033c0555eb98c4c35597a",
+      "size_bytes": 1242,
+      "filename": "DateTest.kt"
+    },
+    "app/src/test/java/com/example/DeadLetterDoesNotRetryTest.kt": {
+      "sha256": "b4ab99ce7cbd6d90129f74bad829c852f6c0f861829ebeb39c4856c7f659e927",
+      "size_bytes": 2623,
+      "filename": "DeadLetterDoesNotRetryTest.kt"
+    },
+    "app/src/test/java/com/example/DeepCrossLayerInvariantsTest.kt": {
+      "sha256": "9414f1367e13b059555e565c6bf306b83b4230de0562f3d4232ad57c2776a4aa",
+      "size_bytes": 9194,
+      "filename": "DeepCrossLayerInvariantsTest.kt"
+    },
+    "app/src/test/java/com/example/DeletionOrderingAndMonotonicityTest.kt": {
+      "sha256": "cb2ae397ac4447c1133dfb76f6ffc800b9d9801ddd7ef9d152482d250fd3d01e",
+      "size_bytes": 5791,
+      "filename": "DeletionOrderingAndMonotonicityTest.kt"
+    },
+    "app/src/test/java/com/example/EarthlinkAppTest.kt": {
+      "sha256": "eb4ca10d8898da4c0511601d80b0164c02f41e313a1527c879e50cbbe72ff0a5",
+      "size_bytes": 5495,
+      "filename": "EarthlinkAppTest.kt"
+    },
+    "app/src/test/java/com/example/EarthlinkGatewayTest.kt": {
+      "sha256": "e48f5ebdec168d16bde316f131bf4807a8c64fabc85ee26767824480ea7f988b",
+      "size_bytes": 2463,
+      "filename": "EarthlinkGatewayTest.kt"
+    },
+    "app/src/test/java/com/example/EncryptionMigrationTest.kt": {
+      "sha256": "8c341627e8ad599c1ced32c1c6f9716263ce32ab569f3db4abb3219187bde950",
+      "size_bytes": 1978,
+      "filename": "EncryptionMigrationTest.kt"
+    },
+    "app/src/test/java/com/example/EventSyncResultCursorAdvancementTest.kt": {
+      "sha256": "01fe07e4a0262e9388a63d7f5069ed902ec6f152d030165ed79dbd20a2fccf6c",
+      "size_bytes": 2572,
+      "filename": "EventSyncResultCursorAdvancementTest.kt"
+    },
+    "app/src/test/java/com/example/ExampleRobolectricTest.kt": {
+      "sha256": "7185a539b7817f8f54243a1eaf803c622c064782adb2a263dd925078fca948b5",
+      "size_bytes": 1323,
+      "filename": "ExampleRobolectricTest.kt"
+    },
+    "app/src/test/java/com/example/ExampleUnitTest.kt": {
+      "sha256": "40b8b5ae0c5c2e310fccfb657b86968f4c51b584b83d28ba49512f054d4568af",
+      "size_bytes": 2308,
+      "filename": "ExampleUnitTest.kt"
+    },
+    "app/src/test/java/com/example/FailClosedApiContractTest.kt": {
+      "sha256": "2bc1cffe25ca969980366a1b2e6d2835c8e010de407678e76eac64302886b690",
+      "size_bytes": 5345,
+      "filename": "FailClosedApiContractTest.kt"
+    },
+    "app/src/test/java/com/example/FailedRemoteEventCursorAdvancementTest.kt": {
+      "sha256": "ea12750bce0535700205bae4c6db179b72225d00e03aef826578ac226a207afb",
+      "size_bytes": 4461,
+      "filename": "FailedRemoteEventCursorAdvancementTest.kt"
+    },
+    "app/src/test/java/com/example/FinalProductionConvergenceAdversarialTest.kt": {
+      "sha256": "5ad59bbe88f9ed35d1d4805118e62a3e9dea068afe962a2fd212d1a14c4a3a98",
+      "size_bytes": 2374,
+      "filename": "FinalProductionConvergenceAdversarialTest.kt"
+    },
+    "app/src/test/java/com/example/FinalTestMatrixCertificationTest.kt": {
+      "sha256": "7f8e434bfda55aa63417fc54cae7e0ea98fc5e9efc822433608bad4a55b1291a",
+      "size_bytes": 19261,
+      "filename": "FinalTestMatrixCertificationTest.kt"
+    },
+    "app/src/test/java/com/example/FirebaseInitializationTest.kt": {
+      "sha256": "4be281f5069fc185c6f2d77ae3287330d7c8c814e5d6ffa4a042d5a6a8d2de14",
+      "size_bytes": 767,
+      "filename": "FirebaseInitializationTest.kt"
+    },
+    "app/src/test/java/com/example/FullSnapshotContractTest.kt": {
+      "sha256": "1e119450060da059ff68ca1b09e85c9141349a5e25a147ff94003f367d9dfd25",
+      "size_bytes": 3939,
+      "filename": "FullSnapshotContractTest.kt"
+    },
+    "app/src/test/java/com/example/GoldenFixtureEndToEndCertificationTest.kt": {
+      "sha256": "f3a3d8364a123cba3f71ce458aa9fabdfacf21802f87d5cde0bb644d58e0aaa5",
+      "size_bytes": 5408,
+      "filename": "GoldenFixtureEndToEndCertificationTest.kt"
+    },
+    "app/src/test/java/com/example/GoldenSnapshotRoundTripTest.kt": {
+      "sha256": "b8ae4b14712d5acf6b32d05584568a72001aa00b30d728d9631373cceea1d774",
+      "size_bytes": 12763,
+      "filename": "GoldenSnapshotRoundTripTest.kt"
+    },
+    "app/src/test/java/com/example/GreetingScreenshotTest.kt": {
+      "sha256": "280fc098cdb4837bb8c871969da70049d0806a5fb5b9765ccb3f48e5018ba520",
+      "size_bytes": 981,
+      "filename": "GreetingScreenshotTest.kt"
+    },
+    "app/src/test/java/com/example/ImportAtomicityTest.kt": {
+      "sha256": "ee4ddea89b0bfa0bef18c16050f6da37fa401bec50c13bb57594b7a9ad1c3373",
+      "size_bytes": 4914,
+      "filename": "ImportAtomicityTest.kt"
+    },
+    "app/src/test/java/com/example/ImportSyncBarrierTest.kt": {
+      "sha256": "2b63878b2cdf120519269807c90e6a42179317224e0274f7de88581229e432b8",
+      "size_bytes": 2070,
+      "filename": "ImportSyncBarrierTest.kt"
+    },
+    "app/src/test/java/com/example/InfiniteCycleAdversarialIntegrationTest.kt": {
+      "sha256": "e96ba44e20850092abf685447f4b3917347e8be2b64a1cba19c3480812011d49",
+      "size_bytes": 7338,
+      "filename": "InfiniteCycleAdversarialIntegrationTest.kt"
+    },
+    "app/src/test/java/com/example/KeyRecoveryAndFailClosedEncryptionTest.kt": {
+      "sha256": "0894b34e91a46ad10dbcd561369a0af5b93dd4e52732b20b13aae6a9b07745f3",
+      "size_bytes": 3083,
+      "filename": "KeyRecoveryAndFailClosedEncryptionTest.kt"
+    },
+    "app/src/test/java/com/example/LegacyGlobalCursorNeverSeedsMissingCollectionCursorTest.kt": {
+      "sha256": "21a8bd7356e33063152373a67ce6574e09c0b7be0980265228728b37819a5041",
+      "size_bytes": 2072,
+      "filename": "LegacyGlobalCursorNeverSeedsMissingCollectionCursorTest.kt"
+    },
+    "app/src/test/java/com/example/LocalAccountsViewModelImportTest.kt": {
+      "sha256": "275dcb2d9e053ad42efea6bf43ddc7d9148f458fbc8690a981d4613a3dd82107",
+      "size_bytes": 6687,
+      "filename": "LocalAccountsViewModelImportTest.kt"
+    },
+    "app/src/test/java/com/example/LocalLedgerRepositoryTest.kt": {
+      "sha256": "19c13b011c6a46b146e21e64229beee7d8620f88f564f0f085610fb9f8d18e01",
+      "size_bytes": 2203,
+      "filename": "LocalLedgerRepositoryTest.kt"
+    },
+    "app/src/test/java/com/example/MaintenanceLockExclusiveSyncTest.kt": {
+      "sha256": "a1f9be4e8a4e613f4fafc3843a42c3451ed308021452e66ac0ea7ef8dc51a68c",
+      "size_bytes": 3779,
+      "filename": "MaintenanceLockExclusiveSyncTest.kt"
+    },
+    "app/src/test/java/com/example/MergeBalanceRegressionTest.kt": {
+      "sha256": "045f9c675cd759d11dbb2221b162a37f43fad8813be5198ba36c94abed74b188",
+      "size_bytes": 1682,
+      "filename": "MergeBalanceRegressionTest.kt"
+    },
+    "app/src/test/java/com/example/MissingRemoteTimestampIsNotLocalVersionTest.kt": {
+      "sha256": "d685cda1e0e2723a1d6ef11e93450c31afc3bfce25b36d25ab673c4974ad5543",
+      "size_bytes": 2892,
+      "filename": "MissingRemoteTimestampIsNotLocalVersionTest.kt"
+    },
+    "app/src/test/java/com/example/MoneyDoublePrecisionDriftTest.kt": {
+      "sha256": "0572396532f9508e8fdeebd7f5c09a5b28ced908a1d4b2b55a4e4bf2c3daa126",
+      "size_bytes": 2416,
+      "filename": "MoneyDoublePrecisionDriftTest.kt"
+    },
+    "app/src/test/java/com/example/MoneyParserTest.kt": {
+      "sha256": "9d93593d7d0d3df8dd29bcadbc346893f160457c79072a619e5cedf8f50d5177",
+      "size_bytes": 7292,
+      "filename": "MoneyParserTest.kt"
+    },
+    "app/src/test/java/com/example/NetworkFlapAndOutboxRetryTest.kt": {
+      "sha256": "c6aefdaaa05900c41585f1cbc4db31abc2b94bf01a79ed74bc72a3ee00f85748",
+      "size_bytes": 4298,
+      "filename": "NetworkFlapAndOutboxRetryTest.kt"
+    },
+    "app/src/test/java/com/example/NoGlobalCursorFallbackRegressionTest.kt": {
+      "sha256": "8279202e024b12a617de8a2c6fef9f3a2196d8f389085bc20b13a602e8343440",
+      "size_bytes": 993,
+      "filename": "NoGlobalCursorFallbackRegressionTest.kt"
+    },
+    "app/src/test/java/com/example/OneTimeCursorMigrationTest.kt": {
+      "sha256": "c698d77b9e0fc38d4895c62073747e929ec61960c97547076d158e8a189743f7",
+      "size_bytes": 2455,
+      "filename": "OneTimeCursorMigrationTest.kt"
+    },
+    "app/src/test/java/com/example/OutboxManagerTest.kt": {
+      "sha256": "3e09495f325b6e5a28d6ff9b4fd2c6cc6f421ce95e479764549c94960664045f",
+      "size_bytes": 7134,
+      "filename": "OutboxManagerTest.kt"
+    },
+    "app/src/test/java/com/example/OutboxStateMachineTest.kt": {
+      "sha256": "4c71e5f588beb5f375aa816e8a996d1f3f9241759365e21bbd51ff820e95b59b",
+      "size_bytes": 9229,
+      "filename": "OutboxStateMachineTest.kt"
+    },
+    "app/src/test/java/com/example/PartialCollectionCursorMigrationTest.kt": {
+      "sha256": "7da13caaf95cf876a054b7abccfe24ea1c2947bbffdf880ed76a1f9c114db91d",
+      "size_bytes": 2742,
+      "filename": "PartialCollectionCursorMigrationTest.kt"
+    },
+    "app/src/test/java/com/example/PerCollectionSyncCursorTest.kt": {
+      "sha256": "86ae7ed0d4dcf7ded925bc6b4e2906edada5b630912ea0413ee6e84012b78cc4",
+      "size_bytes": 4433,
+      "filename": "PerCollectionSyncCursorTest.kt"
+    },
+    "app/src/test/java/com/example/PhaseECursorAdvancementTests.kt": {
+      "sha256": "34b3ba15a15ffef79ff0bdd761eb675b088a2c3370210ab12177f4676240431a",
+      "size_bytes": 3443,
+      "filename": "PhaseECursorAdvancementTests.kt"
+    },
+    "app/src/test/java/com/example/PhaseGConstraintTests.kt": {
+      "sha256": "7551fe947ade326bbb8f247d84ba639e339512b9b1ed47b11cfe34c5a8ba90e4",
+      "size_bytes": 7499,
+      "filename": "PhaseGConstraintTests.kt"
+    },
+    "app/src/test/java/com/example/PhaseIImportStatisticsTests.kt": {
+      "sha256": "4c687c916bae1adb0e6ca6a855654cbf6853a683641f4e843a23bb8a01cf8d09",
+      "size_bytes": 9642,
+      "filename": "PhaseIImportStatisticsTests.kt"
+    },
+    "app/src/test/java/com/example/PoisonConflictDoesNotRetryForeverTest.kt": {
+      "sha256": "332f067f5fc7a4fe0a9b198a1af21046865d50c3e3791ec9a11ab58fe42c5972",
+      "size_bytes": 1354,
+      "filename": "PoisonConflictDoesNotRetryForeverTest.kt"
+    },
+    "app/src/test/java/com/example/PreferenceManagerTest.kt": {
+      "sha256": "65863f6900109293ef026c573692d143ff96eccd26dd0223daaddd5c15dc1967",
+      "size_bytes": 5179,
+      "filename": "PreferenceManagerTest.kt"
+    },
+    "app/src/test/java/com/example/PreviewCommitParityTest.kt": {
+      "sha256": "b6c47854e8e4a4d4517cec5fa614a6adf30de7df6550875b204be3a1860ccda8",
+      "size_bytes": 4376,
+      "filename": "PreviewCommitParityTest.kt"
+    },
+    "app/src/test/java/com/example/ProductionCertificationPipelineTest.kt": {
+      "sha256": "a87d0cb520c612b2cdc12d9ec535a8f487b3857ca798f0e2cc099f031315270a",
+      "size_bytes": 11225,
+      "filename": "ProductionCertificationPipelineTest.kt"
+    },
+    "app/src/test/java/com/example/ProductionExecutableInvariantsTest.kt": {
+      "sha256": "6610d7ad61e291e064d97c70f82a61a5e2ba73373f11f458e4f31896e1dde6e3",
+      "size_bytes": 20528,
+      "filename": "ProductionExecutableInvariantsTest.kt"
+    },
+    "app/src/test/java/com/example/RealtimeEventSemanticsRegressionTest.kt": {
+      "sha256": "e8263a2ee86319a52b29694a7422f6ef4cb9680027655caf173a14190f2c9d25",
+      "size_bytes": 5029,
+      "filename": "RealtimeEventSemanticsRegressionTest.kt"
+    },
+    "app/src/test/java/com/example/RecalculateAccountHistoryTest.kt": {
+      "sha256": "f2e4c26f2175b3731c325eb10c290de12919084706b9ce0c5b5223759801d1e3",
+      "size_bytes": 11310,
+      "filename": "RecalculateAccountHistoryTest.kt"
+    },
+    "app/src/test/java/com/example/RecalculateRemoteDoesNotCreateOutboxTest.kt": {
+      "sha256": "85f41b1d3cf9ec2db547ef13faff20d253b23746fa06fa7e14bf4753865b2285",
+      "size_bytes": 6356,
+      "filename": "RecalculateRemoteDoesNotCreateOutboxTest.kt"
+    },
+    "app/src/test/java/com/example/RemoteApplyDoesNotCreateOutboxTest.kt": {
+      "sha256": "d0c862aa007bdbd4af9c3caac70bd58d7c9e7273af01798a791585f9bb110045",
+      "size_bytes": 6769,
+      "filename": "RemoteApplyDoesNotCreateOutboxTest.kt"
+    },
+    "app/src/test/java/com/example/RemoteApplyDoesNotMutateBusinessTimestampTest.kt": {
+      "sha256": "3f7aa3a12475cf8f5ab83096523d8a4734cc66be808920d95b09761dd12b6dc5",
+      "size_bytes": 3430,
+      "filename": "RemoteApplyDoesNotMutateBusinessTimestampTest.kt"
+    },
+    "app/src/test/java/com/example/RemoteBalanceMatchesLocalCalculationTest.kt": {
+      "sha256": "780908398d617e9c40aff25deb6b77be1f3858d1423db4d6d4493abdc0396183",
+      "size_bytes": 1875,
+      "filename": "RemoteBalanceMatchesLocalCalculationTest.kt"
+    },
+    "app/src/test/java/com/example/RemoteEntityValidatorTest.kt": {
+      "sha256": "584b1b6dedba89b374ea6cfdeaddd42b7acd35a5edb4b1b957c5332e508b9b02",
+      "size_bytes": 3259,
+      "filename": "RemoteEntityValidatorTest.kt"
+    },
+    "app/src/test/java/com/example/RemoteEventDualPathTest.kt": {
+      "sha256": "bd6c1a25a0f8307cadc8c55a7a09f9b41eaa393131b63fd3808955b05f4b1b95",
+      "size_bytes": 13908,
+      "filename": "RemoteEventDualPathTest.kt"
+    },
+    "app/src/test/java/com/example/RemoteSnapshotMappingTest.kt": {
+      "sha256": "4b4250097ea0acb9cf0f304a3fa60607638d6cddf4869b464dbdc5d06a37f193",
+      "size_bytes": 9563,
+      "filename": "RemoteSnapshotMappingTest.kt"
+    },
+    "app/src/test/java/com/example/RemoteSyncCoordinatorTest.kt": {
+      "sha256": "0e2c82795cc13dbcb5743210a94aa62bfbf9496a4ff49e3a2a109d8939332423",
+      "size_bytes": 3584,
+      "filename": "RemoteSyncCoordinatorTest.kt"
+    },
+    "app/src/test/java/com/example/RemoteSyncCursorTest.kt": {
+      "sha256": "965c367492fd307c69f4327ae59a5bb0a7e5f919e89a9e65322a01e0bee2fc97",
+      "size_bytes": 5394,
+      "filename": "RemoteSyncCursorTest.kt"
+    },
+    "app/src/test/java/com/example/RestoreFailureTest.kt": {
+      "sha256": "f87d955515aaa0945567bcb788c7f613b959cce10c213a485ce946d6bd06b46f",
+      "size_bytes": 3795,
+      "filename": "RestoreFailureTest.kt"
+    },
+    "app/src/test/java/com/example/RestoreProtocolTest.kt": {
+      "sha256": "ea4fe492e7dcc26d3e0683d68f0647b68ea7e938f949207d1145a57705252021",
+      "size_bytes": 5825,
+      "filename": "RestoreProtocolTest.kt"
+    },
+    "app/src/test/java/com/example/RoomNoNetworkIOTest.kt": {
+      "sha256": "9e8ba645a31ba8ae5f585fb617a711e79e1833a242c2875117f905ee28a05467",
+      "size_bytes": 3003,
+      "filename": "RoomNoNetworkIOTest.kt"
+    },
+    "app/src/test/java/com/example/SameLedgerSetProducesSameBalanceTest.kt": {
+      "sha256": "758d925352ce10f6a0c222c35a4f2b58943aa1f98906ae036ad84b4b9aedccd7",
+      "size_bytes": 2126,
+      "filename": "SameLedgerSetProducesSameBalanceTest.kt"
+    },
+    "app/src/test/java/com/example/SameTimestampPaginationTest.kt": {
+      "sha256": "2e16394a27ccd92e85c30b6e7a2836156c7ccb3418ab43a1a0223b471a6988be",
+      "size_bytes": 1100,
+      "filename": "SameTimestampPaginationTest.kt"
+    },
+    "app/src/test/java/com/example/SecurityFallbackGuardTest.kt": {
+      "sha256": "e6416695cfaa4eadf6515bbd469fbc4b5022d2e76ad23b117b146c95d5a09564",
+      "size_bytes": 6688,
+      "filename": "SecurityFallbackGuardTest.kt"
+    },
+    "app/src/test/java/com/example/SingleSourceOfTruthRuleTest.kt": {
+      "sha256": "fe8725be0e1d22b8e6745ea4f9698032c93c1934132655bd7add9cb4a3e6e301",
+      "size_bytes": 2270,
+      "filename": "SingleSourceOfTruthRuleTest.kt"
+    },
+    "app/src/test/java/com/example/SnapshotMigrationAndRestoreTests.kt": {
+      "sha256": "229669d45b541b7e6a93bf6857322423053037c61e686fcea535750c121ad3d8",
+      "size_bytes": 26329,
+      "filename": "SnapshotMigrationAndRestoreTests.kt"
+    },
+    "app/src/test/java/com/example/StateOwnershipCrossLayerTest.kt": {
+      "sha256": "5308a7d6be97ea56dbbe6c1e1e9765d1351670d959193b8c276c3069ba8b5934",
+      "size_bytes": 10882,
+      "filename": "StateOwnershipCrossLayerTest.kt"
+    },
+    "app/src/test/java/com/example/SubmitButtonLockTrapTest.kt": {
+      "sha256": "c198a4e3fbe26fb3936f9eae39a7bed9f9c65065c6a397c3091500a8b1863cad",
+      "size_bytes": 4538,
+      "filename": "SubmitButtonLockTrapTest.kt"
+    },
+    "app/src/test/java/com/example/SubscriberMatcherTest.kt": {
+      "sha256": "1f101c95632b68a331ad0c69024eeb254ece9d1e87b071bfea2027a90dbe91cb",
+      "size_bytes": 3409,
+      "filename": "SubscriberMatcherTest.kt"
+    },
+    "app/src/test/java/com/example/SyncConflictResolverTest.kt": {
+      "sha256": "06f1e05b819bbf23440065c41713a88614f47800c2f3e81fc348907e616f0e62",
+      "size_bytes": 3779,
+      "filename": "SyncConflictResolverTest.kt"
+    },
+    "app/src/test/java/com/example/SyncPipelineHardeningTest.kt": {
+      "sha256": "4d5a9e8414999e46a4b529fde4eba70faa4d85c00b32d42bf558f4ebc66d54eb",
+      "size_bytes": 7580,
+      "filename": "SyncPipelineHardeningTest.kt"
+    },
+    "app/src/test/java/com/example/TestDatabaseBuilder.kt": {
+      "sha256": "cd822d84c19c45cca8bfd7027d3c7beb0b9087a22b19386283b8f332824c3ce0",
+      "size_bytes": 4849,
+      "filename": "TestDatabaseBuilder.kt"
+    },
+    "app/src/test/java/com/example/TimestampSemanticsTest.kt": {
+      "sha256": "df87c290815a1fe7ef19b1bb8f13a81903c244879b3390b5d40104c3bd7e4bf0",
+      "size_bytes": 1876,
+      "filename": "TimestampSemanticsTest.kt"
+    },
+    "app/src/test/java/com/example/TransactionDeduplicatorTest.kt": {
+      "sha256": "4f7230a34b9ebc97c1c3b52c2c2480347f3acb83c6c1e87eeba4c0ce589333d5",
+      "size_bytes": 3838,
+      "filename": "TransactionDeduplicatorTest.kt"
+    },
+    "app/src/test/java/com/example/TwoDeviceSettingsConvergenceTest.kt": {
+      "sha256": "b5246c59b983789723580e62238c7deedf3918cd9b4c119637bc2d7e79bbdf12",
+      "size_bytes": 7295,
+      "filename": "TwoDeviceSettingsConvergenceTest.kt"
+    },
+    "app/src/test/java/com/example/UtowerDebtResolverTest.kt": {
+      "sha256": "0c2ce33c88d6ee7c75b1cc1656b4749f41a98722353d7d4b498e0a7a33fb1745",
+      "size_bytes": 2922,
+      "filename": "UtowerDebtResolverTest.kt"
+    },
+    "app/src/test/java/com/example/UtowerImporterAkamelTest.kt": {
+      "sha256": "e5ceb7861fc79ebe2401fd69c3bcab42391cc11b51ba662760889d80ecf6766f",
+      "size_bytes": 11602,
+      "filename": "UtowerImporterAkamelTest.kt"
+    },
+    "app/src/test/java/com/example/UtowerInvalidDateQuarantineTest.kt": {
+      "sha256": "ab604122a5fae94f3f87053987042ae4b79572377a14b8c9e6b5bb28d1acda0a",
+      "size_bytes": 4974,
+      "filename": "UtowerInvalidDateQuarantineTest.kt"
+    },
+    "app/src/test/java/com/example/UtowerTransactionCompatibilityTest.kt": {
+      "sha256": "f234dd3f76d96afc4cc57f227c4bc57f1fa4e39a742697cc9e9e08beea9244ac",
+      "size_bytes": 1708,
+      "filename": "UtowerTransactionCompatibilityTest.kt"
+    }
+  }
+}

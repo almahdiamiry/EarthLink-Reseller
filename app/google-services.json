@@ -1,0 +1,85 @@
+{
+  "project_info": {
+    "project_number": "1023954528299",
+    "firebase_url": "https://earthlink-app-d927a-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "earthlink-app-d927a",
+    "storage_bucket": "earthlink-app-d927a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1023954528299:android:8b3bffb49210583955a26e",
+        "android_client_info": {
+          "package_name": "com.alamiry.earthlinkreseller"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1023954528299-o9js9nac7361694tgbuhp4mmi429n4is.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.alamiry.earthlinkreseller",
+            "certificate_hash": "aac25a8408dd6658c4b69d7185b76b2f1931dc21"
+          }
+        },
+        {
+          "client_id": "1023954528299-it54t81l6ptjpt3cbgk7nu4qbn3pu265.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB6IzKgeVnOWuBGdsyoYTVIErpVbj4VHQo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1023954528299-it54t81l6ptjpt3cbgk7nu4qbn3pu265.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1023954528299:android:eded22edf358f70655a26e",
+        "android_client_info": {
+          "package_name": "com.alamiry.earthlinkreseller.qwyvtz"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1023954528299-velmi1d48rdevadkn4bq54v4rasvv3cg.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.alamiry.earthlinkreseller.qwyvtz",
+            "certificate_hash": "267461c2e948d4f351f5e5fa745dca021768b3c6"
+          }
+        },
+        {
+          "client_id": "1023954528299-it54t81l6ptjpt3cbgk7nu4qbn3pu265.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB6IzKgeVnOWuBGdsyoYTVIErpVbj4VHQo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1023954528299-it54t81l6ptjpt3cbgk7nu4qbn3pu265.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

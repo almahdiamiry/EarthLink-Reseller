@@ -1,0 +1,337 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Earthlink Reseller App Closure and Evidence Schema",
+  "description": "JSON schema for closure contracts, evidence bundles, and derived closure results.",
+  "definitions": {
+    "severity_enum": {
+      "type": "string",
+      "enum": ["P0", "P1", "P2"]
+    },
+    "status_enum": {
+      "type": "string",
+      "enum": ["PASS", "FAIL", "SKIPPED", "ERROR"]
+    },
+    "overall_verdict_enum": {
+      "type": "string",
+      "enum": ["READY_FOR_CLOSURE", "NOT_READY_FOR_CLOSURE", "FAIL"]
+    },
+    "closure_rule_enum": {
+      "type": "string",
+      "enum": ["ALL_REQUIRED_CHECKS_PASS", "ANY_PASS"]
+    },
+    "finding_definition": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "invariant",
+        "severity",
+        "state_model",
+        "required_checks",
+        "source_paths",
+        "closure_rule"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "invariant": {
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": {
+          "$ref": "#/definitions/severity_enum"
+        },
+        "state_model": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "required_checks": {
+          "type": "object",
+          "required": ["structural", "behavioral", "artifact"],
+          "properties": {
+            "structural": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "behavioral": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "artifact": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          "additionalProperties": false
+        },
+        "source_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "closure_rule": {
+          "$ref": "#/definitions/closure_rule_enum"
+        }
+      },
+      "additionalProperties": false
+    },
+    "closure_contract": {
+      "type": "object",
+      "required": ["schema_version", "closure_rule_default", "findings"],
+      "properties": {
+        "schema_version": {
+          "type": "string"
+        },
+        "closure_rule_default": {
+          "$ref": "#/definitions/closure_rule_enum"
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/finding_definition"
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "closure_bundle": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "timestamp",
+        "source_identity",
+        "contract_identity",
+        "toolchain",
+        "test_execution",
+        "structural_checks",
+        "artifact_checks"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string"
+        },
+        "source_identity": {
+          "type": "object",
+          "required": ["git_sha", "is_dirty", "git_status_porcelain", "gradlew_git_mode"],
+          "properties": {
+            "git_sha": { "type": "string", "pattern": "^[0-9a-fA-F]{40}$" },
+            "git_branch": { "type": "string" },
+            "is_dirty": { "type": "boolean" },
+            "git_status_porcelain": { "type": "array", "items": { "type": "string" } },
+            "gradlew_git_mode": { "type": "string" }
+          }
+        },
+        "contract_identity": {
+          "type": "object",
+          "required": [
+            "production_invariants_file",
+            "production_invariants_sha256",
+            "closure_contract_file",
+            "closure_contract_sha256",
+            "invariant_contract_file",
+            "invariant_contract_sha256",
+            "invariant_test_map_file",
+            "invariant_test_map_sha256",
+            "forbidden_patterns_file",
+            "forbidden_patterns_sha256"
+          ],
+          "properties": {
+            "production_invariants_file": { "type": "string" },
+            "production_invariants_sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+            "closure_contract_file": { "type": "string" },
+            "closure_contract_sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+            "invariant_contract_file": { "type": "string" },
+            "invariant_contract_sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+            "invariant_test_map_file": { "type": "string" },
+            "invariant_test_map_sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+            "forbidden_patterns_file": { "type": "string" },
+            "forbidden_patterns_sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+            "baseline_manifest_file": { "type": "string" },
+            "baseline_manifest_sha256": { "type": "string" },
+            "baseline_test_manifest_file": { "type": "string" },
+            "baseline_test_manifest_sha256": { "type": "string" }
+          }
+        },
+        "toolchain": {
+          "type": "object",
+          "required": ["os", "python_version", "java_version", "gradle_version", "kotlin_version"],
+          "properties": {
+            "os": { "type": "string" },
+            "python_version": { "type": "string" },
+            "java_version": { "type": "string" },
+            "gradle_version": { "type": "string" },
+            "kotlin_version": { "type": "string" }
+          }
+        },
+        "test_execution": {
+          "type": "object",
+          "required": [
+            "command",
+            "exit_code",
+            "total_tests",
+            "passed_tests",
+            "failed_tests",
+            "error_tests",
+            "skipped_tests",
+            "duration_seconds",
+            "suites"
+          ],
+          "properties": {
+            "command": { "type": "string" },
+            "exit_code": { "type": "integer" },
+            "total_tests": { "type": "integer", "minimum": 0 },
+            "passed_tests": { "type": "integer", "minimum": 0 },
+            "failed_tests": { "type": "integer", "minimum": 0 },
+            "error_tests": { "type": "integer", "minimum": 0 },
+            "skipped_tests": { "type": "integer", "minimum": 0 },
+            "duration_seconds": { "type": "number", "minimum": 0 },
+            "suites": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["name", "tests", "failures", "errors", "skipped", "time"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "tests": { "type": "integer" },
+                  "failures": { "type": "integer" },
+                  "errors": { "type": "integer" },
+                  "skipped": { "type": "integer" },
+                  "time": { "type": "number" },
+                  "testcases": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["name", "classname", "time", "status"],
+                      "properties": {
+                        "name": { "type": "string" },
+                        "classname": { "type": "string" },
+                        "time": { "type": "number" },
+                        "status": { "$ref": "#/definitions/status_enum" },
+                        "failure_message": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "structural_checks": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["status", "details"],
+            "properties": {
+              "status": { "$ref": "#/definitions/status_enum" },
+              "details": { "type": ["string", "object", "array"] },
+              "timestamp": { "type": "string" }
+            }
+          }
+        },
+        "artifact_checks": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["status", "exists", "sha256"],
+            "properties": {
+              "status": { "$ref": "#/definitions/status_enum" },
+              "exists": { "type": "boolean" },
+              "sha256": { "type": "string" },
+              "path": { "type": "string" }
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "closure_result": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "timestamp",
+        "source_sha",
+        "evaluated_contract_sha256",
+        "overall_verdict",
+        "findings",
+        "summary"
+      ],
+      "properties": {
+        "schema_version": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "source_sha": { "type": "string", "pattern": "^[0-9a-fA-F]{40}$" },
+        "evaluated_contract_sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+        "overall_verdict": { "$ref": "#/definitions/overall_verdict_enum" },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "title",
+              "invariant",
+              "severity",
+              "derived_status",
+              "structural_status",
+              "behavioral_status",
+              "artifact_status",
+              "failed_reasons"
+            ],
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" },
+              "invariant": { "type": "string" },
+              "severity": { "$ref": "#/definitions/severity_enum" },
+              "derived_status": { "$ref": "#/definitions/status_enum" },
+              "structural_status": { "$ref": "#/definitions/status_enum" },
+              "behavioral_status": { "$ref": "#/definitions/status_enum" },
+              "artifact_status": { "$ref": "#/definitions/status_enum" },
+              "failed_reasons": { "type": "array", "items": { "type": "string" } },
+              "checks_summary": { "type": "object" }
+            }
+          }
+        },
+        "summary": {
+          "type": "object",
+          "required": [
+            "total_findings",
+            "passed_findings",
+            "failed_findings",
+            "p0_passed",
+            "p0_failed",
+            "p1_passed",
+            "p1_failed",
+            "all_p0_passed",
+            "all_p1_passed"
+          ],
+          "properties": {
+            "total_findings": { "type": "integer" },
+            "passed_findings": { "type": "integer" },
+            "failed_findings": { "type": "integer" },
+            "p0_passed": { "type": "integer" },
+            "p0_failed": { "type": "integer" },
+            "p1_passed": { "type": "integer" },
+            "p1_failed": { "type": "integer" },
+            "all_p0_passed": { "type": "boolean" },
+            "all_p1_passed": { "type": "boolean" }
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

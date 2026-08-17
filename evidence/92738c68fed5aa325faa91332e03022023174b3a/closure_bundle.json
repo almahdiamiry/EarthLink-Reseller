@@ -1,0 +1,638 @@
+{
+  "schema_version": "1.0",
+  "timestamp": "2026-08-15T16:10:35.638135+00:00",
+  "source_identity": {
+    "git_sha": "92738c68fed5aa325faa91332e03022023174b3a",
+    "git_branch": "master",
+    "is_dirty": false,
+    "git_status_porcelain": [],
+    "gradlew_git_mode": "missing"
+  },
+  "contract_identity": {
+    "production_invariants_file": "PRODUCTION_INVARIANTS.md",
+    "production_invariants_sha256": "bfcdc652e975607797aa2ced4acf7ab204c6a00397b501ba7377611e31de99d5",
+    "closure_contract_file": "contract/closure_contract.yaml",
+    "closure_contract_sha256": "905379240875298efda95e0f644345244f0a522f96a299b1893767fc409ea605",
+    "invariant_contract_file": "contract/invariant_contract.yaml",
+    "invariant_contract_sha256": "fae45bf98e4f9cd6c04d912508c47d60ad123f1af6f9b4ac5b9eb53e0f9a9ddd",
+    "invariant_test_map_file": "contract/invariant_test_map.yaml",
+    "invariant_test_map_sha256": "aecd247637388db436430cc6ba8d3f327ba6929fe39ba6b8a03ce3efafccfe19",
+    "forbidden_patterns_file": "contract/forbidden_patterns.yaml",
+    "forbidden_patterns_sha256": "5bb681f43c0cee42db0d7ff1d1dbc7b86108a11e1d6a0db5ab490e92b6efb21d",
+    "baseline_manifest_file": "evidence/baseline_manifest.json",
+    "baseline_manifest_sha256": "e3f51afa4017c727c61117e9686ac6002192891067570a88e96430c89aff5369",
+    "baseline_test_manifest_file": "evidence/baseline_test_manifest.json",
+    "baseline_test_manifest_sha256": "4d0442a8ab967750f927bf647ff8b1027dc6d15323443a9e13bd0e987db992f8"
+  },
+  "toolchain": {
+    "os": "Linux 4.19.0-gvisor x86_64",
+    "python_version": "3.11.2",
+    "java_version": "openjdk version \"21.0.11\" 2026-04-21 LTS",
+    "gradle_version": "Gradle 9.3.1",
+    "kotlin_version": "2.2.21"
+  },
+  "test_execution": {
+    "command": "./gradlew :app:testDebugUnitTest --no-daemon",
+    "exit_code": 0,
+    "total_tests": 38,
+    "passed_tests": 38,
+    "failed_tests": 0,
+    "error_tests": 0,
+    "skipped_tests": 0,
+    "duration_seconds": 15.646,
+    "suites": [
+      {
+        "name": "com.example.Phase2RemoteVersionAdversarialTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 11.373,
+        "testcases": [
+          {
+            "name": "caseE_mutationCorrelationMismatch_doesNotConfirmLocalMutation",
+            "classname": "com.example.Phase2RemoteVersionAdversarialTest",
+            "time": 9.92,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "caseB_cacheConfusion_doesNotTransferAuthority",
+            "classname": "com.example.Phase2RemoteVersionAdversarialTest",
+            "time": 0.245,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "caseF_replayAfterCaptureFailure_neverReplaysSuccessfulPush",
+            "classname": "com.example.Phase2RemoteVersionAdversarialTest",
+            "time": 0.141,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "caseC_localDeviceTimestampInjection_doesNotCreateServerTrackedVersion",
+            "classname": "com.example.Phase2RemoteVersionAdversarialTest",
+            "time": 0.178,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "caseD_versionAheadOfLocalState_cannotPersistVersionWithoutApplyingState",
+            "classname": "com.example.Phase2RemoteVersionAdversarialTest",
+            "time": 0.134,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "caseA_pendingTimestampInjection_doesNotCreateRemoteVersion",
+            "classname": "com.example.Phase2RemoteVersionAdversarialTest",
+            "time": 0.092,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.Phase2ServerConfirmedLifecycleTest",
+        "tests": 16,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 2.055,
+        "testcases": [
+          {
+            "name": "offlineReconnect_reconcilesWithoutReplay",
+            "classname": "com.example.Phase2ServerConfirmedLifecycleTest",
+            "time": 0.109,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "crashAfterPush_recoversWithoutDuplicateMutation",
+            "classname": "com.example.Phase2ServerConfirmedLifecycleTest",
+            "time": 0.114,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "confirmedServerState_createsRemoteVersion",
+            "classname": "com.example.Phase2ServerConfirmedLifecycleTest",
+            "time": 0.161,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "serverReadUnavailable_preservesRetryableCaptureState",
+            "classname": "com.example.Phase2ServerConfirmedLifecycleTest",
+            "time": 0.127,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "pendingSnapshot_doesNotCreateRemoteVersion",
+            "classname": "com.example.Phase2ServerConfirmedLifecycleTest",
+            "time": 0.116,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "outOfOrderConfirmation_doesNotRegressVersion",
+            "classname": "com.example.Phase2ServerConfirmedLifecycleTest",
+            "time": 0.117,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "localClockSkew_doesNotAffectRemoteVersion",
+            "classname": "com.example.Phase2ServerConfirmedLifecycleTest",
+            "time": 0.142,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "missedRealtimeConfirmation_recoversThroughServerReadBack",
+            "classname": "com.example.Phase2ServerConfirmedLifecycleTest",
+            "time": 0.115,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "concurrentRemoteWriter_doesNotAdvanceVersionBeforeStateApply",
+            "classname": "com.example.Phase2ServerConfirmedLifecycleTest",
+            "time": 0.121,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "twoDeviceConvergence_reconcilesToServerState",
+            "classname": "com.example.Phase2ServerConfirmedLifecycleTest",
+            "time": 0.114,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "productionPathOracle_usesRealSyncProductionPath",
+            "classname": "com.example.Phase2ServerConfirmedLifecycleTest",
+            "time": 0.101,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "pushSuccess_serverReadBackFailure_doesNotReplayOutboxMutation",
+            "classname": "com.example.Phase2ServerConfirmedLifecycleTest",
+            "time": 0.144,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "duplicateConfirmation_isIdempotent",
+            "classname": "com.example.Phase2ServerConfirmedLifecycleTest",
+            "time": 0.143,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "delete_usesServerConfirmedTombstoneVersion",
+            "classname": "com.example.Phase2ServerConfirmedLifecycleTest",
+            "time": 0.264,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "nonFinalServerTimestamp_doesNotCreateRemoteVersion",
+            "classname": "com.example.Phase2ServerConfirmedLifecycleTest",
+            "time": 0.095,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "mutationIdMismatch_isNotAcceptedAsLocalConfirmation",
+            "classname": "com.example.Phase2ServerConfirmedLifecycleTest",
+            "time": 0.06,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.Phase3CoordinatorMutexTokenTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.292,
+        "testcases": [
+          {
+            "name": "directReEntrantCall_doesNotDeadlock",
+            "classname": "com.example.Phase3CoordinatorMutexTokenTest",
+            "time": 0.059,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "tryWithOperation_respectsMutexAndSetsMode",
+            "classname": "com.example.Phase3CoordinatorMutexTokenTest",
+            "time": 0.089,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "childCoroutine_cannotBypassMutex",
+            "classname": "com.example.Phase3CoordinatorMutexTokenTest",
+            "time": 0.141,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.Phase5SettingsSyncUnifiedCallerTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 1.243,
+        "testcases": [
+          {
+            "name": "concurrentTriggers_serializeUnderMutexSafely",
+            "classname": "com.example.Phase5SettingsSyncUnifiedCallerTest",
+            "time": 0.659,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "triggerReasons_areDescriptiveAndDocumented",
+            "classname": "com.example.Phase5SettingsSyncUnifiedCallerTest",
+            "time": 0.083,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "callersContract_localPreferencesUpdatedImmediatelyWithoutAwaitingRemoteSync",
+            "classname": "com.example.Phase5SettingsSyncUnifiedCallerTest",
+            "time": 0.154,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "syncRepositoryInterface_exposesOnlyTriggerSettingsSync",
+            "classname": "com.example.Phase5SettingsSyncUnifiedCallerTest",
+            "time": 0.055,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "structuralGuard_zeroDirectSyncUserSettingsCallersOutsideTrigger",
+            "classname": "com.example.Phase5SettingsSyncUnifiedCallerTest",
+            "time": 0.259,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      },
+      {
+        "name": "com.example.ResolveLocalVersionTest",
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 0.683,
+        "testcases": [
+          {
+            "name": "untrackedEntity_legacyEntity_returnsNullFallback",
+            "classname": "com.example.ResolveLocalVersionTest",
+            "time": 0.141,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testResolveLedger_allThreeStates",
+            "classname": "com.example.ResolveLocalVersionTest",
+            "time": 0.142,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "untrackedEntity_withLegacyTimestampAboveBoundary_returnsNull",
+            "classname": "com.example.ResolveLocalVersionTest",
+            "time": 0.047,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "serverTrackedVersion_returnsServerVersion",
+            "classname": "com.example.ResolveLocalVersionTest",
+            "time": 0.079,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testResolveAccount_allThreeStates",
+            "classname": "com.example.ResolveLocalVersionTest",
+            "time": 0.093,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "testResolveBatch_allThreeStates",
+            "classname": "com.example.ResolveLocalVersionTest",
+            "time": 0.048,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "newEntity_returnsNew",
+            "classname": "com.example.ResolveLocalVersionTest",
+            "time": 0.073,
+            "status": "PASS",
+            "failure_message": ""
+          },
+          {
+            "name": "untrackedEntity_withLegacyTimestamp_returnsFallback",
+            "classname": "com.example.ResolveLocalVersionTest",
+            "time": 0.044,
+            "status": "PASS",
+            "failure_message": ""
+          }
+        ]
+      }
+    ]
+  },
+  "structural_checks": {
+    "forbidden_patterns_scan": {
+      "status": "PASS",
+      "details": "Scanned 14 registered patterns across repository. Found 0 violation(s).",
+      "total_patterns_scanned": 14,
+      "violations_count": 0,
+      "violations": [],
+      "violation_details": [],
+      "pattern_results": {
+        "RC-1-remote-version-fallback": {
+          "status": "PASS",
+          "invariant": "INV-06",
+          "description": "Forbidden local timestamp fallback when remote version is absent",
+          "violations_count": 0,
+          "violations": [],
+          "violation_details": []
+        },
+        "RC-1-v2-inline-version-resolution": {
+          "status": "PASS",
+          "invariant": "INV-06",
+          "description": "Forbidden inline local timestamp fallback or resolution outside resolveLocalVersion()",
+          "violations_count": 0,
+          "violations": [],
+          "violation_details": []
+        },
+        "RC-1-v3-push-without-version-record": {
+          "status": "PASS",
+          "invariant": "INV-06",
+          "description": "Successful push and server-confirmed version capture must be separate lifecycle steps",
+          "violations_count": 0,
+          "violations": [],
+          "violation_details": []
+        },
+        "RC-3-settings-device-clock": {
+          "status": "PASS",
+          "invariant": "INV-06",
+          "description": "Forbidden device clock usage for distributed settings winner selection",
+          "violations_count": 0,
+          "violations": [],
+          "violation_details": []
+        },
+        "RC-4-coordinator-bypass": {
+          "status": "PASS",
+          "invariant": "INV-11",
+          "description": "Forbidden currentMode bypass check in BackupManager",
+          "violations_count": 0,
+          "violations": [],
+          "violation_details": []
+        },
+        "RC-6-release-dry-run": {
+          "status": "PASS",
+          "invariant": "INV-15",
+          "description": "Forbidden --dry-run bypass in release build verification and production gates",
+          "violations_count": 0,
+          "violations": [],
+          "violation_details": []
+        },
+        "INV-03-direct-firestore-ui": {
+          "status": "PASS",
+          "invariant": "INV-03",
+          "description": "Forbidden direct Firestore call in ViewModels or UI layer",
+          "violations_count": 0,
+          "violations": [],
+          "violation_details": []
+        },
+        "INV-16-hardcoded-closure-status": {
+          "status": "PASS",
+          "invariant": "INV-16",
+          "description": "Forbidden hardcoded CLOSED status claims in reports or scripts without machine evidence",
+          "violations_count": 0,
+          "violations": [],
+          "violation_details": []
+        },
+        "PHASE2-PENDING-REMOTE-VERSION": {
+          "status": "PASS",
+          "invariant": "INV-06",
+          "description": "Pending-write branches must never establish authoritative remote_version",
+          "violations_count": 0,
+          "violations": [],
+          "violation_details": []
+        },
+        "PHASE2-CACHE-VERSION": {
+          "status": "PASS",
+          "invariant": "INV-06",
+          "description": "Cache/local snapshots must not establish authoritative remote_version",
+          "violations_count": 0,
+          "violations": [],
+          "violation_details": []
+        },
+        "PHASE2-LOCAL-TIMESTAMP-VERSION": {
+          "status": "PASS",
+          "invariant": "INV-06",
+          "description": "Business/device timestamps must never become authoritative remote_version",
+          "violations_count": 0,
+          "violations": [],
+          "violation_details": []
+        },
+        "PHASE2-VERSION-AHEAD-OF-STATE": {
+          "status": "PASS",
+          "invariant": "INV-06",
+          "description": "remote_version must not advance beyond the state represented locally",
+          "violations_count": 0,
+          "violations": [],
+          "violation_details": []
+        },
+        "PHASE2-REPLAY-AFTER-CAPTURE-FAILURE": {
+          "status": "PASS",
+          "invariant": "INV-06",
+          "description": "Successful push must not be replayed because version capture failed",
+          "violations_count": 0,
+          "violations": [],
+          "violation_details": []
+        },
+        "RC-5-direct-settings-sync-caller": {
+          "status": "PASS",
+          "invariant": "INV-10",
+          "description": "Forbidden direct invocation of syncUserSettings() outside canonical SyncRepository triggerSettingsSync()",
+          "violations_count": 0,
+          "violations": [],
+          "violation_details": []
+        }
+      },
+      "timestamp": "2026-08-15T16:10:34.692470+00:00"
+    },
+    "invariant_contract_consistency": {
+      "status": "PASS",
+      "details": "Canonical invariant contract matches all requirements (INV-01..INV-16).",
+      "timestamp": "2026-08-15T16:10:34.692470+00:00"
+    },
+    "baseline_manifest_verified": {
+      "status": "PASS",
+      "details": {
+        "baseline_manifest_sha256": "e3f51afa4017c727c61117e9686ac6002192891067570a88e96430c89aff5369",
+        "baseline_test_manifest_sha256": "4d0442a8ab967750f927bf647ff8b1027dc6d15323443a9e13bd0e987db992f8"
+      },
+      "timestamp": "2026-08-15T16:10:34.692470+00:00"
+    },
+    "gradlew_executable_mode_check": {
+      "status": "PASS",
+      "details": "gradlew filesystem executable mode verified: 0o100755",
+      "timestamp": "2026-08-15T16:10:34.692470+00:00"
+    },
+    "release_build_gate_check": {
+      "status": "PASS",
+      "details": "Fail-closed release signing validation present in build.gradle.kts",
+      "timestamp": "2026-08-15T16:10:34.692470+00:00"
+    }
+  },
+  "artifact_checks": {
+    "PRODUCTION_INVARIANTS.md": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "bfcdc652e975607797aa2ced4acf7ab204c6a00397b501ba7377611e31de99d5",
+      "path": "PRODUCTION_INVARIANTS.md"
+    },
+    "app/build.gradle.kts": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "51db9b2e82b2cf7584b8c0e981fcac6eb2266fcef4d8794fea0cab613cea07a4",
+      "path": "app/build.gradle.kts"
+    },
+    "app/src/main/java/com/example/core/backup/BackupManager.kt": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "5d2a42e805301351ab2ee0fb408bef3ba0aa76c4e2ca4b965c0344f9d168c70b",
+      "path": "app/src/main/java/com/example/core/backup/BackupManager.kt"
+    },
+    "app/src/main/java/com/example/core/database/AppDatabase.kt": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "4133589d038735bf668d3d49c074ff7f87431b6634ac5a9777581618ab4bffd0",
+      "path": "app/src/main/java/com/example/core/database/AppDatabase.kt"
+    },
+    "app/src/main/java/com/example/core/ledger/BalanceCalculator.kt": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "a025893b4d58fb2db06b1c4a8f891cfec4245c768506b8c4a81fb19c2cc2738f",
+      "path": "app/src/main/java/com/example/core/ledger/BalanceCalculator.kt"
+    },
+    "app/src/main/java/com/example/core/sync/DataOperationCoordinator.kt": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "7022f449a7f2c5793b67bc1707d853e61c1a3a076b3e74002617dba020034055",
+      "path": "app/src/main/java/com/example/core/sync/DataOperationCoordinator.kt"
+    },
+    "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "1cbc6aeb05860d702122e485d8afa5c2ea5a2a20868ea6d9297d6950700c31c6",
+      "path": "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt"
+    },
+    "app/src/main/java/com/example/core/sync/SyncConflictResolver.kt": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "4a248065a53dca4c73606f47a341486e23eebabbea9ec9343925c193a5f82072",
+      "path": "app/src/main/java/com/example/core/sync/SyncConflictResolver.kt"
+    },
+    "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "7bd4511b3e69bb6ba3a1cee7295250687d0864d736d5c6a7c656866d3ae6eca1",
+      "path": "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    },
+    "app/src/main/java/com/example/core/sync/UtowerImporter.kt": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "e0705072982e6be71964f17df81c677b4da17f1db35e2f38b5271e2b4d6a5731",
+      "path": "app/src/main/java/com/example/core/sync/UtowerImporter.kt"
+    },
+    "app/src/main/java/com/example/data/repository/Repositories.kt": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "97f731521280ad1caa20c8883818c0dd00cfe65cb3d893d4f2614436f80550a4",
+      "path": "app/src/main/java/com/example/data/repository/Repositories.kt"
+    },
+    "contract/invariant_contract.yaml": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "fae45bf98e4f9cd6c04d912508c47d60ad123f1af6f9b4ac5b9eb53e0f9a9ddd",
+      "path": "contract/invariant_contract.yaml"
+    },
+    "contract/invariant_test_map.yaml": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "aecd247637388db436430cc6ba8d3f327ba6929fe39ba6b8a03ce3efafccfe19",
+      "path": "contract/invariant_test_map.yaml"
+    },
+    "evidence/baseline_manifest.json": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "e3f51afa4017c727c61117e9686ac6002192891067570a88e96430c89aff5369",
+      "path": "evidence/baseline_manifest.json"
+    },
+    "evidence/baseline_test_manifest.json": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "4d0442a8ab967750f927bf647ff8b1027dc6d15323443a9e13bd0e987db992f8",
+      "path": "evidence/baseline_test_manifest.json"
+    },
+    "gradle/wrapper/gradle-wrapper.properties": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "a180163249c7252412ddaee1c7adcf59f6494b1183136f690fbd9a3b8aaed00e",
+      "path": "gradle/wrapper/gradle-wrapper.properties"
+    },
+    "gradlew": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "fb68debc1b1acf8ec55dc0d5e5495e1dedd0bd6b61f304bee61613eeb2bd9b92",
+      "path": "gradlew"
+    },
+    "gradlew.bat": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "fedad02c18e266ec094995a5751b7fe1eb6e74f66bf75db64fae2e50eb22c234",
+      "path": "gradlew.bat"
+    },
+    "scripts/production_gate.ps1": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "9074a6226234ca892b06bc79fcd320d3386d99bb5b8129da1b7492942504765d",
+      "path": "scripts/production_gate.ps1"
+    },
+    "scripts/production_gate.sh": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "5cda58723400bc006e8c9d167cb4202e4dbb88d1415661e98007b114303ddd2d",
+      "path": "scripts/production_gate.sh"
+    },
+    "evidence_bundle_verified": {
+      "status": "PASS",
+      "exists": true,
+      "sha256": "self_referential_bundle_verification",
+      "path": "evidence/<source_sha>/closure_bundle.json"
+    }
+  }
+}

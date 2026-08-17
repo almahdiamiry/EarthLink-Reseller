@@ -1,0 +1,271 @@
+# Earthlink Reseller App — Closure Contract
+# Version: 1.0.0
+# Authoritative Invariant Source: PRODUCTION_INVARIANTS.md (INV-01 .. INV-17)
+
+schema_version: "1.0"
+closure_rule_default: "ALL_REQUIRED_CHECKS_PASS"
+
+findings:
+  - id: "RC-1"
+    title: "Remote-Version Bootstrap & Fallback Removal"
+    invariant: "INV-06"
+    severity: "P0"
+    state_model:
+      - "structural"
+      - "behavioral"
+      - "evidence"
+    required_checks:
+      structural:
+        - "forbidden_patterns_scan"
+      behavioral:
+        - "ResolveLocalVersionTest"
+        - "Phase2RemoteVersionAdversarialTest"
+        - "Phase2ServerConfirmedLifecycleTest"
+      artifact:
+        - "evidence_bundle_verified"
+    source_paths:
+      - "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt"
+      - "app/src/main/java/com/example/core/sync/SyncConflictResolver.kt"
+    closure_rule: "ALL_REQUIRED_CHECKS_PASS"
+
+  - id: "RC-2"
+    title: "Akamel Historical Source Immutability & Debt Baseline"
+    invariant: "INV-02"
+    severity: "P0"
+    state_model:
+      - "structural"
+      - "behavioral"
+      - "evidence"
+    required_checks:
+      structural:
+        - "forbidden_patterns_scan"
+      behavioral:
+        - "ResolveLocalVersionTest"
+        - "Phase2ServerConfirmedLifecycleTest"
+      artifact:
+        - "evidence_bundle_verified"
+    source_paths:
+      - "app/src/main/java/com/example/core/sync/UtowerImporter.kt"
+      - "app/src/main/java/com/example/data/repository/Repositories.kt"
+    closure_rule: "ALL_REQUIRED_CHECKS_PASS"
+
+  - id: "RC-3"
+    title: "Distributed Settings Winner Selection & Device Clock Independence"
+    invariant: "INV-06"
+    severity: "P0"
+    state_model:
+      - "structural"
+      - "behavioral"
+      - "evidence"
+    required_checks:
+      structural:
+        - "forbidden_patterns_scan"
+      behavioral:
+        - "Phase2RemoteVersionAdversarialTest"
+        - "Phase2ServerConfirmedLifecycleTest"
+      artifact:
+        - "evidence_bundle_verified"
+    source_paths:
+      - "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    closure_rule: "ALL_REQUIRED_CHECKS_PASS"
+
+  - id: "RC-4"
+    title: "DataOperationCoordinator Concurrency & Safe Lock Acquisition"
+    invariant: "INV-11"
+    severity: "P0"
+    state_model:
+      - "structural"
+      - "behavioral"
+      - "evidence"
+    required_checks:
+      structural:
+        - "forbidden_patterns_scan"
+      behavioral:
+        - "Phase3CoordinatorMutexTokenTest"
+      artifact:
+        - "evidence_bundle_verified"
+    source_paths:
+      - "app/src/main/java/com/example/core/sync/DataOperationCoordinator.kt"
+      - "app/src/main/java/com/example/core/backup/BackupManager.kt"
+    closure_rule: "ALL_REQUIRED_CHECKS_PASS"
+
+  - id: "RC-5"
+    title: "Restore Protocol Atomicity & Cursor Reset"
+    invariant: "INV-13"
+    severity: "P0"
+    state_model:
+      - "structural"
+      - "behavioral"
+      - "evidence"
+    required_checks:
+      structural:
+        - "forbidden_patterns_scan"
+      behavioral:
+        - "Phase3CoordinatorMutexTokenTest"
+      artifact:
+        - "evidence_bundle_verified"
+    source_paths:
+      - "app/src/main/java/com/example/core/backup/BackupManager.kt"
+    closure_rule: "ALL_REQUIRED_CHECKS_PASS"
+
+  - id: "RC-6-release-build"
+    title: "Fail-Closed Release Signing Gate"
+    invariant: "INV-15"
+    severity: "P0"
+    state_model:
+      - "structural"
+      - "behavioral"
+      - "evidence"
+    required_checks:
+      structural:
+        - "forbidden_patterns_scan"
+        - "release_build_gate_check"
+      behavioral:
+        - "Phase2ServerConfirmedLifecycleTest"
+      artifact:
+        - "evidence_bundle_verified"
+    source_paths:
+      - "app/build.gradle.kts"
+      - "scripts/production_gate.sh"
+      - "scripts/production_gate.ps1"
+    closure_rule: "ALL_REQUIRED_CHECKS_PASS"
+
+  - id: "B6/D-05"
+    title: "Room Database Local Single Source of Truth & Failed Import Eligibility"
+    invariant: "INV-03"
+    severity: "P0"
+    state_model:
+      - "structural"
+      - "behavioral"
+      - "evidence"
+    required_checks:
+      structural:
+        - "forbidden_patterns_scan"
+      behavioral:
+        - "ResolveLocalVersionTest"
+      artifact:
+        - "evidence_bundle_verified"
+    source_paths:
+      - "app/src/main/java/com/example/core/database/AppDatabase.kt"
+    closure_rule: "ALL_REQUIRED_CHECKS_PASS"
+
+  - id: "INV-TEST-MAP-DRIFT"
+    title: "Invariant-Test Mapping Consistency"
+    invariant: "INV-16"
+    severity: "P0"
+    state_model:
+      - "structural"
+      - "behavioral"
+      - "evidence"
+    required_checks:
+      structural:
+        - "invariant_contract_consistency"
+      behavioral:
+        - "Phase2ServerConfirmedLifecycleTest"
+      artifact:
+        - "evidence_bundle_verified"
+    source_paths:
+      - "PRODUCTION_INVARIANTS.md"
+      - "contract/invariant_contract.yaml"
+      - "contract/invariant_test_map.yaml"
+    closure_rule: "ALL_REQUIRED_CHECKS_PASS"
+
+  - id: "COORDINATOR-DIRECT-MUTATION"
+    title: "Prohibition of Uncoordinated Mutation Channels"
+    invariant: "INV-11"
+    severity: "P0"
+    state_model:
+      - "structural"
+      - "behavioral"
+      - "evidence"
+    required_checks:
+      structural:
+        - "forbidden_patterns_scan"
+      behavioral:
+        - "Phase3CoordinatorMutexTokenTest"
+      artifact:
+        - "evidence_bundle_verified"
+    source_paths:
+      - "app/src/main/java/com/example/core/sync/DataOperationCoordinator.kt"
+    closure_rule: "ALL_REQUIRED_CHECKS_PASS"
+
+  - id: "IMPORT-SNAPSHOT-BOUNDARY"
+    title: "Zero Double-Application of Historical Import Debt"
+    invariant: "INV-04"
+    severity: "P0"
+    state_model:
+      - "structural"
+      - "behavioral"
+      - "evidence"
+    required_checks:
+      structural:
+        - "forbidden_patterns_scan"
+      behavioral:
+        - "ResolveLocalVersionTest"
+      artifact:
+        - "evidence_bundle_verified"
+    source_paths:
+      - "app/src/main/java/com/example/core/ledger/BalanceCalculator.kt"
+    closure_rule: "ALL_REQUIRED_CHECKS_PASS"
+
+  - id: "EVIDENCE-SOURCE-ID"
+    title: "Evidence Tying to Machine Source SHA and Invariant Hash"
+    invariant: "INV-16"
+    severity: "P0"
+    state_model:
+      - "structural"
+      - "behavioral"
+      - "evidence"
+    required_checks:
+      structural:
+        - "baseline_manifest_verified"
+      behavioral:
+        - "Phase2ServerConfirmedLifecycleTest"
+      artifact:
+        - "evidence_bundle_verified"
+    source_paths:
+      - "evidence/baseline_manifest.json"
+      - "evidence/baseline_test_manifest.json"
+    closure_rule: "ALL_REQUIRED_CHECKS_PASS"
+
+  - id: "WRAPPER-REPRODUCIBILITY"
+    title: "Reproducible Toolchain & Gradle Wrapper Executable Permission"
+    invariant: "INV-16"
+    severity: "P0"
+    state_model:
+      - "structural"
+      - "behavioral"
+      - "evidence"
+    required_checks:
+      structural:
+        - "gradlew_executable_mode_check"
+      behavioral:
+        - "Phase2ServerConfirmedLifecycleTest"
+      artifact:
+        - "evidence_bundle_verified"
+    source_paths:
+      - "gradlew"
+      - "gradlew.bat"
+      - "gradle/wrapper/gradle-wrapper.properties"
+    closure_rule: "ALL_REQUIRED_CHECKS_PASS"
+
+  - id: "VERSION-DRIFT"
+    title: "Release Metadata & Version Drift Guard"
+    invariant: "INV-16"
+    severity: "P0"
+    state_model:
+      - "structural"
+      - "behavioral"
+      - "evidence"
+    required_checks:
+      structural:
+        - "invariant_contract_consistency"
+      behavioral:
+        - "Phase2ServerConfirmedLifecycleTest"
+      artifact:
+        - "evidence_bundle_verified"
+    source_paths:
+      - "app/build.gradle.kts"
+      - "contract/invariant_contract.yaml"
+      - "PRODUCTION_INVARIANTS.md"
+    closure_rule: "ALL_REQUIRED_CHECKS_PASS"

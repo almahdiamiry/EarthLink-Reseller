@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">Earthlink Reseller</string>
+    <string name="header_earthlink_mobile">Earthlink Mobile</string>
+    <string name="header_reseller_manager">Reseller Network Manager</string>
+    <string name="action_search">Search</string>
+    <string name="action_sort_filter">Sorting / Filtering</string>
+    <string name="action_add_user">Add User</string>
+    <string name="title_subscription_renewal">Subscription Renewal</string>
+    <string name="label_subscription_price">Subscription Price</string>
+    <string name="label_all">All</string>
+    <string name="label_connected">Connected</string>
+    <string name="label_active">Active</string>
+    <string name="label_disconnected">Disconnected</string>
+    <string name="label_near_expiry">Near Expiry</string>
+    <string name="label_expired">Expired</string>
+    <string name="label_total_subscribers">Total Subscribers</string>
+</resources>

@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0",
+  "source_identity": {
+    "git_sha": "51a3dbe7804a45ee20b8060999e4daa8331dfc13",
+    "expected_git_sha": "51a3dbe7804a45ee20b8060999e4daa8331dfc13",
+    "git_sha_matched": true,
+    "git_status_porcelain": [
+      "M CHANGELOG.md",
+      " M PROJECT_ROADMAP.md",
+      " M app/build.gradle.kts",
+      " M app/src/main/java/com/example/core/backup/BackupManager.kt",
+      " M app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt",
+      " M app/src/main/java/com/example/core/sync/SyncConflictResolver.kt",
+      " M app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt",
+      " M app/src/main/java/com/example/core/sync/UtowerImporter.kt",
+      "M  gradlew",
+      " M scripts/production_gate.sh",
+      "?? .superpowers/",
+      "?? BASELINE_AND_CHANGESET_AUDIT.md",
+      "?? EARTHLINK_EXIT_LOOP_EVIDENCE_LOCKED_CLOSURE_PLAN.md",
+      "?? \"INDEPENDENT PRODUCTION READINESS AUDIT.txt\"",
+      "?? INDEPENDENT_PRODUCTION_READINESS_AUDIT.md",
+      "?? PRODUCTION_CONTRACT_MATRIX.md",
+      "?? PRODUCTION_CONTRACT_RECONCILIATION_FINAL_PLAN.md",
+      "?? contract/",
+      "?? \"earthlink-reseller-v1 (68).zip\"",
+      "?? evidence/",
+      "?? scripts/production_gate.ps1"
+    ],
+    "gradlew_git_mode": "100755 adff685a0348c64b2b64f0b302f1f82b28eeaaea 0\tgradlew"
+  },
+  "contract_identity": {
+    "production_invariants_file": "PRODUCTION_INVARIANTS.md",
+    "production_invariants_sha256": "e2b54de2d9ba16ef8e0ae264d4a21436e6225438102b78e97e930cc65ca7b32c",
+    "baseline_test_manifest_file": "evidence/baseline_test_manifest.json",
+    "baseline_test_manifest_sha256": "4d0442a8ab967750f927bf647ff8b1027dc6d15323443a9e13bd0e987db992f8",
+    "test_count": 98
+  },
+  "toolchain": {
+    "os": "Windows 11 10.0 amd64",
+    "java_version": "openjdk version \"17.0.20\" 2026-07-21",
+    "gradle_version": "Gradle 9.3.1",
+    "python_version": "3.12.10",
+    "kotlin_version": "2.2.21"
+  },
+  "certification_execution_baseline": {
+    "command": "./gradlew :app:testDebugUnitTest --tests com.example.FinalTestMatrixCertificationTest --tests com.example.ProductionCertificationPipelineTest --tests com.example.ProductionExecutableInvariantsTest --tests com.example.DeepCrossLayerInvariantsTest",
+    "status": "PASS",
+    "exit_code": 0,
+    "description": "Primary certification test suite executes cleanly and passes all assertions"
+  }
+}

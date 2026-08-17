@@ -1,0 +1,10 @@
+Testing [lenient=false]: 11/12/2026 10:15:30
+  MATCHED dd/MM/yyyy HH:mm:ss -> Fri Dec 11 10:15:30 UTC 2026
+Testing [lenient=false]: 11-12-2026 10:15:30
+  MATCHED dd-MM-yyyy HH:mm:ss -> Fri Dec 11 10:15:30 UTC 2026
+Testing [lenient=false]: 2026-12-11 10:15:30
+  MATCHED yyyy-MM-dd HH:mm:ss -> Fri Dec 11 10:15:30 UTC 2026
+Testing [lenient=false]: 11/12/2026
+  MATCHED dd/MM/yyyy -> Fri Dec 11 00:00:00 UTC 2026
+Testing [lenient=false]: 2026/06/13 10:15:30
+  MATCHED yyyy/MM/dd HH:mm:ss -> Sat Jun 13 10:15:30 UTC 2026

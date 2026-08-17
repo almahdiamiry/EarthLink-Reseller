@@ -1,0 +1,170 @@
+# Earthlink Reseller App — Invariant-to-Test Mapping
+# Invariants Authoritative Source: PRODUCTION_INVARIANTS.md
+# Version: 1.0.0
+
+invariants:
+  - id: "INV-01"
+    name: "Four Distinct State Tiers"
+    production_sources:
+      - "app/src/main/java/com/example/core/model/Models.kt"
+      - "app/src/main/java/com/example/core/model/StateOwnershipContract.kt"
+      - "app/src/main/java/com/example/core/database/AppDatabase.kt"
+    tests:
+      - "app/src/test/java/com/example/StateOwnershipCrossLayerTest.kt"
+      - "app/src/test/java/com/example/ProductionExecutableInvariantsTest.kt"
+      - "app/src/test/java/com/example/FinalTestMatrixCertificationTest.kt"
+
+  - id: "INV-02"
+    name: "Historical Source Immutability"
+    production_sources:
+      - "app/src/main/java/com/example/core/sync/UtowerImporter.kt"
+      - "app/src/main/java/com/example/data/repository/Repositories.kt"
+      - "app/src/main/java/com/example/core/database/AppDatabase.kt"
+    tests:
+      - "app/src/test/java/com/example/UtowerImporterAkamelTest.kt"
+      - "app/src/test/java/com/example/AkamelRegressionTest.kt"
+      - "app/src/test/java/com/example/SameLedgerSetProducesSameBalanceTest.kt"
+
+  - id: "INV-03"
+    name: "Single Source of Truth"
+    production_sources:
+      - "app/src/main/java/com/example/core/database/AppDatabase.kt"
+      - "app/src/main/java/com/example/data/repository/Repositories.kt"
+      - "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    tests:
+      - "app/src/test/java/com/example/SingleSourceOfTruthRuleTest.kt"
+      - "app/src/test/java/com/example/RoomNoNetworkIOTest.kt"
+      - "app/src/test/java/com/example/LocalAccountsViewModelImportTest.kt"
+
+  - id: "INV-04"
+    name: "Zero Double-Application"
+    production_sources:
+      - "app/src/main/java/com/example/core/ledger/BalanceCalculator.kt"
+      - "app/src/main/java/com/example/core/database/AppDatabase.kt"
+      - "app/src/main/java/com/example/data/repository/Repositories.kt"
+      - "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt"
+    tests:
+      - "app/src/test/java/com/example/SnapshotMigrationAndRestoreTests.kt"
+      - "app/src/test/java/com/example/MergeBalanceRegressionTest.kt"
+      - "app/src/test/java/com/example/RecalculateAccountHistoryTest.kt"
+
+  - id: "INV-05"
+    name: "One State, One Authority"
+    production_sources:
+      - "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt"
+      - "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    tests:
+      - "app/src/test/java/com/example/DeepCrossLayerInvariantsTest.kt"
+      - "app/src/test/java/com/example/InfiniteCycleAdversarialIntegrationTest.kt"
+
+  - id: "INV-06"
+    name: "One Authoritative Remote Version Domain"
+    production_sources:
+      - "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt"
+      - "app/src/main/java/com/example/core/sync/SyncConflictResolver.kt"
+      - "app/src/main/java/com/example/core/sync/RemoteSyncCursor.kt"
+      - "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    tests:
+      - "app/src/test/java/com/example/AuthoritativeRemoteVersionDomainRegressionTest.kt"
+      - "app/src/test/java/com/example/ClockSkewCannotChangeRemoteOrderingTest.kt"
+      - "app/src/test/java/com/example/MissingRemoteTimestampIsNotLocalVersionTest.kt"
+
+  - id: "INV-07"
+    name: "Composite Cursor Advancement"
+    production_sources:
+      - "app/src/main/java/com/example/core/sync/RemoteSyncCursor.kt"
+      - "app/src/main/java/com/example/core/sync/EventSyncResult.kt"
+      - "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    tests:
+      - "app/src/test/java/com/example/PerCollectionSyncCursorTest.kt"
+      - "app/src/test/java/com/example/CursorDocumentIdPreservationTest.kt"
+      - "app/src/test/java/com/example/EventSyncResultCursorAdvancementTest.kt"
+      - "app/src/test/java/com/example/FailedRemoteEventCursorAdvancementTest.kt"
+
+  - id: "INV-08"
+    name: "Realtime Echo Isolation"
+    production_sources:
+      - "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    tests:
+      - "app/src/test/java/com/example/RealtimeEventSemanticsRegressionTest.kt"
+      - "app/src/test/java/com/example/RemoteEventDualPathTest.kt"
+
+  - id: "INV-09"
+    name: "Query Membership != Business Deletion"
+    production_sources:
+      - "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+      - "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt"
+    tests:
+      - "app/src/test/java/com/example/RealtimeEventSemanticsRegressionTest.kt"
+      - "app/src/test/java/com/example/DeletionOrderingAndMonotonicityTest.kt"
+
+  - id: "INV-10"
+    name: "Deterministic Convergence"
+    production_sources:
+      - "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+      - "app/src/main/java/com/example/core/sync/SyncConflictResolver.kt"
+    tests:
+      - "app/src/test/java/com/example/TwoDeviceSettingsConvergenceTest.kt"
+      - "app/src/test/java/com/example/FinalProductionConvergenceAdversarialTest.kt"
+
+  - id: "INV-11"
+    name: "Canonical Runtime Mutation Channel"
+    production_sources:
+      - "app/src/main/java/com/example/core/sync/DataOperationCoordinator.kt"
+      - "app/src/main/java/com/example/core/backup/BackupManager.kt"
+      - "app/src/main/java/com/example/ui/viewmodels/DashboardViewModel.kt"
+    tests:
+      - "app/src/test/java/com/example/CoordinatorOwnershipRegressionTest.kt"
+      - "app/src/test/java/com/example/DataOperationCoordinatorConcurrencyTest.kt"
+      - "app/src/test/java/com/example/MaintenanceLockExclusiveSyncTest.kt"
+
+  - id: "INV-12"
+    name: "No Outbox Loops on Remote Apply"
+    production_sources:
+      - "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt"
+      - "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+      - "app/src/main/java/com/example/data/repository/Repositories.kt"
+    tests:
+      - "app/src/test/java/com/example/RemoteApplyDoesNotCreateOutboxTest.kt"
+      - "app/src/test/java/com/example/RecalculateRemoteDoesNotCreateOutboxTest.kt"
+      - "app/src/test/java/com/example/AuditDoesNotTriggerSyncRegressionTest.kt"
+
+  - id: "INV-13"
+    name: "Mutual Exclusion of High-Impact Data Operations"
+    production_sources:
+      - "app/src/main/java/com/example/core/sync/DataOperationCoordinator.kt"
+      - "app/src/main/java/com/example/core/backup/BackupManager.kt"
+      - "app/src/main/java/com/example/core/sync/UtowerImporter.kt"
+    tests:
+      - "app/src/test/java/com/example/ImportSyncBarrierTest.kt"
+      - "app/src/test/java/com/example/BackupSecurityVerificationTest.kt"
+      - "app/src/test/java/com/example/RestoreProtocolTest.kt"
+
+  - id: "INV-14"
+    name: "Fail-Closed Encryption & Key Recovery"
+    production_sources:
+      - "app/src/main/java/com/example/core/security/PreferenceManager.kt"
+      - "app/src/main/java/com/example/core/database/AppDatabase.kt"
+    tests:
+      - "app/src/test/java/com/example/KeyRecoveryAndFailClosedEncryptionTest.kt"
+      - "app/src/test/java/com/example/SecurityFallbackGuardTest.kt"
+
+  - id: "INV-15"
+    name: "Fail-Closed Release Signing"
+    production_sources:
+      - "app/build.gradle.kts"
+      - "scripts/production_gate.sh"
+    tests:
+      - "app/src/test/java/com/example/ProductionCertificationPipelineTest.kt"
+
+  - id: "INV-16"
+    name: "Immutable Certification Evidence"
+    production_sources:
+      - "evidence/baseline_manifest.json"
+      - "evidence/baseline_test_manifest.json"
+      - "scripts/production_gate.sh"
+    tests:
+      - "app/src/test/java/com/example/FinalTestMatrixCertificationTest.kt"
+      - "app/src/test/java/com/example/ProductionCertificationPipelineTest.kt"
+      - "app/src/test/java/com/example/ProductionExecutableInvariantsTest.kt"
+      - "app/src/test/java/com/example/DeepCrossLayerInvariantsTest.kt"

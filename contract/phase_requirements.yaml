@@ -1,0 +1,491 @@
+# CANONICAL REQUIREMENT MANIFEST
+# Aligned with Frozen Implementation Authority Bundle:
+#   1. docs/authority/Target Product Contract v0.6.md
+#   2. docs/authority/G1-G8 Consolidated Architecture Summary.md
+#   3. docs/authority/Final Independent Adjudication Memo.md
+#   4. docs/authority/EARTHLINK_IMPLEMENTATION_HANDOVER_APPENDIX_v1.0.md
+# Scope: G1-G8 Implementation Phases (Phase 0 through Phase 6)
+
+version: "2.0.0"
+governing_plan: "docs/authority/G1-G8 Consolidated Architecture Summary.md"
+governing_appendix: "docs/authority/EARTHLINK_IMPLEMENTATION_HANDOVER_APPENDIX_v1.0.md"
+scope: "G1-G8 Implementation Lifecycle (Phases 0 through 6)"
+
+requirements:
+  # =========================================================================
+  # PHASE 0: Repository, Documentation & Governance Alignment
+  # =========================================================================
+  - id: "P0-REQ-01"
+    phase: 0
+    source_anchor: "Handover Appendix Section 7 (Phase 0 - Alignment)"
+    requirement: "Inspect exact current artifact; remove, archive, or update obsolete plans and historical development artifacts to prevent architectural drift."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: true
+      registry: true
+      evidence: true
+    production_code_location: "scripts/verify_invariant_contract.py"
+    behavioral_test_location: "scripts/verify_invariant_contract.py"
+
+  - id: "P0-REQ-02"
+    phase: 0
+    source_anchor: "Handover Appendix Section 6.3 (Governance Alignment)"
+    requirement: "Align AGENTS.md, AI_DEVELOPMENT_GUIDE.md, and governance files to point exclusively to the Frozen Implementation Authority Bundle."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: false
+      adversarial_fixture: true
+      registry: true
+      evidence: true
+    production_code_location: "AGENTS.md"
+
+  - id: "P0-REQ-03"
+    phase: 0
+    source_anchor: "INV-17 / Meta-Gate Specification"
+    requirement: "Enforce bounded verification runner (run_verified_command.py) with strict timeout handling, process-tree termination, heartbeat emission, and NO-SOURCE detection."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: true
+      registry: false
+      evidence: true
+    production_code_location: "scripts/run_verified_command.py"
+    behavioral_test_location: "scripts/test_verified_runner_fixtures.py"
+
+  - id: "P0-REQ-04"
+    phase: 0
+    source_anchor: "Handover Appendix Section 6.2 (Documentation Drift Audit)"
+    requirement: "Add non-authoritative historical notices to all superseded documentation artifacts in docs/ to prevent obsolete mechanisms (e.g. DEAD_LETTER, global CRUD coordinator) from remaining as active instructions."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: false
+      adversarial_fixture: false
+      registry: false
+      evidence: true
+
+  - id: "P0-REQ-05"
+    phase: 0
+    source_anchor: "Handover Appendix Section 7 (Phase 0 Exit Criteria)"
+    requirement: "Pass all 6 control plane verification suites with zero failures and record complete baseline evidence."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: true
+      registry: true
+      evidence: true
+    production_code_location: "scripts/verify_test_environment_matrix.py"
+    behavioral_test_location: "scripts/test_meta_gate_fixtures.py"
+
+  # =========================================================================
+  # PHASE 1: G2 / Transport + G1 Durability Lane
+  # =========================================================================
+  - id: "P1-G2-REQ-01"
+    phase: 1
+    source_anchor: "G2 Summary & Handover Appendix Section 3 (Outbox Durability)"
+    requirement: "Eliminate DEAD_LETTER as a terminal business state for user mutations; all mutations in Outbox remain durable and retryable with bounded backoff and diagnostics (INV-13)."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: true
+      registry: true
+      evidence: true
+    production_code_location: "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    behavioral_test_location: "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+
+  - id: "P1-G2-REQ-02"
+    phase: 1
+    source_anchor: "G2 Summary (Per-Item Outbox & Poison Isolation)"
+    requirement: "Implement per-item outbox processing with poison mutation isolation so a single malformed or failing item does not halt the entire synchronization queue."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: false
+      registry: false
+      evidence: true
+    production_code_location: "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+
+  - id: "P1-G2-REQ-03"
+    phase: 1
+    source_anchor: "G2 Summary & Handover Appendix Section 7 (Orphan Handling)"
+    requirement: "Detect and safely handle orphaned outbox mutations whose target local database entity state has been superseded or removed."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: false
+      registry: false
+      evidence: true
+
+  - id: "P1-G2-REQ-04"
+    phase: 1
+    source_anchor: "G2 Summary & Handover Appendix Section 7 (Deterministic Document ID)"
+    requirement: "Enforce deterministic Firestore document identity across sync passes without key drift, ensuring 1:1 correspondence with local entity UUIDs."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: false
+      registry: true
+      evidence: true
+
+  - id: "P1-G2-REQ-05"
+    phase: 1
+    source_anchor: "G2 Summary & Handover Appendix Section 3 (Backup Transport Semantics)"
+    requirement: "Historical backup transport metadata is not current transport authority; backup import must not blindly replay historical outbox records, while valid current cloud obligations are not abandoned."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: false
+      registry: false
+      evidence: true
+
+  - id: "P1-G2-REQ-06"
+    phase: 1
+    source_anchor: "G1 Summary & Handover Appendix Section 2 (Direct Atomic Room & Outbox Boundary)"
+    requirement: "Confirmed financial ISP success atomically commits local ledger update, current-position recomputation, and cloud outbox record within the same local transaction boundary, guaranteeing ACID durability."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: false
+      registry: true
+      evidence: true
+
+  - id: "P1-G2-REQ-07"
+    phase: 1
+    source_anchor: "G2 Summary & Handover Appendix Section 9 (Firestore Lost-ACK Handling)"
+    requirement: "Provide runtime idempotent write re-execution and deduplication on reconnect scoped strictly to accepted transaction/document identity and outbox semantics (without generic reconciliation engine expansion)."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: true
+      registry: false
+      evidence: true
+
+  # =========================================================================
+  # PHASE 2: G3 / Restore & Import
+  # =========================================================================
+  - id: "P2-G3-REQ-01"
+    phase: 2
+    source_anchor: "G3 Summary & Handover Appendix Section 3 (Restore Merge)"
+    requirement: "Implement Restore Merge where all conflict decisions are evaluated prior to entering the final Room write transaction."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: false
+      registry: true
+      evidence: true
+
+  - id: "P2-G3-REQ-02"
+    phase: 2
+    source_anchor: "G3 Summary & Handover Appendix Section 3 (Complete-Lineage Resolution)"
+    requirement: "Enforce complete-lineage baseline conflict resolution: user selects a complete snapshot lineage (selected baseline + associated eligible ledger history); mixing disparate baselines and histories is strictly prohibited."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: true
+      registry: false
+      evidence: true
+    behavioral_test_location: "app/src/test/java/com/example/Phase2RemoteVersionAdversarialTest.kt"
+
+  - id: "P2-G3-REQ-03"
+    phase: 2
+    source_anchor: "G3 Summary & Handover Appendix Section 3 (Final Room Boundary)"
+    requirement: "Strictly prohibit UI interactions, network waiting, or external service calls inside the final Room business transaction."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: false
+      registry: true
+      evidence: true
+
+  - id: "P2-G3-REQ-04"
+    phase: 2
+    source_anchor: "G3 Summary & Handover Appendix Section 3 (Current Position Rebuild)"
+    requirement: "Compute current position deterministically from accepted baseline + eligible ledger history; stored balance totals are never treated as independent historical authority (INV-04)."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: false
+      registry: false
+      evidence: true
+
+  - id: "P2-G3-REQ-05"
+    phase: 2
+    source_anchor: "G3 Summary & Handover Appendix Section 7 (Restore/Import Transport Reconstruction)"
+    requirement: "Reconstruct transport state during Restore and Import safely without producing duplicate outbox events or uncoordinated mutations."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: false
+      registry: false
+      evidence: true
+
+  - id: "P2-G3-REQ-06"
+    phase: 2
+    source_anchor: "G3 Summary & Handover Appendix Section 9 (Direct Atomic Room Interruption Safety)"
+    requirement: "Ensure database consistency and transaction rollback safety during process death, crash, or resource exhaustion during bulk restore."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: false
+      registry: false
+      evidence: true
+
+  # =========================================================================
+  # PHASE 3: G4 / Concurrency & Lineage
+  # =========================================================================
+  - id: "P3-G4-REQ-01"
+    phase: 3
+    source_anchor: "G4 Summary & Handover Appendix Section 3 (G4 Lineage)"
+    requirement: "Store and initialize local G4 generation as the authoritative local lineage invalidation mechanism; remoteVersion is not a substitute (INV-05, INV-11)."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: false
+      registry: true
+      evidence: true
+    behavioral_test_location: "app/src/test/java/com/example/Phase3CoordinatorMutexTokenTest.kt"
+
+  - id: "P3-G4-REQ-02"
+    phase: 3
+    source_anchor: "G4 Summary & Handover Appendix Section 3 (Same-Transaction Validation)"
+    requirement: "Perform generation check and remote business-data apply atomically inside the exact same Room write transaction."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: false
+      registry: false
+      evidence: true
+
+  - id: "P3-G4-REQ-03"
+    phase: 3
+    source_anchor: "G4 Summary & Handover Appendix Section 3 (Full Dataset Invalidation)"
+    requirement: "Increment local generation upon Restore Replace, full dataset wipe, or sign-out with data clear, immediately invalidating any in-flight remote operations."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: false
+      registry: false
+      evidence: true
+
+  - id: "P3-G4-REQ-04"
+    phase: 3
+    source_anchor: "G4 Summary & Handover Appendix Section 3 (Same-Lineage Mutations)"
+    requirement: "Normal local financial mutations execute as same-lineage without incrementing generation unless concurrency evidence requires invalidating in-flight state."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: false
+      registry: false
+      evidence: true
+
+  - id: "P3-G4-REQ-05"
+    phase: 3
+    source_anchor: "G4 Summary & Handover Appendix Section 7 (Maintenance Exclusion & Lock Order)"
+    requirement: "Enforce clean lock hierarchy and prohibit network I/O or unbounded delays while holding local business or maintenance exclusion locks."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: false
+      registry: true
+      evidence: true
+
+  # =========================================================================
+  # PHASE 4: G5 / Identity
+  # =========================================================================
+  - id: "P4-G5-REQ-01"
+    phase: 4
+    source_anchor: "G5 Summary & Handover Appendix Section 3 (Ledger Identity)"
+    requirement: "Enforce stable source-row identity: same source row -> same stable identity; distinct legitimate source rows -> distinct identities."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: false
+      registry: true
+      evidence: true
+
+  - id: "P4-G5-REQ-02"
+    phase: 4
+    source_anchor: "G5 Summary & Handover Appendix Section 7 (Repeated-Import Stability)"
+    requirement: "Ensure repeated uTower import of identical records is idempotent and preserves stable source identities without generating duplicate rows."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: false
+      registry: false
+      evidence: true
+
+  - id: "P4-G5-REQ-03"
+    phase: 4
+    source_anchor: "G5 Summary & Handover Appendix Section 3 (Preservation of Identical Rows)"
+    requirement: "Preserve distinct identities for distinct legitimate historical transactions with identical amounts/timestamps; SQLite ROWID is not assumed identity."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: false
+      registry: false
+      evidence: true
+
+  - id: "P4-G5-REQ-04"
+    phase: 4
+    source_anchor: "G5 Summary & Handover Appendix Section 3 (Preservation of Reliable IDs)"
+    requirement: "Preserve existing reliable transaction IDs during migration and synchronization without re-generating random identifiers."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: false
+      registry: false
+      evidence: true
+
+  # =========================================================================
+  # PHASE 5: G6/G7 / Semantics + Migration
+  # =========================================================================
+  - id: "P5-G6-REQ-01"
+    phase: 5
+    source_anchor: "G6 Summary & Handover Appendix Section 7 (Field Ownership)"
+    requirement: "Establish clear field ownership mapping between local Room entities, remote Firestore documents, and imported historical structures."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: false
+      registry: false
+      evidence: true
+    behavioral_test_location: "app/src/test/java/com/example/Phase5SettingsSyncUnifiedCallerTest.kt"
+
+  - id: "P5-G6-REQ-02"
+    phase: 5
+    source_anchor: "G6 Summary & Handover Appendix Section 7 (Credential & Session Isolation)"
+    requirement: "Enforce strict credential and session isolation across reseller accounts to prevent cross-account state leakage."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: false
+      registry: true
+      evidence: true
+
+  - id: "P5-G6-REQ-03"
+    phase: 5
+    source_anchor: "Handover Appendix Section 4 (Legacy / Protected Semantic Fields)"
+    requirement: "Preserve legacy semantic fields (loanIqd, isLegacy, isSnapshotHistory, stateSource, stateConfidence) without deletion, repurposing, or conversion into alternate financial authority."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: false
+      registry: false
+      evidence: true
+
+  - id: "P5-G6-REQ-04"
+    phase: 5
+    source_anchor: "Handover Appendix Section 3 (Financial History & ISP Deletion Protection)"
+    requirement: "ISP-side deletion MUST NOT physically delete local financial history; RemoteSyncCoordinator applyAccountDelete / applyLedgerDelete must protect local records and prohibit ON DELETE CASCADE on financial ledger."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: true
+      registry: true
+      evidence: true
+
+  - id: "P5-G6-REQ-05"
+    phase: 5
+    source_anchor: "G7 Summary & Handover Appendix Section 7 (Non-Destructive Migration)"
+    requirement: "Execute non-destructive schema migrations preserving all business data with migration interruption safety (INV-14)."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: false
+      registry: false
+      evidence: true
+
+  - id: "P5-G6-REQ-06"
+    phase: 5
+    source_anchor: "G7 Summary & Handover Appendix Section 7 (Backup Compatibility)"
+    requirement: "Maintain backwards-compatible backup export/import schema deserialization across application versions."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: false
+      registry: false
+      evidence: true
+
+  # =========================================================================
+  # PHASE 6: G8 / Certification
+  # =========================================================================
+  - id: "P6-G8-REQ-01"
+    phase: 6
+    source_anchor: "G8 Summary & Handover Appendix Section 7 (External Verifier)"
+    requirement: "Execute external machine certification verification independent of production runtime (INV-16, INV-17)."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: true
+      registry: true
+      evidence: true
+
+  - id: "P6-G8-REQ-02"
+    phase: 6
+    source_anchor: "G8 Summary & Handover Appendix Section 5 (Exact Current-Artifact Evidence Binding)"
+    requirement: "Bind all verification evidence to exact implementation artifact (git commit SHA, source manifest, build outputs)."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: false
+      adversarial_fixture: false
+      registry: false
+      evidence: true
+
+  - id: "P6-G8-REQ-03"
+    phase: 6
+    source_anchor: "G8 Summary & Handover Appendix Section 7 (Full Test Matrix Execution)"
+    requirement: "Execute and verify all required actual test corpus suites and adversarial fixtures with evidence integrity; internal release gate additionally mandates 100% PASS with 0 failures, 0 skips, and 0 NO-SOURCE."
+    blocking: true
+    dimensions:
+      implementation: false
+      behavioral_test: true
+      adversarial_fixture: true
+      registry: false
+      evidence: true
+
+  - id: "P6-G8-REQ-04"
+    phase: 6
+    source_anchor: "G8 Summary & INV-15 (Fail-Closed Release Artifact Proof)"
+    requirement: "Generate and verify production release artifact with fail-closed release signing and reproducible verification proof."
+    blocking: true
+    dimensions:
+      implementation: true
+      behavioral_test: true
+      adversarial_fixture: false
+      registry: true
+      evidence: true

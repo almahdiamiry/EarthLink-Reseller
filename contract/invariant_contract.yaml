@@ -1,0 +1,337 @@
+# Canonical Production Invariant Contract
+# Authoritative Source of Invariant Definitions & Numbering: PRODUCTION_INVARIANTS.md
+# Schema Version: 1.0.0
+
+schema_version: "1.0.0"
+authoritative_source: "PRODUCTION_INVARIANTS.md"
+
+invariants:
+  - id: "INV-01"
+    name: "Four Distinct State Tiers"
+    canonical_definition: >
+      Application state is partitioned into four non-overlapping tiers: Historical (immutable source archives),
+      Snapshot (authoritative baseline state), Runtime (derived application/presentation state computed from authoritative local state),
+      and Remote (cloud Firestore mirrors). No tier may assume the role or responsibilities of another.
+      Runtime state is never an independent source of truth.
+    affected_components:
+      - "app/src/main/java/com/example/core/model/Models.kt"
+      - "app/src/main/java/com/example/core/model/StateOwnershipContract.kt"
+      - "app/src/main/java/com/example/core/database/AppDatabase.kt"
+    required_behavior_tests:
+      - "app/src/test/java/com/example/ResolveLocalVersionTest.kt"
+      - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+    structural_checks:
+      - check_id: "INV-01-tier-isolation"
+        description: "Verify state tier definitions and isolation"
+    evidence_requirements:
+      - "source_sha"
+      - "test_results"
+      - "pattern_scan"
+
+  - id: "INV-02"
+    name: "Historical Source Immutability"
+    canonical_definition: >
+      Imported uTower raw historical records and committed historical ledger records are immutable after successful import commit.
+      ImportBatch lifecycle metadata may transition only through its explicitly defined state machine
+      (e.g. in_progress -> completed / failed / rolled_back), while its committed historical source payload remains immutable.
+    affected_components:
+      - "app/src/main/java/com/example/core/sync/UtowerImporter.kt"
+      - "app/src/main/java/com/example/data/repository/Repositories.kt"
+      - "app/src/main/java/com/example/core/database/AppDatabase.kt"
+    required_behavior_tests:
+      - "app/src/test/java/com/example/ResolveLocalVersionTest.kt"
+      - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+    structural_checks:
+      - check_id: "INV-02-immutability"
+        description: "Committed historical rows are never overwritten or mutated"
+    evidence_requirements:
+      - "source_sha"
+      - "test_results"
+      - "pattern_scan"
+
+  - id: "INV-03"
+    name: "Single Source of Truth"
+    canonical_definition: >
+      Room Database is the single local source of truth for runtime business state. Composables, ViewModels,
+      and background tasks must observe local Room state and never maintain isolated parallel databases.
+    affected_components:
+      - "app/src/main/java/com/example/core/database/AppDatabase.kt"
+      - "app/src/main/java/com/example/data/repository/Repositories.kt"
+      - "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    required_behavior_tests:
+      - "app/src/test/java/com/example/ResolveLocalVersionTest.kt"
+      - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+    structural_checks:
+      - check_id: "INV-03-direct-firestore-ui"
+        description: "Forbidden direct Firestore call in ViewModels or UI layer"
+    evidence_requirements:
+      - "source_sha"
+      - "test_results"
+      - "pattern_scan"
+
+  - id: "INV-04"
+    name: "Zero Double-Application"
+    canonical_definition: >
+      Runtime calculations, balance derivations, and history rebuilds must never re-apply historical
+      snapshot records on top of existing baseline snapshots.
+    affected_components:
+      - "app/src/main/java/com/example/core/ledger/BalanceCalculator.kt"
+      - "app/src/main/java/com/example/core/database/AppDatabase.kt"
+      - "app/src/main/java/com/example/data/repository/Repositories.kt"
+      - "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt"
+    required_behavior_tests:
+      - "app/src/test/java/com/example/ResolveLocalVersionTest.kt"
+      - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+    structural_checks:
+      - check_id: "INV-04-snapshot-history-filter"
+        description: "Calculations must explicitly filter out isSnapshotHistory=true entries when computing on top of baseline snapshots"
+    evidence_requirements:
+      - "source_sha"
+      - "test_results"
+      - "pattern_scan"
+
+  - id: "INV-05"
+    name: "One State, One Authority"
+    canonical_definition: >
+      Every synchronized business entity must have one authoritative semantic definition, one version domain,
+      one mutation policy, and one synchronization path.
+    affected_components:
+      - "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt"
+      - "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    required_behavior_tests:
+      - "app/src/test/java/com/example/ResolveLocalVersionTest.kt"
+      - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+    structural_checks:
+      - check_id: "INV-05-single-sync-authority"
+        description: "All remote writes and sync routing pass through canonical synchronization channel"
+    evidence_requirements:
+      - "source_sha"
+      - "test_results"
+      - "pattern_scan"
+
+  - id: "INV-06"
+    name: "One Authoritative Remote Version Domain"
+    canonical_definition: >
+      The authoritative remote version MUST originate from trusted Firestore server-side timestamps.
+      For normal documents this is updatedAt; for deletion/tombstone state this is deletedAt.
+      These server timestamps MUST be persisted locally as the comparable remote version and MUST be compared
+      only against the same remote-version domain. Local timestamps (createdAt, occurredAt, or device-clock updatedAt)
+      MUST NEVER be used as substitutes for server versions.
+    affected_components:
+      - "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt"
+      - "app/src/main/java/com/example/core/sync/SyncConflictResolver.kt"
+      - "app/src/main/java/com/example/core/sync/RemoteSyncCursor.kt"
+      - "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    required_behavior_tests:
+      - "app/src/test/java/com/example/ResolveLocalVersionTest.kt"
+      - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+      - "app/src/test/java/com/example/Phase2RemoteVersionAdversarialTest.kt"
+    structural_checks:
+      - check_id: "RC-1-remote-version-fallback"
+        description: "Forbidden local timestamp fallback when remote version is absent"
+      - check_id: "RC-3-settings-device-clock"
+        description: "Forbidden device clock usage for distributed settings winner selection"
+    evidence_requirements:
+      - "source_sha"
+      - "test_results"
+      - "pattern_scan"
+
+  - id: "INV-07"
+    name: "Composite Cursor Advancement"
+    canonical_definition: >
+      Sync pagination and realtime resume cursors MUST use composite keys (serverTimestamp, documentId).
+      A cursor may advance only past an event that has a valid ordered cursor position and has been successfully
+      applied, deterministically resolved, or quarantined without losing its recoverable position.
+      A malformed event with no valid server version/cursor position MUST NOT be allowed to silently disappear behind a later cursor.
+    affected_components:
+      - "app/src/main/java/com/example/core/sync/RemoteSyncCursor.kt"
+      - "app/src/main/java/com/example/core/sync/EventSyncResult.kt"
+      - "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    required_behavior_tests:
+      - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+    structural_checks:
+      - check_id: "INV-07-composite-cursor-tie-breaker"
+        description: "Cursor comparisons and updates must include composite tie-breakers on documentId"
+    evidence_requirements:
+      - "source_sha"
+      - "test_results"
+      - "pattern_scan"
+
+  - id: "INV-08"
+    name: "Realtime Echo Isolation"
+    canonical_definition: >
+      Snapshot listeners must evaluate metadata.hasPendingWrites() on a per-document basis
+      (dc.document.metadata.hasPendingWrites()). A local pending write on entity A must NEVER
+      suppress or delay unrelated remote events for entity B within the same snapshot.
+    affected_components:
+      - "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    required_behavior_tests:
+      - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+      - "app/src/test/java/com/example/Phase2RemoteVersionAdversarialTest.kt"
+    structural_checks:
+      - check_id: "INV-08-per-document-pending-writes"
+        description: "Pending write inspection must be evaluated per-document, never at snapshot collection level"
+    evidence_requirements:
+      - "source_sha"
+      - "test_results"
+      - "pattern_scan"
+
+  - id: "INV-09"
+    name: "Query Membership != Business Deletion"
+    canonical_definition: >
+      A Firestore DocumentChange.Type.REMOVED indicates query boundary exit, NOT business deletion.
+      Business deletion MUST be explicitly signaled by a deletedAt tombstone timestamp or explicit deletion contract.
+    affected_components:
+      - "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+      - "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt"
+    required_behavior_tests:
+      - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+    structural_checks:
+      - check_id: "INV-09-tombstone-required"
+        description: "REMOVED change events must not trigger local delete without verified tombstone"
+    evidence_requirements:
+      - "source_sha"
+      - "test_results"
+      - "pattern_scan"
+
+  - id: "INV-10"
+    name: "Deterministic Convergence"
+    canonical_definition: >
+      Multiple devices with differing states MUST converge to an identical fixed-point state after
+      repeated synchronization passes. Once converged, subsequent sync passes MUST produce ZERO additional Firestore writes.
+    affected_components:
+      - "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+      - "app/src/main/java/com/example/core/sync/SyncConflictResolver.kt"
+    required_behavior_tests:
+      - "app/src/test/java/com/example/ResolveLocalVersionTest.kt"
+      - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+    structural_checks:
+      - check_id: "INV-10-idempotent-convergence"
+        description: "Conflict resolution must be idempotent and monotonic"
+    evidence_requirements:
+      - "source_sha"
+      - "test_results"
+      - "pattern_scan"
+
+  - id: "INV-11"
+    name: "Canonical Runtime Mutation Channel"
+    canonical_definition: >
+      Every runtime code path capable of mutating synchronized business state or performing destructive
+      database operations MUST execute within an atomic, serialized mutation boundary under an explicit operation mode
+      (SYNC, REMOTE_APPLY, IMPORT, RESTORE, BACKUP, ROLLBACK, CLEAR_DATA).
+      In the current implementation baseline, DataOperationCoordinator serves as an active coordination mechanism for this serialized boundary.
+      Database schema migrations and first-time database initialization are outside this runtime
+      coordination rule and are governed by Room migration contracts instead.
+    affected_components:
+      - "app/src/main/java/com/example/core/sync/DataOperationCoordinator.kt"
+      - "app/src/main/java/com/example/core/backup/BackupManager.kt"
+      - "app/src/main/java/com/example/ui/viewmodels/DashboardViewModel.kt"
+    required_behavior_tests:
+      - "app/src/test/java/com/example/Phase3CoordinatorMutexTokenTest.kt"
+    structural_checks:
+      - check_id: "RC-4-coordinator-bypass"
+        description: "Forbidden currentMode bypass check in BackupManager"
+    evidence_requirements:
+      - "source_sha"
+      - "test_results"
+      - "pattern_scan"
+
+  - id: "INV-12"
+    name: "No Outbox Loops on Remote Apply"
+    canonical_definition: >
+      Applying incoming remote events (REMOTE_APPLY) or recalculating balances from cloud sync MUST NOT
+      generate local Outbox records (sync_outbox), preventing echo/ping-pong synchronization loops.
+    affected_components:
+      - "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt"
+      - "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+      - "app/src/main/java/com/example/data/repository/Repositories.kt"
+    required_behavior_tests:
+      - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+    structural_checks:
+      - check_id: "INV-12-no-outbox-on-remote-apply"
+        description: "Remote event application and cloud recalculations must not insert into sync_outbox"
+    evidence_requirements:
+      - "source_sha"
+      - "test_results"
+      - "pattern_scan"
+
+  - id: "INV-13"
+    name: "Mutual Exclusion of High-Impact Data Operations"
+    canonical_definition: >
+      RESTORE, IMPORT, BACKUP, ROLLBACK, and CLEAR_DATA are mutually exclusive high-impact data operations
+      and must execute under strict mutual exclusion / maintenance isolation (implemented via DataOperationCoordinator / maintenance locking).
+      BACKUP MUST NOT mutate business state, create Outbox records, advance sync cursors, or alter synchronization metadata.
+      Outbox items remain durable and retryable (no DEAD_LETTER blackhole).
+    affected_components:
+      - "app/src/main/java/com/example/core/sync/DataOperationCoordinator.kt"
+      - "app/src/main/java/com/example/core/backup/BackupManager.kt"
+      - "app/src/main/java/com/example/core/sync/UtowerImporter.kt"
+    required_behavior_tests:
+      - "app/src/test/java/com/example/Phase3CoordinatorMutexTokenTest.kt"
+    structural_checks:
+      - check_id: "INV-13-high-impact-mutex"
+        description: "High impact operations must strictly acquire coordinator lock with appropriate mode"
+    evidence_requirements:
+      - "source_sha"
+      - "test_results"
+      - "pattern_scan"
+
+  - id: "INV-14"
+    name: "Fail-Closed Encryption & Key Recovery"
+    canonical_definition: >
+      If an existing encrypted SQLCipher database is detected on disk but the database key material
+      cannot be decrypted/recovered, the system MUST fail closed (halt access safely).
+      It MUST NEVER generate a new blank encryption key over an existing encrypted database.
+    affected_components:
+      - "app/src/main/java/com/example/core/security/PreferenceManager.kt"
+      - "app/src/main/java/com/example/core/database/AppDatabase.kt"
+    required_behavior_tests:
+      - "app/src/test/java/com/example/ResolveLocalVersionTest.kt"
+    structural_checks:
+      - check_id: "INV-14-fail-closed-encryption"
+        description: "Unrecoverable database keys must throw immediately without creating new keys"
+    evidence_requirements:
+      - "source_sha"
+      - "test_results"
+      - "pattern_scan"
+
+  - id: "INV-15"
+    name: "Fail-Closed Release Signing"
+    canonical_definition: >
+      In release builds, missing or invalid production signing credentials MUST cause an immediate build failure.
+      Fallback to debug signing, placeholder keys, or unsigned release artifacts is strictly prohibited.
+    affected_components:
+      - "app/build.gradle.kts"
+      - "scripts/production_gate.sh"
+    required_behavior_tests:
+      - "app/src/test/java/com/example/Phase2RemoteVersionAdversarialTest.kt"
+    structural_checks:
+      - check_id: "RC-6-release-dry-run"
+        description: "Forbidden --dry-run bypass in release build verification"
+    evidence_requirements:
+      - "source_sha"
+      - "test_results"
+      - "pattern_scan"
+
+  - id: "INV-16"
+    name: "Immutable Certification Evidence"
+    canonical_definition: >
+      Certification test suites (FinalTestMatrixCertificationTest, ProductionCertificationPipelineTest,
+      ProductionExecutableInvariantsTest, DeepCrossLayerInvariantsTest) and baseline regression suites are frozen contracts.
+      Tests must never be weakened, skipped, or rewritten to conform to buggy production behavior.
+    affected_components:
+      - "evidence/baseline_manifest.json"
+      - "evidence/baseline_test_manifest.json"
+      - "scripts/production_gate.sh"
+    required_behavior_tests:
+      - "app/src/test/java/com/example/ResolveLocalVersionTest.kt"
+      - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+      - "app/src/test/java/com/example/Phase2RemoteVersionAdversarialTest.kt"
+      - "app/src/test/java/com/example/Phase3CoordinatorMutexTokenTest.kt"
+    structural_checks:
+      - check_id: "INV-16-test-immutability"
+        description: "Certification test files must exist and match immutable frozen suite contracts"
+    evidence_requirements:
+      - "source_sha"
+      - "test_results"
+      - "pattern_scan"
