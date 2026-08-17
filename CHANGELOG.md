@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format follows Keep a Changelog.
 
+## [1.72.0] - 2026-08-18
+### Phase 1: Task P1-04 — Explicit Orphan Handling & Bounded Retry Backoff (INV-13 / P1-G2-REQ-03)
+- **Explicit Orphan Handling**: Implemented pre-push target entity existence and lineage verification in `SyncRepositoryImpl.kt`. Outbox obligations whose target local entity (e.g. Account, Ledger, ImportBatch, AuditLog) has been deleted or superseded locally prior to push are explicitly classified as orphaned transport obligations. Orphaned items are marked as `"failed"` with structured diagnostics (e.g., `ORPHAN: Entity <id> of type <type> not found in local database`) and isolated, preventing fraudulent remote entity recreation and never silently dropping or corrupting business state.
+- **Bounded Exponential Backoff**: Added exponential backoff delay calculation (`calculateBackoffDelay`) and sync eligibility gating (`isEligibleForSync`) in `OutboxManager.kt`. Failed and orphaned outbox obligations back off exponentially up to a strict bound of 5 minutes (300,000 ms), preventing CPU/network hot-looping across rapid sync triggers while ensuring valid obligations continue syncing.
+- **Comprehensive Orphan Handling Test Suite**: Implemented `Phase1OrphanHandlingTest.kt` with 8 exhaustive test cases verifying deleted local entity detection with diagnostic retention, superseded entity safety without state rollback, durability across crash recovery/restarts, non-blocking isolation with adjacent valid obligations, prohibition of unintended local ledger mutations, parent-deleted cascade detection, bounded backoff hot-loop prevention, and manual operator retry reset.
+- **Contract & Matrix Mapping**: Mapped `Phase1OrphanHandlingTest` in `contract/invariant_contract.yaml`, `contract/invariant_test_map.yaml`, and `contract/test_environment_matrix.yaml`.
+
 ## [1.71.0] - 2026-08-18
 ### Phase 1: Task P1-03 — Per-Item Outbox Failure Isolation & Poison Resistance (INV-13 / P1-G2-REQ-02)
 - **Per-Item Failure Isolation**: Replaced chunk-wide outbox push failure cascades in `SyncRepositoryImpl.kt` with per-item isolation and fallback execution. Malformed or rejected poison obligations are isolated per item and retained with updated attempt count and diagnostic errors, allowing valid neighboring obligations in the same batch or queue to commit and acknowledge without hindrance.
