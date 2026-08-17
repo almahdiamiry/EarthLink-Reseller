@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format follows Keep a Changelog.
 
+## [1.71.0] - 2026-08-18
+### Phase 1: Task P1-03 — Per-Item Outbox Failure Isolation & Poison Resistance (INV-13 / P1-G2-REQ-02)
+- **Per-Item Failure Isolation**: Replaced chunk-wide outbox push failure cascades in `SyncRepositoryImpl.kt` with per-item isolation and fallback execution. Malformed or rejected poison obligations are isolated per item and retained with updated attempt count and diagnostic errors, allowing valid neighboring obligations in the same batch or queue to commit and acknowledge without hindrance.
+- **Outbox Manager & DAO Hardening**: Added single-item overloads for `markInFlight`, `markSucceeded`, and `markRetryableFailure`, and added `resetInFlight` and `deleteByIds` in `OutboxManager.kt` and `SyncOutboxDao` (`AppDatabase.kt`).
+- **Comprehensive Item Isolation Test Suite**: Implemented `Phase1ItemIsolationTest.kt` with 7 test cases covering the required `T1 (valid) / T2 (poison) / T3 (valid)` sequence, server rejection fallback isolation, in-flight crash recovery without duplication or data loss, large retained failure population fairness and progress, bounded diagnostic footprint (<= 1000 chars), multi-cycle poison accumulation, and scheduling liveness across all `SyncReason` triggers.
+- **Contract & Environment Matrix Alignment**: Mapped `Phase1ItemIsolationTest` in `contract/invariant_contract.yaml`, `contract/invariant_test_map.yaml`, and `contract/test_environment_matrix.yaml`.
+
 ## [1.70.0] - 2026-08-18
 ### Phase 1: Task P1-02 — Remove terminal DEAD_LETTER semantics and guarantee Outbox Durability (INV-13 / P1-G2-REQ-01)
 - **Eliminate Terminal DEAD_LETTER Semantics**: Removed all terminal `dead_letter` outbox state mutations from `SyncRepositoryImpl.kt` and `OutboxManager.kt`. Failed outbox obligations remain permanently durable in SQLite in `"failed"` state with updated attempt counts, error diagnostics, and retryability.

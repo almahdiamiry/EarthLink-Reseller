@@ -178,6 +178,17 @@ object OutboxManager {
     }
 
     /**
+     * Marks a single outbox item as in-flight ("syncing") and increments its attempt count.
+     */
+    suspend fun markInFlight(
+        outboxDao: SyncOutboxDao,
+        item: SyncOutbox
+    ): SyncOutbox {
+        val updated = markInFlight(outboxDao, listOf(item))
+        return updated.first()
+    }
+
+    /**
      * Marks outbox items as successfully committed to remote storage by purging them from the outbox.
      */
     suspend fun markSucceeded(
@@ -185,15 +196,23 @@ object OutboxManager {
         outboxIds: List<Int>
     ) {
         if (outboxIds.isEmpty()) return
-        outboxIds.forEach { id ->
-            outboxDao.deleteById(id)
-        }
+        outboxDao.deleteByIds(outboxIds)
+    }
+
+    /**
+     * Marks a single outbox item as successfully committed to remote storage.
+     */
+    suspend fun markSucceeded(
+        outboxDao: SyncOutboxDao,
+        outboxId: Int
+    ) {
+        outboxDao.deleteById(outboxId)
     }
 
     /**
      * Marks outbox items as having failed a sync attempt.
      * Records bounded error diagnostic metadata and ensures obligations remain
-     * durable and retryable in "failed" status (INV-13).
+     * durable and retryable in "failed" status (INV-13 / P1-G2-REQ-02).
      */
     suspend fun markRetryableFailure(
         outboxDao: SyncOutboxDao,
@@ -204,15 +223,27 @@ object OutboxManager {
         val now = System.currentTimeMillis()
         val sanitizedError = errorReason.take(1000)
         items.forEach { item ->
+            val updatedCount = if (item.status == "syncing") item.attemptCount else item.attemptCount + 1
             outboxDao.update(
                 item.copy(
                     status = "failed",
-                    attemptCount = item.attemptCount + 1,
+                    attemptCount = updatedCount,
                     lastError = sanitizedError,
                     updatedAt = now
                 )
             )
         }
+    }
+
+    /**
+     * Marks a single outbox item as having failed a sync attempt.
+     */
+    suspend fun markRetryableFailure(
+        outboxDao: SyncOutboxDao,
+        item: SyncOutbox,
+        errorReason: String
+    ) {
+        markRetryableFailure(outboxDao, listOf(item), errorReason)
     }
 
     /**
@@ -260,6 +291,13 @@ object OutboxManager {
      */
     suspend fun getByEntity(outboxDao: SyncOutboxDao, entityId: String, entityType: String): List<SyncOutbox> {
         return outboxDao.getByEntity(entityId, entityType)
+    }
+
+    /**
+     * Resets stuck 'syncing' entries back to 'pending' upon startup / crash recovery.
+     */
+    suspend fun resetInFlight(outboxDao: SyncOutboxDao): Int {
+        return outboxDao.resetSyncingToPending()
     }
 
     /**

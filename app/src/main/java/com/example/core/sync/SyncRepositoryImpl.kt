@@ -340,155 +340,63 @@ class SyncRepositoryImpl(
             val chunkedItems = deduplicatedItems.chunked(500)
 
             for (chunk in chunkedItems) {
-                val batch = fbFirestore.batch()
                 val latestItemsInChunk = chunk.map { it.first }
-                val allItemsInChunk = chunk.flatMap { it.second }
-                val allOutboxIdsInChunk = allItemsInChunk.map { it.id }
 
                 appDatabase.withTransaction {
                     OutboxManager.markInFlight(outboxDao, latestItemsInChunk)
                 }
 
-                try {
-                    for (item in latestItemsInChunk) {
-                        val collRef = when (item.entityType) {
-                            "local_accounts" -> fbFirestore.collection("users").document(currentUid).collection("local_accounts")
-                            "local_ledger_entries" -> fbFirestore.collection("users").document(currentUid).collection("local_ledger_entries")
-                            "import_batches" -> fbFirestore.collection("users").document(currentUid).collection("import_batches")
-                            "audit_logs" -> fbFirestore.collection("users").document(currentUid).collection("audit_logs")
-                            else -> null
+                // Per-item preparation & validation (isolating malformed/poison payloads)
+                val preparedItems = mutableListOf<Triple<SyncOutbox, List<SyncOutbox>, Map<String, Any?>>>()
+
+                for (itemPair in chunk) {
+                    val (latestItem, allForEntity) = itemPair
+                    try {
+                        val dataMap = buildOutboxPayloadMap(latestItem)
+                        preparedItems.add(Triple(latestItem, allForEntity, dataMap))
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+                        Log.e("FirebaseSync", "Malformed outbox payload for ${latestItem.entityType}:${latestItem.entityId}, isolating failure", e)
+                        appDatabase.withTransaction {
+                            val errReason = "Malformed payload error: ${e.message ?: "Invalid JSON"}"
+                            OutboxManager.markRetryableFailure(outboxDao, allForEntity, errReason)
                         }
-                        if (collRef != null) {
-                            // Using entityId as document ID guarantees idempotency across retries
-                            val docRef = collRef.document(item.entityId)
-                            if (item.operation == "delete") {
-                                val json = JSONObject(item.payloadJson)
-                                val syncMutationId = json.optString("syncMutationId", null)
-                                val dataMap = mutableMapOf<String, Any?>()
-                                if (syncMutationId != null) {
-                                    dataMap["syncMutationId"] = syncMutationId
-                                }
-                                dataMap["deletedAt"] = com.google.firebase.firestore.FieldValue.serverTimestamp()
-                                dataMap["localUpdatedAt"] = System.currentTimeMillis()
-                                dataMap["updatedAt"] = com.google.firebase.firestore.FieldValue.serverTimestamp()
-                                dataMap["schemaVersion"] = 1
-                                val deviceId = prefManager.getDeviceId()
-                                dataMap["deviceId"] = deviceId
-                                dataMap["lastModifiedByDeviceId"] = deviceId
-                                batch.set(docRef, dataMap, SetOptions.merge())
-                            } else {
-                                val json = JSONObject(item.payloadJson)
-                                val syncMutationId = json.optString("syncMutationId", null)
-                                val dataMap = mutableMapOf<String, Any?>()
-                                val keys = json.keys()
-                                while (keys.hasNext()) {
-                                    val k = keys.next()
-                                    val v = json.get(k)
-                                    dataMap[k] = if (v == JSONObject.NULL) null else v
-                                }
-                                
-                                if (syncMutationId != null) {
-                                    dataMap["syncMutationId"] = syncMutationId
-                                }
+                    }
+                }
 
-                                if (dataMap.containsKey("updatedAt")) {
-                                    dataMap["localUpdatedAt"] = dataMap["updatedAt"]
-                                } else if (dataMap.containsKey("createdAt")) {
-                                    dataMap["localUpdatedAt"] = dataMap["createdAt"]
-                                } else {
-                                    dataMap["localUpdatedAt"] = System.currentTimeMillis()
+                if (preparedItems.isNotEmpty()) {
+                    var batchSucceeded = false
+                    if (preparedItems.size > 1) {
+                        try {
+                            val batch = fbFirestore.batch()
+                            for ((item, _, dataMap) in preparedItems) {
+                                val collRef = getCollectionRef(item.entityType, currentUid, fbFirestore)
+                                if (collRef != null) {
+                                    val docRef = collRef.document(item.entityId)
+                                    batch.set(docRef, dataMap, SetOptions.merge())
                                 }
-
-                                dataMap["updatedAt"] = com.google.firebase.firestore.FieldValue.serverTimestamp()
-                                dataMap["deletedAt"] = null
-                                dataMap["schemaVersion"] = 1
-                                if (item.entityType == "local_accounts") {
-                                    dataMap["isFullSnapshot"] = true
-                                }
-                                val deviceId = prefManager.getDeviceId()
-                                dataMap["deviceId"] = deviceId
-                                dataMap["lastModifiedByDeviceId"] = deviceId
-                                batch.set(docRef, dataMap, SetOptions.merge())
                             }
-                        }
-                    }
+                            batch.commit().await()
+                            batchSucceeded = true
 
-                    batch.commit().await()
-
-                    // D1 & D2: Mark outbox items succeeded immediately so push is NEVER replayed
-                    appDatabase.withTransaction {
-                        OutboxManager.markSucceeded(outboxDao, allOutboxIdsInChunk)
-                    }
-
-                    // D1-D7: Explicit server read-back with Source.SERVER to capture authoritative remote_version
-                    for (item in latestItemsInChunk) {
-                        val collName = item.entityType
-                        val entityTypeKey = when (collName) {
-                            "local_accounts" -> "account"
-                            "local_ledger_entries" -> "ledger"
-                            "import_batches" -> "batch"
-                            else -> null
-                        }
-
-                        if (entityTypeKey != null) {
-                            try {
-                                val collRef = fbFirestore.collection("users").document(currentUid).collection(collName)
-                                val serverDoc = collRef.document(item.entityId).get(Source.SERVER).await()
-                                
-                                val docData = serverDoc.data
-                                val hasPendingWrites = serverDoc.metadata.hasPendingWrites()
-                                val isFromCache = serverDoc.metadata.isFromCache
-                                
-                                val deletedAt = RemoteSyncCursor.parseRemoteTimestamp(docData?.get("deletedAt"))
-                                val remoteUpdatedAt = RemoteSyncCursor.parseRemoteTimestamp(docData?.get("updatedAt"))
-                                val isDeleted = (deletedAt != null && deletedAt > 0L)
-                                val serverVersion = if (isDeleted) (deletedAt ?: remoteUpdatedAt ?: 0L) else (remoteUpdatedAt ?: 0L)
-                                
-                                val mutationIdInPayload = try {
-                                    JSONObject(item.payloadJson).optString("syncMutationId", null)
-                                } catch (e: Exception) { null }
-                                
-                                val serverMutationId = docData?.get("syncMutationId") as? String
-
-                                // Strict validation: must not have pending writes, must not be cache, must have valid server version > 0
-                                if (serverDoc.exists() && !hasPendingWrites && !isFromCache && serverVersion > 0L) {
-                                    // Verify mutation correlation if mutationId is present
-                                    val mutationMatches = mutationIdInPayload != null &&
-                                            serverMutationId != null &&
-                                            mutationIdInPayload == serverMutationId
-
-                                    if (mutationMatches) {
-                                        appDatabase.withTransaction {
-                                            if (item.operation == "delete" || isDeleted) {
-                                                metadataDao.put("tombstone:$entityTypeKey:${item.entityId}", serverVersion.toString())
-                                            }
-                                            metadataDao.put("remote_version:$entityTypeKey:${item.entityId}", serverVersion.toString())
-                                            metadataDao.put("version_capture_retry:$entityTypeKey:${item.entityId}", "0")
-                                        }
-                                        Log.d("FirebaseSync", "Captured server-confirmed remote_version $serverVersion for $entityTypeKey:${item.entityId}")
-                                    } else {
-                                        Log.w("FirebaseSync", "Server read-back mutation correlation mismatch for $entityTypeKey:${item.entityId}. Expected $mutationIdInPayload, found $serverMutationId")
-                                        metadataDao.put("version_capture_retry:$entityTypeKey:${item.entityId}", "1")
-                                    }
-                                } else {
-                                    Log.w("FirebaseSync", "Server read-back did not yield confirmed version for $entityTypeKey:${item.entityId} (exists=${serverDoc.exists()}, pending=$hasPendingWrites, cache=$isFromCache, version=$serverVersion)")
-                                    run {
-                                        metadataDao.put("version_capture_retry:$entityTypeKey:${item.entityId}", "1")
-                                    }
+                            // Batch succeeded: acknowledge and read-back for each item
+                            for ((item, allForEntity, _) in preparedItems) {
+                                appDatabase.withTransaction {
+                                    OutboxManager.markSucceeded(outboxDao, allForEntity.map { it.id })
                                 }
-                            } catch (e: Exception) {
-                                if (e is kotlinx.coroutines.CancellationException) throw e
-                                Log.w("FirebaseSync", "Server read-back failed for $entityTypeKey:${item.entityId}. Setting version_capture_retry.", e)
-                                metadataDao.put("version_capture_retry:$entityTypeKey:${item.entityId}", "1")
+                                confirmRemoteVersionReadBack(item, currentUid, fbFirestore)
                             }
+                        } catch (e: Exception) {
+                            if (e is kotlinx.coroutines.CancellationException) throw e
+                            Log.w("FirebaseSync", "Batch push commit failed; falling back to per-item isolation push", e)
                         }
                     }
-                } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                    Log.e("FirebaseSync", "Failed syncing batch", e)
-                    
-                    appDatabase.withTransaction {
-                        val errReason = e.localizedMessage ?: "Sync error"
-                        OutboxManager.markRetryableFailure(outboxDao, allItemsInChunk, errReason)
+
+                    // Fallback to per-item isolation if batch failed or single item
+                    if (!batchSucceeded) {
+                        for ((item, allForEntity, dataMap) in preparedItems) {
+                            executeSingleItemPush(item, allForEntity, dataMap, currentUid, fbFirestore)
+                        }
                     }
                 }
             }
@@ -524,6 +432,165 @@ class SyncRepositoryImpl(
             false
         }
     }
+    }
+
+    private fun getCollectionRef(
+        entityType: String,
+        uid: String,
+        firestore: FirebaseFirestore
+    ): com.google.firebase.firestore.CollectionReference? {
+        return when (entityType) {
+            "local_accounts" -> firestore.collection("users").document(uid).collection("local_accounts")
+            "local_ledger_entries" -> firestore.collection("users").document(uid).collection("local_ledger_entries")
+            "import_batches" -> firestore.collection("users").document(uid).collection("import_batches")
+            "audit_logs" -> firestore.collection("users").document(uid).collection("audit_logs")
+            else -> null
+        }
+    }
+
+    private fun buildOutboxPayloadMap(item: SyncOutbox): Map<String, Any?> {
+        val json = JSONObject(item.payloadJson)
+        val syncMutationId = if (json.has("syncMutationId")) json.optString("syncMutationId") else null
+        val dataMap = mutableMapOf<String, Any?>()
+
+        if (item.operation == "delete") {
+            if (syncMutationId != null) {
+                dataMap["syncMutationId"] = syncMutationId
+            }
+            dataMap["deletedAt"] = com.google.firebase.firestore.FieldValue.serverTimestamp()
+            dataMap["localUpdatedAt"] = System.currentTimeMillis()
+            dataMap["updatedAt"] = com.google.firebase.firestore.FieldValue.serverTimestamp()
+            dataMap["schemaVersion"] = 1
+            val deviceId = prefManager.getDeviceId()
+            dataMap["deviceId"] = deviceId
+            dataMap["lastModifiedByDeviceId"] = deviceId
+            return dataMap
+        }
+
+        val keys = json.keys()
+        while (keys.hasNext()) {
+            val k = keys.next()
+            val v = json.get(k)
+            dataMap[k] = if (v == JSONObject.NULL) null else v
+        }
+
+        if (syncMutationId != null) {
+            dataMap["syncMutationId"] = syncMutationId
+        }
+
+        if (dataMap.containsKey("updatedAt")) {
+            dataMap["localUpdatedAt"] = dataMap["updatedAt"]
+        } else if (dataMap.containsKey("createdAt")) {
+            dataMap["localUpdatedAt"] = dataMap["createdAt"]
+        } else {
+            dataMap["localUpdatedAt"] = System.currentTimeMillis()
+        }
+
+        dataMap["updatedAt"] = com.google.firebase.firestore.FieldValue.serverTimestamp()
+        dataMap["deletedAt"] = null
+        dataMap["schemaVersion"] = 1
+        if (item.entityType == "local_accounts") {
+            dataMap["isFullSnapshot"] = true
+        }
+        val deviceId = prefManager.getDeviceId()
+        dataMap["deviceId"] = deviceId
+        dataMap["lastModifiedByDeviceId"] = deviceId
+        return dataMap
+    }
+
+    private suspend fun executeSingleItemPush(
+        item: SyncOutbox,
+        allForEntity: List<SyncOutbox>,
+        dataMap: Map<String, Any?>,
+        currentUid: String,
+        fbFirestore: FirebaseFirestore
+    ) {
+        try {
+            val collRef = getCollectionRef(item.entityType, currentUid, fbFirestore)
+            if (collRef != null) {
+                val docRef = collRef.document(item.entityId)
+                docRef.set(dataMap, SetOptions.merge()).await()
+
+                appDatabase.withTransaction {
+                    OutboxManager.markSucceeded(outboxDao, allForEntity.map { it.id })
+                }
+
+                confirmRemoteVersionReadBack(item, currentUid, fbFirestore)
+            }
+        } catch (itemError: Exception) {
+            if (itemError is kotlinx.coroutines.CancellationException) throw itemError
+            Log.e("FirebaseSync", "Individual item push failed for ${item.entityType}:${item.entityId}", itemError)
+            appDatabase.withTransaction {
+                val errReason = itemError.localizedMessage ?: "Sync error"
+                OutboxManager.markRetryableFailure(outboxDao, allForEntity, errReason)
+            }
+        }
+    }
+
+    private suspend fun confirmRemoteVersionReadBack(
+        item: SyncOutbox,
+        currentUid: String,
+        fbFirestore: FirebaseFirestore
+    ) {
+        val collName = item.entityType
+        val entityTypeKey = when (collName) {
+            "local_accounts" -> "account"
+            "local_ledger_entries" -> "ledger"
+            "import_batches" -> "batch"
+            else -> null
+        }
+
+        if (entityTypeKey != null) {
+            try {
+                val collRef = fbFirestore.collection("users").document(currentUid).collection(collName)
+                val serverDoc = collRef.document(item.entityId).get(Source.SERVER).await()
+
+                val docData = serverDoc.data
+                val hasPendingWrites = serverDoc.metadata.hasPendingWrites()
+                val fromCache = serverDoc.metadata.isFromCache
+
+                val deletedAt = RemoteSyncCursor.parseRemoteTimestamp(docData?.get("deletedAt"))
+                val remoteUpdatedAt = RemoteSyncCursor.parseRemoteTimestamp(docData?.get("updatedAt"))
+                val isDeleted = (deletedAt != null && deletedAt > 0L)
+                val serverVersion = if (isDeleted) (deletedAt ?: remoteUpdatedAt ?: 0L) else (remoteUpdatedAt ?: 0L)
+
+                val mutationIdInPayload = try {
+                    val json = JSONObject(item.payloadJson)
+                    if (json.has("syncMutationId")) json.optString("syncMutationId") else null
+                } catch (e: Exception) { null }
+
+                val serverMutationId = docData?.get("syncMutationId") as? String
+
+                // Strict validation: must not have pending writes, must not be cache, must have valid server version > 0
+                if (serverDoc.exists() && !hasPendingWrites && !fromCache && serverVersion > 0L) {
+                    // Verify mutation correlation if mutationId is present
+                    val mutationMatches = mutationIdInPayload != null &&
+                            serverMutationId != null &&
+                            mutationIdInPayload == serverMutationId
+
+                    if (mutationMatches) {
+                        appDatabase.withTransaction {
+                            if (item.operation == "delete" || isDeleted) {
+                                metadataDao.put("tombstone:$entityTypeKey:${item.entityId}", serverVersion.toString())
+                            }
+                            metadataDao.put("remote_version:$entityTypeKey:${item.entityId}", serverVersion.toString())
+                            metadataDao.put("version_capture_retry:$entityTypeKey:${item.entityId}", "0")
+                        }
+                        Log.d("FirebaseSync", "Captured server-confirmed remote_version $serverVersion for $entityTypeKey:${item.entityId}")
+                    } else {
+                        Log.w("FirebaseSync", "Server read-back mutation correlation mismatch for $entityTypeKey:${item.entityId}. Expected $mutationIdInPayload, found $serverMutationId")
+                        metadataDao.put("version_capture_retry:$entityTypeKey:${item.entityId}", "1")
+                    }
+                } else {
+                    Log.w("FirebaseSync", "Server read-back did not yield confirmed version for $entityTypeKey:${item.entityId} (exists=${serverDoc.exists()}, pending=$hasPendingWrites, cached=$fromCache, version=$serverVersion)")
+                    metadataDao.put("version_capture_retry:$entityTypeKey:${item.entityId}", "1")
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                Log.w("FirebaseSync", "Server read-back failed for $entityTypeKey:${item.entityId}. Setting version_capture_retry.", e)
+                metadataDao.put("version_capture_retry:$entityTypeKey:${item.entityId}", "1")
+            }
+        }
     }
 
     private suspend fun getCollectionCursor(collName: String): RemoteSyncCursor {
