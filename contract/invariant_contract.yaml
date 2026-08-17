@@ -271,6 +271,7 @@ invariants:
     required_behavior_tests:
       - "app/src/test/java/com/example/Phase1OutboxDurabilityTest.kt"
       - "app/src/test/java/com/example/Phase1ItemIsolationTest.kt"
+      - "app/src/test/java/com/example/Phase1OrphanHandlingTest.kt"
       - "app/src/test/java/com/example/Phase3CoordinatorMutexTokenTest.kt"
     structural_checks:
       - check_id: "INV-13-high-impact-mutex"

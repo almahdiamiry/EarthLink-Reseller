@@ -308,13 +308,13 @@ class SyncRepositoryImpl(
             // 1. Process local outbox changes and upload to Firestore
             val rawPendingItems = OutboxManager.getPending(outboxDao)
             val pendingItems = rawPendingItems.filter { item ->
-                val batchId = item.importBatchId
-                if (batchId == null) {
+                val batchCompleted = if (item.importBatchId == null) {
                     true
                 } else {
-                    val batch = batchDao.getById(batchId)
+                    val batch = batchDao.getById(item.importBatchId)
                     batch?.status == "completed"
                 }
+                batchCompleted && OutboxManager.isEligibleForSync(item, syncStartTime)
             }
             
             // Partition outbox items: apply state-based deduplication only for state-based collections
@@ -346,11 +346,22 @@ class SyncRepositoryImpl(
                     OutboxManager.markInFlight(outboxDao, latestItemsInChunk)
                 }
 
-                // Per-item preparation & validation (isolating malformed/poison payloads)
+                // Per-item preparation & validation (isolating malformed/poison payloads & detecting orphans)
                 val preparedItems = mutableListOf<Triple<SyncOutbox, List<SyncOutbox>, Map<String, Any?>>>()
 
                 for (itemPair in chunk) {
                     val (latestItem, allForEntity) = itemPair
+
+                    // Check for orphaned outbox obligation (missing or invalid target entity in local DB)
+                    val orphanReason = checkOrphanStatus(latestItem)
+                    if (orphanReason != null) {
+                        Log.w("FirebaseSync", "Detected orphaned outbox item ${latestItem.entityType}:${latestItem.entityId}: $orphanReason")
+                        appDatabase.withTransaction {
+                            OutboxManager.markOrphanFailure(outboxDao, allForEntity, orphanReason)
+                        }
+                        continue
+                    }
+
                     try {
                         val dataMap = buildOutboxPayloadMap(latestItem)
                         preparedItems.add(Triple(latestItem, allForEntity, dataMap))
@@ -496,6 +507,42 @@ class SyncRepositoryImpl(
         dataMap["deviceId"] = deviceId
         dataMap["lastModifiedByDeviceId"] = deviceId
         return dataMap
+    }
+
+    @androidx.annotation.VisibleForTesting
+    internal suspend fun checkOrphanStatus(item: SyncOutbox): String? {
+        if (item.operation == "delete") {
+            // Deletion tombstones are valid obligations even when local entity has already been deleted
+            return null
+        }
+        return when (item.entityType) {
+            "local_accounts" -> {
+                val acc = accountDao.getByIdOneShot(item.entityId)
+                if (acc == null) "Entity ${item.entityId} of type ${item.entityType} not found in local database" else null
+            }
+            "local_ledger_entries" -> {
+                val ledger = ledgerDao.getByIdOneShot(item.entityId)
+                if (ledger == null) {
+                    "Entity ${item.entityId} of type ${item.entityType} not found in local database"
+                } else {
+                    val parentAcc = accountDao.getByIdOneShot(ledger.accountId)
+                    if (parentAcc == null) {
+                        "Parent account ${ledger.accountId} for ledger entry ${item.entityId} not found in local database"
+                    } else {
+                        null
+                    }
+                }
+            }
+            "import_batches" -> {
+                val batch = batchDao.getById(item.entityId)
+                if (batch == null) "Entity ${item.entityId} of type ${item.entityType} not found in local database" else null
+            }
+            "audit_logs" -> {
+                val audit = auditDao.getById(item.entityId)
+                if (audit == null) "Entity ${item.entityId} of type ${item.entityType} not found in local database" else null
+            }
+            else -> "Unknown entity type ${item.entityType}"
+        }
     }
 
     private suspend fun executeSingleItemPush(

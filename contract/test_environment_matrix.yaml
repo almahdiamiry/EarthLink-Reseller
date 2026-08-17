@@ -215,6 +215,7 @@ invariants_matrix:
     primary_suites:
       - "app/src/test/java/com/example/Phase1OutboxDurabilityTest.kt"
       - "app/src/test/java/com/example/Phase1ItemIsolationTest.kt"
+      - "app/src/test/java/com/example/Phase1OrphanHandlingTest.kt"
       - "app/src/androidTest/java/com/example/RestoreImportInstrumentedTest.kt"
       - "scripts/scan_forbidden_patterns.py"
     tier_rationale: >
@@ -277,6 +278,14 @@ test_suites:
     path: "app/src/test/java/com/example/Phase1ItemIsolationTest.kt"
     environment: "ROBOLECTRIC"
     tier_purpose: "Phase 1 Outbox Item-Level Failure Isolation and Poison Resistance tests (INV-13 / P1-G2-REQ-02)"
+    associated_invariants:
+      - "INV-05"
+      - "INV-13"
+
+  - name: "Phase1OrphanHandlingTest"
+    path: "app/src/test/java/com/example/Phase1OrphanHandlingTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Phase 1 Outbox Explicit Orphan Handling and Transport Obligation Isolation tests (INV-13 / P1-G2-REQ-03)"
     associated_invariants:
       - "INV-05"
       - "INV-13"

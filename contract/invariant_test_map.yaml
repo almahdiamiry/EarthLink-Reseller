@@ -140,6 +140,7 @@ invariants:
     tests:
       - "app/src/test/java/com/example/Phase1OutboxDurabilityTest.kt"
       - "app/src/test/java/com/example/Phase1ItemIsolationTest.kt"
+      - "app/src/test/java/com/example/Phase1OrphanHandlingTest.kt"
       - "app/src/test/java/com/example/ImportSyncBarrierTest.kt"
       - "app/src/test/java/com/example/BackupSecurityVerificationTest.kt"
       - "app/src/test/java/com/example/RestoreProtocolTest.kt"

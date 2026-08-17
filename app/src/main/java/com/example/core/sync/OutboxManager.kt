@@ -247,6 +247,58 @@ object OutboxManager {
     }
 
     /**
+     * Marks outbox items as orphaned transport obligations (INV-13 / P1-G2-REQ-03).
+     * Retains diagnostic error explanation and ensures bounded backoff applies
+     * without terminal dead-letter dropping.
+     */
+    suspend fun markOrphanFailure(
+        outboxDao: SyncOutboxDao,
+        items: List<SyncOutbox>,
+        reason: String
+    ) {
+        if (items.isEmpty()) return
+        val diagnostic = if (reason.startsWith("ORPHAN:")) reason else "ORPHAN: $reason"
+        markRetryableFailure(outboxDao, items, diagnostic)
+    }
+
+    /**
+     * Marks a single outbox item as an orphaned transport obligation.
+     */
+    suspend fun markOrphanFailure(
+        outboxDao: SyncOutboxDao,
+        item: SyncOutbox,
+        reason: String
+    ) {
+        markOrphanFailure(outboxDao, listOf(item), reason)
+    }
+
+    /**
+     * Calculates exponential backoff delay in milliseconds for failed retry attempts (INV-13 / P1-G2-REQ-03).
+     * Prevents hot-looping while bounding maximum delay to 5 minutes (300,000 ms).
+     */
+    fun calculateBackoffDelay(attemptCount: Int): Long {
+        if (attemptCount <= 0) return 0L
+        val exponent = minOf(attemptCount, 9)
+        val delaySeconds = 1L shl exponent
+        return minOf(300_000L, delaySeconds * 1000L)
+    }
+
+    /**
+     * Checks if an outbox item is eligible for sync execution based on status and retry backoff.
+     */
+    fun isEligibleForSync(item: SyncOutbox, now: Long = System.currentTimeMillis()): Boolean {
+        return when (item.status) {
+            "pending" -> true
+            "syncing" -> false
+            "failed" -> {
+                val delay = calculateBackoffDelay(item.attemptCount)
+                (now - item.updatedAt) >= delay
+            }
+            else -> false
+        }
+    }
+
+    /**
      * Retrieves all pending or failed outbox records queued for synchronization.
      */
     suspend fun getPending(outboxDao: SyncOutboxDao): List<SyncOutbox> {
