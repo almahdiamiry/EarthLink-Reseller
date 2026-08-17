@@ -121,6 +121,7 @@ invariants:
       - "app/src/test/java/com/example/DataOperationCoordinatorConcurrencyTest.kt"
       - "app/src/test/java/com/example/MaintenanceLockExclusiveSyncTest.kt"
       - "app/src/test/java/com/example/Phase1G1PendingOperationDurabilityTest.kt"
+      - "app/src/test/java/com/example/Phase1AtomicityAndLostAckTest.kt"
 
   - id: "INV-12"
     name: "No Outbox Loops on Remote Apply"
@@ -147,6 +148,7 @@ invariants:
       - "app/src/test/java/com/example/Phase1OrphanHandlingTest.kt"
       - "app/src/test/java/com/example/Phase1FirestoreDocumentIdentityTest.kt"
       - "app/src/test/java/com/example/Phase1RestoreTransportReconstructionTest.kt"
+      - "app/src/test/java/com/example/Phase1AtomicityAndLostAckTest.kt"
       - "app/src/test/java/com/example/ImportSyncBarrierTest.kt"
       - "app/src/test/java/com/example/BackupSecurityVerificationTest.kt"
       - "app/src/test/java/com/example/RestoreProtocolTest.kt"

@@ -193,6 +193,7 @@ invariants_matrix:
     primary_suites:
       - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
       - "app/src/test/java/com/example/Phase1G1PendingOperationDurabilityTest.kt"
+      - "app/src/test/java/com/example/Phase1AtomicityAndLostAckTest.kt"
       - "app/src/androidTest/java/com/example/CoordinatorInstrumentedTest.kt"
     tier_rationale: >
       Ensures exclusive coordinator execution with mutex ownership locks across JVM and Android instrumentation.
@@ -220,6 +221,7 @@ invariants_matrix:
       - "app/src/test/java/com/example/Phase1OrphanHandlingTest.kt"
       - "app/src/test/java/com/example/Phase1FirestoreDocumentIdentityTest.kt"
       - "app/src/test/java/com/example/Phase1RestoreTransportReconstructionTest.kt"
+      - "app/src/test/java/com/example/Phase1AtomicityAndLostAckTest.kt"
       - "app/src/androidTest/java/com/example/RestoreImportInstrumentedTest.kt"
       - "scripts/scan_forbidden_patterns.py"
     tier_rationale: >
@@ -316,6 +318,16 @@ test_suites:
     path: "app/src/test/java/com/example/Phase1G1PendingOperationDurabilityTest.kt"
     environment: "ROBOLECTRIC"
     tier_purpose: "Phase 1 G1 Durable Pending Operation & Call-Path Durability test suite (INV-11 / G1)"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+      - "INV-11"
+      - "INV-13"
+
+  - name: "Phase1AtomicityAndLostAckTest"
+    path: "app/src/test/java/com/example/Phase1AtomicityAndLostAckTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Phase 1 Room Multi-Table Transaction Atomicity and Lost-ACK Idempotency proof (INV-11 / INV-13 / P1-G2-REQ-06 / P1-G2-REQ-07)"
     associated_invariants:
       - "INV-01"
       - "INV-05"

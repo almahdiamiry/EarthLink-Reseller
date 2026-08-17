@@ -232,6 +232,7 @@ invariants:
     required_behavior_tests:
       - "app/src/test/java/com/example/Phase3CoordinatorMutexTokenTest.kt"
       - "app/src/test/java/com/example/Phase1G1PendingOperationDurabilityTest.kt"
+      - "app/src/test/java/com/example/Phase1AtomicityAndLostAckTest.kt"
     structural_checks:
       - check_id: "RC-4-coordinator-bypass"
         description: "Forbidden currentMode bypass check in BackupManager"
@@ -278,6 +279,7 @@ invariants:
       - "app/src/test/java/com/example/Phase1OrphanHandlingTest.kt"
       - "app/src/test/java/com/example/Phase1FirestoreDocumentIdentityTest.kt"
       - "app/src/test/java/com/example/Phase1RestoreTransportReconstructionTest.kt"
+      - "app/src/test/java/com/example/Phase1AtomicityAndLostAckTest.kt"
       - "app/src/test/java/com/example/Phase3CoordinatorMutexTokenTest.kt"
     structural_checks:
       - check_id: "INV-13-high-impact-mutex"
