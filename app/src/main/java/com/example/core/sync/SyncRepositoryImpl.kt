@@ -445,21 +445,23 @@ class SyncRepositoryImpl(
     }
     }
 
-    private fun getCollectionRef(
+    @androidx.annotation.VisibleForTesting
+    internal fun getCollectionRef(
         entityType: String,
         uid: String,
         firestore: FirebaseFirestore
     ): com.google.firebase.firestore.CollectionReference? {
         return when (entityType) {
-            "local_accounts" -> firestore.collection("users").document(uid).collection("local_accounts")
-            "local_ledger_entries" -> firestore.collection("users").document(uid).collection("local_ledger_entries")
-            "import_batches" -> firestore.collection("users").document(uid).collection("import_batches")
-            "audit_logs" -> firestore.collection("users").document(uid).collection("audit_logs")
+            "local_accounts", "accounts" -> firestore.collection("users").document(uid).collection("local_accounts")
+            "local_ledger_entries", "ledger", "ledger_entries" -> firestore.collection("users").document(uid).collection("local_ledger_entries")
+            "import_batches", "batches" -> firestore.collection("users").document(uid).collection("import_batches")
+            "audit_logs", "audit" -> firestore.collection("users").document(uid).collection("audit_logs")
             else -> null
         }
     }
 
-    private fun buildOutboxPayloadMap(item: SyncOutbox): Map<String, Any?> {
+    @androidx.annotation.VisibleForTesting
+    internal fun buildOutboxPayloadMap(item: SyncOutbox): Map<String, Any?> {
         val json = JSONObject(item.payloadJson)
         val syncMutationId = if (json.has("syncMutationId")) json.optString("syncMutationId") else null
         val dataMap = mutableMapOf<String, Any?>()

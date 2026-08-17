@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format follows Keep a Changelog.
 
+## [1.73.0] - 2026-08-18
+### Phase 1: Task P1-05 — Enforce Deterministic Firestore Document Identity (INV-01 / INV-13 / P1-G2-REQ-04)
+- **Canonical Document Path Construction**: Verified and enforced 1:1 `entityId` -> `documentId` mapping in `SyncRepositoryImpl.kt` across all entity collections (`local_accounts`, `local_ledger_entries`, `import_batches`, `audit_logs`). Exposed `@VisibleForTesting internal fun getCollectionRef` with canonical alias support and `buildOutboxPayloadMap`.
+- **syncMutationId & Document Identity Separation**: Enforced strict separation between `syncMutationId` (write correlation attribute inside payload) and Firestore document identity (`item.entityId`). Guaranteed that regenerated or modified mutation IDs never mutate or fragment the canonical cloud document key.
+- **Idempotent Retry & Lost-ACK Cloud Safety**: Verified that retrying an unacknowledged push targets the exact same Firestore document path via `document(item.entityId)` and `SetOptions.merge()`, guaranteeing idempotent upsert behavior in cloud storage and eliminating duplicate/shadow documents.
+- **Comprehensive Document Identity Test Suite**: Implemented `Phase1FirestoreDocumentIdentityTest.kt` with 7 test cases covering 1:1 entity ID mapping across all collections, mutation ID payload separation, lost-ACK retry idempotency, distinct entity path uniqueness, inbound remote event identity preservation in Room SQLite, tombstone document identity, and prohibition of random client nonces as document IDs.
+- **Contract & Matrix Mapping**: Mapped `Phase1FirestoreDocumentIdentityTest` in `contract/invariant_contract.yaml`, `contract/invariant_test_map.yaml`, and `contract/test_environment_matrix.yaml`.
+
 ## [1.72.0] - 2026-08-18
 ### Phase 1: Task P1-04 — Explicit Orphan Handling & Bounded Retry Backoff (INV-13 / P1-G2-REQ-03)
 - **Explicit Orphan Handling**: Implemented pre-push target entity existence and lineage verification in `SyncRepositoryImpl.kt`. Outbox obligations whose target local entity (e.g. Account, Ledger, ImportBatch, AuditLog) has been deleted or superseded locally prior to push are explicitly classified as orphaned transport obligations. Orphaned items are marked as `"failed"` with structured diagnostics (e.g., `ORPHAN: Entity <id> of type <type> not found in local database`) and isolated, preventing fraudulent remote entity recreation and never silently dropping or corrupting business state.

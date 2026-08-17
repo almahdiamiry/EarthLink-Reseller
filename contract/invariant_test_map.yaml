@@ -13,6 +13,7 @@ invariants:
       - "app/src/test/java/com/example/StateOwnershipCrossLayerTest.kt"
       - "app/src/test/java/com/example/ProductionExecutableInvariantsTest.kt"
       - "app/src/test/java/com/example/FinalTestMatrixCertificationTest.kt"
+      - "app/src/test/java/com/example/Phase1FirestoreDocumentIdentityTest.kt"
 
   - id: "INV-02"
     name: "Historical Source Immutability"
@@ -141,6 +142,7 @@ invariants:
       - "app/src/test/java/com/example/Phase1OutboxDurabilityTest.kt"
       - "app/src/test/java/com/example/Phase1ItemIsolationTest.kt"
       - "app/src/test/java/com/example/Phase1OrphanHandlingTest.kt"
+      - "app/src/test/java/com/example/Phase1FirestoreDocumentIdentityTest.kt"
       - "app/src/test/java/com/example/ImportSyncBarrierTest.kt"
       - "app/src/test/java/com/example/BackupSecurityVerificationTest.kt"
       - "app/src/test/java/com/example/RestoreProtocolTest.kt"

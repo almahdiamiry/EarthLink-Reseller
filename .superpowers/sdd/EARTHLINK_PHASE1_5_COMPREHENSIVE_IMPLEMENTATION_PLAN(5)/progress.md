@@ -22,7 +22,7 @@
 - [x] Task P1-02: Remove terminal DEAD_LETTER semantics from the outbox
 - [x] Task P1-03: Convert chunk processing to per-item failure isolation
 - [x] Task P1-04: Implement explicit orphan handling
-- [ ] Task P1-05: Enforce deterministic Firestore document identity
+- [x] Task P1-05: Enforce deterministic Firestore document identity
 - [ ] Task P1-06: Define and implement the Restore/Backup transport reconstruction decision table
 - [ ] Task P1-07: Implement G1 pending-operation durability and call-path integration
 - [ ] Task P1-08: Room atomicity and Lost-ACK idempotency proof

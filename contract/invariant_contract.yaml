@@ -20,6 +20,7 @@ invariants:
     required_behavior_tests:
       - "app/src/test/java/com/example/ResolveLocalVersionTest.kt"
       - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+      - "app/src/test/java/com/example/Phase1FirestoreDocumentIdentityTest.kt"
     structural_checks:
       - check_id: "INV-01-tier-isolation"
         description: "Verify state tier definitions and isolation"
@@ -272,6 +273,7 @@ invariants:
       - "app/src/test/java/com/example/Phase1OutboxDurabilityTest.kt"
       - "app/src/test/java/com/example/Phase1ItemIsolationTest.kt"
       - "app/src/test/java/com/example/Phase1OrphanHandlingTest.kt"
+      - "app/src/test/java/com/example/Phase1FirestoreDocumentIdentityTest.kt"
       - "app/src/test/java/com/example/Phase3CoordinatorMutexTokenTest.kt"
     structural_checks:
       - check_id: "INV-13-high-impact-mutex"
