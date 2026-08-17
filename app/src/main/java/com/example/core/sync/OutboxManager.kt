@@ -6,9 +6,13 @@ import org.json.JSONObject
 import java.util.UUID
 
 /**
- * Authoritative protocol manager for Sync Outbox lifecycle operations.
+ * Authoritative protocol manager for Sync Outbox lifecycle operations (INV-13 / P1-G2-REQ-01).
  * Enforces atomic transaction-scoped outbox updates, deduplication policies,
- * and status transitions (in-flight, succeeded, failure, dead-letter).
+ * and durable status transitions (in-flight, succeeded, failed/retryable).
+ *
+ * Terminal "dead_letter" semantics are strictly prohibited. Every mutation remains
+ * durable in the local SQLite database and retryable with bounded backoff until
+ * confirmed by the remote server.
  */
 object OutboxManager {
 
@@ -50,8 +54,8 @@ object OutboxManager {
             createdAt = System.currentTimeMillis(),
             importBatchId = importBatchId
         )
-        outboxDao.insert(item)
-        return item
+        val rowId = outboxDao.insert(item)
+        return item.copy(id = rowId.toInt())
     }
 
     /**
@@ -79,8 +83,8 @@ object OutboxManager {
             createdAt = System.currentTimeMillis(),
             importBatchId = importBatchId
         )
-        outboxDao.insert(item)
-        return item
+        val rowId = outboxDao.insert(item)
+        return item.copy(id = rowId.toInt())
     }
 
     /**
@@ -187,7 +191,9 @@ object OutboxManager {
     }
 
     /**
-     * Marks outbox items as having failed a retryable sync attempt.
+     * Marks outbox items as having failed a sync attempt.
+     * Records bounded error diagnostic metadata and ensures obligations remain
+     * durable and retryable in "failed" status (INV-13).
      */
     suspend fun markRetryableFailure(
         outboxDao: SyncOutboxDao,
@@ -196,34 +202,13 @@ object OutboxManager {
     ) {
         if (items.isEmpty()) return
         val now = System.currentTimeMillis()
+        val sanitizedError = errorReason.take(1000)
         items.forEach { item ->
             outboxDao.update(
                 item.copy(
                     status = "failed",
                     attemptCount = item.attemptCount + 1,
-                    lastError = errorReason,
-                    updatedAt = now
-                )
-            )
-        }
-    }
-
-    /**
-     * Marks outbox items as permanently un-syncable (dead letter queue).
-     */
-    suspend fun markDeadLetter(
-        outboxDao: SyncOutboxDao,
-        items: List<SyncOutbox>,
-        errorReason: String
-    ) {
-        if (items.isEmpty()) return
-        val now = System.currentTimeMillis()
-        items.forEach { item ->
-            outboxDao.update(
-                item.copy(
-                    status = "dead_letter",
-                    attemptCount = item.attemptCount + 1,
-                    lastError = errorReason,
+                    lastError = sanitizedError,
                     updatedAt = now
                 )
             )
@@ -238,10 +223,11 @@ object OutboxManager {
     }
 
     /**
-     * Retrieves all outbox records that are retryable (attemptCount < 10).
+     * Retrieves all outbox records that are retryable.
+     * Per INV-13 and P1-G2-REQ-01, all pending and failed obligations remain durable and retryable indefinitely.
      */
     suspend fun getRetryable(outboxDao: SyncOutboxDao): List<SyncOutbox> {
-        return outboxDao.getPending().filter { it.attemptCount < 10 }
+        return outboxDao.getPending()
     }
 
     /**
@@ -264,7 +250,6 @@ object OutboxManager {
 
     /**
      * Checks if an entity has any active (pending/syncing/failed) unsynced outbox entries.
-     * Dead-letter entries are explicitly not considered active.
      */
     suspend fun hasActiveMutation(outboxDao: SyncOutboxDao, entityId: String, entityType: String): Boolean {
         return outboxDao.hasActiveMutation(entityId, entityType) > 0
@@ -284,4 +269,5 @@ object OutboxManager {
         return outboxDao.resetSyncingToPending()
     }
 }
+
 

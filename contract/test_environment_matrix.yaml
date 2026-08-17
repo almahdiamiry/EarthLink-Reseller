@@ -207,13 +207,18 @@ invariants_matrix:
       Guarantees audit log creation never mutates business domain state or triggers sync loops.
 
   - id: "INV-13"
-    name: "Atomic Restore and State Isolation"
+    name: "Atomic Restore, State Isolation & Outbox Durability"
     required_tiers:
+      - "ROBOLECTRIC"
       - "INSTRUMENTED"
+      - "STRUCTURAL"
     primary_suites:
+      - "app/src/test/java/com/example/Phase1OutboxDurabilityTest.kt"
       - "app/src/androidTest/java/com/example/RestoreImportInstrumentedTest.kt"
+      - "scripts/scan_forbidden_patterns.py"
     tier_rationale: >
       Guarantees backup restore is atomic, wipes existing runtime state, and resets sync cursors safely.
+      Guarantees outbox obligations remain permanently durable and retryable without terminal dead_letter states.
 
   - id: "INV-14"
     name: "Fail-Closed Encryption & Key Recovery"
@@ -258,6 +263,14 @@ test_suites:
       - "INV-03"
       - "INV-04"
       - "INV-06"
+
+  - name: "Phase1OutboxDurabilityTest"
+    path: "app/src/test/java/com/example/Phase1OutboxDurabilityTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Phase 1 Outbox Durability and Anti-Dead-Letter behavior tests (INV-13 / P1-G2-REQ-01)"
+    associated_invariants:
+      - "INV-05"
+      - "INV-13"
 
   - name: "Phase2ServerConfirmedLifecycleTest"
     path: "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"

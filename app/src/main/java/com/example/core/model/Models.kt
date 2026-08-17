@@ -404,6 +404,14 @@ data class ImportBatch(
     val lastCommittedTransactionIndex: Int = 0
 )
 
+/**
+ * SyncOutbox: Durable Transport Queue for Synchronized Mutations (INV-13 / P1-G2-REQ-01).
+ * Status values are strictly:
+ * - "pending": Awaiting synchronization attempt
+ * - "syncing": Currently in-flight during active batch push
+ * - "failed": Encountered transient or persistent error; remains fully durable & retryable indefinitely
+ * Note: Terminal "dead_letter" semantics are strictly prohibited.
+ */
 @Entity(
     tableName = "sync_outbox",
     indices = [
@@ -416,11 +424,11 @@ data class ImportBatch(
 @JsonClass(generateAdapter = true)
 data class SyncOutbox(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val entityType: String, // "local_accounts", "local_ledger_entries", "import_batches"
+    val entityType: String, // "local_accounts", "local_ledger_entries", "import_batches", "audit_logs"
     val entityId: String,
     val operation: String, // "upsert", "delete"
     val payloadJson: String,
-    val status: String = "pending", // "pending", "syncing", "failed"
+    val status: String = "pending", // strictly: "pending", "syncing", "failed" (no terminal dead_letter)
     val attemptCount: Int = 0,
     val lastError: String? = null,
     val createdAt: Long = System.currentTimeMillis(),

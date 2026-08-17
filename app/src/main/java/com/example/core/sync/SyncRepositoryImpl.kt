@@ -125,17 +125,17 @@ class SyncRepositoryImpl(
         return outboxDao.getAllUnsyncedCount()
     }
 
-    override suspend fun getDeadLetterCount(): Int {
-        return outboxDao.getDeadLetterCount()
+    override suspend fun getFailedCount(): Int {
+        return outboxDao.getFailedCount()
     }
 
-    override suspend fun retryDeadLetters(): Int {
-        val count = outboxDao.resetDeadLetters()
+    override suspend fun retryFailedItems(): Int {
+        val count = outboxDao.resetFailedItems()
         if (count > 0) {
             (context.applicationContext as? com.example.EarthlinkApp)?.auditRepository?.log(
                 severity = AuditSeverity.INFO,
-                action = "SYNC_RETRY_DEAD_LETTERS",
-                message = "Reset $count dead-letter items back to pending queue for re-syncing.",
+                action = "SYNC_RETRY_FAILED_ITEMS",
+                message = "Reset $count failed outbox items back to pending queue for re-syncing.",
                 origin = com.example.core.model.AuditOrigin.SYNC_EVENT
             )
         }
@@ -487,34 +487,8 @@ class SyncRepositoryImpl(
                     Log.e("FirebaseSync", "Failed syncing batch", e)
                     
                     appDatabase.withTransaction {
-                        val deadLetterItems = mutableListOf<com.example.core.model.SyncOutbox>()
-                        val retryableItems = mutableListOf<com.example.core.model.SyncOutbox>()
-
-                        for (item in latestItemsInChunk) {
-                            if (item.attemptCount + 1 >= 10) {
-                                deadLetterItems.add(item)
-                                (context.applicationContext as? com.example.EarthlinkApp)?.auditRepository?.log(
-                                    severity = AuditSeverity.CRITICAL,
-                                    action = "SYNC_FAILED_PERMANENTLY",
-                                    message = "Item reached dead letter queue after 10 failed sync attempts: ${e.localizedMessage}",
-                                    origin = com.example.core.model.AuditOrigin.SYNC_FAILURE
-                                )
-                            } else {
-                                retryableItems.add(item)
-                            }
-                        }
-
                         val errReason = e.localizedMessage ?: "Sync error"
-                        if (deadLetterItems.isNotEmpty()) {
-                            val deadLetterIds = deadLetterItems.map { it.entityId }.toSet()
-                            val allDeadLetterChunkItems = allItemsInChunk.filter { it.entityId in deadLetterIds }
-                            OutboxManager.markDeadLetter(outboxDao, allDeadLetterChunkItems, errReason)
-                        }
-                        if (retryableItems.isNotEmpty()) {
-                            val retryableIds = retryableItems.map { it.entityId }.toSet()
-                            val allRetryableChunkItems = allItemsInChunk.filter { it.entityId in retryableIds }
-                            OutboxManager.markRetryableFailure(outboxDao, allRetryableChunkItems, errReason)
-                        }
+                        OutboxManager.markRetryableFailure(outboxDao, allItemsInChunk, errReason)
                     }
                 }
             }

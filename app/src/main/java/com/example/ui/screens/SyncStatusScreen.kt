@@ -67,7 +67,7 @@ fun SyncStatusScreen(
     val state by viewModel.syncState.collectAsStateWithLifecycle(initialValue = SyncStatusState.IDLE)
     val lastSyncTime by viewModel.lastSyncTime.collectAsStateWithLifecycle()
     val pendingCount by viewModel.pendingCount.collectAsStateWithLifecycle()
-    val deadLetterCount by viewModel.deadLetterCount.collectAsStateWithLifecycle()
+    val failedCount by viewModel.failedCount.collectAsStateWithLifecycle()
     val progress by viewModel.isSyncingProgress.collectAsStateWithLifecycle()
     val logs by viewModel.auditLogs.collectAsStateWithLifecycle()
 
@@ -104,9 +104,9 @@ fun SyncStatusScreen(
                     color = if (pendingCount > 0) Color(0xFFE65100) else Color(0xFF2E7D32)
                 )
 
-                if (deadLetterCount > 0) {
+                if (failedCount > 0) {
                     Text(
-                        text = "⚠️ Dead-Letter Queue: $deadLetterCount items failed sync after multiple attempts.",
+                        text = "⚠️ Retrying Failed Items: $failedCount items encountered sync errors and remain queued for retry.",
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.error
@@ -138,13 +138,13 @@ fun SyncStatusScreen(
                     }
                 }
 
-                if (deadLetterCount > 0) {
+                if (failedCount > 0) {
                     OutlinedButton(
-                        onClick = { viewModel.retryDeadLetters() },
+                        onClick = { viewModel.retryFailedItems() },
                         enabled = !progress,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp)
                     ) {
-                        Text("🔄 Reset & Retry $deadLetterCount Dead-Letter Items")
+                        Text("🔄 Reset Backoff & Retry $failedCount Failed Items")
                     }
                 }
             }

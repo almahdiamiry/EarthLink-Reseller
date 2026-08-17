@@ -157,4 +157,16 @@ patterns:
       - "syncUserSettings\\("
     explanation: "INV-10 / Phase 5 mandates that settings synchronization must be initiated solely through canonical triggerSettingsSync(uid, reason)."
 
+  - id: "INV-13-no-terminal-dead-letter"
+    invariant: "INV-13"
+    description: "Forbidden terminal DEAD_LETTER / dead_letter outbox state mutations in production code"
+    check_type: "regex"
+    file_glob: "app/src/main/java/com/example/core/**/*.kt"
+    forbidden_regexes:
+      - "status\\s*=\\s*[\"']dead_letter[\"']"
+      - "status\\s*==\\s*[\"']dead_letter[\"']"
+      - "WHERE\\s+status\\s*=\\s*['\"]dead_letter['\"]"
+      - "markDeadLetter"
+    explanation: "INV-13 / P1-G2-REQ-01 mandates that outbox mutations are permanently durable and retryable; terminal dead-letter transitions are strictly forbidden."
+
 

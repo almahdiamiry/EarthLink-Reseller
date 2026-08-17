@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format follows Keep a Changelog.
 
+## [1.70.0] - 2026-08-18
+### Phase 1: Task P1-02 — Remove terminal DEAD_LETTER semantics and guarantee Outbox Durability (INV-13 / P1-G2-REQ-01)
+- **Eliminate Terminal DEAD_LETTER Semantics**: Removed all terminal `dead_letter` outbox state mutations from `SyncRepositoryImpl.kt` and `OutboxManager.kt`. Failed outbox obligations remain permanently durable in SQLite in `"failed"` state with updated attempt counts, error diagnostics, and retryability.
+- **DAO & Interface Modernization**: Updated `SyncOutboxDao` and `SyncRepository` interfaces to replace dead-letter queries with `getFailedCount()`, `getFailedItems()`, and `resetFailedItems()`. `insert` methods return generated row IDs for accurate entity tracking.
+- **UI Alignment**: Updated `SyncStatusViewModel.kt` and `SyncStatusScreen.kt` from "Dead-Letter Queue" to "Failed / Retrying Items" with manual backoff reset capability.
+- **Forbidden Pattern Registry**: Registered `INV-13-no-terminal-dead-letter` pattern in `contract/forbidden_patterns.yaml` prohibiting `dead_letter` status assignments or methods in production code.
+- **Comprehensive Durability Test Suite**: Implemented `Phase1OutboxDurabilityTest.kt` with 8 exhaustive test cases verifying attempt count progression, anti-dead-letter invariant, long-running failure durability, poison item isolation, payload preservation, FIFO fairness with bounded diagnostics (<= 1000 chars), and crash recovery.
+
 ## [1.69.0] - 2026-08-17
 ### Phase 0: Repository Authority & Historical Reconciliation
 - **Git Control-Plane Reset**: Discarded corrupted historical git objects and established clean `FORENSIC_BASELINE_NON_AUTHORITATIVE` commit.

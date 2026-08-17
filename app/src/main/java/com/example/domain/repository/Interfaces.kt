@@ -116,8 +116,8 @@ interface SyncRepository {
     fun requestSync(reason: SyncReason)
     fun triggerSettingsSync(uid: String? = null, reason: String = "manual")
     suspend fun getPendingOutboxCount(): Int
-    suspend fun getDeadLetterCount(): Int
-    suspend fun retryDeadLetters(): Int
+    suspend fun getFailedCount(): Int
+    suspend fun retryFailedItems(): Int
     suspend fun anonymousSignIn(): String?
     suspend fun emailSignIn(email: String, password: String): String?
     suspend fun googleSignIn(idToken: String): String?

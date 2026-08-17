@@ -25,8 +25,8 @@ class SyncStatusViewModel(
     private val _pendingCount = MutableStateFlow(0)
     val pendingCount = _pendingCount.asStateFlow()
 
-    private val _deadLetterCount = MutableStateFlow(0)
-    val deadLetterCount = _deadLetterCount.asStateFlow()
+    private val _failedCount = MutableStateFlow(0)
+    val failedCount = _failedCount.asStateFlow()
 
     val auditLogs = audit.getAuditLogs().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -44,21 +44,21 @@ class SyncStatusViewModel(
         viewModelScope.launch {
             try {
                 _pendingCount.value = syncRepo.getPendingOutboxCount()
-                _deadLetterCount.value = syncRepo.getDeadLetterCount()
+                _failedCount.value = syncRepo.getFailedCount()
             } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                Log.e("SyncStatusVM", "Failed to query pending or dead-letter queue", e)
+                Log.e("SyncStatusVM", "Failed to query pending or failed outbox queue", e)
             }
         }
     }
 
-    fun retryDeadLetters() {
+    fun retryFailedItems() {
         viewModelScope.launch {
             try {
-                syncRepo.retryDeadLetters()
+                syncRepo.retryFailedItems()
                 refreshPendingCount()
                 triggeredSync()
             } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                Log.e("SyncStatusVM", "Failed to reset dead-letter queue", e)
+                Log.e("SyncStatusVM", "Failed to reset failed outbox items", e)
             }
         }
     }

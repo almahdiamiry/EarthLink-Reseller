@@ -208,11 +208,11 @@ interface SyncOutboxDao {
     suspend fun getPending(): List<SyncOutbox>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(item: SyncOutbox)
+    suspend fun insert(item: SyncOutbox): Long
 
     @Transaction
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAll(items: List<SyncOutbox>)
+    suspend fun insertAll(items: List<SyncOutbox>): List<Long>
 
     @Update
     suspend fun update(item: SyncOutbox)
@@ -253,14 +253,14 @@ interface SyncOutboxDao {
     @Query("SELECT COUNT(*) FROM sync_outbox WHERE status = 'syncing'")
     suspend fun getInFlightCount(): Int
 
-    @Query("SELECT COUNT(*) FROM sync_outbox WHERE status = 'dead_letter'")
-    suspend fun getDeadLetterCount(): Int
+    @Query("SELECT COUNT(*) FROM sync_outbox WHERE status = 'failed'")
+    suspend fun getFailedCount(): Int
 
-    @Query("SELECT * FROM sync_outbox WHERE status = 'dead_letter'")
-    suspend fun getDeadLetters(): List<SyncOutbox>
+    @Query("SELECT * FROM sync_outbox WHERE status = 'failed'")
+    suspend fun getFailedItems(): List<SyncOutbox>
 
-    @Query("UPDATE sync_outbox SET status = 'pending', attemptCount = 0, lastError = NULL WHERE status = 'dead_letter'")
-    suspend fun resetDeadLetters(): Int
+    @Query("UPDATE sync_outbox SET status = 'pending', attemptCount = 0, lastError = NULL WHERE status = 'failed'")
+    suspend fun resetFailedItems(): Int
 
     @Query("UPDATE sync_outbox SET status = 'pending' WHERE status = 'syncing'")
     suspend fun resetSyncingToPending(): Int

@@ -19,7 +19,7 @@
 
 ## Task Execution Status
 - [x] Task P1-01: Freeze the Phase-1 working allowlist and rebuild current test identity
-- [ ] Task P1-02: Remove terminal DEAD_LETTER semantics from the outbox
+- [x] Task P1-02: Remove terminal DEAD_LETTER semantics from the outbox
 - [ ] Task P1-03: Convert chunk processing to per-item failure isolation
 - [ ] Task P1-04: Implement explicit orphan handling
 - [ ] Task P1-05: Enforce deterministic Firestore document identity

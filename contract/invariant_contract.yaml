@@ -266,11 +266,16 @@ invariants:
       - "app/src/main/java/com/example/core/sync/DataOperationCoordinator.kt"
       - "app/src/main/java/com/example/core/backup/BackupManager.kt"
       - "app/src/main/java/com/example/core/sync/UtowerImporter.kt"
+      - "app/src/main/java/com/example/core/sync/OutboxManager.kt"
+      - "app/src/main/java/com/example/core/model/Models.kt"
     required_behavior_tests:
+      - "app/src/test/java/com/example/Phase1OutboxDurabilityTest.kt"
       - "app/src/test/java/com/example/Phase3CoordinatorMutexTokenTest.kt"
     structural_checks:
       - check_id: "INV-13-high-impact-mutex"
         description: "High impact operations must strictly acquire coordinator lock with appropriate mode"
+      - check_id: "INV-13-no-terminal-dead-letter"
+        description: "Outbox mutations must remain durable and retryable without terminal dead-letter transitions"
     evidence_requirements:
       - "source_sha"
       - "test_results"
