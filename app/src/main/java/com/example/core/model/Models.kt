@@ -541,6 +541,24 @@ class DivergentPayloadConflictException(
 ) : IllegalStateException(message, cause)
 
 /**
+ * Thrown when an operation attempts to mix a baseline from one snapshot lineage with the ledger history
+ * of another snapshot lineage, violating complete-lineage preservation (P2-G3-REQ-02 / INV-01 / INV-06).
+ */
+class MixedLineageConflictException(
+    message: String,
+    cause: Throwable? = null
+) : IllegalStateException(message, cause)
+
+/**
+ * Thrown when conflicting opening/current baselines exist between datasets without an approved deterministic
+ * lineage selection choice prior to Room commit (P2-G3-REQ-01 / P2-G3-REQ-02 / INV-11).
+ */
+class IncompatibleBaselineConflictException(
+    message: String,
+    cause: Throwable? = null
+) : IllegalStateException(message, cause)
+
+/**
  * ConflictResolutionChoice: Deterministic resolution choice for conflicting entities or lineages during Restore/Import.
  */
 enum class ConflictResolutionChoice {
@@ -560,7 +578,7 @@ enum class ConflictResolutionChoice {
 data class RestoreMergeDecision(
     val artifactIdentity: String,
     val selectedBaselineId: String,
-    val selectedLineageScope: String,
+    val selectedLineageScope: String = "COMPLETE_LINEAGE",
     val conflictDecisions: Map<String, ConflictResolutionChoice> = emptyMap(),
     val targetDatasetSummary: String = "",
     val isApproved: Boolean = false,
@@ -580,6 +598,48 @@ data class RestoreMergeDecision(
         return !isValidFor(currentArtifactIdentity, currentBaselineId)
     }
 }
+
+/**
+ * SnapshotLineage: A complete, self-contained snapshot lineage comprising an accepted baseline
+ * and its associated eligible ledger history (P2-G3-REQ-02 / TQ-25).
+ */
+@JsonClass(generateAdapter = true)
+data class SnapshotLineage(
+    val lineageId: String,
+    val baselineAccounts: List<LocalAccount> = emptyList(),
+    val ledgerHistory: List<LocalLedgerEntry> = emptyList(),
+    val importBatches: List<ImportBatch> = emptyList()
+)
+
+/**
+ * RestoreMergeEvaluation: Analysis produced outside the Room transaction detailing detected conflicts,
+ * deduplication candidates, and lineage pairings between live and incoming datasets (P2-G3-REQ-01 / INV-11).
+ */
+@JsonClass(generateAdapter = true)
+data class RestoreMergeEvaluation(
+    val totalLiveAccounts: Int = 0,
+    val totalBackupAccounts: Int = 0,
+    val totalLiveLedgers: Int = 0,
+    val totalBackupLedgers: Int = 0,
+    val conflictingBaselineAccounts: List<String> = emptyList(),
+    val deduplicatedTransactions: List<String> = emptyList(),
+    val divergentPayloadTransactions: List<String> = emptyList(),
+    val newTransactions: List<String> = emptyList(),
+    val isCleanMergePossible: Boolean = true
+)
+
+/**
+ * RestoreMergeResult: Result of an atomic Restore Merge execution (P2-G3-REQ-01 / P2-G3-REQ-02).
+ */
+@JsonClass(generateAdapter = true)
+data class RestoreMergeResult(
+    val success: Boolean,
+    val accountsMerged: Int = 0,
+    val ledgersMerged: Int = 0,
+    val ledgersDeduplicated: Int = 0,
+    val conflictsResolved: Int = 0,
+    val summary: String = ""
+)
 
 
 

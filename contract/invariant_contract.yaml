@@ -23,6 +23,7 @@ invariants:
       - "app/src/test/java/com/example/Phase1FirestoreDocumentIdentityTest.kt"
       - "app/src/test/java/com/example/Phase1SameIdDivergentPayloadTest.kt"
       - "app/src/test/java/com/example/Phase1TwoDeviceConvergenceTest.kt"
+      - "app/src/test/java/com/example/Phase2RestoreMergeLineageTest.kt"
     structural_checks:
       - check_id: "INV-01-tier-isolation"
         description: "Verify state tier definitions and isolation"
@@ -130,6 +131,7 @@ invariants:
       - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
       - "app/src/test/java/com/example/Phase2RemoteVersionAdversarialTest.kt"
       - "app/src/test/java/com/example/Phase1TwoDeviceConvergenceTest.kt"
+      - "app/src/test/java/com/example/Phase2RestoreMergeLineageTest.kt"
     structural_checks:
       - check_id: "RC-1-remote-version-fallback"
         description: "Forbidden local timestamp fallback when remote version is absent"
@@ -242,6 +244,7 @@ invariants:
       - "app/src/test/java/com/example/Phase1SameIdDivergentPayloadTest.kt"
       - "app/src/test/java/com/example/Phase1TwoDeviceConvergenceTest.kt"
       - "app/src/test/java/com/example/Phase2RestoreTransactionBoundaryTest.kt"
+      - "app/src/test/java/com/example/Phase2RestoreMergeLineageTest.kt"
     structural_checks:
       - check_id: "RC-4-coordinator-bypass"
         description: "Forbidden currentMode bypass check in BackupManager"
@@ -313,6 +316,7 @@ invariants:
     required_behavior_tests:
       - "app/src/test/java/com/example/ResolveLocalVersionTest.kt"
       - "app/src/test/java/com/example/Phase2RestoreTransactionBoundaryTest.kt"
+      - "app/src/test/java/com/example/Phase2RestoreMergeLineageTest.kt"
     structural_checks:
       - check_id: "INV-14-fail-closed-encryption"
         description: "Unrecoverable database keys must throw immediately without creating new keys"

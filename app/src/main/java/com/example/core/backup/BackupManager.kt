@@ -403,6 +403,631 @@ object BackupManager {
         restoreBackupZipInternal(context, backupFile, decision, force)
     }
 
+    /**
+     * Executes Restore Merge as a complete-lineage decision operation (P2-G3-REQ-01 / P2-G3-REQ-02 / INV-01 / INV-11).
+     * Enforces complete lineage pairing, same-ID divergent payload conflict detection, and idempotent merge without double-counting.
+     */
+    suspend fun restoreMergeWithDecision(
+        context: Context,
+        backupFile: File,
+        decision: com.example.core.model.RestoreMergeDecision,
+        force: Boolean = false
+    ): Boolean = withContext(Dispatchers.IO) {
+        val artifactHash = calculateFileHash(backupFile)
+        if (!decision.isValidFor(artifactHash, decision.selectedBaselineId)) {
+            Log.e(TAG, "Restore Merge aborted: RestoreMergeDecision is invalidated, unapproved, or mismatched artifact hash.")
+            return@withContext false
+        }
+        restoreMergeBackupZipInternal(context, backupFile, decision, force)
+    }
+
+    /**
+     * Programmatic / Database-level execution of Restore Merge inside an existing active transaction.
+     * Evaluates complete-lineage pairing, same-ID deduplication, material divergence protection, and deterministic balance updates.
+     */
+    suspend fun executeRestoreMergeInternal(
+        liveDb: AppDatabase,
+        backupDb: AppDatabase,
+        decision: com.example.core.model.RestoreMergeDecision
+    ): com.example.core.model.RestoreMergeResult {
+        val liveAccounts = liveDb.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE)
+        val backupAccounts = backupDb.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE)
+
+        val liveLedgers = liveDb.localLedgerEntryDao().getAllOneShot(limit = Int.MAX_VALUE)
+        val backupLedgers = backupDb.localLedgerEntryDao().getAllOneShot(limit = Int.MAX_VALUE)
+
+        val liveAccMap = liveAccounts.associateBy { it.id }
+        val backupAccMap = backupAccounts.associateBy { it.id }
+
+        val liveLedgerByAcc = liveLedgers.groupBy { it.accountId }
+        val backupLedgerByAcc = backupLedgers.groupBy { it.accountId }
+
+        val allAccountIds = (liveAccMap.keys + backupAccMap.keys).distinct()
+
+        var accountsMergedCount = 0
+        var ledgersMergedCount = 0
+        var ledgersDeduplicatedCount = 0
+        var conflictsResolvedCount = 0
+
+        for (accId in allAccountIds) {
+            val liveAcc = liveAccMap[accId]
+            val backupAcc = backupAccMap[accId]
+
+            val liveAccLedgers = liveLedgerByAcc[accId] ?: emptyList()
+            val backupAccLedgers = backupLedgerByAcc[accId] ?: emptyList()
+
+            if (liveAcc != null && backupAcc == null) {
+                // Live only: retain live account and its ledger entries
+                continue
+            } else if (liveAcc == null && backupAcc != null) {
+                // Backup only: insert backup account and all its ledger entries
+                liveDb.localAccountDao().insert(backupAcc)
+                if (backupAccLedgers.isNotEmpty()) {
+                    liveDb.localLedgerEntryDao().insertAll(backupAccLedgers)
+                    ledgersMergedCount += backupAccLedgers.size
+                }
+                accountsMergedCount++
+            } else if (liveAcc != null && backupAcc != null) {
+                // Account in both: evaluate baseline compatibility
+                val isOpeningBaselineIdentical = kotlin.math.abs(liveAcc.openingDebtIqd - backupAcc.openingDebtIqd) < 0.001 &&
+                        kotlin.math.abs(liveAcc.openingAdvanceIqd - backupAcc.openingAdvanceIqd) < 0.001 &&
+                        kotlin.math.abs(liveAcc.openingLoanIqd - backupAcc.openingLoanIqd) < 0.001 &&
+                        kotlin.math.abs(liveAcc.currentPriceIqd - backupAcc.currentPriceIqd) < 0.001 &&
+                        (liveAcc.sourceExternalId == null || backupAcc.sourceExternalId == null || liveAcc.sourceExternalId == backupAcc.sourceExternalId) &&
+                        (liveAcc.sourceBatchId == null || backupAcc.sourceBatchId == null || liveAcc.sourceBatchId == backupAcc.sourceBatchId) &&
+                        (liveAcc.stateSource == null || backupAcc.stateSource == null || liveAcc.stateSource == backupAcc.stateSource)
+
+                val isBaselineConflict = !isOpeningBaselineIdentical || (
+                        liveAccLedgers.isEmpty() && backupAccLedgers.isEmpty() &&
+                        (kotlin.math.abs(liveAcc.debtIqd - backupAcc.debtIqd) > 0.001 ||
+                         kotlin.math.abs(liveAcc.advanceIqd - backupAcc.advanceIqd) > 0.001 ||
+                         kotlin.math.abs(liveAcc.loanIqd - backupAcc.loanIqd) > 0.001)
+                )
+
+                if (isBaselineConflict) {
+                    val accChoice = decision.conflictDecisions[accId]
+                    val resolvedLineage = accChoice ?: when {
+                        decision.selectedBaselineId == "LIVE" || decision.selectedBaselineId == "LIVE_SNAPSHOT" -> com.example.core.model.ConflictResolutionChoice.USE_LIVE
+                        decision.selectedBaselineId == "BACKUP" || decision.selectedBaselineId == "BACKUP_SNAPSHOT" -> com.example.core.model.ConflictResolutionChoice.USE_BACKUP
+                        else -> com.example.core.model.ConflictResolutionChoice.FAIL_ON_CONFLICT
+                    }
+
+                    when (resolvedLineage) {
+                        com.example.core.model.ConflictResolutionChoice.USE_LIVE -> {
+                            // Complete Lineage Rule (P2-G3-REQ-02): retain live baseline + live ledger history ONLY.
+                            // Do NOT mix backup ledger history from conflicting baseline into live baseline.
+                            conflictsResolvedCount++
+                        }
+                        com.example.core.model.ConflictResolutionChoice.USE_BACKUP -> {
+                            // Complete Lineage Rule (P2-G3-REQ-02): retain backup baseline + backup ledger history ONLY.
+                            liveDb.localLedgerEntryDao().deleteByAccountId(accId)
+                            liveDb.localAccountDao().update(backupAcc)
+                            if (backupAccLedgers.isNotEmpty()) {
+                                liveDb.localLedgerEntryDao().insertAll(backupAccLedgers)
+                                ledgersMergedCount += backupAccLedgers.size
+                            }
+                            conflictsResolvedCount++
+                        }
+                        else -> {
+                            throw com.example.core.model.IncompatibleBaselineConflictException(
+                                "Incompatible opening/current baseline for account $accId requires explicit lineage resolution before final Room write."
+                            )
+                        }
+                    }
+                } else {
+                    // Baselines are compatible / same lineage -> merge transactions with deduplication and material divergence detection
+                    val liveLedgerById = liveAccLedgers.associateBy { it.id }
+                    val backupLedgerById = backupAccLedgers.associateBy { it.id }
+                    val allTxIds = (liveLedgerById.keys + backupLedgerById.keys).distinct()
+
+                    val finalLedgerEntries = mutableListOf<com.example.core.model.LocalLedgerEntry>()
+
+                    for (txId in allTxIds) {
+                        val liveTx = liveLedgerById[txId]
+                        val backupTx = backupLedgerById[txId]
+
+                        if (liveTx != null && backupTx == null) {
+                            finalLedgerEntries.add(liveTx)
+                        } else if (liveTx == null && backupTx != null) {
+                            finalLedgerEntries.add(backupTx)
+                            ledgersMergedCount++
+                        } else if (liveTx != null && backupTx != null) {
+                            // Same ID in both: check if payload is identical
+                            val isPayloadIdentical = liveTx.accountId == backupTx.accountId &&
+                                    liveTx.typeRaw == backupTx.typeRaw &&
+                                    kotlin.math.abs(liveTx.amountIqd - backupTx.amountIqd) < 0.0001
+
+                            if (isPayloadIdentical) {
+                                // Deduplicate to 1 logical transaction (INV-01 / P2-G3-REQ-02)
+                                finalLedgerEntries.add(liveTx)
+                                ledgersDeduplicatedCount++
+                            } else {
+                                // Materially divergent payload! (INV-01 / P2-G3-REQ-02)
+                                val txChoice = decision.conflictDecisions[txId]
+                                when (txChoice) {
+                                    com.example.core.model.ConflictResolutionChoice.USE_LIVE -> {
+                                        finalLedgerEntries.add(liveTx)
+                                        conflictsResolvedCount++
+                                    }
+                                    com.example.core.model.ConflictResolutionChoice.USE_BACKUP -> {
+                                        finalLedgerEntries.add(backupTx)
+                                        conflictsResolvedCount++
+                                    }
+                                    else -> {
+                                        throw com.example.core.model.DivergentPayloadConflictException(
+                                            "Same-ID divergent payload conflict for transaction $txId: " +
+                                            "live={accountId=${liveTx.accountId}, type=${liveTx.typeRaw}, amount=${liveTx.amountIqd}}, " +
+                                            "backup={accountId=${backupTx.accountId}, type=${backupTx.typeRaw}, amount=${backupTx.amountIqd}}"
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Recalculate account balances deterministically from accepted baseline + unique deduplicated ledger entries
+                    val sortedEntries = finalLedgerEntries.sortedWith(
+                        compareBy<com.example.core.model.LocalLedgerEntry> { it.occurredAt }
+                            .thenBy { it.createdAt }
+                            .thenBy { it.id }
+                    )
+
+                    var currentDebt = liveAcc.openingDebtIqd
+                    var currentAdvance = liveAcc.openingAdvanceIqd
+                    var currentLoan = liveAcc.openingLoanIqd
+
+                    val updatedLedgerList = mutableListOf<com.example.core.model.LocalLedgerEntry>()
+                    for (tx in sortedEntries) {
+                        val canonicalType = com.example.core.ledger.TransactionTypeNormalizer.normalizeTransactionType(tx.typeRaw)
+                        val calc = com.example.core.ledger.BalanceCalculator.applyTransaction(
+                            currentDebt = currentDebt,
+                            currentAdvance = currentAdvance,
+                            currentLoan = currentLoan,
+                            txType = canonicalType,
+                            amount = tx.amountIqd
+                        )
+                        currentDebt = calc.debtIqd
+                        currentAdvance = calc.advanceIqd
+                        currentLoan = calc.loanIqd
+                        updatedLedgerList.add(tx.copy(debtAfterIqd = currentDebt))
+                    }
+
+                    if (sortedEntries.isEmpty()) {
+                        currentDebt = liveAcc.debtIqd
+                        currentAdvance = liveAcc.advanceIqd
+                        currentLoan = liveAcc.loanIqd
+                    }
+
+                    val updatedAccount = liveAcc.copy(
+                        debtIqd = currentDebt,
+                        advanceIqd = currentAdvance,
+                        loanIqd = currentLoan,
+                        updatedAt = System.currentTimeMillis()
+                    )
+
+                    liveDb.localLedgerEntryDao().deleteByAccountId(accId)
+                    liveDb.localAccountDao().update(updatedAccount)
+                    if (updatedLedgerList.isNotEmpty()) {
+                        liveDb.localLedgerEntryDao().insertAll(updatedLedgerList)
+                    }
+                    accountsMergedCount++
+                }
+            }
+        }
+
+        // Import batches merge
+        val backupBatches = backupDb.importBatchDao().getAllOneShot()
+        for (b in backupBatches) {
+            val existing = liveDb.importBatchDao().getById(b.id)
+            if (existing == null) {
+                liveDb.importBatchDao().insert(b)
+            }
+        }
+
+        return com.example.core.model.RestoreMergeResult(
+            success = true,
+            accountsMerged = accountsMergedCount,
+            ledgersMerged = ledgersMergedCount,
+            ledgersDeduplicated = ledgersDeduplicatedCount,
+            conflictsResolved = conflictsResolvedCount,
+            summary = "Restore Merge completed: $accountsMergedCount accounts, $ledgersMergedCount ledgers merged, $ledgersDeduplicatedCount deduplicated, $conflictsResolvedCount conflicts resolved."
+        )
+    }
+
+    /**
+     * Lineage-safe merger of two complete snapshot lineages (P2-G3-REQ-02).
+     */
+    fun mergeSnapshotLineages(
+        liveLineage: com.example.core.model.SnapshotLineage,
+        backupLineage: com.example.core.model.SnapshotLineage,
+        decision: com.example.core.model.RestoreMergeDecision
+    ): com.example.core.model.SnapshotLineage {
+        val liveAccMap = liveLineage.baselineAccounts.associateBy { it.id }
+        val backupAccMap = backupLineage.baselineAccounts.associateBy { it.id }
+
+        val liveLedgerByAcc = liveLineage.ledgerHistory.groupBy { it.accountId }
+        val backupLedgerByAcc = backupLineage.ledgerHistory.groupBy { it.accountId }
+
+        val mergedAccounts = mutableListOf<com.example.core.model.LocalAccount>()
+        val mergedLedgers = mutableListOf<com.example.core.model.LocalLedgerEntry>()
+
+        val allAccountIds = (liveAccMap.keys + backupAccMap.keys).distinct()
+
+        for (accId in allAccountIds) {
+            val liveAcc = liveAccMap[accId]
+            val backupAcc = backupAccMap[accId]
+            val liveLedgers = liveLedgerByAcc[accId] ?: emptyList()
+            val backupLedgers = backupLedgerByAcc[accId] ?: emptyList()
+
+            if (liveAcc != null && backupAcc == null) {
+                mergedAccounts.add(liveAcc)
+                mergedLedgers.addAll(liveLedgers)
+            } else if (liveAcc == null && backupAcc != null) {
+                mergedAccounts.add(backupAcc)
+                mergedLedgers.addAll(backupLedgers)
+            } else if (liveAcc != null && backupAcc != null) {
+                val isOpeningBaselineIdentical = kotlin.math.abs(liveAcc.openingDebtIqd - backupAcc.openingDebtIqd) < 0.001 &&
+                        kotlin.math.abs(liveAcc.openingAdvanceIqd - backupAcc.openingAdvanceIqd) < 0.001 &&
+                        kotlin.math.abs(liveAcc.openingLoanIqd - backupAcc.openingLoanIqd) < 0.001 &&
+                        kotlin.math.abs(liveAcc.currentPriceIqd - backupAcc.currentPriceIqd) < 0.001 &&
+                        (liveAcc.sourceExternalId == null || backupAcc.sourceExternalId == null || liveAcc.sourceExternalId == backupAcc.sourceExternalId) &&
+                        (liveAcc.sourceBatchId == null || backupAcc.sourceBatchId == null || liveAcc.sourceBatchId == backupAcc.sourceBatchId) &&
+                        (liveAcc.stateSource == null || backupAcc.stateSource == null || liveAcc.stateSource == backupAcc.stateSource)
+
+                val isBaselineConflict = !isOpeningBaselineIdentical || (
+                        liveLedgers.isEmpty() && backupLedgers.isEmpty() &&
+                        (kotlin.math.abs(liveAcc.debtIqd - backupAcc.debtIqd) > 0.001 ||
+                         kotlin.math.abs(liveAcc.advanceIqd - backupAcc.advanceIqd) > 0.001 ||
+                         kotlin.math.abs(liveAcc.loanIqd - backupAcc.loanIqd) > 0.001)
+                )
+
+                val accChoice = decision.conflictDecisions[accId]
+
+                if (isBaselineConflict) {
+                    val resolvedLineage = accChoice ?: when {
+                        decision.selectedBaselineId == "LIVE" || decision.selectedBaselineId == "LIVE_SNAPSHOT" || decision.selectedBaselineId == liveLineage.lineageId -> com.example.core.model.ConflictResolutionChoice.USE_LIVE
+                        decision.selectedBaselineId == "BACKUP" || decision.selectedBaselineId == "BACKUP_SNAPSHOT" || decision.selectedBaselineId == backupLineage.lineageId -> com.example.core.model.ConflictResolutionChoice.USE_BACKUP
+                        else -> com.example.core.model.ConflictResolutionChoice.FAIL_ON_CONFLICT
+                    }
+
+                    when (resolvedLineage) {
+                        com.example.core.model.ConflictResolutionChoice.USE_LIVE -> {
+                            mergedAccounts.add(liveAcc)
+                            mergedLedgers.addAll(liveLedgers)
+                        }
+                        com.example.core.model.ConflictResolutionChoice.USE_BACKUP -> {
+                            mergedAccounts.add(backupAcc)
+                            mergedLedgers.addAll(backupLedgers)
+                        }
+                        else -> {
+                            throw com.example.core.model.IncompatibleBaselineConflictException(
+                                "Incompatible opening/current baseline for account $accId requires explicit lineage resolution before final Room write."
+                            )
+                        }
+                    }
+                } else {
+                    val liveLedgerById = liveLedgers.associateBy { it.id }
+                    val backupLedgerById = backupLedgers.associateBy { it.id }
+                    val allTxIds = (liveLedgerById.keys + backupLedgerById.keys).distinct()
+
+                    val accountLedgers = mutableListOf<com.example.core.model.LocalLedgerEntry>()
+
+                    for (txId in allTxIds) {
+                        val liveTx = liveLedgerById[txId]
+                        val backupTx = backupLedgerById[txId]
+
+                        if (liveTx != null && backupTx == null) {
+                            accountLedgers.add(liveTx)
+                        } else if (liveTx == null && backupTx != null) {
+                            accountLedgers.add(backupTx)
+                        } else if (liveTx != null && backupTx != null) {
+                            val isIdentical = liveTx.accountId == backupTx.accountId &&
+                                    liveTx.typeRaw == backupTx.typeRaw &&
+                                    kotlin.math.abs(liveTx.amountIqd - backupTx.amountIqd) < 0.0001
+
+                            if (isIdentical) {
+                                accountLedgers.add(liveTx)
+                            } else {
+                                val txChoice = decision.conflictDecisions[txId]
+                                when (txChoice) {
+                                    com.example.core.model.ConflictResolutionChoice.USE_LIVE -> accountLedgers.add(liveTx)
+                                    com.example.core.model.ConflictResolutionChoice.USE_BACKUP -> accountLedgers.add(backupTx)
+                                    else -> throw com.example.core.model.DivergentPayloadConflictException(
+                                        "Same-ID divergent payload conflict for transaction $txId: " +
+                                        "live={accountId=${liveTx.accountId}, type=${liveTx.typeRaw}, amount=${liveTx.amountIqd}}, " +
+                                        "backup={accountId=${backupTx.accountId}, type=${backupTx.typeRaw}, amount=${backupTx.amountIqd}}"
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    val sortedEntries = accountLedgers.sortedWith(
+                        compareBy<com.example.core.model.LocalLedgerEntry> { it.occurredAt }
+                            .thenBy { it.createdAt }
+                            .thenBy { it.id }
+                    )
+
+                    var currentDebt = liveAcc.openingDebtIqd
+                    var currentAdvance = liveAcc.openingAdvanceIqd
+                    var currentLoan = liveAcc.openingLoanIqd
+
+                    val finalLedgersForAcc = mutableListOf<com.example.core.model.LocalLedgerEntry>()
+                    for (tx in sortedEntries) {
+                        val canonicalType = com.example.core.ledger.TransactionTypeNormalizer.normalizeTransactionType(tx.typeRaw)
+                        val calc = com.example.core.ledger.BalanceCalculator.applyTransaction(
+                            currentDebt = currentDebt,
+                            currentAdvance = currentAdvance,
+                            currentLoan = currentLoan,
+                            txType = canonicalType,
+                            amount = tx.amountIqd
+                        )
+                        currentDebt = calc.debtIqd
+                        currentAdvance = calc.advanceIqd
+                        currentLoan = calc.loanIqd
+                        finalLedgersForAcc.add(tx.copy(debtAfterIqd = currentDebt))
+                    }
+
+                    if (sortedEntries.isEmpty()) {
+                        currentDebt = liveAcc.debtIqd
+                        currentAdvance = liveAcc.advanceIqd
+                        currentLoan = liveAcc.loanIqd
+                    }
+
+                    val finalAccount = liveAcc.copy(
+                        debtIqd = currentDebt,
+                        advanceIqd = currentAdvance,
+                        loanIqd = currentLoan,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                    mergedAccounts.add(finalAccount)
+                    mergedLedgers.addAll(finalLedgersForAcc)
+                }
+            }
+        }
+
+        return com.example.core.model.SnapshotLineage(
+            lineageId = "merged_${liveLineage.lineageId}_${backupLineage.lineageId}",
+            baselineAccounts = mergedAccounts,
+            ledgerHistory = mergedLedgers,
+            importBatches = (liveLineage.importBatches + backupLineage.importBatches).distinctBy { it.id }
+        )
+    }
+
+    /**
+     * Lineage pairing validator ensuring a baseline account is strictly accompanied by its own eligible ledger entries.
+     */
+    fun validateLineagePairing(
+        baseline: com.example.core.model.LocalAccount,
+        ledgerEntries: List<com.example.core.model.LocalLedgerEntry>,
+        expectedLineageId: String? = null
+    ) {
+        for (entry in ledgerEntries) {
+            if (entry.accountId != baseline.id) {
+                throw com.example.core.model.MixedLineageConflictException(
+                    "Lineage purity violation: transaction ${entry.id} for account ${entry.accountId} cannot be attached to baseline account ${baseline.id}"
+                )
+            }
+            if (expectedLineageId != null && entry.sourceBatchId != null && entry.sourceBatchId != expectedLineageId && baseline.sourceBatchId != null && baseline.sourceBatchId != entry.sourceBatchId) {
+                throw com.example.core.model.MixedLineageConflictException(
+                    "Lineage purity violation: transaction ${entry.id} belonging to lineage ${entry.sourceBatchId} cannot be mixed with baseline ${baseline.id} of lineage ${baseline.sourceBatchId}"
+                )
+            }
+        }
+    }
+
+    private suspend fun restoreMergeBackupZipInternal(
+        context: Context,
+        backupFile: File,
+        decision: com.example.core.model.RestoreMergeDecision,
+        force: Boolean = false
+    ): Boolean = withContext(Dispatchers.IO) {
+        com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.RESTORE) {
+            val app = context.applicationContext as? EarthlinkApp
+            val currentPassphrase = try {
+                app?.preferenceManager?.getDatabasePassphrase() ?: ""
+            } catch (_: Throwable) {
+                ""
+            }
+
+            val artifactHash = calculateFileHash(backupFile)
+            if (!decision.isValidFor(artifactHash, decision.selectedBaselineId)) {
+                Log.e(TAG, "Restore Merge aborted: RestoreMergeDecision is invalidated, unapproved, or mismatched artifact hash.")
+                return@withOperation false
+            }
+
+            if (!force) {
+                val pendingOutbox = getPendingOutboxCount(context)
+                if (pendingOutbox > 0) {
+                    Log.w(TAG, "Restore Merge aborted: $pendingOutbox unsynced pending changes exist in outbox queue. Pass force = true to override.")
+                    return@withOperation false
+                }
+            }
+
+            val liveDbInstance = try {
+                app?.database ?: AppDatabase.getDatabase(context, currentPassphrase.toByteArray(Charsets.UTF_8))
+            } catch (_: Throwable) {
+                AppDatabase.getDatabase(context, ByteArray(0))
+            }
+            val preRestoreUnresolved = try {
+                liveDbInstance.syncOutboxDao().getAllOneShot().filter {
+                    it.status in listOf("pending", "syncing", "failed")
+                }
+            } catch (_: Throwable) {
+                emptyList()
+            }
+
+            val lineageSnapshotToken = "abstract_lineage_${System.currentTimeMillis()}_${java.util.UUID.randomUUID()}"
+            val restoreSnapshot = RestoreTransportSnapshot(
+                artifactPath = backupFile.absolutePath,
+                artifactHash = artifactHash,
+                lineageSnapshotToken = lineageSnapshotToken,
+                unresolvedObligations = preRestoreUnresolved
+            )
+
+            try {
+                val dailyBackupsDir = File(
+                    context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOCUMENTS),
+                    "EarthlinkBackups"
+                ).apply { if (!exists()) mkdirs() }
+                val tempZip = createLocalBackupZipInternal(context)
+                val timeStamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss_SSS", Locale.US).format(Date())
+                val preRestoreFile = File(dailyBackupsDir, "pre_restore_merge_backup_$timeStamp.zip")
+                tempZip.copyTo(preRestoreFile, overwrite = true)
+                tempZip.delete()
+                Log.i(TAG, "Successfully created persistent pre-restore merge backup: ${preRestoreFile.absolutePath}")
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                Log.e(TAG, "Failed to create persistent pre-restore backup before restore merge", e)
+                if (!force) {
+                    return@withOperation false
+                }
+            }
+
+            val tempDbName = "merge_source_${System.currentTimeMillis()}.db"
+            val tempDb = context.getDatabasePath(tempDbName)
+            val tempWal = File(tempDb.path + "-wal")
+            val tempShm = File(tempDb.path + "-shm")
+
+            var extractedPassphrase: String? = null
+            var backupDb: AppDatabase? = null
+
+            try {
+                if (tempDb.exists()) tempDb.delete()
+                if (tempWal.exists()) tempWal.delete()
+                if (tempShm.exists()) tempShm.delete()
+
+                if (backupFile.name.endsWith(".zip", ignoreCase = true)) {
+                    ZipInputStream(FileInputStream(backupFile)).use { zis ->
+                        var entry: ZipEntry? = zis.nextEntry
+                        while (entry != null) {
+                            when {
+                                entry.name == "backup_info.json" -> {
+                                    try {
+                                        val baos = java.io.ByteArrayOutputStream()
+                                        val buf = ByteArray(1024)
+                                        var count: Int
+                                        while (zis.read(buf).also { count = it } != -1) {
+                                            baos.write(buf, 0, count)
+                                        }
+                                        val jsonStr = baos.toString("UTF-8")
+                                        val json = JSONObject(jsonStr)
+                                        if (json.has("dbPassphrase")) {
+                                            extractedPassphrase = json.getString("dbPassphrase")
+                                        }
+                                    } catch (_: Throwable) {}
+                                }
+                                entry.name == DB_NAME || entry.name.endsWith(".db", ignoreCase = true) -> {
+                                    tempDb.parentFile?.mkdirs()
+                                    FileOutputStream(tempDb).use { fos -> zis.copyTo(fos) }
+                                }
+                                entry.name == "$DB_NAME-wal" -> {
+                                    FileOutputStream(tempWal).use { fos -> zis.copyTo(fos) }
+                                }
+                                entry.name == "$DB_NAME-shm" -> {
+                                    FileOutputStream(tempShm).use { fos -> zis.copyTo(fos) }
+                                }
+                            }
+                            zis.closeEntry()
+                            entry = zis.nextEntry
+                        }
+                    }
+                } else {
+                    tempDb.parentFile?.mkdirs()
+                    FileInputStream(backupFile).use { fis ->
+                        FileOutputStream(tempDb).use { fos -> fis.copyTo(fos) }
+                    }
+                }
+
+                if (!tempDb.exists() || tempDb.length() == 0L) {
+                    Log.e(TAG, "No valid database file found in merge backup.")
+                    return@withOperation false
+                }
+
+                val fallbackPass = app?.preferenceManager?.getFallbackPassphrase(context)
+                val firebaseUid = app?.syncRepository?.getFirebaseUid()
+                val candidates = listOfNotNull(
+                    extractedPassphrase,
+                    currentPassphrase,
+                    fallbackPass,
+                    firebaseUid,
+                    ""
+                ).distinct()
+                var verifiedPassphrase: String? = null
+
+                for (candPass in candidates) {
+                    var testDb: AppDatabase? = null
+                    try {
+                        testDb = AppDatabase.getDatabase(context, candPass.toByteArray(Charsets.UTF_8), tempDbName)
+                        val sqliteDb = testDb.openHelper.writableDatabase
+                        sqliteDb.query("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='local_accounts'").use { cursor ->
+                            if (!cursor.moveToFirst() || cursor.getInt(0) == 0) {
+                                throw IllegalStateException("Restored database does not contain local_accounts table")
+                            }
+                        }
+                        verifiedPassphrase = candPass
+                        backupDb = testDb
+                        break
+                    } catch (_: Throwable) {
+                        testDb?.close()
+                        AppDatabase.closeAndRemoveInstance(tempDbName)
+                    }
+                }
+
+                if (verifiedPassphrase != null && backupDb != null) {
+                    val liveDb = try {
+                        app?.database ?: AppDatabase.getDatabase(context, currentPassphrase.toByteArray(Charsets.UTF_8))
+                    } catch (_: Throwable) {
+                        AppDatabase.getDatabase(context, ByteArray(0))
+                    }
+                    liveDb.withTransaction {
+                        executeRestoreMergeInternal(liveDb, backupDb!!, decision)
+
+                        reconstructTransportState(liveDb, restoreSnapshot.unresolvedObligations)
+
+                        val now = System.currentTimeMillis()
+                        val salt = try { app?.preferenceManager?.getDatabasePassphrase() ?: currentPassphrase } catch (_: Throwable) { "default_test_salt" }
+                        val rawString = "$now|INFO|DATABASE_RESTORE_MERGE|Backup merged and verified successfully with complete lineage.|system|$salt"
+                        val digest = java.security.MessageDigest.getInstance("SHA-256")
+                        val sig = digest.digest(rawString.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+
+                        liveDb.auditLogDao().insert(
+                            com.example.core.model.AuditLog(
+                                action = "DATABASE_RESTORE_MERGE",
+                                entityType = null,
+                                entityId = null,
+                                summary = "Backup merged and verified successfully with complete lineage.",
+                                createdAt = now,
+                                severity = "INFO",
+                                actor = "system",
+                                signature = sig,
+                                origin = com.example.core.model.AuditOrigin.RESTORE_EVENT.name
+                            )
+                        )
+                    }
+
+                    try {
+                        (app?.syncRepository as? com.example.core.sync.SyncRepositoryImpl)?.remoteSyncCoordinator?.clearCache()
+                    } catch (_: Throwable) {}
+
+                    Log.i(TAG, "Restore Merge completed successfully.")
+                    true
+                } else {
+                    Log.e(TAG, "Failed to decrypt/open backup database for merge.")
+                    false
+                }
+            } finally {
+                try {
+                    backupDb?.close()
+                    AppDatabase.closeAndRemoveInstance(tempDbName)
+                } catch (_: Throwable) {}
+                if (tempDb.exists()) tempDb.delete()
+                if (tempWal.exists()) tempWal.delete()
+                if (tempShm.exists()) tempShm.delete()
+            }
+        }
+    }
+
     suspend fun restoreBackupZip(context: Context, backupFile: File, force: Boolean = false): Boolean = withContext(Dispatchers.IO) {
         restoreBackupZipInternal(context, backupFile, decision = null, force = force)
     }

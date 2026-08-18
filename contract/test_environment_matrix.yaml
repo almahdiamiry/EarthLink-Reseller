@@ -415,6 +415,16 @@ test_suites:
       - "INV-11"
       - "INV-14"
 
+  - name: "Phase2RestoreMergeLineageTest"
+    path: "app/src/test/java/com/example/Phase2RestoreMergeLineageTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Phase 2 Complete-Lineage Restore Merge & Material Divergence Protection test suite (P2-G3-REQ-01 / P2-G3-REQ-02 / INV-01 / INV-06 / INV-11 / INV-14)"
+    associated_invariants:
+      - "INV-01"
+      - "INV-06"
+      - "INV-11"
+      - "INV-14"
+
   - name: "CoordinatorInstrumentedTest"
     path: "app/src/androidTest/java/com/example/CoordinatorInstrumentedTest.kt"
     environment: "INSTRUMENTED"
