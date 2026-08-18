@@ -2,6 +2,51 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.93.0] - 2026-08-18
+### Phase 5: Tasks P5-01 to P5-07 & Phase 5 Gate Closure (G6/G7 Semantics, Credential Isolation & Non-Destructive Migration)
+- **Field Ownership Classification (`docs/authority/account_field_authority_classification.md`)**:
+  - Established formal field ownership mapping across Local Room entities, Remote Firestore documents, and imported historical structures (P5-G6-REQ-01).
+- **Strict Credential & Session Isolation (`PreferenceManager.kt`, `SyncRepositoryImpl.kt`)**:
+  - Scoped operational authentication credentials (token, username, password, deposit password) strictly to active reseller sessions, preventing cross-session or delayed async response leakage (P5-G6-REQ-02).
+  - Verified via `CredentialSessionIsolationTest.kt` (3/3 tests pass).
+- **Legacy Semantic Fields & Financial History Protection (`RemoteSyncCoordinator.kt`, `Models.kt`, `Repositories.kt`)**:
+  - Preserved legacy semantic fields (`loanIqd`, `isLegacy`, `isSnapshotHistory`, `stateSource`, `stateConfidence`) without deletion, repurposing, or conversion into alternate financial authority (P5-G6-REQ-03).
+  - Protected local financial history against destructive deletion upon remote ISP deactivations and remote delete events (P5-G6-REQ-04).
+  - Verified via `FinancialHistoryDeletionProtectionTest.kt` (3/3 tests pass).
+- **Non-Destructive Schema Migration & Backwards Compatibility (`AppDatabase.kt`, `BackupManager.kt`)**:
+  - Guaranteed non-destructive SQLite migrations preserving all business data with interruption safety and backwards-compatible backup deserialization (P5-G6-REQ-05, P5-G6-REQ-06).
+  - Verified via `Phase5NonDestructiveMigrationTest.kt` (3/3 tests pass).
+- **Phase 5 Gate Official Closure**:
+  - All 6 blocking Phase 5 requirements verified with machine evidence (`phase-5-gate-closure-memo.md`).
+  - Total repository tests passing: 271/271 (0 failures, 0 errors).
+
+## [1.92.0] - 2026-08-18
+### Phase 4: Tasks P4-01 to P4-09 & Phase 4 Gate Closure (G5 Identity & Import Collision Safety)
+- **Ledger Creation Paths Inventory (`docs/authority/ledger_identity_inventory.md`)**:
+  - Documented exhaustive mapping of all 10 ledger creation paths (uTower import, manual payment/debt/renewal, note transactions, G1 pending operations, and remote sync).
+- **Stable Provenance Fallback & Deduplication Reconciliation (`UtowerImporter.kt`, `TransactionDeduplicator.kt`)**:
+  - Assigned deterministic fallback coordinates `import_${batchId}_${transactionsRead}` when source external IDs are absent, preventing false record collapse across distinct financial entries (P4-G5-REQ-01, P4-G5-REQ-03).
+  - Ensured repeated uTower imports of identical datasets are 100% idempotent with zero duplicate rows (P4-G5-REQ-02).
+- **Runtime Ledger Idempotency & Immutability Protection (`Repositories.kt`, `RemoteSyncCoordinator.kt`)**:
+  - Preserved reliable runtime transaction IDs and idempotency keys across Restore Merge, sync channels, and local writes (P4-G5-REQ-04).
+  - Quarantined divergent payloads on identical IDs with `QUARANTINED_CONFLICT` and `DivergentPayloadConflictException`.
+  - Verified via `Phase4RuntimeLedgerIdentityTest.kt` and `Phase4IdentityIntegrityAdversarialTest.kt` (11/11 tests pass).
+- **Two-Device Identity Convergence Proof (`Phase4TwoDeviceIdentityConvergenceTest.kt`)**:
+  - Implemented 2 comprehensive multi-device simulation tests proving independent offline transaction convergence and reconnect arrival-order invariance without ID collision.
+- **Phase 4 Gate Official Closure**:
+  - All 4 blocking Phase 4 requirements verified with machine evidence (`phase-4-gate-closure-memo.md`).
+
+## [1.91.0] - 2026-08-18
+### Phase 3: Tasks P3-05 to P3-07 & Phase 3 Gate Closure (G4 Lineage Linearization & Mutual Exclusion)
+- **Restore Obligation Lineage Linearization (`BackupManager.kt`, `OutboxManager.kt`)**:
+  - Bound reconstructed restore obligations strictly to the newly advanced local lineage generation (`g4_local_generation`), linearizing restore obligations and preventing stale replay (P3-G4-REQ-05).
+  - Verified via `Phase3RestoreObligationLineageLinearizationTest.kt` (5/5 tests pass).
+- **Adversarial Remote Ordering Hardening (`RemoteSyncCoordinator.kt`)**:
+  - Hardened remote sync processing against adversarial network arrival patterns (Update-then-Delete, Delete-then-Update, out-of-order versions, duplicate payloads).
+  - Verified via `Phase3RemoteOrderingAdversarialTest.kt` (5/5 tests pass).
+- **Phase 3 Gate Official Closure**:
+  - All 5 blocking Phase 3 requirements certified and closed (`phase-3-gate-closure-memo.md`).
+
 ## [1.90.0] - 2026-08-18
 ### Phase 3: Task P3-04 / Task 24 — Validate Normal Mutations as Same-Lineage & Separation of Local Generation vs Remote Version (P3-G4-REQ-04 / INV-01 / INV-05 / INV-06 / INV-11)
 - **Same-Lineage Normal Financial Mutations (`Repositories.kt`, `UtowerImporter.kt`, `RemoteSyncCoordinator.kt`)**:
