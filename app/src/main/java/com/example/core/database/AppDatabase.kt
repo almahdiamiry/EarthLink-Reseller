@@ -277,6 +277,11 @@ interface SyncOutboxDao {
 
 @Dao
 interface SyncMetadataDao {
+    companion object {
+        const val KEY_G4_LOCAL_GENERATION = "g4_local_generation"
+        const val DEFAULT_GENERATION = 1L
+    }
+
     @Query("SELECT value FROM sync_metadata WHERE key = :key LIMIT 1")
     suspend fun get(key: String): String?
 
@@ -286,8 +291,41 @@ interface SyncMetadataDao {
     @Query("DELETE FROM sync_metadata")
     suspend fun deleteAll()
 
+    @Query("DELETE FROM sync_metadata WHERE key != :preserveKey")
+    suspend fun deleteAllExcept(preserveKey: String)
+
     @Query("SELECT * FROM sync_metadata")
     suspend fun getAllOneShot(): List<com.example.core.model.SyncData>
+
+    @Transaction
+    suspend fun getGeneration(): Long {
+        val raw = get(KEY_G4_LOCAL_GENERATION)
+        return raw?.toLongOrNull() ?: DEFAULT_GENERATION
+    }
+
+    @Transaction
+    suspend fun setGeneration(gen: Long) {
+        put(KEY_G4_LOCAL_GENERATION, gen.toString())
+    }
+
+    @Transaction
+    suspend fun incrementGeneration(): Long {
+        val current = getGeneration()
+        val next = current + 1L
+        setGeneration(next)
+        return next
+    }
+
+    @Transaction
+    suspend fun ensureGenerationInitialized(): Long {
+        val raw = get(KEY_G4_LOCAL_GENERATION)
+        return if (raw == null) {
+            setGeneration(DEFAULT_GENERATION)
+            DEFAULT_GENERATION
+        } else {
+            raw.toLongOrNull() ?: DEFAULT_GENERATION
+        }
+    }
 }
 
 @Dao
@@ -389,6 +427,12 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun syncMetadataDao(): SyncMetadataDao
     abstract fun auditLogDao(): AuditLogDao
     abstract fun pendingExternalOperationDao(): PendingExternalOperationDao
+
+    suspend fun getGeneration(): Long = syncMetadataDao().getGeneration()
+
+    suspend fun incrementGeneration(): Long = syncMetadataDao().incrementGeneration()
+
+    suspend fun setGeneration(gen: Long) = syncMetadataDao().setGeneration(gen)
 
     companion object {
         const val VERSION = 12
@@ -706,9 +750,17 @@ abstract class AppDatabase : RoomDatabase() {
                 val builder = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, dbName)
                     .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
                     .addCallback(object : RoomDatabase.Callback() {
+                        override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                            super.onCreate(db)
+                            val now = System.currentTimeMillis()
+                            db.execSQL("INSERT OR REPLACE INTO sync_metadata (key, value, updatedAt) VALUES ('${SyncMetadataDao.KEY_G4_LOCAL_GENERATION}', '${SyncMetadataDao.DEFAULT_GENERATION}', $now);")
+                        }
+
                         override fun onOpen(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                             super.onOpen(db)
                             db.execSQL("PRAGMA foreign_keys = ON;")
+                            val now = System.currentTimeMillis()
+                            db.execSQL("INSERT OR IGNORE INTO sync_metadata (key, value, updatedAt) VALUES ('${SyncMetadataDao.KEY_G4_LOCAL_GENERATION}', '${SyncMetadataDao.DEFAULT_GENERATION}', $now);")
                         }
                     })
                 val isRobolectric = try {

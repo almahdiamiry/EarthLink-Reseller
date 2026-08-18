@@ -129,6 +129,7 @@ invariants_matrix:
     primary_suites:
       - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
       - "app/src/test/java/com/example/Phase2RemoteVersionAdversarialTest.kt"
+      - "app/src/test/java/com/example/Phase3PersistedGenerationTest.kt"
       - "scripts/scan_forbidden_patterns.py"
     tier_rationale: >
       Guarantees every remote write originates from an Outbox entry and respects strict outbox state transitions.
@@ -194,6 +195,7 @@ invariants_matrix:
       - "INSTRUMENTED"
     primary_suites:
       - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+      - "app/src/test/java/com/example/Phase3PersistedGenerationTest.kt"
       - "app/src/test/java/com/example/Phase1G1PendingOperationDurabilityTest.kt"
       - "app/src/test/java/com/example/Phase1AtomicityAndLostAckTest.kt"
       - "app/src/test/java/com/example/Phase1DuplicateInitiationProtectionTest.kt"
@@ -466,6 +468,14 @@ test_suites:
       - "INV-11"
       - "INV-13"
       - "INV-14"
+
+  - name: "Phase3PersistedGenerationTest"
+    path: "app/src/test/java/com/example/Phase3PersistedGenerationTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Phase 3 Persisted G4 Local Generation State & Lineage Invalidation test suite (P3-G4-REQ-01 / INV-05 / INV-11)"
+    associated_invariants:
+      - "INV-05"
+      - "INV-11"
 
   - name: "CoordinatorInstrumentedTest"
     path: "app/src/androidTest/java/com/example/CoordinatorInstrumentedTest.kt"

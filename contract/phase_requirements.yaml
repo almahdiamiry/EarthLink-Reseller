@@ -343,7 +343,7 @@ requirements:
       adversarial_fixture: false
       registry: true
       evidence: true
-    behavioral_test_location: "app/src/test/java/com/example/Phase3CoordinatorMutexTokenTest.kt"
+    behavioral_test_location: "app/src/test/java/com/example/Phase3PersistedGenerationTest.kt"
 
   - id: "P3-G4-REQ-02"
     phase: 3

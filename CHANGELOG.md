@@ -2,7 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.86.0] - 2026-08-18
+## [1.87.0] - 2026-08-18
+### Phase 3: Task P3-01 / Task 21 — Add Persisted G4 Generation State (P3-G4-REQ-01 / INV-05 / INV-11)
+- **Persisted G4 Local Generation State (`AppDatabase.kt` & `SyncMetadataDao`)**:
+  - **Canonical Generation Storage**: Implemented persisted local lineage generation storage via `SyncMetadataDao` using the canonical key `g4_local_generation` (`KEY_G4_LOCAL_GENERATION`) with default baseline `1L` (`DEFAULT_GENERATION`).
+  - **Deterministic Initialization**: Configured Room `onCreate` and `onOpen` database callbacks to deterministically initialize `g4_local_generation` to `1L` via `INSERT OR IGNORE` / `INSERT OR REPLACE` SQLite statements, and provided `ensureGenerationInitialized()` in `SyncMetadataDao`.
+  - **Transactional Helper Methods**: Added suspending transactional methods `getGeneration(): Long`, `incrementGeneration(): Long`, and `setGeneration(gen: Long)` to both `SyncMetadataDao` and `AppDatabase`, guaranteeing atomic transactional increment and full rollback restoration during failed transactions.
+  - **Selective Metadata Deletion**: Added `deleteAllExcept(preserveKey: String)` to `SyncMetadataDao` allowing sync cursors and temporary cache entries to be purged while preserving the authoritative `g4_local_generation` lineage.
+  - **Strict Domain Isolation (`local generation != remoteVersion`)**: Guaranteed that the local monotonic lineage generation (`g4_local_generation`) is completely distinct from entity server-confirmed timestamps (`remote_version:*`). Mutations to remote version keys do not affect local generation and vice versa.
+- **Comprehensive Behavioral Test Suite (`Phase3PersistedGenerationTest.kt`)**:
+  - Implemented 9 exhaustive unit tests validating initial generation defaults (1L), transactional increments (+1), transaction rollback recovery, persistent SQLite re-open preservation across app lifecycles, explicit setGeneration, domain isolation from `remoteVersion`, invalidation check mechanics against stale generation across resets, selective metadata deletion, and concurrent linearized increments.
+- **Contract & Matrix Mapping**:
+  - Registered `Phase3PersistedGenerationTest` under `INV-05` and `INV-11` in `contract/invariant_contract.yaml`, `contract/invariant_test_map.yaml`, `contract/test_environment_matrix.yaml`, and `contract/phase_requirements.yaml` (under `P3-G4-REQ-01`).
 ### Phase 2: Task P2-06 / Task 19 — Restore/Import Transport Reconstruction Alignment & Integration (P2-G3-REQ-05 / INV-01 / INV-06 / INV-11 / INV-13 / INV-14)
 - **Transport Reconstruction Alignment Across Restore and Import**:
   - **Stale Backup Outbox & Cursor Discard**: Verified and enforced that all historical outbox rows (`sync_outbox`) and sync cursors (`sync_metadata`) from backup archive files are discarded upon Restore Replace and never blindly replayed to cloud Firestore.

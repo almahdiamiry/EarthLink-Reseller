@@ -39,4 +39,14 @@
 - [x] Task P2-04: Harden Restore Replace
 - [x] Task P2-05: Harden Import as Direct Atomic Room
 - [x] Task P2-06: Restore/Import transport reconstruction
-- [ ] Task P2-07: Phase 2 evidence and provisional exit gate
+- [x] Task P2-07: Phase 2 evidence and provisional exit gate
+
+### Phase 3: G4 Concurrency & Lineage
+- [x] Task P3-01: Add persisted G4 generation state (Commit: `2f3eec9`)
+- [ ] Task P3-02: Capture lineage at remote operation start and validate in the same transaction
+- [ ] Task P3-03: Advance generation on full replacement/clear only
+- [ ] Task P3-04: Validate normal mutations as same-lineage
+- [ ] Task P3-05: Bind generation to the final Restore/Import transaction boundary
+- [ ] Task P3-06: Align lock order and eliminate network-under-lock
+- [ ] Task P3-07: Add the full two-device concurrent operation fixture
+- [ ] Task P3-08: Phase-3 evidence collection and gate closure
