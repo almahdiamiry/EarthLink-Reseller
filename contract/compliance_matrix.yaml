@@ -526,3 +526,132 @@ phase4_gate_closure:
     unit_test_errors: 0
     unit_test_skipped: 0
     verdict: "GATE CLOSED - ALL REQUIREMENTS PASS"
+
+phase5_gate_closure:
+  phase: 5
+  phase_title: "Phase 5 - G6/G7 Semantics, Credential Isolation & Non-Destructive Migration"
+  status: "CLOSED (PASS)"
+  timestamp: "2026-08-18T18:58:00Z"
+  requirements:
+    - id: "P5-G6-REQ-01"
+      name: "Establish Clear Field Ownership Mapping"
+      source_anchor: "G6 Summary & Handover Appendix Section 7 (Field Ownership)"
+      invariants: ["INV-01", "INV-05", "INV-11"]
+      blocking: true
+      status: "PASS"
+      production_code:
+        - "docs/authority/account_field_authority_classification.md"
+        - "app/src/main/java/com/example/core/model/Models.kt"
+      behavioral_tests:
+        - "app/src/test/java/com/example/Phase5SettingsSyncUnifiedCallerTest.kt"
+        - "app/src/test/java/com/example/FinancialHistoryDeletionProtectionTest.kt"
+      evidence_xml:
+        - "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase5SettingsSyncUnifiedCallerTest.xml"
+        - "app/build/test-results/testDebugUnitTest/TEST-com.example.FinancialHistoryDeletionProtectionTest.xml"
+      test_metrics:
+        total_tests: 7
+        failures: 0
+        errors: 0
+        skipped: 0
+
+    - id: "P5-G6-REQ-02"
+      name: "Enforce Strict Credential and Session Isolation"
+      source_anchor: "G6 Summary & Handover Appendix Section 7 (Credential & Session Isolation)"
+      invariants: ["INV-05"]
+      blocking: true
+      status: "PASS"
+      production_code:
+        - "app/src/main/java/com/example/core/security/PreferenceManager.kt"
+        - "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+      behavioral_tests:
+        - "app/src/test/java/com/example/CredentialSessionIsolationTest.kt"
+      evidence_xml: "app/build/test-results/testDebugUnitTest/TEST-com.example.CredentialSessionIsolationTest.xml"
+      test_metrics:
+        total_tests: 3
+        failures: 0
+        errors: 0
+        skipped: 0
+
+    - id: "P5-G6-REQ-03"
+      name: "Preserve Legacy Semantic Fields"
+      source_anchor: "Handover Appendix Section 4 (Legacy / Protected Semantic Fields)"
+      invariants: ["INV-01", "INV-05", "INV-11"]
+      blocking: true
+      status: "PASS"
+      production_code:
+        - "app/src/main/java/com/example/core/model/Models.kt"
+        - "app/src/main/java/com/example/data/repository/Repositories.kt"
+      behavioral_tests:
+        - "app/src/test/java/com/example/FinancialHistoryDeletionProtectionTest.kt"
+      evidence_xml: "app/build/test-results/testDebugUnitTest/TEST-com.example.FinancialHistoryDeletionProtectionTest.xml"
+      test_metrics:
+        total_tests: 3
+        failures: 0
+        errors: 0
+        skipped: 0
+
+    - id: "P5-G6-REQ-04"
+      name: "Protect Local Financial Records Against Remote Deletion"
+      source_anchor: "Handover Appendix Section 3 (Financial History & ISP Deletion Protection)"
+      invariants: ["INV-01", "INV-05", "INV-11"]
+      blocking: true
+      status: "PASS"
+      production_code:
+        - "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt"
+        - "app/src/main/java/com/example/core/model/Models.kt"
+      behavioral_tests:
+        - "app/src/test/java/com/example/FinancialHistoryDeletionProtectionTest.kt"
+      evidence_xml: "app/build/test-results/testDebugUnitTest/TEST-com.example.FinancialHistoryDeletionProtectionTest.xml"
+      test_metrics:
+        total_tests: 3
+        failures: 0
+        errors: 0
+        skipped: 0
+
+    - id: "P5-G6-REQ-05"
+      name: "Non-Destructive Schema Migration and Interruption Safety"
+      source_anchor: "G7 Summary & Handover Appendix Section 7 (Non-Destructive Migration)"
+      invariants: ["INV-01", "INV-05", "INV-11", "INV-14"]
+      blocking: true
+      status: "PASS"
+      production_code:
+        - "app/src/main/java/com/example/core/database/AppDatabase.kt"
+      behavioral_tests:
+        - "app/src/test/java/com/example/Phase5NonDestructiveMigrationTest.kt"
+      evidence_xml: "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase5NonDestructiveMigrationTest.xml"
+      test_metrics:
+        total_tests: 3
+        failures: 0
+        errors: 0
+        skipped: 0
+
+    - id: "P5-G6-REQ-06"
+      name: "Backwards-Compatible Backup Deserialization"
+      source_anchor: "G7 Summary & Handover Appendix Section 7 (Backup Compatibility)"
+      invariants: ["INV-01", "INV-11", "INV-14"]
+      blocking: true
+      status: "PASS"
+      production_code:
+        - "app/src/main/java/com/example/core/backup/BackupManager.kt"
+      behavioral_tests:
+        - "app/src/test/java/com/example/Phase2RestoreReplaceHardeningTest.kt"
+        - "app/src/test/java/com/example/Phase5NonDestructiveMigrationTest.kt"
+      evidence_xml:
+        - "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase2RestoreReplaceHardeningTest.xml"
+        - "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase5NonDestructiveMigrationTest.xml"
+      test_metrics:
+        total_tests: 12
+        failures: 0
+        errors: 0
+        skipped: 0
+
+  summary:
+    total_phase5_requirements: 6
+    total_blocking_requirements: 6
+    passed_requirements: 6
+    failed_requirements: 0
+    total_unit_tests: 19
+    unit_test_failures: 0
+    unit_test_errors: 0
+    unit_test_skipped: 0
+    verdict: "GATE CLOSED - ALL REQUIREMENTS PASS"

@@ -518,6 +518,7 @@ requirements:
       adversarial_fixture: false
       registry: false
       evidence: true
+    behavioral_test_location: "app/src/test/java/com/example/Phase5NonDestructiveMigrationTest.kt"
 
   - id: "P5-G6-REQ-06"
     phase: 5
@@ -530,6 +531,7 @@ requirements:
       adversarial_fixture: false
       registry: false
       evidence: true
+    behavioral_test_location: "app/src/test/java/com/example/Phase2RestoreReplaceHardeningTest.kt, app/src/test/java/com/example/Phase5NonDestructiveMigrationTest.kt"
 
   # =========================================================================
   # PHASE 6: G8 / Certification
