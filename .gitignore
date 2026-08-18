@@ -19,6 +19,7 @@ local.properties
 !.env.example
 debug.keystore
 earthlink_reseller_release.jks
+earthlink_reseller_release_backup.jks
 *.jks
 *.keystore
 *.p12
