@@ -423,3 +423,106 @@ phase3:
     unit_test_errors: 0
     unit_test_skipped: 0
     verdict: "GATE CLOSED - ALL REQUIREMENTS PASS"
+
+phase4_gate_closure:
+  phase: 4
+  phase_title: "Phase 4 - G5 Identity & Import Collision Safety"
+  status: "CLOSED (PASS)"
+  timestamp: "2026-08-18T18:40:00Z"
+  requirements:
+    - id: "P4-G5-REQ-01"
+      name: "Enforce Stable Source-Row Identity"
+      source_anchor: "G5 Summary & Handover Appendix Section 3 (Ledger Identity)"
+      invariants: ["INV-01", "INV-05", "INV-11"]
+      blocking: true
+      status: "PASS"
+      production_code:
+        - "app/src/main/java/com/example/core/sync/UtowerImporter.kt"
+        - "app/src/main/java/com/example/data/repository/Repositories.kt"
+      behavioral_tests:
+        - "app/src/test/java/com/example/Phase4RuntimeLedgerIdentityTest.kt"
+        - "app/src/test/java/com/example/Phase4IdentityIntegrityAdversarialTest.kt"
+        - "app/src/test/java/com/example/Phase4TwoDeviceIdentityConvergenceTest.kt"
+      evidence_xml:
+        - "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase4RuntimeLedgerIdentityTest.xml"
+        - "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase4IdentityIntegrityAdversarialTest.xml"
+        - "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase4TwoDeviceIdentityConvergenceTest.xml"
+      test_metrics:
+        total_tests: 13
+        failures: 0
+        errors: 0
+        skipped: 0
+
+    - id: "P4-G5-REQ-02"
+      name: "Repeated uTower Import Idempotency & Stable Source Identity"
+      source_anchor: "G5 Summary & Handover Appendix Section 7 (Repeated-Import Stability)"
+      invariants: ["INV-01", "INV-05", "INV-11"]
+      blocking: true
+      status: "PASS"
+      production_code:
+        - "app/src/main/java/com/example/core/sync/UtowerImporter.kt"
+        - "app/src/main/java/com/example/core/sync/TransactionDeduplicator.kt"
+      behavioral_tests:
+        - "app/src/test/java/com/example/Phase4RuntimeLedgerIdentityTest.kt"
+        - "app/src/test/java/com/example/Phase4IdentityIntegrityAdversarialTest.kt"
+      evidence_xml:
+        - "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase4RuntimeLedgerIdentityTest.xml"
+        - "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase4IdentityIntegrityAdversarialTest.xml"
+      test_metrics:
+        total_tests: 11
+        failures: 0
+        errors: 0
+        skipped: 0
+
+    - id: "P4-G5-REQ-03"
+      name: "Preservation of Distinct Identities for Identical Financial Rows"
+      source_anchor: "G5 Summary & Handover Appendix Section 3 (Preservation of Identical Rows)"
+      invariants: ["INV-01", "INV-05", "INV-11"]
+      blocking: true
+      status: "PASS"
+      production_code:
+        - "app/src/main/java/com/example/core/sync/UtowerImporter.kt"
+        - "app/src/main/java/com/example/core/sync/TransactionDeduplicator.kt"
+      behavioral_tests:
+        - "app/src/test/java/com/example/Phase4IdentityIntegrityAdversarialTest.kt"
+      evidence_xml: "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase4IdentityIntegrityAdversarialTest.xml"
+      test_metrics:
+        total_tests: 4
+        failures: 0
+        errors: 0
+        skipped: 0
+
+    - id: "P4-G5-REQ-04"
+      name: "Preservation of Reliable Existing Transaction IDs"
+      source_anchor: "G5 Summary & Handover Appendix Section 3 (Preservation of Reliable IDs)"
+      invariants: ["INV-01", "INV-05", "INV-06", "INV-11"]
+      blocking: true
+      status: "PASS"
+      production_code:
+        - "app/src/main/java/com/example/data/repository/Repositories.kt"
+        - "app/src/main/java/com/example/core/backup/BackupManager.kt"
+        - "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt"
+      behavioral_tests:
+        - "app/src/test/java/com/example/Phase4RuntimeLedgerIdentityTest.kt"
+        - "app/src/test/java/com/example/Phase4IdentityIntegrityAdversarialTest.kt"
+        - "app/src/test/java/com/example/Phase4TwoDeviceIdentityConvergenceTest.kt"
+      evidence_xml:
+        - "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase4RuntimeLedgerIdentityTest.xml"
+        - "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase4IdentityIntegrityAdversarialTest.xml"
+        - "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase4TwoDeviceIdentityConvergenceTest.xml"
+      test_metrics:
+        total_tests: 13
+        failures: 0
+        errors: 0
+        skipped: 0
+
+  summary:
+    total_phase4_requirements: 4
+    total_blocking_requirements: 4
+    passed_requirements: 4
+    failed_requirements: 0
+    total_unit_tests: 13
+    unit_test_failures: 0
+    unit_test_errors: 0
+    unit_test_skipped: 0
+    verdict: "GATE CLOSED - ALL REQUIREMENTS PASS"

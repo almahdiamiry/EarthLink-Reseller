@@ -411,7 +411,7 @@ requirements:
       adversarial_fixture: false
       registry: true
       evidence: true
-    behavioral_test_location: "app/src/test/java/com/example/Phase4RuntimeLedgerIdentityTest.kt, app/src/test/java/com/example/Phase4IdentityIntegrityAdversarialTest.kt"
+    behavioral_test_location: "app/src/test/java/com/example/Phase4RuntimeLedgerIdentityTest.kt, app/src/test/java/com/example/Phase4IdentityIntegrityAdversarialTest.kt, app/src/test/java/com/example/Phase4TwoDeviceIdentityConvergenceTest.kt"
 
   - id: "P4-G5-REQ-02"
     phase: 4
@@ -437,7 +437,7 @@ requirements:
       adversarial_fixture: false
       registry: false
       evidence: true
-    behavioral_test_location: "app/src/test/java/com/example/Phase4RuntimeLedgerIdentityTest.kt, app/src/test/java/com/example/Phase4IdentityIntegrityAdversarialTest.kt"
+    behavioral_test_location: "app/src/test/java/com/example/Phase4IdentityIntegrityAdversarialTest.kt"
 
   - id: "P4-G5-REQ-04"
     phase: 4
@@ -450,7 +450,7 @@ requirements:
       adversarial_fixture: false
       registry: false
       evidence: true
-    behavioral_test_location: "app/src/test/java/com/example/Phase4RuntimeLedgerIdentityTest.kt, app/src/test/java/com/example/Phase4IdentityIntegrityAdversarialTest.kt"
+    behavioral_test_location: "app/src/test/java/com/example/Phase4RuntimeLedgerIdentityTest.kt, app/src/test/java/com/example/Phase4IdentityIntegrityAdversarialTest.kt, app/src/test/java/com/example/Phase4TwoDeviceIdentityConvergenceTest.kt"
 
   # =========================================================================
   # PHASE 5: G6/G7 / Semantics + Migration

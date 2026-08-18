@@ -543,6 +543,15 @@ test_suites:
       - "INV-06"
       - "INV-11"
 
+  - name: "Phase4TwoDeviceIdentityConvergenceTest"
+    path: "app/src/test/java/com/example/Phase4TwoDeviceIdentityConvergenceTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Phase 4 Two-Device Identity & Convergence Proof (P4-G5-REQ-01 / P4-G5-REQ-04 / INV-01 / INV-05 / INV-11)"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+      - "INV-11"
+
   - name: "CoordinatorInstrumentedTest"
     path: "app/src/androidTest/java/com/example/CoordinatorInstrumentedTest.kt"
     environment: "INSTRUMENTED"
