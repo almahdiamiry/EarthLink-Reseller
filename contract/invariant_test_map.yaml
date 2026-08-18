@@ -20,6 +20,7 @@ invariants:
       - "app/src/test/java/com/example/Phase2CurrentPositionReconstructionTest.kt"
       - "app/src/test/java/com/example/Phase2TransportReconstructionIntegrationTest.kt"
       - "app/src/test/java/com/example/Phase3SameLineageFinancialMutationTest.kt"
+      - "app/src/test/java/com/example/Phase3RestoreObligationLineageLinearizationTest.kt"
 
   - id: "INV-02"
     name: "Historical Source Immutability"
@@ -65,6 +66,7 @@ invariants:
       - "app/src/test/java/com/example/Phase3G4LineageStaleResultTest.kt"
       - "app/src/test/java/com/example/Phase3GenerationAdvanceBoundaryTest.kt"
       - "app/src/test/java/com/example/Phase3SameLineageFinancialMutationTest.kt"
+      - "app/src/test/java/com/example/Phase3RestoreObligationLineageLinearizationTest.kt"
       - "app/src/test/java/com/example/DeepCrossLayerInvariantsTest.kt"
       - "app/src/test/java/com/example/InfiniteCycleAdversarialIntegrationTest.kt"
 
@@ -151,6 +153,7 @@ invariants:
       - "app/src/test/java/com/example/Phase2RestoreReplaceHardeningTest.kt"
       - "app/src/test/java/com/example/Phase2UtowerImportHardeningTest.kt"
       - "app/src/test/java/com/example/Phase2TransportReconstructionIntegrationTest.kt"
+      - "app/src/test/java/com/example/Phase3RestoreObligationLineageLinearizationTest.kt"
 
   - id: "INV-12"
     name: "No Outbox Loops on Remote Apply"
@@ -184,6 +187,7 @@ invariants:
       - "app/src/test/java/com/example/Phase1TwoDeviceConvergenceTest.kt"
       - "app/src/test/java/com/example/Phase2RestoreReplaceHardeningTest.kt"
       - "app/src/test/java/com/example/Phase2TransportReconstructionIntegrationTest.kt"
+      - "app/src/test/java/com/example/Phase3RestoreObligationLineageLinearizationTest.kt"
 
   - id: "INV-14"
     name: "Fail-Closed Encryption & Key Recovery"
@@ -198,6 +202,7 @@ invariants:
       - "app/src/test/java/com/example/Phase2RestoreReplaceHardeningTest.kt"
       - "app/src/test/java/com/example/Phase2UtowerImportHardeningTest.kt"
       - "app/src/test/java/com/example/Phase2TransportReconstructionIntegrationTest.kt"
+      - "app/src/test/java/com/example/Phase3RestoreObligationLineageLinearizationTest.kt"
 
   - id: "INV-15"
     name: "Fail-Closed Release Signing"

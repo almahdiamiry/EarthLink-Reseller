@@ -343,7 +343,7 @@ requirements:
       adversarial_fixture: false
       registry: true
       evidence: true
-    behavioral_test_location: "app/src/test/java/com/example/Phase3PersistedGenerationTest.kt"
+    behavioral_test_location: "app/src/test/java/com/example/Phase3PersistedGenerationTest.kt, app/src/test/java/com/example/Phase3RestoreObligationLineageLinearizationTest.kt"
 
   - id: "P3-G4-REQ-02"
     phase: 3
@@ -369,7 +369,7 @@ requirements:
       adversarial_fixture: false
       registry: false
       evidence: true
-    behavioral_test_location: "app/src/test/java/com/example/Phase3GenerationAdvanceBoundaryTest.kt"
+    behavioral_test_location: "app/src/test/java/com/example/Phase3GenerationAdvanceBoundaryTest.kt, app/src/test/java/com/example/Phase3RestoreObligationLineageLinearizationTest.kt"
 
   - id: "P3-G4-REQ-04"
     phase: 3
