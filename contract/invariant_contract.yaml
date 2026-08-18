@@ -248,6 +248,7 @@ invariants:
       - "app/src/test/java/com/example/Phase2RestoreTransactionBoundaryTest.kt"
       - "app/src/test/java/com/example/Phase2RestoreMergeLineageTest.kt"
       - "app/src/test/java/com/example/Phase2CurrentPositionReconstructionTest.kt"
+      - "app/src/test/java/com/example/Phase2RestoreReplaceHardeningTest.kt"
     structural_checks:
       - check_id: "RC-4-coordinator-bypass"
         description: "Forbidden currentMode bypass check in BackupManager"
@@ -297,6 +298,7 @@ invariants:
       - "app/src/test/java/com/example/Phase1AtomicityAndLostAckTest.kt"
       - "app/src/test/java/com/example/Phase3CoordinatorMutexTokenTest.kt"
       - "app/src/test/java/com/example/Phase1TwoDeviceConvergenceTest.kt"
+      - "app/src/test/java/com/example/Phase2RestoreReplaceHardeningTest.kt"
     structural_checks:
       - check_id: "INV-13-high-impact-mutex"
         description: "High impact operations must strictly acquire coordinator lock with appropriate mode"
@@ -320,6 +322,7 @@ invariants:
       - "app/src/test/java/com/example/ResolveLocalVersionTest.kt"
       - "app/src/test/java/com/example/Phase2RestoreTransactionBoundaryTest.kt"
       - "app/src/test/java/com/example/Phase2RestoreMergeLineageTest.kt"
+      - "app/src/test/java/com/example/Phase2RestoreReplaceHardeningTest.kt"
     structural_checks:
       - check_id: "INV-14-fail-closed-encryption"
         description: "Unrecoverable database keys must throw immediately without creating new keys"

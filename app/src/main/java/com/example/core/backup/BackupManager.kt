@@ -185,9 +185,15 @@ object BackupManager {
         return@withContext zipFile
     }
 
+    fun getBackupsDirectory(context: Context): File {
+        val baseDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOCUMENTS)
+            ?: File(context.filesDir, "Documents")
+        return File(baseDir, "EarthlinkBackups").apply { if (!exists()) mkdirs() }
+    }
+
     suspend fun createDailyRollingBackup(context: Context): File? = withContext(Dispatchers.IO) {
         try {
-            val dailyBackupsDir = File(context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOCUMENTS), "EarthlinkBackups").apply { if (!exists()) mkdirs() }
+            val dailyBackupsDir = getBackupsDirectory(context)
             val tempZip = createLocalBackupZip(context)
             
             val timeStamp = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.US).format(Date())
@@ -214,7 +220,7 @@ object BackupManager {
     }
 
     suspend fun listDailyBackups(context: Context): List<File> = withContext(Dispatchers.IO) {
-        val dailyBackupsDir = File(context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOCUMENTS), "EarthlinkBackups")
+        val dailyBackupsDir = getBackupsDirectory(context)
         if (!dailyBackupsDir.exists()) return@withContext emptyList()
         return@withContext dailyBackupsDir.listFiles()?.filter { it.name.endsWith(".zip") }?.sortedByDescending { it.lastModified() } ?: emptyList()
     }
@@ -419,6 +425,90 @@ object BackupManager {
             return@withContext false
         }
         restoreMergeBackupZipInternal(context, backupFile, decision, force)
+    }
+
+    /**
+     * Programmatic / Database-level execution of Direct Atomic Room Restore Replace inside an existing active transaction (P2-G3-REQ-01 / P2-G3-REQ-05 / INV-11 / INV-13).
+     * Wipes business tables and replaces them atomically with the snapshot dataset in paginated chunks.
+     * Quarantines incomplete import batches, preserves live audit log trail, resets operational outbox/cursors, and reconstructs valid unresolved obligations.
+     */
+    suspend fun executeRestoreReplaceInternal(
+        liveDb: AppDatabase,
+        backupDb: AppDatabase,
+        unresolvedObligations: List<com.example.core.model.SyncOutbox> = emptyList(),
+        passphrase: String = ""
+    ) {
+        // Exact Snapshot Restore: clear business tables and replace with exact backup snapshot
+        liveDb.localLedgerEntryDao().deleteAll()
+        liveDb.localAccountDao().deleteAll()
+        liveDb.importBatchDao().deleteAll()
+        liveDb.syncOutboxDao().deleteAll()
+        liveDb.syncMetadataDao().deleteAll()
+
+        val batchSize = 500
+        var accOffset = 0
+        while (true) {
+            val backupAccountsChunk = backupDb.localAccountDao().getAllOneShot(limit = batchSize, offset = accOffset)
+            if (backupAccountsChunk.isEmpty()) break
+            liveDb.localAccountDao().insertAll(backupAccountsChunk)
+            accOffset += backupAccountsChunk.size
+            if (backupAccountsChunk.size < batchSize) break
+        }
+
+        var ledgerOffset = 0
+        while (true) {
+            val backupLedgersChunk = backupDb.localLedgerEntryDao().getAllOneShot(limit = batchSize, offset = ledgerOffset)
+            if (backupLedgersChunk.isEmpty()) break
+            liveDb.localLedgerEntryDao().insertAll(backupLedgersChunk)
+            ledgerOffset += backupLedgersChunk.size
+            if (backupLedgersChunk.size < batchSize) break
+        }
+
+        val backupBatches = backupDb.importBatchDao().getAllOneShot()
+        for (b in backupBatches) {
+            val batchToRestore = if (b.status != "completed") {
+                b.copy(
+                    status = "failed",
+                    warningsJson = ((b.warningsJson ?: "") + " [Quarantined on restore: incomplete backup state]").trim()
+                )
+            } else {
+                b
+            }
+            liveDb.importBatchDao().insert(batchToRestore)
+        }
+
+        // Operational sync state: Reinitialized. Stale outbox and metadata from backup is NOT replayed to cloud.
+        // Sync cursors in syncMetadataDao remain cleared so sync reconciles cleanly with remote.
+        // Live audit logs are preserved (not cleared) and backup audits are appended so the restore audit trail is unbroken.
+        val backupAudits = backupDb.auditLogDao().getAllSync()
+        for (auditItem in backupAudits) {
+            liveDb.auditLogDao().insert(auditItem)
+        }
+
+        // Execute the Transport Reconstruction Decision Table (P1-G2-REQ-05 / INV-13)
+        reconstructTransportState(liveDb, unresolvedObligations)
+
+        val now = System.currentTimeMillis()
+        val salt = if (passphrase.isNotBlank()) passphrase else "default_test_salt"
+        val rawString = "$now|INFO|DATABASE_RESTORE|Backup restored and verified successfully.|system|$salt"
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        val sig = digest.digest(rawString.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+
+        liveDb.auditLogDao().insert(
+            com.example.core.model.AuditLog(
+                action = "DATABASE_RESTORE",
+                entityType = null,
+                entityId = null,
+                summary = "Backup restored and verified successfully.",
+                createdAt = now,
+                severity = "INFO",
+                actor = "system",
+                signature = sig,
+                origin = com.example.core.model.AuditOrigin.RESTORE_EVENT.name
+            )
+        )
+
+        Log.i(TAG, "Successfully restored exact database snapshot across all business tables and reconstructed transport state.")
     }
 
     /**
@@ -820,10 +910,7 @@ object BackupManager {
             )
 
             try {
-                val dailyBackupsDir = File(
-                    context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOCUMENTS),
-                    "EarthlinkBackups"
-                ).apply { if (!exists()) mkdirs() }
+                val dailyBackupsDir = getBackupsDirectory(context)
                 val tempZip = createLocalBackupZipInternal(context)
                 val timeStamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss_SSS", Locale.US).format(Date())
                 val preRestoreFile = File(dailyBackupsDir, "pre_restore_merge_backup_$timeStamp.zip")
@@ -1040,10 +1127,7 @@ object BackupManager {
         // 0. Force-create persistent pre-restore backup in EarthlinkBackups directory
         var preRestoreSuccess = false
         try {
-            val dailyBackupsDir = File(
-                context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOCUMENTS),
-                "EarthlinkBackups"
-            ).apply { if (!exists()) mkdirs() }
+            val dailyBackupsDir = getBackupsDirectory(context)
             val tempZip = createLocalBackupZipInternal(context)
             val timeStamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss_SSS", Locale.US).format(Date())
             val preRestoreFile = File(dailyBackupsDir, "pre_restore_backup_$timeStamp.zip")
@@ -1246,77 +1330,12 @@ object BackupManager {
                         AppDatabase.getDatabase(context, ByteArray(0))
                     }
                     liveDb.withTransaction {
-                        // Exact Snapshot Restore: clear business tables and replace with exact backup snapshot
-                        liveDb.localLedgerEntryDao().deleteAll()
-                        liveDb.localAccountDao().deleteAll()
-                        liveDb.importBatchDao().deleteAll()
-                        liveDb.syncOutboxDao().deleteAll()
-                        liveDb.syncMetadataDao().deleteAll()
-
-                        val batchSize = 500
-                        var accOffset = 0
-                        while (true) {
-                            val backupAccountsChunk = backupDb!!.localAccountDao().getAllOneShot(limit = batchSize, offset = accOffset)
-                            if (backupAccountsChunk.isEmpty()) break
-                            liveDb.localAccountDao().insertAll(backupAccountsChunk)
-                            accOffset += backupAccountsChunk.size
-                            if (backupAccountsChunk.size < batchSize) break
-                        }
-
-                        var ledgerOffset = 0
-                        while (true) {
-                            val backupLedgersChunk = backupDb!!.localLedgerEntryDao().getAllOneShot(limit = batchSize, offset = ledgerOffset)
-                            if (backupLedgersChunk.isEmpty()) break
-                            liveDb.localLedgerEntryDao().insertAll(backupLedgersChunk)
-                            ledgerOffset += backupLedgersChunk.size
-                            if (backupLedgersChunk.size < batchSize) break
-                        }
-
-                        val backupBatches = backupDb!!.importBatchDao().getAllOneShot()
-                        for (b in backupBatches) {
-                            val batchToRestore = if (b.status != "completed") {
-                                b.copy(
-                                    status = "failed",
-                                    warningsJson = ((b.warningsJson ?: "") + " [Quarantined on restore: incomplete backup state]").trim()
-                                )
-                            } else {
-                                b
-                            }
-                            liveDb.importBatchDao().insert(batchToRestore)
-                        }
-
-                        // Operational sync state: Reinitialized. Stale outbox and metadata from backup is NOT replayed to cloud.
-                        // Sync cursors in syncMetadataDao remain cleared so sync reconciles cleanly with remote.
-                        // Live audit logs are preserved (not cleared) and backup audits are appended so the restore audit trail is unbroken.
-                        val backupAudits = backupDb!!.auditLogDao().getAllSync()
-                        for (auditItem in backupAudits) {
-                            liveDb.auditLogDao().insert(auditItem)
-                        }
-
-                        // Execute the Transport Reconstruction Decision Table (P1-G2-REQ-05 / INV-13)
-                        reconstructTransportState(liveDb, restoreSnapshot.unresolvedObligations)
-
-                        val now = System.currentTimeMillis()
-                        val salt = try { app?.preferenceManager?.getDatabasePassphrase() ?: currentPassphrase } catch (_: Throwable) { "default_test_salt" }
-                        val rawString = "$now|INFO|DATABASE_RESTORE|Backup restored and verified successfully.|system|$salt"
-                        val digest = java.security.MessageDigest.getInstance("SHA-256")
-                        val sig = digest.digest(rawString.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
-
-                        liveDb.auditLogDao().insert(
-                            com.example.core.model.AuditLog(
-                                action = "DATABASE_RESTORE",
-                                entityType = null,
-                                entityId = null,
-                                summary = "Backup restored and verified successfully.",
-                                createdAt = now,
-                                severity = "INFO",
-                                actor = "system",
-                                signature = sig,
-                                origin = com.example.core.model.AuditOrigin.RESTORE_EVENT.name
-                            )
+                        executeRestoreReplaceInternal(
+                            liveDb = liveDb,
+                            backupDb = backupDb!!,
+                            unresolvedObligations = restoreSnapshot.unresolvedObligations,
+                            passphrase = currentPassphrase
                         )
-
-                        Log.i(TAG, "Successfully restored exact database snapshot across all business tables and reconstructed transport state.")
                     }
 
                     try {
