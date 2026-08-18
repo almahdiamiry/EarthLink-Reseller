@@ -45,7 +45,7 @@
 - [x] Task P3-01: Add persisted G4 generation state (Commit: `2f3eec9`)
 - [x] Task P3-02: Capture lineage at remote operation start and validate in the same transaction (Commit: `7a275c8`)
 - [x] Task P3-03: Advance generation on full replacement/clear only
-- [ ] Task P3-04: Validate normal mutations as same-lineage
+- [x] Task P3-04: Validate normal mutations as same-lineage
 - [ ] Task P3-05: Bind generation to the final Restore/Import transaction boundary
 - [ ] Task P3-06: Align lock order and eliminate network-under-lock
 - [ ] Task P3-07: Add the full two-device concurrent operation fixture

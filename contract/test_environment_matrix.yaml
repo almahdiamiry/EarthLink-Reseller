@@ -493,6 +493,16 @@ test_suites:
       - "INV-05"
       - "INV-11"
 
+  - name: "Phase3SameLineageFinancialMutationTest"
+    path: "app/src/test/java/com/example/Phase3SameLineageFinancialMutationTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Phase 3 Same-Lineage Financial Mutations & Generation Invariance test suite (P3-G4-REQ-04 / INV-01 / INV-05 / INV-06 / INV-11)"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+      - "INV-06"
+      - "INV-11"
+
   - name: "CoordinatorInstrumentedTest"
     path: "app/src/androidTest/java/com/example/CoordinatorInstrumentedTest.kt"
     environment: "INSTRUMENTED"

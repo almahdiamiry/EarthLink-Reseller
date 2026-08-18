@@ -19,6 +19,7 @@ invariants:
       - "app/src/test/java/com/example/Phase2RestoreMergeLineageTest.kt"
       - "app/src/test/java/com/example/Phase2CurrentPositionReconstructionTest.kt"
       - "app/src/test/java/com/example/Phase2TransportReconstructionIntegrationTest.kt"
+      - "app/src/test/java/com/example/Phase3SameLineageFinancialMutationTest.kt"
 
   - id: "INV-02"
     name: "Historical Source Immutability"
@@ -63,6 +64,7 @@ invariants:
       - "app/src/test/java/com/example/Phase3PersistedGenerationTest.kt"
       - "app/src/test/java/com/example/Phase3G4LineageStaleResultTest.kt"
       - "app/src/test/java/com/example/Phase3GenerationAdvanceBoundaryTest.kt"
+      - "app/src/test/java/com/example/Phase3SameLineageFinancialMutationTest.kt"
       - "app/src/test/java/com/example/DeepCrossLayerInvariantsTest.kt"
       - "app/src/test/java/com/example/InfiniteCycleAdversarialIntegrationTest.kt"
 
@@ -80,6 +82,7 @@ invariants:
       - "app/src/test/java/com/example/Phase1TwoDeviceConvergenceTest.kt"
       - "app/src/test/java/com/example/Phase2RestoreMergeLineageTest.kt"
       - "app/src/test/java/com/example/Phase2CurrentPositionReconstructionTest.kt"
+      - "app/src/test/java/com/example/Phase3SameLineageFinancialMutationTest.kt"
 
   - id: "INV-07"
     name: "Composite Cursor Advancement"
@@ -132,6 +135,7 @@ invariants:
       - "app/src/test/java/com/example/Phase3PersistedGenerationTest.kt"
       - "app/src/test/java/com/example/Phase3G4LineageStaleResultTest.kt"
       - "app/src/test/java/com/example/Phase3GenerationAdvanceBoundaryTest.kt"
+      - "app/src/test/java/com/example/Phase3SameLineageFinancialMutationTest.kt"
       - "app/src/test/java/com/example/CoordinatorOwnershipRegressionTest.kt"
       - "app/src/test/java/com/example/DataOperationCoordinatorConcurrencyTest.kt"
       - "app/src/test/java/com/example/MaintenanceLockExclusiveSyncTest.kt"
