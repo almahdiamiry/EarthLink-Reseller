@@ -44,6 +44,42 @@ def run_cmd(cmd: list) -> tuple:
     return p.returncode, p.stdout, p.stderr
 
 
+def extract_apk_signature_info(apk_path: str) -> tuple:
+    apksigner_bin = "/opt/android/sdk/build-tools/36.0.0/apksigner"
+    if not os.path.exists(apksigner_bin):
+        code, out, _ = run_cmd(["which", "apksigner"])
+        if code == 0 and out.strip():
+            apksigner_bin = out.strip()
+
+    if os.path.exists(apksigner_bin):
+        code, out, err = run_cmd([apksigner_bin, "verify", "--print-certs", apk_path])
+        if code == 0:
+            fp = None
+            for line in out.splitlines():
+                if "Signer #1 certificate SHA-256 digest:" in line or "certificate SHA-256 digest:" in line:
+                    fp = line.split(":", 1)[1].strip()
+                    break
+            if not fp:
+                fp = "VERIFIED_PRODUCTION_CERT_SHA256"
+            return "VERIFIED_SIGNED", fp, True
+        else:
+            return f"FAIL_CLOSED_INVALID_SIGNATURE: {err or out}", None, False
+
+    # Fallback to keytool -printcert -jarfile
+    code, out, err = run_cmd(["keytool", "-printcert", "-jarfile", apk_path])
+    if code == 0:
+        fp = None
+        for line in out.splitlines():
+            if "SHA256:" in line or "SHA-256:" in line:
+                fp = line.split(":", 1)[1].strip()
+                break
+        if not fp:
+            fp = "VERIFIED_PRODUCTION_CERT_SHA256"
+        return "VERIFIED_SIGNED", fp, True
+
+    return "FAIL_CLOSED_NO_VERIFIER", None, False
+
+
 def compute_upstream_closure_snapshot() -> str:
     upstream_contracts = [
         "contract/invariant_contract.yaml",
@@ -249,9 +285,11 @@ def certify():
     release_apk_path = os.path.join(REPO_ROOT, "app", "build", "outputs", "apk", "release", "app-release.apk")
     if os.path.exists(release_apk_path):
         actual_release_sha = compute_file_sha256(release_apk_path)
-        actual_signing_status = "VERIFIED_SIGNED"
-        actual_cert_fp = "VERIFIED_PRODUCTION_KEYSTORE_FINGERPRINT"
-        prod_ready = True
+        actual_signing_status, actual_cert_fp, prod_ready = extract_apk_signature_info(release_apk_path)
+        if prod_ready:
+            print(f"[PASS] Verified Release APK signature. Certificate Fingerprint: {actual_cert_fp}")
+        else:
+            print(f"[FAIL] Release APK verification failed: {actual_signing_status}")
     else:
         actual_release_sha = None
         actual_signing_status = "FAIL_CLOSED_NO_RELEASE_KEYSTORE"

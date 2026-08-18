@@ -29,11 +29,14 @@ android {
       val kAlias = System.getenv("KEY_ALIAS")
       val kPwd = System.getenv("KEY_PASSWORD")
 
-      if (keystorePath != null && storePwd != null && kAlias != null && kPwd != null && file(keystorePath).exists()) {
-          storeFile = file(keystorePath)
-          storePassword = storePwd
-          keyAlias = kAlias
-          keyPassword = kPwd
+      if (keystorePath != null && storePwd != null && kAlias != null && kPwd != null) {
+          val ksFile = if (file(keystorePath).isAbsolute) file(keystorePath) else rootProject.file(keystorePath)
+          if (ksFile.exists()) {
+              storeFile = ksFile
+              storePassword = storePwd
+              keyAlias = kAlias
+              keyPassword = kPwd
+          }
       }
     }
     create("debugConfig") {
@@ -65,7 +68,18 @@ android {
     buildConfig = true
     resValues = true
   }
-  testOptions { unitTests { isIncludeAndroidResources = true } }
+  testOptions {
+    unitTests {
+      isIncludeAndroidResources = true
+      all { testTask ->
+        testTask.jvmArgs(
+          "-XX:+EnableDynamicAgentLoading",
+          "-Dnet.bytebuddy.experimental=true",
+          "-javaagent:/opt/gradle/.gradle/caches/modules-2/files-2.1/net.bytebuddy/byte-buddy-agent/1.14.12/be4984cb6fd1ef1d11f218a648889dfda44b8a15/byte-buddy-agent-1.14.12.jar"
+        )
+      }
+    }
+  }
 }
 
 // Configure the Secrets Gradle Plugin to use .env and .env.example files
@@ -109,8 +123,8 @@ dependencies {
   implementation(libs.androidx.room.runtime)
   implementation(libs.commons.compress)
   testImplementation(libs.commons.compress)
-  testImplementation("org.mockito:mockito-core:4.8.0")
-  testImplementation("org.mockito:mockito-inline:4.8.0")
+  testImplementation("org.mockito:mockito-core:5.11.0")
+  testImplementation("org.mockito.kotlin:mockito-kotlin:5.2.1")
   implementation(libs.sqlcipher)
   implementation(libs.sqlite)
   implementation(libs.coil.compose)

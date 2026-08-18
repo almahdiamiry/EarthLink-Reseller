@@ -32,9 +32,13 @@ echo "[3/6] Running G8 Certifier Self-Tests & Mutation Fixtures..."
 python3 "${REPO_ROOT}/scripts/test_g8_certifier.py"
 python3 "${REPO_ROOT}/scripts/test_g8_certifier_fixtures.py"
 
-# 4. Actual Product and Certification Test Execution via Gradle Wrapper
-echo "[4/6] Executing Complete Product & Certification Test Corpus via Gradle Wrapper..."
-"${REPO_ROOT}/gradlew" testDebugUnitTest
+# 4. Actual Product and Certification Test Execution via Gradle
+echo "[4/6] Executing Complete Product & Certification Test Corpus via Gradle..."
+if [ -x "${REPO_ROOT}/gradlew" ]; then
+    "${REPO_ROOT}/gradlew" testDebugUnitTest
+else
+    gradle testDebugUnitTest
+fi
 
 # 5. Execute G8 Machine Certification Engine
 echo "[5/6] Running G8 Certification Engine & Evidence Collector..."

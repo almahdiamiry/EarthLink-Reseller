@@ -18,10 +18,10 @@ local.properties
 .env.*
 !.env.example
 debug.keystore
+earthlink_reseller_release.jks
 *.jks
 *.keystore
 *.p12
 __pycache__/
 *.pyc
 .pytest_cache/
-/evidence/g8/
