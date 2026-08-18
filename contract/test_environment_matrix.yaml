@@ -477,6 +477,14 @@ test_suites:
       - "INV-05"
       - "INV-11"
 
+  - name: "Phase3G4LineageStaleResultTest"
+    path: "app/src/test/java/com/example/Phase3G4LineageStaleResultTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Phase 3 Same-Transaction Generation Validation & Stale Result Rejection test suite (P3-G4-REQ-02 / INV-05 / INV-11)"
+    associated_invariants:
+      - "INV-05"
+      - "INV-11"
+
   - name: "CoordinatorInstrumentedTest"
     path: "app/src/androidTest/java/com/example/CoordinatorInstrumentedTest.kt"
     environment: "INSTRUMENTED"

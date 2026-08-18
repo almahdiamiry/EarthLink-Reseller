@@ -108,6 +108,7 @@ invariants:
       - "app/src/test/java/com/example/ResolveLocalVersionTest.kt"
       - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
       - "app/src/test/java/com/example/Phase3PersistedGenerationTest.kt"
+      - "app/src/test/java/com/example/Phase3G4LineageStaleResultTest.kt"
     structural_checks:
       - check_id: "INV-05-single-sync-authority"
         description: "All remote writes and sync routing pass through canonical synchronization channel"
@@ -242,6 +243,7 @@ invariants:
     required_behavior_tests:
       - "app/src/test/java/com/example/Phase3CoordinatorMutexTokenTest.kt"
       - "app/src/test/java/com/example/Phase3PersistedGenerationTest.kt"
+      - "app/src/test/java/com/example/Phase3G4LineageStaleResultTest.kt"
       - "app/src/test/java/com/example/Phase1G1PendingOperationDurabilityTest.kt"
       - "app/src/test/java/com/example/Phase1AtomicityAndLostAckTest.kt"
       - "app/src/test/java/com/example/Phase1DuplicateInitiationProtectionTest.kt"

@@ -229,15 +229,29 @@ class RemoteSyncCoordinator(
                 return EventSyncResult.SKIPPED_DUPLICATE
             }
 
+            // Capture local generation at remote operation start (P3-G4-REQ-02, INV-05, INV-11)
+            val capturedGen = appDatabase.getGeneration()
+
             var result = EventSyncResult.FAILED_RETRYABLE
             appDatabase.withTransaction {
+                // Re-read current generation inside the write transaction
+                val currentGen = appDatabase.syncMetadataDao().getGeneration()
+                if (currentGen != capturedGen) {
+                    Log.w(
+                        "RemoteSyncCoordinator",
+                        "Lineage generation mismatch during processEvent for ${event.entityType}:${event.entityId}: capturedGen=$capturedGen != currentGen=$currentGen. Rejecting stale remote result."
+                    )
+                    result = EventSyncResult.SKIPPED_DUPLICATE
+                    return@withTransaction
+                }
+
                 result = when (event) {
-                    is RemoteEvent.AccountUpsert -> applyAccountUpsert(event)
-                    is RemoteEvent.AccountDelete -> applyAccountDelete(event)
-                    is RemoteEvent.LedgerUpsert -> applyLedgerUpsert(event)
-                    is RemoteEvent.LedgerDelete -> applyLedgerDelete(event)
-                    is RemoteEvent.BatchUpsert -> applyBatchUpsert(event)
-                    is RemoteEvent.UserSettingsUpdate -> applyUserSettingsUpdate(event)
+                    is RemoteEvent.AccountUpsert -> applyAccountUpsert(event, capturedGen)
+                    is RemoteEvent.AccountDelete -> applyAccountDelete(event, capturedGen)
+                    is RemoteEvent.LedgerUpsert -> applyLedgerUpsert(event, capturedGen)
+                    is RemoteEvent.LedgerDelete -> applyLedgerDelete(event, capturedGen)
+                    is RemoteEvent.BatchUpsert -> applyBatchUpsert(event, capturedGen)
+                    is RemoteEvent.UserSettingsUpdate -> applyUserSettingsUpdate(event, capturedGen)
                 }
             }
 
@@ -261,7 +275,13 @@ class RemoteSyncCoordinator(
         return count
     }
 
-    private suspend fun applyAccountUpsert(event: RemoteEvent.AccountUpsert): EventSyncResult {
+    private suspend fun applyAccountUpsert(event: RemoteEvent.AccountUpsert, capturedGen: Long): EventSyncResult {
+        val currentGen = metadataDao.getGeneration()
+        if (currentGen != capturedGen) {
+            Log.w("RemoteSyncCoordinator", "Lineage generation mismatch in applyAccountUpsert: captured=$capturedGen != current=$currentGen")
+            return EventSyncResult.SKIPPED_DUPLICATE
+        }
+
         val account = event.account
         val tombstoneStr = metadataDao.get("tombstone:account:${event.entityId}")
         val tombstoneTs = tombstoneStr?.toLongOrNull()
@@ -355,7 +375,13 @@ class RemoteSyncCoordinator(
         }
     }
 
-    private suspend fun applyAccountDelete(event: RemoteEvent.AccountDelete): EventSyncResult {
+    private suspend fun applyAccountDelete(event: RemoteEvent.AccountDelete, capturedGen: Long): EventSyncResult {
+        val currentGen = metadataDao.getGeneration()
+        if (currentGen != capturedGen) {
+            Log.w("RemoteSyncCoordinator", "Lineage generation mismatch in applyAccountDelete: captured=$capturedGen != current=$currentGen")
+            return EventSyncResult.SKIPPED_DUPLICATE
+        }
+
         val hasActiveMutation = hasConflictingLocalMutation(event.entityId, "local_accounts", event.syncMutationId)
         val existing = accountDao.getByIdOneShot(event.entityId)
         val localVersion = resolveLocalVersion("account", event.entityId)
@@ -403,7 +429,13 @@ class RemoteSyncCoordinator(
         }
     }
 
-    private suspend fun applyLedgerUpsert(event: RemoteEvent.LedgerUpsert): EventSyncResult {
+    private suspend fun applyLedgerUpsert(event: RemoteEvent.LedgerUpsert, capturedGen: Long): EventSyncResult {
+        val currentGen = metadataDao.getGeneration()
+        if (currentGen != capturedGen) {
+            Log.w("RemoteSyncCoordinator", "Lineage generation mismatch in applyLedgerUpsert: captured=$capturedGen != current=$currentGen")
+            return EventSyncResult.SKIPPED_DUPLICATE
+        }
+
         val entry = event.entry
 
         // 1. Check ledger tombstone
@@ -543,7 +575,13 @@ class RemoteSyncCoordinator(
         }
     }
 
-    private suspend fun applyLedgerDelete(event: RemoteEvent.LedgerDelete): EventSyncResult {
+    private suspend fun applyLedgerDelete(event: RemoteEvent.LedgerDelete, capturedGen: Long): EventSyncResult {
+        val currentGen = metadataDao.getGeneration()
+        if (currentGen != capturedGen) {
+            Log.w("RemoteSyncCoordinator", "Lineage generation mismatch in applyLedgerDelete: captured=$capturedGen != current=$currentGen")
+            return EventSyncResult.SKIPPED_DUPLICATE
+        }
+
         val hasActiveMutation = hasConflictingLocalMutation(event.entityId, "local_ledger_entries", event.syncMutationId)
         val existing = ledgerDao.getByIdOneShot(event.entityId)
         val localVersion = resolveLocalVersion("ledger", event.entityId)
@@ -585,7 +623,13 @@ class RemoteSyncCoordinator(
         }
     }
 
-    private suspend fun applyBatchUpsert(event: RemoteEvent.BatchUpsert): EventSyncResult {
+    private suspend fun applyBatchUpsert(event: RemoteEvent.BatchUpsert, capturedGen: Long): EventSyncResult {
+        val currentGen = metadataDao.getGeneration()
+        if (currentGen != capturedGen) {
+            Log.w("RemoteSyncCoordinator", "Lineage generation mismatch in applyBatchUpsert: captured=$capturedGen != current=$currentGen")
+            return EventSyncResult.SKIPPED_DUPLICATE
+        }
+
         val batch = event.batch
         val existing = batchDao.getById(event.entityId)
         val localVersion = resolveLocalVersion("batch", event.entityId)
@@ -623,7 +667,13 @@ class RemoteSyncCoordinator(
         }
     }
 
-    private suspend fun applyUserSettingsUpdate(event: RemoteEvent.UserSettingsUpdate): EventSyncResult {
+    private suspend fun applyUserSettingsUpdate(event: RemoteEvent.UserSettingsUpdate, capturedGen: Long): EventSyncResult {
+        val currentGen = metadataDao.getGeneration()
+        if (currentGen != capturedGen) {
+            Log.w("RemoteSyncCoordinator", "Lineage generation mismatch in applyUserSettingsUpdate: captured=$capturedGen != current=$currentGen")
+            return EventSyncResult.SKIPPED_DUPLICATE
+        }
+
         val lastVersionStr = metadataDao.get("user_settings_version")
         val lastVersion = lastVersionStr?.toLongOrNull() ?: 0L
         if (event.remoteVersion < lastVersion) {
@@ -663,7 +713,7 @@ class RemoteSyncCoordinator(
         if (payloadJson.isNullOrEmpty()) return null
         return try {
             val json = org.json.JSONObject(payloadJson)
-            json.optString("syncMutationId", null)
+            if (json.has("syncMutationId") && !json.isNull("syncMutationId")) json.getString("syncMutationId") else null
         } catch (e: Exception) {
             null
         }

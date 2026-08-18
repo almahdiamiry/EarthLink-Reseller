@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.88.0] - 2026-08-18
+### Phase 3: Task P3-02 / Task 22 — Same-Transaction Generation Validation & Stale Result Rejection (P3-G4-REQ-02 / INV-05 / INV-11)
+- **Same-Transaction Generation Validation (`RemoteSyncCoordinator.kt`)**:
+  - **Lineage Capture at Operation Start**: At the inception of processing remote sync events (`processEvent`), captured the local lineage generation (`val capturedGen = appDatabase.getGeneration()`) before acquiring database transactions.
+  - **Atomicity Inside Room Write Transaction (`withTransaction`)**: Re-reads current generation inside the write transaction (`val currentGen = appDatabase.syncMetadataDao().getGeneration()`). If `currentGen != capturedGen`, immediately rejects stale remote results (`EventSyncResult.SKIPPED_DUPLICATE`) with diagnostic logging and aborts the transaction without mutating business entities, metadata, or outbox.
+  - **Defense-in-Depth in Application Handlers**: Passed `capturedGen` to all private atomic application methods (`applyAccountUpsert`, `applyAccountDelete`, `applyLedgerUpsert`, `applyLedgerDelete`, `applyBatchUpsert`, `applyUserSettingsUpdate`) enforcing generation matching before executing entity or metadata writes.
+  - **Zero Side Effects on Invalidation**: Confirmed that stale remote operations rejected due to lineage mismatch (e.g. Restore Replace or Full Dataset Clear) produce zero database mutations, zero remote version changes, zero tombstone updates, and zero outbox creation.
+- **Comprehensive Behavioral Test Suite (`Phase3G4LineageStaleResultTest.kt`)**:
+  - Implemented 13 exhaustive unit tests verifying same-generation and stale-generation handling across all entity types: `accountUpsert_sameGeneration_appliesSuccessfullyAndAtomically`, `accountUpsert_staleLineageMismatch_strictlyRejectsStaleResult`, `accountDelete_sameGeneration_appliesSuccessfully`, `accountDelete_staleGeneration_preservesLocalAccount`, `ledgerUpsert_sameGeneration_appliesAndRecalculatesBalance`, `ledgerUpsert_staleGeneration_preservesStateAndBalance`, `ledgerDelete_sameGeneration_appliesAndRecalculatesBalance`, `batchUpsert_sameGeneration_appliesSuccessfully`, `batchUpsert_staleGeneration_isRejected`, `userSettingsUpdate_sameGeneration_appliesSuccessfully`, `userSettingsUpdate_staleGeneration_isRejected`, `sameTransactionAtomicity_generationCheckGuaranteesZeroPartialWrite`, and `multiEventStream_staleEventsRejectedWhileFreshEventsApply`.
+- **Contract & Matrix Mapping**:
+  - Registered `Phase3G4LineageStaleResultTest` under `INV-05` and `INV-11` in `contract/invariant_contract.yaml`, `contract/invariant_test_map.yaml`, `contract/test_environment_matrix.yaml`, and `contract/phase_requirements.yaml` (under `P3-G4-REQ-02`).
+
 ## [1.87.0] - 2026-08-18
 ### Phase 3: Task P3-01 / Task 21 — Add Persisted G4 Generation State (P3-G4-REQ-01 / INV-05 / INV-11)
 - **Persisted G4 Local Generation State (`AppDatabase.kt` & `SyncMetadataDao`)**:
