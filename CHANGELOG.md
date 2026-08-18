@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.86.0] - 2026-08-18
+### Phase 2: Task P2-06 / Task 19 — Restore/Import Transport Reconstruction Alignment & Integration (P2-G3-REQ-05 / INV-01 / INV-06 / INV-11 / INV-13 / INV-14)
+- **Transport Reconstruction Alignment Across Restore and Import**:
+  - **Stale Backup Outbox & Cursor Discard**: Verified and enforced that all historical outbox rows (`sync_outbox`) and sync cursors (`sync_metadata`) from backup archive files are discarded upon Restore Replace and never blindly replayed to cloud Firestore.
+  - **Pre-Restore Obligation Reconstruction & Orphan Classification**: Enforced that pre-restore unresolved obligations with valid surviving targets in the restored database stay `pending` with stable identity and normalized in-flight status. Pre-restore obligations whose target entities are absent in the restored dataset are classified as `failed` orphans with diagnostic tag `[ORPHAN_TARGET_ENTITY_MISSING]` and exponential backoff protection, preventing hot loops while ensuring zero dead-letter drops (INV-13).
+  - **uTower Import Canonical Outbox Generation & Deduplication**: Verified that newly created/restored entities receive clean, canonical `pending` outbox obligations tied to their `importBatchId`. Duplicate/repeated imports cleanly deduplicate existing pending outbox obligations via `OutboxManager.upsertWithOutbox`. Incomplete import batches isolate their outbox items until batch completion.
+  - **RemoteSyncCoordinator Cache Clearance**: Aligned `UtowerImporter.kt` and `BackupManager.kt` to clear the `RemoteSyncCoordinator` processed cache (`remoteSyncCoordinator.clearCache()`) immediately after successful Restore and Import operations, ensuring fresh evaluation without stale event suppression.
+  - **Lost-ACK Cloud Idempotency**: Verified that reconstructed and imported outbox obligations carrying deterministic `syncMutationId` converge idempotently on cloud Firestore without shadow documents or duplicate financial mutations.
+  - **Deterministic Repeatability**: Verified byte-for-byte and field-for-field determinism across repeated restore and import executions.
+- **Comprehensive Integration Test Suite**: Implemented `Phase2TransportReconstructionIntegrationTest.kt` with 7 exhaustive integration tests covering all transport reconstruction invariants and edge cases.
+- **Contract & Matrix Mapping**: Registered `Phase2TransportReconstructionIntegrationTest` under `INV-01`, `INV-06`, `INV-11`, `INV-13`, `INV-14` in `contract/invariant_contract.yaml`, `contract/invariant_test_map.yaml`, `contract/test_environment_matrix.yaml`, and `contract/phase_requirements.yaml` (under `P2-G3-REQ-05`).
+
 ## [1.85.0] - 2026-08-18
 ### Phase 2: Task P2-05 / Task 18 — Harden Import as Direct Atomic Room (P2-G3-REQ-01 / P2-G3-REQ-05 / INV-11 / INV-14)
 - **Direct Atomic Room Import (`UtowerImporter.kt`)**: Refactored `importFromFile` and `importFromPreview` to parse and validate all subscriber and transaction records completely in-memory outside any database transaction before publishing. Removed premature database batch insertions and intermediate write transactions prior to parse validation.

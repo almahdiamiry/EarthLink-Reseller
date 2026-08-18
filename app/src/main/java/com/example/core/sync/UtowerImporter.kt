@@ -313,6 +313,10 @@ class UtowerImporter(
                 OutboxManager.upsertWithOutbox(appDatabase.syncOutboxDao(), "import_batches", batchId, batchAdapter.toJson(finalizedBatch!!), importBatchId = batchId)
             }
 
+            try {
+                ((context.applicationContext as? com.example.EarthlinkApp)?.syncRepository as? SyncRepositoryImpl)?.remoteSyncCoordinator?.clearCache()
+            } catch (_: Throwable) {}
+
             finalizedBatch!!
         }
     }
@@ -640,6 +644,10 @@ class UtowerImporter(
                     appDatabase.importBatchDao().insert(finalizedBatch)
                     OutboxManager.upsertWithOutbox(appDatabase.syncOutboxDao(), "import_batches", batchId, batchAdapter.toJson(finalizedBatch), importBatchId = batchId)
                 }
+
+                try {
+                    ((context.applicationContext as? com.example.EarthlinkApp)?.syncRepository as? SyncRepositoryImpl)?.remoteSyncCoordinator?.clearCache()
+                } catch (_: Throwable) {}
 
                 ImportResult(
                     batchId = batchId,

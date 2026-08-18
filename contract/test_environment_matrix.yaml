@@ -456,6 +456,17 @@ test_suites:
       - "INV-11"
       - "INV-14"
 
+  - name: "Phase2TransportReconstructionIntegrationTest"
+    path: "app/src/test/java/com/example/Phase2TransportReconstructionIntegrationTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Phase 2 Restore/Import Transport Reconstruction Alignment & Integration test suite (P2-G3-REQ-05 / INV-01 / INV-06 / INV-11 / INV-13 / INV-14)"
+    associated_invariants:
+      - "INV-01"
+      - "INV-06"
+      - "INV-11"
+      - "INV-13"
+      - "INV-14"
+
   - name: "CoordinatorInstrumentedTest"
     path: "app/src/androidTest/java/com/example/CoordinatorInstrumentedTest.kt"
     environment: "INSTRUMENTED"

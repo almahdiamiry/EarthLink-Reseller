@@ -286,6 +286,7 @@ requirements:
       adversarial_fixture: false
       registry: false
       evidence: true
+    behavioral_test_location: "app/src/test/java/com/example/Phase2TransportReconstructionIntegrationTest.kt"
 
   - id: "P2-G3-REQ-06"
     phase: 2

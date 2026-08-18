@@ -285,7 +285,7 @@ object BackupManager {
                     payloadJson = ob.payloadJson,
                     status = "failed",
                     attemptCount = ob.attemptCount + 1,
-                    lastError = "ORPHAN: Target entity ${ob.entityId} of type ${ob.entityType} absent in restored dataset",
+                    lastError = "ORPHAN: Target entity ${ob.entityId} of type ${ob.entityType} absent in restored dataset [ORPHAN_TARGET_ENTITY_MISSING]",
                     createdAt = ob.createdAt,
                     updatedAt = now,
                     importBatchId = ob.importBatchId

@@ -38,5 +38,5 @@
 - [x] Task P2-03: Make current-position reconstruction deterministic
 - [x] Task P2-04: Harden Restore Replace
 - [x] Task P2-05: Harden Import as Direct Atomic Room
-- [ ] Task P2-06: Restore/Import transport reconstruction
+- [x] Task P2-06: Restore/Import transport reconstruction
 - [ ] Task P2-07: Phase 2 evidence and provisional exit gate
