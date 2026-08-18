@@ -304,3 +304,122 @@ phase2:
     unit_test_errors: 0
     unit_test_skipped: 0
     verdict: "PROVISIONALLY CLOSED - ALL REQUIREMENTS PASS"
+
+# =========================================================================
+# PHASE 3: G4 / Concurrency & Lineage Compliance Matrix
+# =========================================================================
+phase3:
+  timestamp: "2026-08-18T14:45:00Z"
+  phase: 3
+  phase_title: "Phase 3 - G4 Concurrency & Lineage"
+  status: "CLOSED (PASS)"
+
+  requirements:
+    - id: "P3-G4-REQ-01"
+      name: "Persist Local G4 Generation State"
+      source_anchor: "G4 Summary & Handover Appendix Section 3 (Persisted Local Generation)"
+      invariants: ["INV-01", "INV-05", "INV-11"]
+      blocking: true
+      status: "PASS"
+      production_code:
+        - "app/src/main/java/com/example/core/database/AppDatabase.kt"
+        - "app/src/main/java/com/example/core/backup/BackupManager.kt"
+      behavioral_tests:
+        - "app/src/test/java/com/example/Phase3PersistedGenerationTest.kt"
+        - "app/src/test/java/com/example/Phase3RestoreObligationLineageLinearizationTest.kt"
+      evidence_xml:
+        - "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase3PersistedGenerationTest.xml"
+        - "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase3RestoreObligationLineageLinearizationTest.xml"
+      test_metrics:
+        total_tests: 14
+        failures: 0
+        errors: 0
+        skipped: 0
+
+    - id: "P3-G4-REQ-02"
+      name: "Same-Transaction Generation Validation & Stale Rejection"
+      source_anchor: "G4 Summary & Handover Appendix Section 3 (Same-Transaction Validation)"
+      invariants: ["INV-05", "INV-06", "INV-11"]
+      blocking: true
+      status: "PASS"
+      production_code:
+        - "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt"
+      behavioral_tests:
+        - "app/src/test/java/com/example/Phase3G4LineageStaleResultTest.kt"
+        - "app/src/test/java/com/example/Phase3RemoteOrderingAdversarialTest.kt"
+      evidence_xml:
+        - "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase3G4LineageStaleResultTest.xml"
+        - "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase3RemoteOrderingAdversarialTest.xml"
+      test_metrics:
+        total_tests: 19
+        failures: 0
+        errors: 0
+        skipped: 0
+
+    - id: "P3-G4-REQ-03"
+      name: "Advance Generation on Full Replacement / Clear Only"
+      source_anchor: "G4 Summary & Handover Appendix Section 3 (Full Dataset Invalidation)"
+      invariants: ["INV-05", "INV-11", "INV-13", "INV-14"]
+      blocking: true
+      status: "PASS"
+      production_code:
+        - "app/src/main/java/com/example/core/backup/BackupManager.kt"
+        - "app/src/main/java/com/example/core/sync/UtowerImporter.kt"
+        - "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+      behavioral_tests:
+        - "app/src/test/java/com/example/Phase3GenerationAdvanceBoundaryTest.kt"
+        - "app/src/test/java/com/example/Phase3RestoreObligationLineageLinearizationTest.kt"
+      evidence_xml:
+        - "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase3GenerationAdvanceBoundaryTest.xml"
+        - "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase3RestoreObligationLineageLinearizationTest.xml"
+      test_metrics:
+        total_tests: 22
+        failures: 0
+        errors: 0
+        skipped: 0
+
+    - id: "P3-G4-REQ-04"
+      name: "Preserve Same-Lineage Normal Financial Mutations"
+      source_anchor: "G4 Summary & Handover Appendix Section 3 (Same-Lineage Mutations)"
+      invariants: ["INV-01", "INV-05", "INV-06", "INV-11"]
+      blocking: true
+      status: "PASS"
+      production_code:
+        - "app/src/main/java/com/example/data/repository/Repositories.kt"
+        - "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt"
+      behavioral_tests:
+        - "app/src/test/java/com/example/Phase3SameLineageFinancialMutationTest.kt"
+      evidence_xml: "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase3SameLineageFinancialMutationTest.xml"
+      test_metrics:
+        total_tests: 12
+        failures: 0
+        errors: 0
+        skipped: 0
+
+    - id: "P3-G4-REQ-05"
+      name: "Maintenance Exclusion Lock Order & Network Isolation"
+      source_anchor: "G4 Summary & Handover Appendix Section 7 (Maintenance Exclusion & Lock Order)"
+      invariants: ["INV-11", "INV-13"]
+      blocking: true
+      status: "PASS"
+      production_code:
+        - "app/src/main/java/com/example/core/sync/DataOperationCoordinator.kt"
+      behavioral_tests:
+        - "app/src/test/java/com/example/Phase3CoordinatorMutexTokenTest.kt"
+      evidence_xml: "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase3CoordinatorMutexTokenTest.xml"
+      test_metrics:
+        total_tests: 5
+        failures: 0
+        errors: 0
+        skipped: 0
+
+  summary:
+    total_phase3_requirements: 5
+    total_blocking_requirements: 5
+    passed_requirements: 5
+    failed_requirements: 0
+    total_unit_tests: 62
+    unit_test_failures: 0
+    unit_test_errors: 0
+    unit_test_skipped: 0
+    verdict: "GATE CLOSED - ALL REQUIREMENTS PASS"

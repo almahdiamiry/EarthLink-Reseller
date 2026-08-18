@@ -356,7 +356,7 @@ requirements:
       adversarial_fixture: false
       registry: false
       evidence: true
-    behavioral_test_location: "app/src/test/java/com/example/Phase3G4LineageStaleResultTest.kt"
+    behavioral_test_location: "app/src/test/java/com/example/Phase3G4LineageStaleResultTest.kt, app/src/test/java/com/example/Phase3RemoteOrderingAdversarialTest.kt"
 
   - id: "P3-G4-REQ-03"
     phase: 3
@@ -395,6 +395,7 @@ requirements:
       adversarial_fixture: false
       registry: true
       evidence: true
+    behavioral_test_location: "app/src/test/java/com/example/Phase3CoordinatorMutexTokenTest.kt"
 
   # =========================================================================
   # PHASE 4: G5 / Identity

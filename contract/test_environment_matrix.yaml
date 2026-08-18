@@ -514,6 +514,16 @@ test_suites:
       - "INV-13"
       - "INV-14"
 
+  - name: "Phase3RemoteOrderingAdversarialTest"
+    path: "app/src/test/java/com/example/Phase3RemoteOrderingAdversarialTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Phase 3 Remote Ordering Coordinates and Adversarial Ordering Test Suite (INV-01 / INV-05 / INV-06 / INV-11)"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+      - "INV-06"
+      - "INV-11"
+
   - name: "CoordinatorInstrumentedTest"
     path: "app/src/androidTest/java/com/example/CoordinatorInstrumentedTest.kt"
     environment: "INSTRUMENTED"
