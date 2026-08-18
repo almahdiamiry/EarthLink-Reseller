@@ -1,8 +1,4 @@
 {
   "name": "Remix: Earthlink Reseller",
-  "description": "An offline-first Android MVP app for Earthlink reseller operations, enabling account billing, uTower imports, and Firebase cloud backup.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "description": "An offline-first Android MVP app for Earthlink reseller operations, enabling account billing, uTower imports, and Firebase cloud backup."
 }

@@ -152,7 +152,7 @@ def verify_bundle(bundle_path: str) -> dict:
     is_arch_complete = (derived_states.get("ARCHITECTURE_COMPLETE") == "PASS") and (len(errors) == 0)
     is_impl_complete = (derived_states.get("IMPLEMENTATION_COMPLETE") == "PASS") and (len(errors) == 0)
     is_verified = (derived_states.get("VERIFIED") == "PASS") and (len(errors) == 0)
-    is_prod_ready = is_verified and has_signed_release_apk
+    is_prod_ready = is_verified and has_signed_release_apk and (derived_states.get("PRODUCTION_READY") == "PASS")
 
     calculated_states = {
         "ARCHITECTURE_COMPLETE": "PASS" if is_arch_complete else "FAIL",

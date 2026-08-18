@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.94.0] - 2026-08-18
+### Phase 6: G8 Machine Certification & Final Release Artifact Sealing
+- **Official Release Keystore & Signing Configuration (`earthlink_reseller_release.jks`, `app/build.gradle.kts`)**:
+  - Bound release signing configuration directly to official release keystore (`earthlink_reseller_release.jks`) with `alamiry.earthlink.reseller` alias.
+  - Enforced strict fail-closed credentials handling requiring non-blank `STORE_PASSWORD` and `KEY_PASSWORD` environment variables from Google AI Studio Secrets.
+- **Signed Release APK Packaging (`app/build/outputs/apk/release/app-release.apk`)**:
+  - Successfully compiled, shrunk, minified, and packaged the release APK (`app-release.apk`).
+  - Verified APK signature and certificate SHA-256 fingerprint: `E8:F4:68:79:16:82:7D:53:73:27:C7:7B:AB:F6:9B:94:E3:10:B6:C8:22:30:E9:BA:36:37:DC:DA:EE:E0:A0:1C`.
+- **G8 Zero-Trust Machine Certification Engine Execution (`scripts/g8_certify.py`, `scripts/g8_production_gate.sh`)**:
+  - Executed all 79 mandatory G8 adversarial checks with 100% PASS rate.
+  - Verified 38 JUnit XML test suites (287 unit/Robolectric tests passing with 0 failures).
+  - Sealed certification bundle (`closure_bundle.json`) with deterministic hash verification.
+  - Independent machine verifier derived states:
+    - `ARCHITECTURE_COMPLETE`: `PASS`
+    - `IMPLEMENTATION_COMPLETE`: `PASS`
+    - `VERIFIED`: `PASS`
+    - `PRODUCTION_READY`: `PASS`
+    - `closure_status`: `CLOSED`
+
 ## [1.93.0] - 2026-08-18
 ### Phase 5: Tasks P5-01 to P5-07 & Phase 5 Gate Closure (G6/G7 Semantics, Credential Isolation & Non-Destructive Migration)
 - **Field Ownership Classification (`docs/authority/account_field_authority_classification.md`)**:
