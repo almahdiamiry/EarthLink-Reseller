@@ -210,38 +210,75 @@ class UtowerImporter(
     ): ImportBatch = withContext(Dispatchers.IO) {
         DataOperationCoordinator.withOperation(DataOperationMode.IMPORT) {
             var batchId = if (preview.parsedSubscribers.isNotEmpty()) preview.parsedSubscribers[0].sourceBatchId ?: UUID.randomUUID().toString() else UUID.randomUUID().toString()
-        var batch = ImportBatch(
-            id = batchId,
-            fileName = fileName,
-            fileHash = fileHash,
-            accountsImported = 0,
-            transactionsImported = 0,
-            totalDebtIqd = preview.totalCurrentDebtIqd,
-            status = "running"
-        )
 
-        val session = ImportSession(
-            appDatabase = appDatabase,
-            batchId = batchId,
-            shouldReplace = shouldReplace,
-            accountAdapter = accountAdapter,
-            ledgerAdapter = ledgerAdapter,
-            formatBghFull = { ms -> formatBghFull(ms) },
-            parseBghDate = { s -> parseBghDate(s) }
-        )
+            val session = ImportSession(
+                appDatabase = appDatabase,
+                batchId = batchId,
+                shouldReplace = shouldReplace,
+                accountAdapter = accountAdapter,
+                ledgerAdapter = ledgerAdapter,
+                formatBghFull = { ms -> formatBghFull(ms) },
+                parseBghDate = { s -> parseBghDate(s) }
+            )
 
-        var finalizedBatch: ImportBatch = batch
+            // Step 1: Pre-transaction parsing and validation outside database
+            for (acc in preview.parsedSubscribers) {
+                val subJson = try { JSONObject(acc.rawJson ?: "{}") } catch (_: Exception) { JSONObject() }
+                if (!subJson.has("sourceKey") && !acc.sourceExternalId.isNullOrEmpty()) {
+                    subJson.put("sourceKey", acc.sourceExternalId)
+                }
+                if (!subJson.has("name") && acc.displayName.isNotEmpty()) {
+                    subJson.put("name", acc.displayName)
+                }
+                if (!subJson.has("username") && !acc.earthlinkUsername.isNullOrEmpty()) {
+                    subJson.put("username", acc.earthlinkUsername)
+                }
+                if (!subJson.has("phone") && !acc.phone1.isNullOrEmpty()) {
+                    subJson.put("phone", acc.phone1)
+                }
+                if (!subJson.has("debt_iqd")) {
+                    subJson.put("debt_iqd", acc.debtIqd)
+                }
+                if (!subJson.has("price_iqd")) {
+                    subJson.put("price_iqd", acc.currentPriceIqd)
+                }
+                val key = acc.sourceExternalId ?: acc.id
+                session.subsFound++
+                session.insertOrUpdateUser(key, subJson, acc.isLegacy, originalId = acc.id)
+            }
 
-        try {
+            for (tx in preview.parsedTransactions) {
+                val txJson = try { JSONObject(tx.rawJson ?: "{}") } catch (_: Exception) { JSONObject() }
+                if (!txJson.has("toWho") && !tx.accountId.isNullOrEmpty()) {
+                    txJson.put("toWho", tx.accountId)
+                }
+                if (!txJson.has("amount_iqd")) {
+                    txJson.put("amount_iqd", tx.amountIqd)
+                }
+                if (!txJson.has("debt_after_iqd")) {
+                    txJson.put("debt_after_iqd", tx.debtAfterIqd)
+                }
+                if (!txJson.has("type")) {
+                    txJson.put("type", tx.typeRaw)
+                }
+                if (!txJson.has("date") && !txJson.has("timeOfAction") && !txJson.has("time") && !txJson.has("timestamp_ms") && !txJson.has("actualTimeMs")) {
+                    if (tx.occurredAt > 0L) {
+                        txJson.put("actualTimeMs", tx.occurredAt)
+                    }
+                }
+                val key = tx.sourceExternalId ?: tx.id
+                session.txsFound++
+                session.processTransaction(key, txJson)
+            }
+
+            // Step 2: Atomic publishing via single Room transaction boundary
+            var finalizedBatch: ImportBatch? = null
             appDatabase.withTransaction {
                 val existingBatch = appDatabase.importBatchDao().getByFileHash(fileHash)
                 if (existingBatch != null) {
                     batchId = existingBatch.id
                     session.batchId = batchId
-                    batch = existingBatch.copy(status = "running")
                 }
-                appDatabase.importBatchDao().insert(batch)
-                OutboxManager.upsertWithOutbox(appDatabase.syncOutboxDao(), "import_batches", batchId, batchAdapter.toJson(batch), importBatchId = batchId)
 
                 if (shouldReplace) {
                     appDatabase.localLedgerEntryDao().deleteAll()
@@ -252,45 +289,7 @@ class UtowerImporter(
                 val existingTxList = appDatabase.localLedgerEntryDao().getAllOneShot(limit = Int.MAX_VALUE)
                 session.init(existingAccounts, existingTxList)
 
-                for (acc in preview.parsedSubscribers) {
-                    val subJson = try { JSONObject(acc.rawJson ?: "{}") } catch (_: Exception) { JSONObject() }
-                    if (!subJson.has("sourceKey") && !acc.sourceExternalId.isNullOrEmpty()) {
-                        subJson.put("sourceKey", acc.sourceExternalId)
-                    }
-                    val key = acc.sourceExternalId ?: acc.id
-                    session.subsFound++
-                    session.insertOrUpdateUserInternal(key, subJson, acc.isLegacy)
-                    val resolvedId = session.subscriberMap[key]
-                    if (resolvedId != null && acc.id.isNotEmpty()) {
-                        session.subscriberMap[acc.id] = resolvedId
-                    }
-                }
-
-                for (tx in preview.parsedTransactions) {
-                    val txJson = try { JSONObject(tx.rawJson ?: "{}") } catch (_: Exception) { JSONObject() }
-                    if (!txJson.has("toWho") && !tx.accountId.isNullOrEmpty()) {
-                        txJson.put("toWho", tx.accountId)
-                    }
-                    if (!txJson.has("amount_iqd")) {
-                        txJson.put("amount_iqd", tx.amountIqd)
-                    }
-                    if (!txJson.has("debt_after_iqd")) {
-                        txJson.put("debt_after_iqd", tx.debtAfterIqd)
-                    }
-                    if (!txJson.has("type")) {
-                        txJson.put("type", tx.typeRaw)
-                    }
-                    if (!txJson.has("date") && !txJson.has("timeOfAction") && !txJson.has("time") && !txJson.has("timestamp_ms") && !txJson.has("actualTimeMs")) {
-                        if (tx.occurredAt > 0L) {
-                            txJson.put("actualTimeMs", tx.occurredAt)
-                        }
-                    }
-                    val key = tx.sourceExternalId ?: tx.id
-                    session.txsFound++
-                    session.processTransactionInternal(key, txJson)
-                }
-
-                session.reconcilePostResetDebts()
+                session.commitAll()
 
                 val freshAccounts = appDatabase.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE)
                 val totalImportedDebt = freshAccounts.sumOf { it.debtIqd }
@@ -298,466 +297,404 @@ class UtowerImporter(
                 Log.i("UtowerImporter", "Reconciliation Report -> Total Current Debt: $totalImportedDebt, Total Opening Debt: $totalOpeningDebt, Diff: ${totalImportedDebt - totalOpeningDebt}")
 
                 val warningsStr = preview.warnings.joinToString("; ")
-                finalizedBatch = batch.copy(
+                finalizedBatch = ImportBatch(
+                    id = batchId,
+                    fileName = fileName,
+                    fileHash = fileHash,
                     accountsImported = session.subsImported,
                     transactionsImported = session.txImported,
                     totalDebtIqd = totalImportedDebt,
                     warningsJson = if (warningsStr.isNotEmpty()) warningsStr else null,
-                    status = "completed"
+                    status = "completed",
+                    createdAt = existingBatch?.createdAt ?: System.currentTimeMillis()
                 )
 
-                appDatabase.importBatchDao().insert(finalizedBatch)
-                OutboxManager.upsertWithOutbox(appDatabase.syncOutboxDao(), "import_batches", batchId, batchAdapter.toJson(finalizedBatch), importBatchId = batchId)
+                appDatabase.importBatchDao().insert(finalizedBatch!!)
+                OutboxManager.upsertWithOutbox(appDatabase.syncOutboxDao(), "import_batches", batchId, batchAdapter.toJson(finalizedBatch!!), importBatchId = batchId)
             }
-        } catch (e: Exception) {
-            try {
-                withContext(NonCancellable) {
-                    appDatabase.withTransaction {
-                        val failedBatch = batch.copy(status = "failed/resumable")
-                        appDatabase.importBatchDao().insert(failedBatch)
-                        OutboxManager.upsertWithOutbox(appDatabase.syncOutboxDao(), "import_batches", batchId, batchAdapter.toJson(failedBatch), importBatchId = batchId)
-                    }
-                }
-            } catch (_: Exception) {}
-            throw e
-        }
 
-            finalizedBatch
+            finalizedBatch!!
         }
     }
 
     suspend fun importFromFile(sourceFile: File, shouldReplace: Boolean = false): ImportResult = withContext(Dispatchers.IO) {
         DataOperationCoordinator.withOperation(DataOperationMode.IMPORT) {
             var batchId = UUID.randomUUID().toString()
-        val tempDir = File(context.cacheDir, "utower_import_${System.currentTimeMillis()}")
-        tempDir.mkdirs()
+            val tempDir = File(context.cacheDir, "utower_import_${System.currentTimeMillis()}").apply { mkdirs() }
+            var failedFile: String? = null
 
-        var failedFile: String? = null
-        var batch: ImportBatch? = null
-
-        val session = ImportSession(
-            appDatabase = appDatabase,
-            batchId = batchId,
-            shouldReplace = shouldReplace,
-            accountAdapter = accountAdapter,
-            ledgerAdapter = ledgerAdapter,
-            formatBghFull = { ms -> formatBghFull(ms) },
-            parseBghDate = { s -> parseBghDate(s) }
-        )
-
-        try {
-            val dbFile = if (sourceFile.name.endsWith(".tgz") || sourceFile.name.endsWith(".tar.gz")) {
-                extractDatabaseFromTgz(sourceFile, tempDir)
-            } else {
-                sourceFile
-            }
-
-            if (dbFile == null || !dbFile.exists()) {
-                throw Exception("Could not find uTower database in the provided file.")
-            }
-            failedFile = dbFile.name
-
-            Log.d("UtowerImporter", "Found database at ${dbFile.absolutePath}")
-            val hash = calculateHash(sourceFile)
-
-            batch = ImportBatch(
-                id = batchId,
-                fileName = sourceFile.name,
-                fileHash = hash,
-                accountsImported = 0,
-                transactionsImported = 0,
-                totalDebtIqd = 0.0,
-                status = "running"
+            val session = ImportSession(
+                appDatabase = appDatabase,
+                batchId = batchId,
+                shouldReplace = shouldReplace,
+                accountAdapter = accountAdapter,
+                ledgerAdapter = ledgerAdapter,
+                formatBghFull = { ms -> formatBghFull(ms) },
+                parseBghDate = { s -> parseBghDate(s) }
             )
 
-            appDatabase.withTransaction {
-                val existingBatch = appDatabase.importBatchDao().getByFileHash(hash)
-                if (existingBatch != null) {
-                    Log.i("UtowerImporter", "File already imported previously (Batch ID: ${existingBatch.id}). Reusing batch ID and performing smart diff-merge.")
-                    batchId = existingBatch.id
-                    session.batchId = batchId
-                    batch = existingBatch.copy(status = "running")
+            try {
+                // Step 1: Pre-transaction extraction and parsing outside any database transaction
+                val dbFile = if (sourceFile.name.endsWith(".tgz") || sourceFile.name.endsWith(".tar.gz")) {
+                    extractDatabaseFromTgz(sourceFile, tempDir)
+                } else {
+                    sourceFile
                 }
-                appDatabase.importBatchDao().insert(batch!!)
-                OutboxManager.upsertWithOutbox(appDatabase.syncOutboxDao(), "import_batches", batchId, batchAdapter.toJson(batch!!), importBatchId = batchId)
-            }
 
-            val existingAccounts = appDatabase.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE)
-            val existingTxList = appDatabase.localLedgerEntryDao().getAllOneShot(limit = Int.MAX_VALUE)
+                if (dbFile == null || !dbFile.exists()) {
+                    throw Exception("Could not find uTower database in the provided file.")
+                }
+                failedFile = dbFile.name
 
-            session.init(existingAccounts, existingTxList)
+                Log.d("UtowerImporter", "Found database at ${dbFile.absolutePath}")
+                val hash = calculateHash(sourceFile)
 
-            if (dbFile.name.endsWith(".json")) {
-                Log.d("UtowerImporter", "Processing as JSON file via true streaming JsonReader - PASS 1 (Subscribers)")
-                dbFile.inputStream().buffered().use { inputStream ->
-                    JsonReader(java.io.InputStreamReader(inputStream, Charsets.UTF_8)).use { reader ->
-                        if (reader.peek() == JsonToken.BEGIN_OBJECT) {
-                            reader.beginObject()
-                            while (reader.hasNext()) {
-                                val topKey = reader.nextName()
-                                when (topKey.lowercase()) {
-                                    "subscribers" -> {
-                                        if (reader.peek() == JsonToken.BEGIN_ARRAY) {
-                                            reader.beginArray()
-                                            while (reader.hasNext()) {
-                                                if (reader.peek() == JsonToken.BEGIN_OBJECT) {
-                                                    val sub = readJsonObject(reader)
-                                                    val raw = sub.optJSONObject("raw") ?: sub.optJSONObject("raw_data") ?: sub
-                                                    val sourceKey = sub.optString("source_key").takeIf { it.isNotEmpty() }
-                                                        ?: sub.optString("source_path").split("/").lastOrNull()
-                                                        ?: UUID.randomUUID().toString()
-                                                    session.subsFound++
-                                                    session.insertOrUpdateUser(sourceKey, raw, false)
-                                                } else reader.skipValue()
-                                            }
-                                            reader.endArray()
-                                        } else reader.skipValue()
-                                    }
-                                    "legacy_users" -> {
-                                        if (reader.peek() == JsonToken.BEGIN_ARRAY) {
-                                            reader.beginArray()
-                                            while (reader.hasNext()) {
-                                                if (reader.peek() == JsonToken.BEGIN_OBJECT) {
-                                                    val sub = readJsonObject(reader)
-                                                    val raw = sub.optJSONObject("raw") ?: sub.optJSONObject("raw_data") ?: sub
-                                                    val sourceKey = sub.optString("source_key").takeIf { it.isNotEmpty() }
-                                                        ?: sub.optString("source_path").split("/").lastOrNull()
-                                                        ?: UUID.randomUUID().toString()
-                                                    session.subsFound++
-                                                    session.insertOrUpdateUser(sourceKey, raw, true)
-                                                } else reader.skipValue()
-                                            }
-                                            reader.endArray()
-                                        } else if (reader.peek() == JsonToken.BEGIN_OBJECT) {
-                                            val legacyObj = readJsonObject(reader)
-                                            val keys = legacyObj.keys()
-                                            while (keys.hasNext()) {
-                                                val id = keys.next()
-                                                legacyObj.optJSONObject(id)?.let {
-                                                    session.subsFound++
-                                                    session.insertOrUpdateUser(id, it, true)
+                if (dbFile.name.endsWith(".json")) {
+                    Log.d("UtowerImporter", "Processing as JSON file via true streaming JsonReader - PASS 1 (Subscribers)")
+                    dbFile.inputStream().buffered().use { inputStream ->
+                        JsonReader(java.io.InputStreamReader(inputStream, Charsets.UTF_8)).use { reader ->
+                            if (reader.peek() == JsonToken.BEGIN_OBJECT) {
+                                reader.beginObject()
+                                while (reader.hasNext()) {
+                                    val topKey = reader.nextName()
+                                    when (topKey.lowercase()) {
+                                        "subscribers" -> {
+                                            if (reader.peek() == JsonToken.BEGIN_ARRAY) {
+                                                reader.beginArray()
+                                                while (reader.hasNext()) {
+                                                    if (reader.peek() == JsonToken.BEGIN_OBJECT) {
+                                                        val sub = readJsonObject(reader)
+                                                        val raw = sub.optJSONObject("raw") ?: sub.optJSONObject("raw_data") ?: sub
+                                                        val sourceKey = sub.optString("source_key").takeIf { it.isNotEmpty() }
+                                                            ?: sub.optString("source_path").split("/").lastOrNull()
+                                                            ?: UUID.randomUUID().toString()
+                                                        session.subsFound++
+                                                        session.insertOrUpdateUser(sourceKey, raw, false)
+                                                    } else reader.skipValue()
                                                 }
-                                            }
-                                        } else reader.skipValue()
-                                    }
-                                    "live_users", "utower_realtime_live_users" -> {
-                                        if (reader.peek() == JsonToken.BEGIN_OBJECT) {
-                                            val liveObj = readJsonObject(reader)
-                                            val keys = liveObj.keys()
-                                            while (keys.hasNext()) {
-                                                val id = keys.next()
-                                                liveObj.optJSONObject(id)?.let {
-                                                    session.subsFound++
-                                                    session.insertOrUpdateUser(id, it, false)
+                                                reader.endArray()
+                                            } else reader.skipValue()
+                                        }
+                                        "legacy_users" -> {
+                                            if (reader.peek() == JsonToken.BEGIN_ARRAY) {
+                                                reader.beginArray()
+                                                while (reader.hasNext()) {
+                                                    if (reader.peek() == JsonToken.BEGIN_OBJECT) {
+                                                        val sub = readJsonObject(reader)
+                                                        val raw = sub.optJSONObject("raw") ?: sub.optJSONObject("raw_data") ?: sub
+                                                        val sourceKey = sub.optString("source_key").takeIf { it.isNotEmpty() }
+                                                            ?: sub.optString("source_path").split("/").lastOrNull()
+                                                            ?: UUID.randomUUID().toString()
+                                                        session.subsFound++
+                                                        session.insertOrUpdateUser(sourceKey, raw, true)
+                                                    } else reader.skipValue()
                                                 }
-                                            }
-                                        } else reader.skipValue()
-                                    }
-                                    "users", "utower_realtime_legacy_users" -> {
-                                        if (reader.peek() == JsonToken.BEGIN_OBJECT) {
-                                            val legacyObj = readJsonObject(reader)
-                                            val keys = legacyObj.keys()
-                                            while (keys.hasNext()) {
-                                                val id = keys.next()
-                                                legacyObj.optJSONObject(id)?.let {
-                                                    session.subsFound++
-                                                    session.insertOrUpdateUser(id, it, true)
+                                                reader.endArray()
+                                            } else if (reader.peek() == JsonToken.BEGIN_OBJECT) {
+                                                val legacyObj = readJsonObject(reader)
+                                                val keys = legacyObj.keys()
+                                                while (keys.hasNext()) {
+                                                    val id = keys.next()
+                                                    legacyObj.optJSONObject(id)?.let {
+                                                        session.subsFound++
+                                                        session.insertOrUpdateUser(id, it, true)
+                                                    }
                                                 }
-                                            }
-                                        } else reader.skipValue()
+                                            } else reader.skipValue()
+                                        }
+                                        "live_users", "utower_realtime_live_users" -> {
+                                            if (reader.peek() == JsonToken.BEGIN_OBJECT) {
+                                                val liveObj = readJsonObject(reader)
+                                                val keys = liveObj.keys()
+                                                while (keys.hasNext()) {
+                                                    val id = keys.next()
+                                                    liveObj.optJSONObject(id)?.let {
+                                                        session.subsFound++
+                                                        session.insertOrUpdateUser(id, it, false)
+                                                    }
+                                                }
+                                            } else reader.skipValue()
+                                        }
+                                        "users", "utower_realtime_legacy_users" -> {
+                                            if (reader.peek() == JsonToken.BEGIN_OBJECT) {
+                                                val legacyObj = readJsonObject(reader)
+                                                val keys = legacyObj.keys()
+                                                while (keys.hasNext()) {
+                                                    val id = keys.next()
+                                                    legacyObj.optJSONObject(id)?.let {
+                                                        session.subsFound++
+                                                        session.insertOrUpdateUser(id, it, true)
+                                                    }
+                                                }
+                                            } else reader.skipValue()
+                                        }
+                                        else -> reader.skipValue()
                                     }
-                                    else -> reader.skipValue()
                                 }
+                                reader.endObject()
                             }
-                            reader.endObject()
                         }
                     }
-                }
 
-                Log.d("UtowerImporter", "Processing as JSON file via true streaming JsonReader - PASS 2 (Transactions)")
-                dbFile.inputStream().buffered().use { inputStream ->
-                    JsonReader(java.io.InputStreamReader(inputStream, Charsets.UTF_8)).use { reader ->
-                        if (reader.peek() == JsonToken.BEGIN_OBJECT) {
-                            reader.beginObject()
-                            while (reader.hasNext()) {
-                                val topKey = reader.nextName()
-                                when (topKey.lowercase()) {
-                                    "transactions" -> {
-                                        if (reader.peek() == JsonToken.BEGIN_ARRAY) {
-                                            reader.beginArray()
-                                            var idx = 0
-                                            while (reader.hasNext()) {
-                                                if (reader.peek() == JsonToken.BEGIN_OBJECT) {
-                                                    val tx = readJsonObject(reader)
-                                                    val raw = tx.optJSONObject("raw") ?: tx.optJSONObject("raw_data") ?: tx
-                                                    val sourceKey = tx.optString("source_key").takeIf { it.isNotEmpty() }
-                                                        ?: tx.optString("source_path").split("/").lastOrNull().takeIf { !it.isNullOrEmpty() }
-                                                        ?: tx.optString("id").takeIf { it.isNotEmpty() }
-                                                        ?: tx.optString("timeId").takeIf { it.isNotEmpty() }
-                                                        ?: "tx_idx_$idx"
-                                                    session.processTransaction(sourceKey, raw)
-                                                } else reader.skipValue()
-                                                idx++
-                                            }
-                                            reader.endArray()
-                                        } else reader.skipValue()
+                    Log.d("UtowerImporter", "Processing as JSON file via true streaming JsonReader - PASS 2 (Transactions)")
+                    dbFile.inputStream().buffered().use { inputStream ->
+                        JsonReader(java.io.InputStreamReader(inputStream, Charsets.UTF_8)).use { reader ->
+                            if (reader.peek() == JsonToken.BEGIN_OBJECT) {
+                                reader.beginObject()
+                                while (reader.hasNext()) {
+                                    val topKey = reader.nextName()
+                                    when (topKey.lowercase()) {
+                                        "transactions" -> {
+                                            if (reader.peek() == JsonToken.BEGIN_ARRAY) {
+                                                reader.beginArray()
+                                                var idx = 0
+                                                while (reader.hasNext()) {
+                                                    if (reader.peek() == JsonToken.BEGIN_OBJECT) {
+                                                        val tx = readJsonObject(reader)
+                                                        val raw = tx.optJSONObject("raw") ?: tx.optJSONObject("raw_data") ?: tx
+                                                        val sourceKey = tx.optString("source_key").takeIf { it.isNotEmpty() }
+                                                            ?: tx.optString("source_path").split("/").lastOrNull().takeIf { !it.isNullOrEmpty() }
+                                                            ?: tx.optString("id").takeIf { it.isNotEmpty() }
+                                                            ?: tx.optString("timeId").takeIf { it.isNotEmpty() }
+                                                            ?: "tx_idx_$idx"
+                                                        session.processTransaction(sourceKey, raw)
+                                                    } else reader.skipValue()
+                                                    idx++
+                                                }
+                                                reader.endArray()
+                                            } else reader.skipValue()
+                                        }
+                                        "messagesofhistory", "history", "utower_realtime_messagesofhistory" -> {
+                                            if (reader.peek() == JsonToken.BEGIN_OBJECT) {
+                                                val histObj = readJsonObject(reader)
+                                                extractTransactionsFromNode("messagesOfHistory", histObj, null) { key, raw ->
+                                                    session.processTransaction(key, raw)
+                                                }
+                                            } else reader.skipValue()
+                                        }
+                                        else -> reader.skipValue()
                                     }
-                                    "messagesofhistory", "history", "utower_realtime_messagesofhistory" -> {
-                                        if (reader.peek() == JsonToken.BEGIN_OBJECT) {
-                                            val histObj = readJsonObject(reader)
-                                            extractTransactionsFromNode("messagesOfHistory", histObj, null) { key, raw ->
-                                                session.processTransaction(key, raw)
-                                            }
-                                        } else reader.skipValue()
-                                    }
-                                    else -> reader.skipValue()
                                 }
+                                reader.endObject()
                             }
-                            reader.endObject()
                         }
                     }
-                }
-            } else {
-                Log.d("UtowerImporter", "Processing as SQLite db via cursor streaming")
-                try {
-                    dbFile.setReadable(true, false)
-                    dbFile.setWritable(true, false)
-                    dbFile.parentFile?.setWritable(true, false)
-                    val db = try {
-                        SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.NO_LOCALIZED_COLLATORS)
-                    } catch (_: Exception) {
-                        try {
-                            SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
-                        } catch (_: Exception) {
-                            SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS)
-                        }
-                    }
+                } else {
+                    Log.d("UtowerImporter", "Processing as SQLite db via cursor streaming")
                     try {
-                        var hasLiveUsers = false
-                        try {
-                            db.rawQuery("SELECT 1 FROM serverCache WHERE path LIKE '%live_users%' LIMIT 1", null).use { c ->
-                                if (c.moveToFirst()) {
-                                    hasLiveUsers = true
-                                }
-                            }
-                        } catch (_: Exception) {}
-
-                        // PASS 1: Users
-                        db.rawQuery("SELECT path, value FROM serverCache", null).use { cursor ->
-                            val pathIdx = cursor.getColumnIndex("path")
-                            val valIdx = cursor.getColumnIndex("value")
-
-                            while (cursor.moveToNext()) {
-                                val path = cursor.getString(pathIdx)?.trim('/') ?: ""
-                                val lowerPath = path.lowercase()
-                                if (!(lowerPath.contains("live_users") || lowerPath.contains("legacy_users") || (!hasLiveUsers && lowerPath.contains("users")))) {
-                                    continue
-                                }
-                                val valueBlob = cursor.getBlob(valIdx) ?: continue
-
-                                try {
-                                    val jsonStr = String(valueBlob, Charsets.UTF_8)
-                                    var parsedValue: Any = jsonStr
-                                    while (parsedValue is String) {
-                                        val trimmed = (parsedValue as String).trim()
-                                        if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
-                                            try {
-                                                parsedValue = org.json.JSONTokener(trimmed).nextValue()
-                                            } catch (_: Exception) {
-                                                break
-                                            }
-                                        } else {
-                                            break
-                                        }
-                                    }
-                                    if (parsedValue == JSONObject.NULL) continue
-
-                                    processSqliteCacheNode(path, parsedValue, session, hasLiveUsers)
-                                } catch (e: Exception) {
-                                    if (e is kotlinx.coroutines.CancellationException) throw e
-                                    throw Exception("Failed to parse or process SQLite cache node at path '$path': ${e.message}", e)
-                                }
+                        dbFile.setReadable(true, false)
+                        dbFile.setWritable(true, false)
+                        dbFile.parentFile?.setWritable(true, false)
+                        val db = try {
+                            SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.NO_LOCALIZED_COLLATORS)
+                        } catch (_: Exception) {
+                            try {
+                                SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
+                            } catch (_: Exception) {
+                                SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS)
                             }
                         }
-
-                        // PASS 2: Transactions
-                        db.rawQuery("SELECT path, value FROM serverCache", null).use { cursor ->
-                            val pathIdx = cursor.getColumnIndex("path")
-                            val valIdx = cursor.getColumnIndex("value")
-
-                            while (cursor.moveToNext()) {
-                                val path = cursor.getString(pathIdx)?.trim('/') ?: ""
-                                val lowerPath = path.lowercase()
-                                if (lowerPath.contains("live_users") || lowerPath.contains("legacy_users") || (!hasLiveUsers && lowerPath.contains("users"))) {
-                                    continue
+                        try {
+                            var hasLiveUsers = false
+                            try {
+                                db.rawQuery("SELECT 1 FROM serverCache WHERE path LIKE '%live_users%' LIMIT 1", null).use { c ->
+                                    if (c.moveToFirst()) {
+                                        hasLiveUsers = true
+                                    }
                                 }
-                                val valueBlob = cursor.getBlob(valIdx) ?: continue
+                            } catch (_: Exception) {}
 
-                                try {
-                                    val jsonStr = String(valueBlob, Charsets.UTF_8)
-                                    var parsedValue: Any = jsonStr
-                                    while (parsedValue is String) {
-                                        val trimmed = (parsedValue as String).trim()
-                                        if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
-                                            try {
-                                                parsedValue = org.json.JSONTokener(trimmed).nextValue()
-                                            } catch (_: Exception) {
+                            // PASS 1: Users
+                            db.rawQuery("SELECT path, value FROM serverCache", null).use { cursor ->
+                                val pathIdx = cursor.getColumnIndex("path")
+                                val valIdx = cursor.getColumnIndex("value")
+
+                                while (cursor.moveToNext()) {
+                                    val path = cursor.getString(pathIdx)?.trim('/') ?: ""
+                                    val lowerPath = path.lowercase()
+                                    if (!(lowerPath.contains("live_users") || lowerPath.contains("legacy_users") || (!hasLiveUsers && lowerPath.contains("users")))) {
+                                        continue
+                                    }
+                                    val valueBlob = cursor.getBlob(valIdx) ?: continue
+
+                                    try {
+                                        val jsonStr = String(valueBlob, Charsets.UTF_8)
+                                        var parsedValue: Any = jsonStr
+                                        while (parsedValue is String) {
+                                            val trimmed = (parsedValue as String).trim()
+                                            if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+                                                try {
+                                                    parsedValue = org.json.JSONTokener(trimmed).nextValue()
+                                                } catch (_: Exception) {
+                                                    break
+                                                }
+                                            } else {
                                                 break
                                             }
-                                        } else {
-                                            break
                                         }
-                                    }
-                                    if (parsedValue == JSONObject.NULL) continue
+                                        if (parsedValue == JSONObject.NULL) continue
 
-                                    processSqliteCacheNode(path, parsedValue, session, hasLiveUsers)
-                                } catch (e: Exception) {
-                                    if (e is kotlinx.coroutines.CancellationException) throw e
-                                    throw Exception("Failed to parse or process SQLite cache node at path '$path': ${e.message}", e)
+                                        processSqliteCacheNode(path, parsedValue, session, hasLiveUsers)
+                                    } catch (e: Exception) {
+                                        if (e is kotlinx.coroutines.CancellationException) throw e
+                                        throw Exception("Failed to parse or process SQLite cache node at path '$path': ${e.message}", e)
+                                    }
                                 }
                             }
+
+                            // PASS 2: Transactions
+                            db.rawQuery("SELECT path, value FROM serverCache", null).use { cursor ->
+                                val pathIdx = cursor.getColumnIndex("path")
+                                val valIdx = cursor.getColumnIndex("value")
+
+                                while (cursor.moveToNext()) {
+                                    val path = cursor.getString(pathIdx)?.trim('/') ?: ""
+                                    val lowerPath = path.lowercase()
+                                    if (lowerPath.contains("live_users") || lowerPath.contains("legacy_users") || (!hasLiveUsers && lowerPath.contains("users"))) {
+                                        continue
+                                    }
+                                    val valueBlob = cursor.getBlob(valIdx) ?: continue
+
+                                    try {
+                                        val jsonStr = String(valueBlob, Charsets.UTF_8)
+                                        var parsedValue: Any = jsonStr
+                                        while (parsedValue is String) {
+                                            val trimmed = (parsedValue as String).trim()
+                                            if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+                                                try {
+                                                    parsedValue = org.json.JSONTokener(trimmed).nextValue()
+                                                } catch (_: Exception) {
+                                                    break
+                                                }
+                                            } else {
+                                                break
+                                            }
+                                        }
+                                        if (parsedValue == JSONObject.NULL) continue
+
+                                        processSqliteCacheNode(path, parsedValue, session, hasLiveUsers)
+                                    } catch (e: Exception) {
+                                        if (e is kotlinx.coroutines.CancellationException) throw e
+                                        throw Exception("Failed to parse or process SQLite cache node at path '$path': ${e.message}", e)
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            if (e is kotlinx.coroutines.CancellationException) throw e
+                            Log.w("UtowerImporter", "Querying serverCache failed for ${dbFile.name}", e)
+                            throw Exception("Querying serverCache failed: ${e.message}", e)
+                        } finally {
+                            db.close()
                         }
                     } catch (e: Exception) {
                         if (e is kotlinx.coroutines.CancellationException) throw e
-                        Log.w("UtowerImporter", "Querying serverCache failed for ${dbFile.name}", e)
-                        throw Exception("Querying serverCache failed: ${e.message}", e)
-                    } finally {
-                        db.close()
-                    }
-                } catch (e: Exception) {
-                    if (e is kotlinx.coroutines.CancellationException) throw e
-                    Log.w("UtowerImporter", "Failed to open SQLite database ${dbFile.name}", e)
-                    throw Exception("Failed to open uTower SQLite database: ${e.message}", e)
-                }
-            }
-
-            var finalizedBatch: ImportBatch? = null
-
-            // Perform atomic commit of all imported data, deletions, and batch state in a single transaction
-            appDatabase.withTransaction {
-                session.commitAll()
-
-                if (shouldReplace) {
-                    val untouchedLedgers = session.existingTxList.filter { it.id !in session.touchedTxIds }
-                    val untouchedLedgerIds = untouchedLedgers.map { it.id }
-                    if (untouchedLedgerIds.isNotEmpty()) {
-                        OutboxManager.deleteWithTombstoneBatch(appDatabase.syncOutboxDao(), "local_ledger_entries", untouchedLedgerIds, "{}")
-                        untouchedLedgerIds.chunked(500).forEach { idChunk ->
-                            appDatabase.localLedgerEntryDao().deleteByIds(idChunk)
-                        }
-                    }
-
-                    val untouchedAccounts = session.existingAccounts.filter { it.id !in session.touchedAccountIds }
-                    val untouchedAccountIds = untouchedAccounts.map { it.id }
-                    if (untouchedAccountIds.isNotEmpty()) {
-                        OutboxManager.deleteWithTombstoneBatch(appDatabase.syncOutboxDao(), "local_accounts", untouchedAccountIds, "{}")
-                        untouchedAccountIds.chunked(500).forEach { idChunk ->
-                            appDatabase.localAccountDao().deleteByIds(idChunk)
-                        }
-                        for (accId in untouchedAccountIds) {
-                            session.accountsById.remove(accId)
-                        }
-                    }
-
-                    val oldBatches = appDatabase.importBatchDao().getAllOneShot().filter { it.id != batchId }
-                    val oldBatchIds = oldBatches.map { it.id }
-                    if (oldBatchIds.isNotEmpty()) {
-                        OutboxManager.deleteWithTombstoneBatch(appDatabase.syncOutboxDao(), "import_batches", oldBatchIds, "{}")
-                        appDatabase.importBatchDao().deleteAllExcept(batchId)
+                        Log.w("UtowerImporter", "Failed to open SQLite database ${dbFile.name}", e)
+                        throw Exception("Failed to open uTower SQLite database: ${e.message}", e)
                     }
                 }
 
-                val freshAccounts = appDatabase.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE)
-                val totalImportedDebt = freshAccounts.sumOf { it.debtIqd }
-                val totalOpeningDebt = freshAccounts.sumOf { it.openingDebtIqd }
-                Log.i("UtowerImporter", "Reconciliation Report -> Total Current Debt: $totalImportedDebt, Total Opening Debt: $totalOpeningDebt, Diff: ${totalImportedDebt - totalOpeningDebt}")
+                // Step 2: Atomic publishing via single Room transaction boundary
+                appDatabase.withTransaction {
+                    val existingBatch = appDatabase.importBatchDao().getByFileHash(hash)
+                    if (existingBatch != null) {
+                        Log.i("UtowerImporter", "File already imported previously (Batch ID: ${existingBatch.id}). Reusing batch ID and performing smart diff-merge.")
+                        batchId = existingBatch.id
+                        session.batchId = batchId
+                    }
 
-                finalizedBatch = batch!!.copy(
-                    accountsImported = session.subsImported,
+                    if (shouldReplace) {
+                        appDatabase.localLedgerEntryDao().deleteAll()
+                        appDatabase.localAccountDao().deleteAll()
+                    }
+
+                    val existingAccounts = appDatabase.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE)
+                    val existingTxList = appDatabase.localLedgerEntryDao().getAllOneShot(limit = Int.MAX_VALUE)
+                    session.init(existingAccounts, existingTxList)
+
+                    session.commitAll()
+
+                    if (shouldReplace) {
+                        val oldBatches = appDatabase.importBatchDao().getAllOneShot().filter { it.id != batchId }
+                        val oldBatchIds = oldBatches.map { it.id }
+                        if (oldBatchIds.isNotEmpty()) {
+                            OutboxManager.deleteWithTombstoneBatch(appDatabase.syncOutboxDao(), "import_batches", oldBatchIds, "{}")
+                            appDatabase.importBatchDao().deleteAllExcept(batchId)
+                        }
+                    }
+
+                    val freshAccounts = appDatabase.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE)
+                    val totalImportedDebt = freshAccounts.sumOf { it.debtIqd }
+                    val totalOpeningDebt = freshAccounts.sumOf { it.openingDebtIqd }
+                    Log.i("UtowerImporter", "Reconciliation Report -> Total Current Debt: $totalImportedDebt, Total Opening Debt: $totalOpeningDebt, Diff: ${totalImportedDebt - totalOpeningDebt}")
+
+                    val finalizedBatch = ImportBatch(
+                        id = batchId,
+                        fileName = sourceFile.name,
+                        fileHash = hash,
+                        accountsImported = session.subsImported,
+                        transactionsImported = session.txImported,
+                        totalDebtIqd = totalImportedDebt,
+                        status = "completed",
+                        createdAt = existingBatch?.createdAt ?: System.currentTimeMillis()
+                    )
+                    appDatabase.importBatchDao().insert(finalizedBatch)
+                    OutboxManager.upsertWithOutbox(appDatabase.syncOutboxDao(), "import_batches", batchId, batchAdapter.toJson(finalizedBatch), importBatchId = batchId)
+                }
+
+                ImportResult(
+                    batchId = batchId,
+                    success = true,
+                    subscribersFound = session.subsFound,
+                    subscribersImported = session.subsImported,
+                    subscribersMerged = session.subscribersMerged,
+                    subscribersNotesImported = session.subsNotesImported,
+                    nanoIpsImported = session.nanoIpsImported,
                     transactionsImported = session.txImported,
-                    totalDebtIqd = totalImportedDebt,
-                    status = "completed"
+                    transactionNotesImported = session.txNotesImported,
+                    warnings = session.warnings,
+                    errors = session.errors,
+                    subscribersRead = session.subscribersRead,
+                    subscribersInserted = session.subscribersInserted,
+                    subscribersSkipped = session.subscribersSkipped,
+                    subscribersFailed = session.subscribersFailed,
+                    transactionsRead = session.transactionsRead,
+                    transactionsInserted = session.transactionsInserted,
+                    transactionsMerged = session.transactionsMerged,
+                    transactionsSkipped = session.transactionsSkipped,
+                    transactionsFailed = session.transactionsFailed
                 )
-                appDatabase.importBatchDao().insert(finalizedBatch!!)
-                OutboxManager.upsertWithOutbox(appDatabase.syncOutboxDao(), "import_batches", batchId, batchAdapter.toJson(finalizedBatch!!), importBatchId = batchId)
-            }
-
-            ImportResult(
-                batchId = batchId,
-                success = true,
-                subscribersFound = session.subsFound,
-                subscribersImported = session.subsImported,
-                subscribersMerged = session.subscribersMerged,
-                subscribersNotesImported = session.subsNotesImported,
-                nanoIpsImported = session.nanoIpsImported,
-                transactionsImported = session.txImported,
-                transactionNotesImported = session.txNotesImported,
-                warnings = session.warnings,
-                errors = session.errors,
-                subscribersRead = session.subscribersRead,
-                subscribersInserted = session.subscribersInserted,
-                subscribersSkipped = session.subscribersSkipped,
-                subscribersFailed = session.subscribersFailed,
-                transactionsRead = session.transactionsRead,
-                transactionsInserted = session.transactionsInserted,
-                transactionsMerged = session.transactionsMerged,
-                transactionsSkipped = session.transactionsSkipped,
-                transactionsFailed = session.transactionsFailed
-            )
-        } catch (e: Exception) {
-            e.printStackTrace()
-            // Mark batch as failed/resumable so it doesn't block sync forever
-            try {
-                withContext(NonCancellable) {
-                    appDatabase.withTransaction {
-                        val current = appDatabase.importBatchDao().getById(batchId) ?: batch
-                            ?: ImportBatch(
-                                id = batchId,
-                                fileName = sourceFile.name,
-                                fileHash = "",
-                                accountsImported = 0,
-                                transactionsImported = 0,
-                                totalDebtIqd = 0.0,
-                                status = "failed/resumable"
-                            )
-                        val failedBatch = current.copy(status = "failed/resumable")
-                        appDatabase.importBatchDao().insert(failedBatch)
-                        OutboxManager.upsertWithOutbox(appDatabase.syncOutboxDao(), "import_batches", batchId, batchAdapter.toJson(failedBatch), importBatchId = batchId)
-                    }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) {
+                    throw e
                 }
-            } catch (ex: Exception) {
-                Log.e("UtowerImporter", "Failed to set status to failed/resumable", ex)
+                Log.e("UtowerImporter", "Import failed: ${e.message}", e)
+                ImportResult(
+                    batchId = batchId,
+                    success = false,
+                    subscribersFound = session.subsFound,
+                    subscribersImported = session.subsImported,
+                    subscribersMerged = session.subscribersMerged,
+                    subscribersNotesImported = session.subsNotesImported,
+                    nanoIpsImported = session.nanoIpsImported,
+                    transactionsImported = session.txImported,
+                    transactionNotesImported = session.txNotesImported,
+                    warnings = session.warnings,
+                    errors = session.errors + 1,
+                    errorMessage = e.message ?: "Unknown error",
+                    failedFile = failedFile,
+                    subscribersRead = session.subscribersRead,
+                    subscribersInserted = session.subscribersInserted,
+                    subscribersSkipped = session.subscribersSkipped,
+                    subscribersFailed = session.subscribersFailed,
+                    transactionsRead = session.transactionsRead,
+                    transactionsInserted = session.transactionsInserted,
+                    transactionsMerged = session.transactionsMerged,
+                    transactionsSkipped = session.transactionsSkipped,
+                    transactionsFailed = session.transactionsFailed
+                )
+            } finally {
+                tempDir.deleteRecursively()
             }
-            if (e is kotlinx.coroutines.CancellationException) {
-                throw e
-            }
-            ImportResult(
-                batchId = batchId,
-                success = false,
-                subscribersFound = session.subsFound,
-                subscribersImported = session.subsImported,
-                subscribersMerged = session.subscribersMerged,
-                subscribersNotesImported = session.subsNotesImported,
-                nanoIpsImported = session.nanoIpsImported,
-                transactionsImported = session.txImported,
-                transactionNotesImported = session.txNotesImported,
-                warnings = session.warnings,
-                errors = session.errors + 1,
-                errorMessage = e.message ?: "Unknown error",
-                failedFile = failedFile,
-                subscribersRead = session.subscribersRead,
-                subscribersInserted = session.subscribersInserted,
-                subscribersSkipped = session.subscribersSkipped,
-                subscribersFailed = session.subscribersFailed,
-                transactionsRead = session.transactionsRead,
-                transactionsInserted = session.transactionsInserted,
-                transactionsMerged = session.transactionsMerged,
-                transactionsSkipped = session.transactionsSkipped,
-                transactionsFailed = session.transactionsFailed
-            )
-        } finally {
-            tempDir.deleteRecursively()
-        }
         }
     }
 
@@ -1025,7 +962,7 @@ private class ImportSession(
     val parsedSubs = mutableListOf<ParsedSub>()
     val parsedTxs = mutableListOf<ParsedTx>()
 
-    data class ParsedSub(val sourceKey: String, val json: JSONObject, val isLegacy: Boolean)
+    data class ParsedSub(val sourceKey: String, val json: JSONObject, val isLegacy: Boolean, val originalId: String? = null)
     data class ParsedTx(val sourceKey: String, val json: JSONObject)
 
     val subscriberMap = mutableMapOf<String, String>()
@@ -1064,11 +1001,11 @@ private class ImportSession(
             .toMutableMap()
     }
 
-    fun insertOrUpdateUser(sourceKey: String, json: JSONObject, isLegacy: Boolean) {
-        parsedSubs.add(ParsedSub(sourceKey, json, isLegacy))
+    fun insertOrUpdateUser(sourceKey: String, json: JSONObject, isLegacy: Boolean, originalId: String? = null) {
+        parsedSubs.add(ParsedSub(sourceKey, json, isLegacy, originalId))
     }
 
-    suspend fun insertOrUpdateUserInternal(sourceKey: String, json: JSONObject, isLegacy: Boolean) {
+    suspend fun insertOrUpdateUserInternal(sourceKey: String, json: JSONObject, isLegacy: Boolean, originalId: String? = null) {
         subscribersRead++
         try {
             val liveObj = json.optJSONObject("live") ?: JSONObject()
@@ -1271,6 +1208,10 @@ private class ImportSession(
 
             subscriberMap[sourceKey] = finalId
             touchedAccountIds.add(finalId)
+            if (!originalId.isNullOrEmpty()) {
+                subscriberMap[originalId] = finalId
+                accountsById[finalId]?.let { accountsBySourceId[originalId] = it }
+            }
 
             val oldUserAddTimeId = utowerObj.optString("oldUserAddTimeId").takeIf { !it.isNullOrBlank() && it != "null" }
             if (!oldUserAddTimeId.isNullOrEmpty()) {
@@ -1533,7 +1474,7 @@ private class ImportSession(
         val subChunks = parsedSubs.chunked(500)
         for (chunk in subChunks) {
             for (sub in chunk) {
-                insertOrUpdateUserInternal(sub.sourceKey, sub.json, sub.isLegacy)
+                insertOrUpdateUserInternal(sub.sourceKey, sub.json, sub.isLegacy, sub.originalId)
             }
         }
 

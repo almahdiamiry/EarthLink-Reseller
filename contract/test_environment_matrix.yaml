@@ -199,6 +199,7 @@ invariants_matrix:
       - "app/src/test/java/com/example/Phase1DuplicateInitiationProtectionTest.kt"
       - "app/src/test/java/com/example/Phase1TwoDeviceConvergenceTest.kt"
       - "app/src/test/java/com/example/Phase2RestoreReplaceHardeningTest.kt"
+      - "app/src/test/java/com/example/Phase2UtowerImportHardeningTest.kt"
       - "app/src/androidTest/java/com/example/CoordinatorInstrumentedTest.kt"
     tier_rationale: >
       Ensures exclusive coordinator execution with mutex ownership locks across JVM and Android instrumentation.
@@ -243,6 +244,7 @@ invariants_matrix:
     primary_suites:
       - "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
       - "app/src/test/java/com/example/Phase2RestoreReplaceHardeningTest.kt"
+      - "app/src/test/java/com/example/Phase2UtowerImportHardeningTest.kt"
       - "scripts/scan_forbidden_patterns.py"
     tier_rationale: >
       Guarantees database fails closed when encryption key recovery is unviable.
@@ -444,6 +446,14 @@ test_suites:
     associated_invariants:
       - "INV-11"
       - "INV-13"
+      - "INV-14"
+
+  - name: "Phase2UtowerImportHardeningTest"
+    path: "app/src/test/java/com/example/Phase2UtowerImportHardeningTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Phase 2 Direct Atomic Room uTower Import Hardening test suite (P2-G3-REQ-01 / P2-G3-REQ-05 / INV-11 / INV-14)"
+    associated_invariants:
+      - "INV-11"
       - "INV-14"
 
   - name: "CoordinatorInstrumentedTest"

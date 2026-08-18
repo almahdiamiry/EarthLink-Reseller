@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.85.0] - 2026-08-18
+### Phase 2: Task P2-05 / Task 18 — Harden Import as Direct Atomic Room (P2-G3-REQ-01 / P2-G3-REQ-05 / INV-11 / INV-14)
+- **Direct Atomic Room Import (`UtowerImporter.kt`)**: Refactored `importFromFile` and `importFromPreview` to parse and validate all subscriber and transaction records completely in-memory outside any database transaction before publishing. Removed premature database batch insertions and intermediate write transactions prior to parse validation.
+- **Single Atomic Room Write Boundary (`appDatabase.withTransaction`)**: Enforced that all database operations during import (account insertions/updates, ledger record additions with `isSnapshotHistory = true`, optional replace wipes, batch record insertions, and outbox creation) execute within a single atomic `withTransaction` block. Any parse failure or process interruption before the transaction leaves the active database 100% untouched. Any exception inside `withTransaction` triggers full ACID rollback with zero partial business state exposure.
+- **Idempotent Re-Import & Smart Merge Support**: Re-importing identical uTower datasets is guaranteed idempotent (0 duplicate accounts, 0 duplicate ledger entries, preserved deterministic balances). Fully supports clean atomic replace (`shouldReplace = true`) and smart property merge/deduplication (`shouldReplace = false`).
+- **Operational Guard Invariant**: Guaranteed that `ImportBatch` records strictly operational metadata without acting as a secondary business ledger authority.
+- **Comprehensive Hardening Test Suite**: Implemented `Phase2UtowerImportHardeningTest.kt` with 8 exhaustive test cases covering pre-transaction parse failure isolation, 100% ACID rollback on transaction exception, successful atomic file import, successful atomic preview import with clean replace, idempotent re-import verification, smart merge vs replace distinction, operational metadata guard isolation, and bulk capacity envelope measurement (5,000+ records processed with zero memory exhaustion).
+- **Contract & Matrix Mapping**: Registered `Phase2UtowerImportHardeningTest` under `INV-11` and `INV-14` in `contract/invariant_contract.yaml`, `contract/invariant_test_map.yaml`, and `contract/test_environment_matrix.yaml`.
+
 ## [1.84.0] - 2026-08-18
 ### Phase 2: Task P2-03 — Deterministic Current-Position Reconstruction & Balance Healing (P2-G3-REQ-04 / INV-01 / INV-06 / INV-11)
 - **Deterministic Current Position Reconstruction (`BalanceCalculator.kt`)**: Implemented pure `reconstructCurrentPosition(openingDebt, openingAdvance, openingLoan, transactions, isSnapshotBaseline)` and `deriveAccountBalance(account, transactions)` guaranteeing that runtime account balances are derived deterministically as `Accepted Baseline + Eligible Ledger History`. Historical snapshot transactions are filtered when `isSnapshotBaseline == true`, chronological order is enforced, and running debt/advance/loan positions roll forward with mathematical precision.

@@ -34,9 +34,9 @@
 
 ### Phase 2: G3 Restore & Import
 - [x] Task P2-01: Define the final Restore/Import business transaction boundary
-- [ ] Task P2-02: Implement Restore Merge as a complete-lineage decision operation
-- [ ] Task P2-03: Make current-position reconstruction deterministic
-- [ ] Task P2-04: Harden Restore Replace
-- [ ] Task P2-05: Harden Import as Direct Atomic Room
+- [x] Task P2-02: Implement Restore Merge as a complete-lineage decision operation
+- [x] Task P2-03: Make current-position reconstruction deterministic
+- [x] Task P2-04: Harden Restore Replace
+- [x] Task P2-05: Harden Import as Direct Atomic Room
 - [ ] Task P2-06: Restore/Import transport reconstruction
 - [ ] Task P2-07: Phase 2 evidence and provisional exit gate

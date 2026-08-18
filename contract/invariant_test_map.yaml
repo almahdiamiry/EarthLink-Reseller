@@ -138,6 +138,7 @@ invariants:
       - "app/src/test/java/com/example/Phase2RestoreMergeLineageTest.kt"
       - "app/src/test/java/com/example/Phase2CurrentPositionReconstructionTest.kt"
       - "app/src/test/java/com/example/Phase2RestoreReplaceHardeningTest.kt"
+      - "app/src/test/java/com/example/Phase2UtowerImportHardeningTest.kt"
 
   - id: "INV-12"
     name: "No Outbox Loops on Remote Apply"
@@ -182,6 +183,7 @@ invariants:
       - "app/src/test/java/com/example/Phase2RestoreTransactionBoundaryTest.kt"
       - "app/src/test/java/com/example/Phase2RestoreMergeLineageTest.kt"
       - "app/src/test/java/com/example/Phase2RestoreReplaceHardeningTest.kt"
+      - "app/src/test/java/com/example/Phase2UtowerImportHardeningTest.kt"
 
   - id: "INV-15"
     name: "Fail-Closed Release Signing"

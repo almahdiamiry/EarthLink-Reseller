@@ -107,6 +107,8 @@ dependencies {
   implementation(libs.androidx.navigation.compose)
   implementation(libs.androidx.room.ktx)
   implementation(libs.androidx.room.runtime)
+  implementation(libs.commons.compress)
+  testImplementation(libs.commons.compress)
   testImplementation("org.mockito:mockito-core:4.8.0")
   testImplementation("org.mockito:mockito-inline:4.8.0")
   implementation(libs.sqlcipher)
