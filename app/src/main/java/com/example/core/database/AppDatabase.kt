@@ -328,6 +328,9 @@ interface PendingExternalOperationDao {
     @Query("SELECT * FROM pending_external_operations WHERE accountId = :accountId ORDER BY createdAt DESC")
     suspend fun getByAccountId(accountId: String): List<PendingExternalOperation>
 
+    @Query("SELECT * FROM pending_external_operations WHERE accountId = :accountId AND status = 'PENDING' LIMIT 1")
+    suspend fun getPendingByAccountId(accountId: String): PendingExternalOperation?
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(operation: PendingExternalOperation): Long
 

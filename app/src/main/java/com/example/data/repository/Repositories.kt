@@ -1162,6 +1162,10 @@ class LocalLedgerRepositoryImpl(
         return pendingDao.getByBusinessTransactionId(businessTransactionId)
     }
 
+    override suspend fun getPendingOperationByAccountId(accountId: String): PendingExternalOperation? {
+        return pendingDao.getPendingByAccountId(accountId)
+    }
+
     override suspend fun getAllPendingOperations(): List<PendingExternalOperation> {
         return pendingDao.getPendingOperations()
     }

@@ -81,6 +81,7 @@ interface LocalLedgerRepository {
     suspend fun recordPendingOperation(operation: PendingExternalOperation): PendingExternalOperation
     suspend fun getPendingOperationByIntentId(operationIntentId: String): PendingExternalOperation?
     suspend fun getPendingOperationByTransactionId(businessTransactionId: String): PendingExternalOperation?
+    suspend fun getPendingOperationByAccountId(accountId: String): PendingExternalOperation?
     suspend fun getAllPendingOperations(): List<PendingExternalOperation>
     suspend fun markPendingOperationFailed(businessTransactionId: String, error: String)
     suspend fun completePendingOperation(businessTransactionId: String, accountId: String, ledgerEntryId: String? = null)

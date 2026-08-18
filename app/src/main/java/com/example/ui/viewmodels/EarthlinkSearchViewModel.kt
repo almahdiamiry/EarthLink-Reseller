@@ -314,13 +314,30 @@ class EarthlinkSearchViewModel(
         }
     }
 
-    fun createTestUser(username: String, phone: String, fullName: String, pkgIndex: Int, intentId: String? = null) {
-        viewModelScope.launch {
-            _isActionLoading.value = true
-            _error.value = null
-            val opIntentId = intentId ?: java.util.UUID.randomUUID().toString()
-            val businessTxId = "tx_" + opIntentId
+    private val inflightAccountLocks = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>()
+    private fun getAccountLock(accountId: String): kotlinx.coroutines.sync.Mutex =
+        inflightAccountLocks.computeIfAbsent(accountId) { kotlinx.coroutines.sync.Mutex() }
+
+    fun createTestUser(username: String, phone: String, fullName: String, pkgIndex: Int, intentId: String? = null): kotlinx.coroutines.Job {
+        val lock = getAccountLock(username)
+        val opIntentId = intentId ?: java.util.UUID.randomUUID().toString()
+        val businessTxId = "tx_" + opIntentId
+
+        return viewModelScope.launch(Dispatchers.IO) {
+            if (!lock.tryLock()) {
+                Log.w("EarthlinkSearchVM", "Duplicate activation suppressed: account $username has an active inflight operation")
+                return@launch
+            }
             try {
+                _isActionLoading.value = true
+                _error.value = null
+
+                val existingOp = localLedgerRepository.getPendingOperationByIntentId(opIntentId)
+                if (existingOp != null && existingOp.status == "COMPLETED") {
+                    _actionSuccess.value = "Test subscriber $username created successfully."
+                    return@launch
+                }
+
                 val available = gateway.checkUsernameAvailable(username)
                 if (!available) {
                     _error.value = "Username $username is already taken."
@@ -351,17 +368,31 @@ class EarthlinkSearchViewModel(
                 _error.value = e.message
             } finally {
                 _isActionLoading.value = false
+                lock.unlock()
             }
         }
     }
 
-    fun createUserUsingDeposit(username: String, phone: String, fullName: String, pkgIndex: Int, depositPass: String, intentId: String? = null) {
-        viewModelScope.launch {
-            _isActionLoading.value = true
-            _error.value = null
-            val opIntentId = intentId ?: java.util.UUID.randomUUID().toString()
-            val businessTxId = "tx_" + opIntentId
+    fun createUserUsingDeposit(username: String, phone: String, fullName: String, pkgIndex: Int, depositPass: String, intentId: String? = null): kotlinx.coroutines.Job {
+        val lock = getAccountLock(username)
+        val opIntentId = intentId ?: java.util.UUID.randomUUID().toString()
+        val businessTxId = "tx_" + opIntentId
+
+        return viewModelScope.launch(Dispatchers.IO) {
+            if (!lock.tryLock()) {
+                Log.w("EarthlinkSearchVM", "Duplicate activation suppressed: account $username has an active inflight operation")
+                return@launch
+            }
             try {
+                _isActionLoading.value = true
+                _error.value = null
+
+                val existingOp = localLedgerRepository.getPendingOperationByIntentId(opIntentId)
+                if (existingOp != null && existingOp.status == "COMPLETED") {
+                    _actionSuccess.value = "Paid subscriber $username created successfully."
+                    return@launch
+                }
+
                 val available = gateway.checkUsernameAvailable(username)
                 if (!available) {
                     _error.value = "Username $username is already taken."
@@ -392,6 +423,7 @@ class EarthlinkSearchViewModel(
                 _error.value = e.message
             } finally {
                 _isActionLoading.value = false
+                lock.unlock()
             }
         }
     }
@@ -403,16 +435,32 @@ class EarthlinkSearchViewModel(
         note: String? = null,
         intentId: String? = null,
         onSuccessCallback: (suspend (String) -> Unit)? = null
-    ) {
-        viewModelScope.launch {
-            _isActionLoading.value = true
-            _error.value = null
-            val opIntentId = intentId ?: java.util.UUID.randomUUID().toString()
-            val businessTxId = "tx_" + opIntentId
-            val finalPrice = price ?: 40000.0
-            val finalNote = note ?: ""
+    ): kotlinx.coroutines.Job {
+        val lock = getAccountLock(userId)
+        val opIntentId = intentId ?: java.util.UUID.randomUUID().toString()
+        val businessTxId = "tx_" + opIntentId
+        val finalPrice = price ?: 40000.0
+        val finalNote = note ?: ""
 
+        return viewModelScope.launch(Dispatchers.IO) {
+            if (!lock.tryLock()) {
+                Log.w("EarthlinkSearchVM", "Duplicate financial operation suppressed: account $userId has an active inflight operation")
+                return@launch
+            }
             try {
+                _isActionLoading.value = true
+                _error.value = null
+
+                val existingOp = localLedgerRepository.getPendingOperationByIntentId(opIntentId)
+                if (existingOp != null && existingOp.status == "COMPLETED") {
+                    _actionSuccess.value = if (prefs.getLanguage() == "ar") {
+                        "تم تجديد اشتراك المشترك $userId بنجاح."
+                    } else {
+                        "Subscriber $userId was renewed successfully."
+                    }
+                    return@launch
+                }
+
                 // 1. Durably record PendingExternalOperation prior to external API dispatch (G1 / INV-11)
                 localLedgerRepository.recordPendingOperation(
                     PendingExternalOperation(
@@ -506,17 +554,31 @@ class EarthlinkSearchViewModel(
                 }
             } finally {
                 _isActionLoading.value = false
+                lock.unlock()
             }
         }
     }
 
-    fun extendUser(userIndex: Int, userId: String, intentId: String? = null) {
-        viewModelScope.launch {
-            _isActionLoading.value = true
-            _error.value = null
-            val opIntentId = intentId ?: java.util.UUID.randomUUID().toString()
-            val businessTxId = "tx_" + opIntentId
+    fun extendUser(userIndex: Int, userId: String, intentId: String? = null): kotlinx.coroutines.Job {
+        val lock = getAccountLock(userId)
+        val opIntentId = intentId ?: java.util.UUID.randomUUID().toString()
+        val businessTxId = "tx_" + opIntentId
+
+        return viewModelScope.launch(Dispatchers.IO) {
+            if (!lock.tryLock()) {
+                Log.w("EarthlinkSearchVM", "Duplicate extension suppressed: account $userId has an active inflight operation")
+                return@launch
+            }
             try {
+                _isActionLoading.value = true
+                _error.value = null
+
+                val existingOp = localLedgerRepository.getPendingOperationByIntentId(opIntentId)
+                if (existingOp != null && existingOp.status == "COMPLETED") {
+                    _actionSuccess.value = "Subscription for $userId extended successfully."
+                    return@launch
+                }
+
                 localLedgerRepository.recordPendingOperation(
                     PendingExternalOperation(
                         businessTransactionId = businessTxId,
@@ -557,6 +619,7 @@ class EarthlinkSearchViewModel(
                 }
             } finally {
                 _isActionLoading.value = false
+                lock.unlock()
             }
         }
     }
