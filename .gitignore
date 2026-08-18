@@ -26,3 +26,5 @@ earthlink_reseller_release_backup.jks
 __pycache__/
 *.pyc
 .pytest_cache/
+/app/google-services.json
+/evidence/g8/
