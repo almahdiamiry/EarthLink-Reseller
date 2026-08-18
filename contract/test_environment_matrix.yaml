@@ -425,6 +425,15 @@ test_suites:
       - "INV-11"
       - "INV-14"
 
+  - name: "Phase2CurrentPositionReconstructionTest"
+    path: "app/src/test/java/com/example/Phase2CurrentPositionReconstructionTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Phase 2 Deterministic Current-Position Reconstruction & Balance Healing test suite (P2-G3-REQ-04 / INV-01 / INV-06 / INV-11)"
+    associated_invariants:
+      - "INV-01"
+      - "INV-06"
+      - "INV-11"
+
   - name: "CoordinatorInstrumentedTest"
     path: "app/src/androidTest/java/com/example/CoordinatorInstrumentedTest.kt"
     environment: "INSTRUMENTED"

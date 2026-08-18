@@ -673,30 +673,21 @@ class RemoteSyncCoordinator(
         val account = accountDao.getByIdOneShot(accountId) ?: return
         val ledgers = ledgerDao.getByAccountIdOneShot(accountId, limit = Int.MAX_VALUE)
         
-        var currentDebt = if (account.stateSource != null) account.openingDebtIqd else 0.0
-        var currentAdvance = if (account.stateSource != null) account.openingAdvanceIqd else 0.0
-        var currentLoan = if (account.stateSource != null) account.openingLoanIqd else 0.0
-
-        for (l in ledgers) {
-            if (account.stateSource != null && l.isSnapshotHistory) continue
-            val canonicalType = com.example.core.ledger.TransactionTypeNormalizer.normalizeTransactionType(l.typeRaw)
-            val updated = com.example.core.ledger.BalanceCalculator.applyTransaction(
-                currentDebt = currentDebt,
-                currentAdvance = currentAdvance,
-                currentLoan = currentLoan,
-                txType = canonicalType,
-                amount = l.amountIqd
-            )
-            currentDebt = updated.debtIqd
-            currentAdvance = updated.advanceIqd
-            currentLoan = updated.loanIqd
-        }
+        val isSnapshot = account.stateSource != null
+        val (derivedBalances, _) = com.example.core.ledger.BalanceCalculator.reconstructCurrentPosition(
+            openingDebt = account.openingDebtIqd,
+            openingAdvance = account.openingAdvanceIqd,
+            openingLoan = account.openingLoanIqd,
+            transactions = ledgers,
+            isSnapshotBaseline = isSnapshot
+        )
 
         // Preserve business updatedAt timestamp when updating derived calculation! (INV-04)
         accountDao.upsert(
             account.copy(
-                debtIqd = currentDebt,
-                advanceIqd = currentAdvance
+                debtIqd = derivedBalances.debtIqd,
+                advanceIqd = derivedBalances.advanceIqd,
+                loanIqd = derivedBalances.loanIqd
                 // Note: updatedAt is NOT modified here so remote apply does not trigger outbox
             )
         )

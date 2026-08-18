@@ -566,42 +566,19 @@ object BackupManager {
                     }
 
                     // Recalculate account balances deterministically from accepted baseline + unique deduplicated ledger entries
-                    val sortedEntries = finalLedgerEntries.sortedWith(
-                        compareBy<com.example.core.model.LocalLedgerEntry> { it.occurredAt }
-                            .thenBy { it.createdAt }
-                            .thenBy { it.id }
+                    val isSnapshot = liveAcc.stateSource != null
+                    val (derivedBalances, updatedLedgerList) = com.example.core.ledger.BalanceCalculator.reconstructCurrentPosition(
+                        openingDebt = liveAcc.openingDebtIqd,
+                        openingAdvance = liveAcc.openingAdvanceIqd,
+                        openingLoan = liveAcc.openingLoanIqd,
+                        transactions = finalLedgerEntries,
+                        isSnapshotBaseline = isSnapshot
                     )
 
-                    var currentDebt = liveAcc.openingDebtIqd
-                    var currentAdvance = liveAcc.openingAdvanceIqd
-                    var currentLoan = liveAcc.openingLoanIqd
-
-                    val updatedLedgerList = mutableListOf<com.example.core.model.LocalLedgerEntry>()
-                    for (tx in sortedEntries) {
-                        val canonicalType = com.example.core.ledger.TransactionTypeNormalizer.normalizeTransactionType(tx.typeRaw)
-                        val calc = com.example.core.ledger.BalanceCalculator.applyTransaction(
-                            currentDebt = currentDebt,
-                            currentAdvance = currentAdvance,
-                            currentLoan = currentLoan,
-                            txType = canonicalType,
-                            amount = tx.amountIqd
-                        )
-                        currentDebt = calc.debtIqd
-                        currentAdvance = calc.advanceIqd
-                        currentLoan = calc.loanIqd
-                        updatedLedgerList.add(tx.copy(debtAfterIqd = currentDebt))
-                    }
-
-                    if (sortedEntries.isEmpty()) {
-                        currentDebt = liveAcc.debtIqd
-                        currentAdvance = liveAcc.advanceIqd
-                        currentLoan = liveAcc.loanIqd
-                    }
-
                     val updatedAccount = liveAcc.copy(
-                        debtIqd = currentDebt,
-                        advanceIqd = currentAdvance,
-                        loanIqd = currentLoan,
+                        debtIqd = derivedBalances.debtIqd,
+                        advanceIqd = derivedBalances.advanceIqd,
+                        loanIqd = derivedBalances.loanIqd,
                         updatedAt = System.currentTimeMillis()
                     )
 
@@ -742,42 +719,19 @@ object BackupManager {
                         }
                     }
 
-                    val sortedEntries = accountLedgers.sortedWith(
-                        compareBy<com.example.core.model.LocalLedgerEntry> { it.occurredAt }
-                            .thenBy { it.createdAt }
-                            .thenBy { it.id }
+                    val isSnapshot = liveAcc.stateSource != null
+                    val (derivedBalances, finalLedgersForAcc) = com.example.core.ledger.BalanceCalculator.reconstructCurrentPosition(
+                        openingDebt = liveAcc.openingDebtIqd,
+                        openingAdvance = liveAcc.openingAdvanceIqd,
+                        openingLoan = liveAcc.openingLoanIqd,
+                        transactions = accountLedgers,
+                        isSnapshotBaseline = isSnapshot
                     )
 
-                    var currentDebt = liveAcc.openingDebtIqd
-                    var currentAdvance = liveAcc.openingAdvanceIqd
-                    var currentLoan = liveAcc.openingLoanIqd
-
-                    val finalLedgersForAcc = mutableListOf<com.example.core.model.LocalLedgerEntry>()
-                    for (tx in sortedEntries) {
-                        val canonicalType = com.example.core.ledger.TransactionTypeNormalizer.normalizeTransactionType(tx.typeRaw)
-                        val calc = com.example.core.ledger.BalanceCalculator.applyTransaction(
-                            currentDebt = currentDebt,
-                            currentAdvance = currentAdvance,
-                            currentLoan = currentLoan,
-                            txType = canonicalType,
-                            amount = tx.amountIqd
-                        )
-                        currentDebt = calc.debtIqd
-                        currentAdvance = calc.advanceIqd
-                        currentLoan = calc.loanIqd
-                        finalLedgersForAcc.add(tx.copy(debtAfterIqd = currentDebt))
-                    }
-
-                    if (sortedEntries.isEmpty()) {
-                        currentDebt = liveAcc.debtIqd
-                        currentAdvance = liveAcc.advanceIqd
-                        currentLoan = liveAcc.loanIqd
-                    }
-
                     val finalAccount = liveAcc.copy(
-                        debtIqd = currentDebt,
-                        advanceIqd = currentAdvance,
-                        loanIqd = currentLoan,
+                        debtIqd = derivedBalances.debtIqd,
+                        advanceIqd = derivedBalances.advanceIqd,
+                        loanIqd = derivedBalances.loanIqd,
                         updatedAt = System.currentTimeMillis()
                     )
                     mergedAccounts.add(finalAccount)

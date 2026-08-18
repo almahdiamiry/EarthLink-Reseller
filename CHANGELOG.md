@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.84.0] - 2026-08-18
+### Phase 2: Task P2-03 — Deterministic Current-Position Reconstruction & Balance Healing (P2-G3-REQ-04 / INV-01 / INV-06 / INV-11)
+- **Deterministic Current Position Reconstruction (`BalanceCalculator.kt`)**: Implemented pure `reconstructCurrentPosition(openingDebt, openingAdvance, openingLoan, transactions, isSnapshotBaseline)` and `deriveAccountBalance(account, transactions)` guaranteeing that runtime account balances are derived deterministically as `Accepted Baseline + Eligible Ledger History`. Historical snapshot transactions are filtered when `isSnapshotBaseline == true`, chronological order is enforced, and running debt/advance/loan positions roll forward with mathematical precision.
+- **Pure Balance Healing & Recalculation Engine (`Repositories.kt`)**: Refactored `recalculateAccountHistoryInternal` to compute balances purely from opening baseline and eligible ledger entries, completely eliminating backwards-reversal guessing from corrupted/desynced Room values. Added `rebuildAccountBalances(database, origin)` for atomic batch healing across all accounts in the database. Cleaned up `deleteTransaction` to delete ledger rows, emit tombstone outbox obligations, and recalculate balances directly.
+- **BackupManager & RemoteSyncCoordinator Rebuild Alignment**: Updated `executeRestoreMergeInternal` and `mergeSnapshotLineages` in `BackupManager.kt`, and `recalculateAccountBalance` in `RemoteSyncCoordinator.kt`, to use the canonical `BalanceCalculator.reconstructCurrentPosition` derivation.
+- **Comprehensive Reconstruction Test Suite**: Implemented `Phase2CurrentPositionReconstructionTest.kt` with 9 exhaustive unit and integration tests covering mathematical oracle derivation vs Room materialized state, complete healing of corrupted stored balances, uTower snapshot preservation without double-counting historical debt, zero double-counting across repeated recalculations, multi-account batch rebuild accuracy, empty ledger baseline healing, deleted transaction position healing, and deterministic position reconstruction across uTower Import and Restore Merge operations.
+- **Contract & Matrix Mapping**: Registered `Phase2CurrentPositionReconstructionTest` under `INV-01`, `INV-06`, and `INV-11` in `contract/invariant_contract.yaml`, `contract/invariant_test_map.yaml`, and `contract/test_environment_matrix.yaml`.
+
+## [1.83.0] - 2026-08-18
+### Phase 2: Task P2-02 — Complete-Lineage Restore Merge & Material Divergence Protection (P2-G3-REQ-01 / P2-G3-REQ-02 / INV-01 / INV-06 / INV-11 / INV-14)
+- **Complete-Lineage Restore Merge**: Implemented `mergeSnapshotLineages` in `BackupManager.kt` supporting full dataset merge across live and backup lineages with deterministic deduplication by entity ID, batch union, and balance rederivation.
+- **Material Divergence Protection**: Enforced strict hash verification and decision integrity across restore merge pipelines.
+- **Comprehensive Lineage Test Suite**: Implemented `Phase2RestoreMergeLineageTest.kt` verifying complete-lineage merge, material divergence protection, and structural invariants.
+
 ## [1.82.0] - 2026-08-18
 ### Phase 2: Task P2-01 — Define the Final Restore/Import Business Transaction Boundary & Restore Decision Contract (P2-G3-REQ-01 / P2-G3-REQ-03 / INV-11 / INV-14)
 - **Restore Decision Contract (`Models.kt`)**: Defined deterministic `RestoreMergeDecision` and `ConflictResolutionChoice` models encapsulating `artifactIdentity`, `selectedBaselineId`, `selectedLineageScope`, `conflictDecisions`, `targetDatasetSummary`, and `isApproved`. Added strict decision invalidation checks (`isValidFor`, `isInvalidated`) ensuring that any modification to artifact identity or source baseline state invalidates the decision and halts execution.

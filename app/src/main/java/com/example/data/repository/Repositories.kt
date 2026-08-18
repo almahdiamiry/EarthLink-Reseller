@@ -1680,30 +1680,13 @@ class LocalLedgerRepositoryImpl(
             database.withTransaction {
                 val tx = ledgerDao.getByIdOneShot(id)
                 if (tx != null) {
-                    val account = accountDao.getByIdOneShot(tx.accountId)
-                    if (account != null) {
-                        val balances = com.example.core.ledger.BalanceCalculator.revertTransaction(account.debtIqd, account.advanceIqd, account.loanIqd, tx.typeRaw, tx.amountIqd)
-                        val updatedAccount = if (balances.debtIqd != account.debtIqd || balances.advanceIqd != account.advanceIqd) {
-                            account.copy(
-                                debtIqd = balances.debtIqd,
-                                loanIqd = balances.loanIqd,
-                                advanceIqd = balances.advanceIqd,
-                                updatedAt = System.currentTimeMillis()
-                            )
-                        } else null
-
-                        if (updatedAccount != null) {
-                            accountDao.update(updatedAccount)
-                            OutboxManager.upsertWithOutbox(outboxDao, "local_accounts", updatedAccount.id, accountAdapter.toJson(updatedAccount))
-                        }
-                    }
-
+                    val targetAccountId = tx.accountId
                     ledgerDao.deleteById(id)
 
                     // Queue delete sync
                     OutboxManager.deleteWithTombstone(outboxDao, "local_ledger_entries", id, "{}")
 
-                    recalculateAccountHistoryInternal(tx.accountId, accountDao, ledgerDao, outboxDao, ledgerAdapter, origin = RecalcOrigin.LOCAL_MUTATION)
+                    recalculateAccountHistoryInternal(targetAccountId, accountDao, ledgerDao, outboxDao, ledgerAdapter, origin = RecalcOrigin.LOCAL_MUTATION)
                 }
             }
         }
@@ -2587,19 +2570,6 @@ suspend fun recalculateAccountHistoryInternal(
     origin: RecalcOrigin
 ) {
     val account = accountDao.getByIdOneShot(accountId) ?: return
-    val allTxs = ledgerDao.getByAccountIdOneShot(accountId, limit = Int.MAX_VALUE)
-    if (allTxs.isEmpty()) return
-
-    // Sort deterministically: occurredAt ASC, sourceExternalId ASC, id ASC
-    val txsAsc = allTxs.sortedWith(
-        compareBy<com.example.core.model.LocalLedgerEntry> { it.occurredAt }
-            .thenBy { it.sourceExternalId ?: "" }
-            .thenBy { it.id }
-    )
-
-    var runningDebt = 0.0
-    var runningAdvance = 0.0
-    var runningLoan = 0.0
 
     if (origin == RecalcOrigin.RESTORE || origin == RecalcOrigin.IMPORT) {
         // RESTORE and IMPORT are authoritative snapshot operations.
@@ -2607,61 +2577,44 @@ suspend fun recalculateAccountHistoryInternal(
         return
     }
 
-    val isFullRebuildOrigin = origin == RecalcOrigin.FULL_REBUILD
+    val allTxs = ledgerDao.getByAccountIdOneShot(accountId, limit = Int.MAX_VALUE)
+    val isSnapshot = account.stateSource != null
 
-    val targetTxs = if (account.stateSource != null) {
-        txsAsc.filter { !it.isSnapshotHistory }
-    } else {
-        txsAsc
-    }
+    val (derivedBalances, updatedEntries) = com.example.core.ledger.BalanceCalculator.reconstructCurrentPosition(
+        openingDebt = account.openingDebtIqd,
+        openingAdvance = account.openingAdvanceIqd,
+        openingLoan = account.openingLoanIqd,
+        transactions = allTxs,
+        isSnapshotBaseline = isSnapshot
+    )
 
-    if (isFullRebuildOrigin) {
-        runningDebt = account.openingDebtIqd
-        runningAdvance = account.openingAdvanceIqd
-        runningLoan = account.openingLoanIqd
-    } else {
-        var backDebt = account.debtIqd
-        var backAdvance = account.advanceIqd
-        var backLoan = account.loanIqd
-        for (tx in targetTxs.reversed()) {
-            val canonicalType = com.example.core.ledger.TransactionTypeNormalizer.normalizeTransactionType(tx.typeRaw)
-            val rBalances = com.example.core.ledger.BalanceCalculator.revertTransaction(backDebt, backAdvance, backLoan, canonicalType, tx.amountIqd)
-            backDebt = rBalances.debtIqd
-            backAdvance = rBalances.advanceIqd
-            backLoan = rBalances.loanIqd
-        }
-        runningDebt = backDebt
-        runningAdvance = backAdvance
-        runningLoan = backLoan
-    }
+    val runningDebt = derivedBalances.debtIqd
+    val runningAdvance = derivedBalances.advanceIqd
+    val runningLoan = derivedBalances.loanIqd
 
     val updatedLedgers = mutableListOf<com.example.core.model.LocalLedgerEntry>()
 
-    for (tx in targetTxs) {
-        val canonicalType = com.example.core.ledger.TransactionTypeNormalizer.normalizeTransactionType(tx.typeRaw)
-        val nBalances = com.example.core.ledger.BalanceCalculator.applyTransaction(runningDebt, runningAdvance, runningLoan, canonicalType, tx.amountIqd)
-        runningDebt = nBalances.debtIqd
-        runningAdvance = nBalances.advanceIqd
-        runningLoan = nBalances.loanIqd
-
-        if (kotlin.math.abs(tx.debtAfterIqd - runningDebt) > 0.01) {
-            val updatedTx = tx.copy(debtAfterIqd = runningDebt)
+    for (updatedTx in updatedEntries) {
+        val originalTx = allTxs.find { it.id == updatedTx.id }
+        if (originalTx == null || kotlin.math.abs(originalTx.debtAfterIqd - updatedTx.debtAfterIqd) > 0.01) {
             updatedLedgers.add(updatedTx)
-            if (origin == RecalcOrigin.LOCAL_MUTATION || origin == RecalcOrigin.IMPORT) {
+            if (origin == RecalcOrigin.LOCAL_MUTATION) {
                 OutboxManager.upsertWithOutbox(outboxDao, "local_ledger_entries", updatedTx.id, ledgerAdapter.toJson(updatedTx))
             }
         }
     }
 
-    if (kotlin.math.abs(account.debtIqd - runningDebt) > 0.01 || kotlin.math.abs(account.advanceIqd - runningAdvance) > 0.01) {
-        val newUpdatedAt = if (origin == RecalcOrigin.LOCAL_MUTATION || origin == RecalcOrigin.IMPORT) {
+    if (kotlin.math.abs(account.debtIqd - runningDebt) > 0.01 ||
+        kotlin.math.abs(account.advanceIqd - runningAdvance) > 0.01 ||
+        kotlin.math.abs(account.loanIqd - runningLoan) > 0.01) {
+        val newUpdatedAt = if (origin == RecalcOrigin.LOCAL_MUTATION) {
             System.currentTimeMillis()
         } else {
             account.updatedAt
         }
         val updatedAccount = account.copy(debtIqd = runningDebt, loanIqd = runningLoan, advanceIqd = runningAdvance, updatedAt = newUpdatedAt)
         accountDao.upsert(updatedAccount)
-        if (origin == RecalcOrigin.LOCAL_MUTATION || origin == RecalcOrigin.IMPORT) {
+        if (origin == RecalcOrigin.LOCAL_MUTATION) {
             val moshi = com.squareup.moshi.Moshi.Builder().build()
             val accAdapter = moshi.adapter(com.example.core.model.LocalAccount::class.java)
             OutboxManager.upsertWithOutbox(outboxDao, "local_accounts", account.id, accAdapter.toJson(updatedAccount))
@@ -2671,4 +2624,23 @@ suspend fun recalculateAccountHistoryInternal(
     if (updatedLedgers.isNotEmpty()) {
         ledgerDao.insertAll(updatedLedgers)
     }
+}
+
+suspend fun rebuildAccountBalances(
+    database: com.example.core.database.AppDatabase,
+    origin: RecalcOrigin = RecalcOrigin.FULL_REBUILD
+): Int {
+    val accountDao = database.localAccountDao()
+    val ledgerDao = database.localLedgerEntryDao()
+    val outboxDao = database.syncOutboxDao()
+    val moshi = com.squareup.moshi.Moshi.Builder().build()
+    val ledgerAdapter = moshi.adapter(com.example.core.model.LocalLedgerEntry::class.java)
+
+    val accounts = accountDao.getAllOneShot(limit = Int.MAX_VALUE)
+    var count = 0
+    for (acc in accounts) {
+        recalculateAccountHistoryInternal(acc.id, accountDao, ledgerDao, outboxDao, ledgerAdapter, origin)
+        count++
+    }
+    return count
 }
