@@ -83,9 +83,16 @@ interface LocalLedgerRepository {
     suspend fun getPendingOperationByTransactionId(businessTransactionId: String): PendingExternalOperation?
     suspend fun getPendingOperationByAccountId(accountId: String): PendingExternalOperation?
     suspend fun getAllPendingOperations(): List<PendingExternalOperation>
+    suspend fun getUnresolvedPendingOperations(): List<PendingExternalOperation>
     suspend fun markPendingOperationFailed(businessTransactionId: String, error: String)
     suspend fun completePendingOperation(businessTransactionId: String, accountId: String, ledgerEntryId: String? = null)
     suspend fun deletePendingOperation(businessTransactionId: String)
+
+    // G1 Unknown-Outcome Verification Protocol (INV-11)
+    suspend fun resolvePendingOperationVerifiedSuccess(businessTransactionId: String, chargeNote: String? = null): LocalLedgerEntry?
+    suspend fun resolvePendingOperationVerifiedFailure(businessTransactionId: String, diagnostic: String): Boolean
+    suspend fun resolvePendingOperationInconclusive(businessTransactionId: String, diagnostic: String): Boolean
+    suspend fun verifyAndResolvePendingOperation(businessTransactionId: String, gateway: EarthlinkGateway, baselineExpirationDate: String? = null): PendingOperationResolution
 }
 
 interface UtowerImportRepository {

@@ -235,6 +235,7 @@ invariants:
       - "app/src/test/java/com/example/Phase1G1PendingOperationDurabilityTest.kt"
       - "app/src/test/java/com/example/Phase1AtomicityAndLostAckTest.kt"
       - "app/src/test/java/com/example/Phase1DuplicateInitiationProtectionTest.kt"
+      - "app/src/test/java/com/example/Phase1UnknownOutcomeResolutionTest.kt"
     structural_checks:
       - check_id: "RC-4-coordinator-bypass"
         description: "Forbidden currentMode bypass check in BackupManager"

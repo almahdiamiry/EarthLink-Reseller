@@ -624,6 +624,50 @@ class EarthlinkSearchViewModel(
         }
     }
 
+    fun resolvePendingOperation(
+        businessTransactionId: String,
+        baselineExpirationDate: String? = null,
+        onResolved: ((PendingOperationResolution) -> Unit)? = null
+    ): kotlinx.coroutines.Job {
+        return viewModelScope.launch(Dispatchers.IO) {
+            val pendingOp = localLedgerRepository.getPendingOperationByTransactionId(businessTransactionId)
+            val accountId = pendingOp?.accountId ?: ""
+            val lock = if (accountId.isNotBlank()) getAccountLock(accountId) else null
+
+            if (lock != null && !lock.tryLock()) {
+                Log.w("EarthlinkSearchVM", "Resolution suppressed: account $accountId has an active inflight operation")
+                return@launch
+            }
+            try {
+                _isActionLoading.value = true
+                _error.value = null
+                val resolution = localLedgerRepository.verifyAndResolvePendingOperation(
+                    businessTransactionId = businessTransactionId,
+                    gateway = gateway,
+                    baselineExpirationDate = baselineExpirationDate
+                )
+                when (resolution.result) {
+                    UnknownOutcomeResolutionResult.VERIFIED_SUCCESS -> {
+                        _actionSuccess.value = "Operation verified and resolved successfully: ${resolution.diagnosticMessage}"
+                    }
+                    UnknownOutcomeResolutionResult.VERIFIED_FAILURE -> {
+                        _error.value = "Operation verified not executed: ${resolution.diagnosticMessage}"
+                    }
+                    UnknownOutcomeResolutionResult.INCONCLUSIVE -> {
+                        _error.value = "Verification inconclusive: ${resolution.diagnosticMessage}. Operation remains pending."
+                    }
+                }
+                onResolved?.invoke(resolution)
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                _error.value = "Resolution error: ${e.message}"
+            } finally {
+                _isActionLoading.value = false
+                lock?.unlock()
+            }
+        }
+    }
+
     fun toggleUserActive(userIndex: Int, userId: String, active: Boolean) {
         viewModelScope.launch {
             _isActionLoading.value = true

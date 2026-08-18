@@ -518,3 +518,16 @@ data class PendingExternalOperation(
 
 typealias StringComponents = String
 
+enum class UnknownOutcomeResolutionResult {
+    VERIFIED_SUCCESS,
+    VERIFIED_FAILURE,
+    INCONCLUSIVE
+}
+
+data class PendingOperationResolution(
+    val result: UnknownOutcomeResolutionResult,
+    val operation: PendingExternalOperation,
+    val ledgerEntry: LocalLedgerEntry? = null,
+    val diagnosticMessage: String = ""
+)
+

@@ -124,6 +124,7 @@ invariants:
       - "app/src/test/java/com/example/Phase1G1PendingOperationDurabilityTest.kt"
       - "app/src/test/java/com/example/Phase1AtomicityAndLostAckTest.kt"
       - "app/src/test/java/com/example/Phase1DuplicateInitiationProtectionTest.kt"
+      - "app/src/test/java/com/example/Phase1UnknownOutcomeResolutionTest.kt"
 
   - id: "INV-12"
     name: "No Outbox Loops on Remote Apply"

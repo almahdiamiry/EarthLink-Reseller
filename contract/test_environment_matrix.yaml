@@ -345,6 +345,16 @@ test_suites:
       - "INV-11"
       - "INV-13"
 
+  - name: "Phase1UnknownOutcomeResolutionTest"
+    path: "app/src/test/java/com/example/Phase1UnknownOutcomeResolutionTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Phase 1 4-case verification-based unknown-outcome resolution protocol test suite (INV-11 / G1)"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+      - "INV-11"
+      - "INV-13"
+
   - name: "Phase2ServerConfirmedLifecycleTest"
     path: "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
     environment: "ROBOLECTRIC"

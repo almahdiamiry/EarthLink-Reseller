@@ -360,6 +360,12 @@ interface PendingExternalOperationDao {
 
     @Query("SELECT * FROM pending_external_operations")
     suspend fun getAllOneShot(): List<PendingExternalOperation>
+
+    @Query("SELECT * FROM pending_external_operations WHERE status IN ('PENDING', 'RESOLVING') ORDER BY createdAt ASC")
+    suspend fun getUnresolvedOperations(): List<PendingExternalOperation>
+
+    @Query("SELECT * FROM pending_external_operations WHERE accountId = :accountId AND status IN ('PENDING', 'RESOLVING') LIMIT 1")
+    suspend fun getUnresolvedByAccountId(accountId: String): PendingExternalOperation?
 }
 
 @Database(

@@ -1170,6 +1170,10 @@ class LocalLedgerRepositoryImpl(
         return pendingDao.getPendingOperations()
     }
 
+    override suspend fun getUnresolvedPendingOperations(): List<PendingExternalOperation> {
+        return pendingDao.getUnresolvedOperations()
+    }
+
     override suspend fun markPendingOperationFailed(businessTransactionId: String, error: String) {
         com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
             database.withTransaction {
@@ -1190,6 +1194,234 @@ class LocalLedgerRepositoryImpl(
         com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
             database.withTransaction {
                 pendingDao.deleteByBusinessTransactionId(businessTransactionId)
+            }
+        }
+    }
+
+    override suspend fun resolvePendingOperationVerifiedSuccess(
+        businessTransactionId: String,
+        chargeNote: String?
+    ): LocalLedgerEntry? {
+        return com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
+            database.withTransaction {
+                val op = pendingDao.getByBusinessTransactionId(businessTransactionId) ?: return@withTransaction null
+                if (op.status == "COMPLETED") {
+                    return@withTransaction ledgerDao.getByIdOneShot(businessTransactionId)
+                }
+
+                pendingDao.updateStatus(businessTransactionId, "COMPLETED", System.currentTimeMillis(), null)
+
+                if (op.operationType.equals("REFILL", ignoreCase = true) || op.operationType.equals("RENEWAL", ignoreCase = true)) {
+                    val localAcc = accountDao.getByIdOneShot(op.accountId)
+                        ?: accountDao.findAccountByUsernameOrIdOneShot(op.accountId)
+
+                    if (localAcc != null) {
+                        val existing = ledgerDao.getByIdOneShot(businessTransactionId)
+                        if (existing != null) {
+                            return@withTransaction existing
+                        }
+
+                        val renewalPrice = if (op.amountIqd > 0L) op.amountIqd.toDouble() else (if (localAcc.currentPriceIqd > 0.0) localAcc.currentPriceIqd else 40000.0)
+                        val finalNote = if (!chargeNote.isNullOrBlank()) chargeNote else "[VERIFIED RENEW]"
+                        val accountWithPrice = localAcc.copy(currentPriceIqd = renewalPrice)
+                        val savedAcc = saveAccountInternal(accountWithPrice)
+                        val chargeEntry = addDebtInternal(savedAcc.id, renewalPrice, finalNote, businessTransactionId)
+                        chargeEntry
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+            }
+        }
+    }
+
+    override suspend fun resolvePendingOperationVerifiedFailure(
+        businessTransactionId: String,
+        diagnostic: String
+    ): Boolean {
+        return com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
+            database.withTransaction {
+                val op = pendingDao.getByBusinessTransactionId(businessTransactionId) ?: return@withTransaction false
+                if (op.status == "COMPLETED") {
+                    return@withTransaction false
+                }
+                pendingDao.updateStatus(businessTransactionId, "FAILED", System.currentTimeMillis(), diagnostic)
+                true
+            }
+        }
+    }
+
+    override suspend fun resolvePendingOperationInconclusive(
+        businessTransactionId: String,
+        diagnostic: String
+    ): Boolean {
+        return com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
+            database.withTransaction {
+                val op = pendingDao.getByBusinessTransactionId(businessTransactionId) ?: return@withTransaction false
+                if (op.status == "COMPLETED" || op.status == "FAILED") {
+                    return@withTransaction false
+                }
+                pendingDao.updateStatus(businessTransactionId, "PENDING", System.currentTimeMillis(), diagnostic)
+                true
+            }
+        }
+    }
+
+    override suspend fun verifyAndResolvePendingOperation(
+        businessTransactionId: String,
+        gateway: EarthlinkGateway,
+        baselineExpirationDate: String?
+    ): PendingOperationResolution {
+        val op = getPendingOperationByTransactionId(businessTransactionId)
+            ?: throw IllegalArgumentException("Pending operation $businessTransactionId not found")
+
+        if (op.status == "COMPLETED") {
+            val existingLedger = ledgerDao.getByIdOneShot(businessTransactionId)
+            return PendingOperationResolution(
+                result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
+                operation = op,
+                ledgerEntry = existingLedger,
+                diagnosticMessage = "Operation was already confirmed successful"
+            )
+        }
+        if (op.status == "FAILED") {
+            return PendingOperationResolution(
+                result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                operation = op,
+                ledgerEntry = null,
+                diagnosticMessage = op.lastError ?: "Operation was previously marked failed"
+            )
+        }
+
+        return when (op.operationType.uppercase()) {
+            "ACTIVATION" -> {
+                try {
+                    val isAvailable = gateway.checkUsernameAvailable(op.accountId)
+                    if (!isAvailable) {
+                        val ledger = resolvePendingOperationVerifiedSuccess(businessTransactionId, "[VERIFIED ACTIVATION]")
+                        val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                        PendingOperationResolution(
+                            result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
+                            operation = updatedOp,
+                            ledgerEntry = ledger,
+                            diagnosticMessage = "Subscriber existence verified on ISP"
+                        )
+                    } else {
+                        resolvePendingOperationVerifiedFailure(businessTransactionId, "Subscriber does not exist on ISP (username still available)")
+                        val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                        PendingOperationResolution(
+                            result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                            operation = updatedOp,
+                            ledgerEntry = null,
+                            diagnosticMessage = "Subscriber does not exist on ISP"
+                        )
+                    }
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    val diag = "Activation inspection inconclusive: ${e.message}"
+                    resolvePendingOperationInconclusive(businessTransactionId, diag)
+                    val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                    PendingOperationResolution(
+                        result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
+                        operation = updatedOp,
+                        ledgerEntry = null,
+                        diagnosticMessage = diag
+                    )
+                }
+            }
+            "REFILL", "RENEWAL" -> {
+                try {
+                    val searchResult = gateway.searchUsers(op.accountId, 0, 10)
+                    val matchedUser = searchResult.itemsList?.firstOrNull { it.userID.equals(op.accountId, ignoreCase = true) }
+                    val detail = if (matchedUser != null && matchedUser.userIndex > 0) {
+                        gateway.getUserDetail(matchedUser.userIndex)
+                    } else {
+                        null
+                    }
+
+                    if (detail != null) {
+                        val currentExpiration = detail.expirationDate ?: detail.accountExpirationDate ?: ""
+                        if (!baselineExpirationDate.isNullOrBlank()) {
+                            if (currentExpiration.isNotBlank() && currentExpiration != baselineExpirationDate) {
+                                val ledger = resolvePendingOperationVerifiedSuccess(businessTransactionId, "[VERIFIED RENEW]")
+                                val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                                PendingOperationResolution(
+                                    result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
+                                    operation = updatedOp,
+                                    ledgerEntry = ledger,
+                                    diagnosticMessage = "Subscription expiration extended to $currentExpiration"
+                                )
+                            } else {
+                                resolvePendingOperationVerifiedFailure(
+                                    businessTransactionId,
+                                    "Subscription expiration unchanged on ISP ($currentExpiration)"
+                                )
+                                val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                                PendingOperationResolution(
+                                    result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                                    operation = updatedOp,
+                                    ledgerEntry = null,
+                                    diagnosticMessage = "Subscription expiration unchanged on ISP"
+                                )
+                            }
+                        } else {
+                            if (detail.userActive == true || (detail.activeDaysLeft != null && (detail.activeDaysLeft.toString().toIntOrNull() ?: 0) > 0)) {
+                                val ledger = resolvePendingOperationVerifiedSuccess(businessTransactionId, "[VERIFIED RENEW]")
+                                val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                                PendingOperationResolution(
+                                    result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
+                                    operation = updatedOp,
+                                    ledgerEntry = ledger,
+                                    diagnosticMessage = "Subscription active on ISP ($currentExpiration)"
+                                )
+                            } else {
+                                val diag = "Ambiguous subscriber state on ISP without baseline expiration date"
+                                resolvePendingOperationInconclusive(businessTransactionId, diag)
+                                val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                                PendingOperationResolution(
+                                    result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
+                                    operation = updatedOp,
+                                    ledgerEntry = null,
+                                    diagnosticMessage = diag
+                                )
+                            }
+                        }
+                    } else {
+                        val diag = "Subscriber details could not be retrieved from ISP"
+                        resolvePendingOperationInconclusive(businessTransactionId, diag)
+                        val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                        PendingOperationResolution(
+                            result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
+                            operation = updatedOp,
+                            ledgerEntry = null,
+                            diagnosticMessage = diag
+                        )
+                    }
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    val diag = "Renewal inspection inconclusive: ${e.message}"
+                    resolvePendingOperationInconclusive(businessTransactionId, diag)
+                    val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                    PendingOperationResolution(
+                        result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
+                        operation = updatedOp,
+                        ledgerEntry = null,
+                        diagnosticMessage = diag
+                    )
+                }
+            }
+            else -> {
+                val diag = "Unsupported operation type: ${op.operationType}"
+                resolvePendingOperationInconclusive(businessTransactionId, diag)
+                val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                PendingOperationResolution(
+                    result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
+                    operation = updatedOp,
+                    ledgerEntry = null,
+                    diagnosticMessage = diag
+                )
             }
         }
     }
