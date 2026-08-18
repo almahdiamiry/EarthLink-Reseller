@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 12,
-    "identityHash": "4f04884b8fbb2166f198b37ef20ad9c3",
+    "identityHash": "0d858b72699dabea06b10927150d6087",
     "entities": [
       {
         "tableName": "local_accounts",
@@ -241,7 +241,7 @@
       },
       {
         "tableName": "local_ledger_entries",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `accountId` TEXT NOT NULL, `sourceExternalId` TEXT, `sourceBatchId` TEXT, `typeRaw` TEXT NOT NULL, `amountIqd` REAL NOT NULL, `debtAfterIqd` REAL NOT NULL, `note` TEXT, `occurredAt` INTEGER NOT NULL, `rawJson` TEXT, `createdAt` INTEGER NOT NULL, `isSnapshotHistory` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`accountId`) REFERENCES `local_accounts`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `accountId` TEXT NOT NULL, `sourceExternalId` TEXT, `sourceBatchId` TEXT, `typeRaw` TEXT NOT NULL, `amountIqd` REAL NOT NULL, `debtAfterIqd` REAL NOT NULL, `note` TEXT, `occurredAt` INTEGER NOT NULL, `rawJson` TEXT, `createdAt` INTEGER NOT NULL, `isSnapshotHistory` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`accountId`) REFERENCES `local_accounts`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
         "fields": [
           {
             "fieldPath": "id",
@@ -369,7 +369,7 @@
         "foreignKeys": [
           {
             "table": "local_accounts",
-            "onDelete": "CASCADE",
+            "onDelete": "NO ACTION",
             "onUpdate": "NO ACTION",
             "columns": [
               "accountId"
@@ -803,7 +803,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '4f04884b8fbb2166f198b37ef20ad9c3')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '0d858b72699dabea06b10927150d6087')"
     ]
   }
 }

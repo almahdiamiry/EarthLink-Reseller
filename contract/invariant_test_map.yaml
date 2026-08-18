@@ -25,6 +25,7 @@ invariants:
       - "app/src/test/java/com/example/Phase4RuntimeLedgerIdentityTest.kt"
       - "app/src/test/java/com/example/Phase4IdentityIntegrityAdversarialTest.kt"
       - "app/src/test/java/com/example/Phase4TwoDeviceIdentityConvergenceTest.kt"
+      - "app/src/test/java/com/example/FinancialHistoryDeletionProtectionTest.kt"
 
   - id: "INV-02"
     name: "Historical Source Immutability"
@@ -75,6 +76,8 @@ invariants:
       - "app/src/test/java/com/example/Phase4RuntimeLedgerIdentityTest.kt"
       - "app/src/test/java/com/example/Phase4IdentityIntegrityAdversarialTest.kt"
       - "app/src/test/java/com/example/Phase4TwoDeviceIdentityConvergenceTest.kt"
+      - "app/src/test/java/com/example/CredentialSessionIsolationTest.kt"
+      - "app/src/test/java/com/example/FinancialHistoryDeletionProtectionTest.kt"
       - "app/src/test/java/com/example/DeepCrossLayerInvariantsTest.kt"
       - "app/src/test/java/com/example/InfiniteCycleAdversarialIntegrationTest.kt"
 
@@ -168,6 +171,7 @@ invariants:
       - "app/src/test/java/com/example/Phase4RuntimeLedgerIdentityTest.kt"
       - "app/src/test/java/com/example/Phase4IdentityIntegrityAdversarialTest.kt"
       - "app/src/test/java/com/example/Phase4TwoDeviceIdentityConvergenceTest.kt"
+      - "app/src/test/java/com/example/FinancialHistoryDeletionProtectionTest.kt"
 
   - id: "INV-12"
     name: "No Outbox Loops on Remote Apply"

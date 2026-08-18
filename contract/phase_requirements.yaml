@@ -466,7 +466,7 @@ requirements:
       adversarial_fixture: false
       registry: false
       evidence: true
-    behavioral_test_location: "app/src/test/java/com/example/Phase5SettingsSyncUnifiedCallerTest.kt"
+    behavioral_test_location: "app/src/test/java/com/example/Phase5SettingsSyncUnifiedCallerTest.kt, app/src/test/java/com/example/FinancialHistoryDeletionProtectionTest.kt"
 
   - id: "P5-G6-REQ-02"
     phase: 5
@@ -479,6 +479,7 @@ requirements:
       adversarial_fixture: false
       registry: true
       evidence: true
+    behavioral_test_location: "app/src/test/java/com/example/CredentialSessionIsolationTest.kt"
 
   - id: "P5-G6-REQ-03"
     phase: 5
@@ -491,6 +492,7 @@ requirements:
       adversarial_fixture: false
       registry: false
       evidence: true
+    behavioral_test_location: "app/src/test/java/com/example/FinancialHistoryDeletionProtectionTest.kt"
 
   - id: "P5-G6-REQ-04"
     phase: 5
@@ -503,6 +505,7 @@ requirements:
       adversarial_fixture: true
       registry: true
       evidence: true
+    behavioral_test_location: "app/src/test/java/com/example/FinancialHistoryDeletionProtectionTest.kt"
 
   - id: "P5-G6-REQ-05"
     phase: 5

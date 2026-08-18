@@ -552,6 +552,22 @@ test_suites:
       - "INV-05"
       - "INV-11"
 
+  - name: "CredentialSessionIsolationTest"
+    path: "app/src/test/java/com/example/CredentialSessionIsolationTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Phase 5 Credential & Session Isolation Test Suite (P5-G6-REQ-02 / INV-05)"
+    associated_invariants:
+      - "INV-05"
+
+  - name: "FinancialHistoryDeletionProtectionTest"
+    path: "app/src/test/java/com/example/FinancialHistoryDeletionProtectionTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Phase 5 Financial History Deletion Protection Test Suite (P5-G6-REQ-01 / P5-G6-REQ-03 / P5-G6-REQ-04 / INV-01 / INV-05 / INV-11)"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+      - "INV-11"
+
   - name: "CoordinatorInstrumentedTest"
     path: "app/src/androidTest/java/com/example/CoordinatorInstrumentedTest.kt"
     environment: "INSTRUMENTED"
