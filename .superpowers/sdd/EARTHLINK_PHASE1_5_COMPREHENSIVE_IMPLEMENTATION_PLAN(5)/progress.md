@@ -29,5 +29,6 @@
 - [x] Task P1-09: Concurrent duplicate-initiation protection (Commit: `5551bf25c1326da0443770f35b56dfac141a3d36`)
 - [x] Task P1-10: Unknown-outcome verification/resolution protocol (Commit: `6b65fb5`)
 - [x] Task P1-11: Same-ID divergent-payload immutability protection (Commit: `a225634ceba5b8776d275a5e6834a9a21d131407`)
-- [ ] Task P1-12: Two-device convergence fixture and proof
-- [ ] Task P1-13: Phase-1 evidence collection and gate closure
+- [x] Task P1-12: Two-device convergence fixture and proof (Commit: `a97c9ef`)
+- [x] Task P1-13: Phase-1 evidence collection and gate closure (Commit: pending)
+

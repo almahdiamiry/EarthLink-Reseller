@@ -1,0 +1,161 @@
+# Canonical Requirement Compliance Matrix
+# Phase 1 Gate Closure Status
+schema_version: "2.0.0"
+governing_plan: "EARTHLINK_PHASE1_5_COMPREHENSIVE_IMPLEMENTATION_PLAN(5).md"
+timestamp: "2026-08-18T05:45:00Z"
+phase: 1
+phase_title: "Phase 1 - Core Invariant Consolidation & Outbox Durability / G1 Protection"
+status: "CLOSED (PASS)"
+
+requirements:
+  - id: "P1-G2-REQ-01"
+    name: "Outbox Durability (No Dead-Letter)"
+    source_anchor: "G2 Summary & Handover Appendix Section 3 (Outbox Durability)"
+    invariants: ["INV-13"]
+    blocking: true
+    status: "PASS"
+    production_code:
+      - "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    behavioral_tests:
+      - "app/src/test/java/com/example/Phase1OutboxDurabilityTest.kt"
+    adversarial_fixtures:
+      - "contract/forbidden_patterns.yaml:INV-13-no-terminal-dead-letter"
+    evidence_xml: "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1OutboxDurabilityTest.xml"
+    test_metrics:
+      total_tests: 8
+      failures: 0
+      errors: 0
+      skipped: 0
+
+  - id: "P1-G2-REQ-02"
+    name: "Per-Item Failure Isolation & Poison Resistance"
+    source_anchor: "G2 Summary (Per-Item Outbox & Poison Isolation)"
+    invariants: ["INV-13"]
+    blocking: true
+    status: "PASS"
+    production_code:
+      - "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    behavioral_tests:
+      - "app/src/test/java/com/example/Phase1ItemIsolationTest.kt"
+    evidence_xml: "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1ItemIsolationTest.xml"
+    test_metrics:
+      total_tests: 7
+      failures: 0
+      errors: 0
+      skipped: 0
+
+  - id: "P1-G2-REQ-03"
+    name: "Explicit Orphan Handling"
+    source_anchor: "G2 Summary & Handover Appendix Section 7 (Orphan Handling)"
+    invariants: ["INV-13"]
+    blocking: true
+    status: "PASS"
+    production_code:
+      - "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+      - "app/src/main/java/com/example/core/sync/RemoteEntityValidator.kt"
+    behavioral_tests:
+      - "app/src/test/java/com/example/Phase1OrphanHandlingTest.kt"
+    evidence_xml: "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1OrphanHandlingTest.xml"
+    test_metrics:
+      total_tests: 8
+      failures: 0
+      errors: 0
+      skipped: 0
+
+  - id: "P1-G2-REQ-04"
+    name: "Deterministic Firestore Document Identity"
+    source_anchor: "G2 Summary & Handover Appendix Section 7 (Deterministic Document ID)"
+    invariants: ["INV-01", "INV-13"]
+    blocking: true
+    status: "PASS"
+    production_code:
+      - "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt"
+      - "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    behavioral_tests:
+      - "app/src/test/java/com/example/Phase1FirestoreDocumentIdentityTest.kt"
+    evidence_xml: "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1FirestoreDocumentIdentityTest.xml"
+    test_metrics:
+      total_tests: 7
+      failures: 0
+      errors: 0
+      skipped: 0
+
+  - id: "P1-G2-REQ-05"
+    name: "Restore Transport Reconstruction"
+    source_anchor: "G2 Summary & Handover Appendix Section 3 (Backup Transport Semantics)"
+    invariants: ["INV-01", "INV-13"]
+    blocking: true
+    status: "PASS"
+    production_code:
+      - "app/src/main/java/com/example/core/backup/BackupManager.kt"
+      - "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    behavioral_tests:
+      - "app/src/test/java/com/example/Phase1RestoreTransportReconstructionTest.kt"
+    evidence_xml: "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1RestoreTransportReconstructionTest.xml"
+    test_metrics:
+      total_tests: 8
+      failures: 0
+      errors: 0
+      skipped: 0
+
+  - id: "P1-G2-REQ-06"
+    name: "Room Atomicity & Lost-ACK Cloud Idempotency"
+    source_anchor: "G1 Summary & Handover Appendix Section 2 (Direct Atomic Room & Outbox Boundary)"
+    invariants: ["INV-11", "INV-13"]
+    blocking: true
+    status: "PASS"
+    production_code:
+      - "app/src/main/java/com/example/data/repository/Repositories.kt"
+      - "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    behavioral_tests:
+      - "app/src/test/java/com/example/Phase1AtomicityAndLostAckTest.kt"
+      - "app/src/test/java/com/example/Phase1G1PendingOperationDurabilityTest.kt"
+    evidence_xml:
+      - "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1AtomicityAndLostAckTest.xml"
+      - "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1G1PendingOperationDurabilityTest.xml"
+    test_metrics:
+      total_tests: 20
+      failures: 0
+      errors: 0
+      skipped: 0
+
+  - id: "P1-G2-REQ-07"
+    name: "Multi-Device Convergence & Same-ID Immutability"
+    source_anchor: "G2 Summary & Handover Appendix Section 9 (Firestore Lost-ACK Handling)"
+    invariants: ["INV-01", "INV-06", "INV-11", "INV-13"]
+    blocking: true
+    status: "PASS"
+    production_code:
+      - "app/src/main/java/com/example/core/sync/SyncConflictResolver.kt"
+      - "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt"
+      - "app/src/main/java/com/example/core/sync/TransactionDeduplicator.kt"
+      - "app/src/main/java/com/example/core/sync/DataOperationCoordinator.kt"
+    behavioral_tests:
+      - "app/src/test/java/com/example/Phase1TwoDeviceConvergenceTest.kt"
+      - "app/src/test/java/com/example/Phase1SameIdDivergentPayloadTest.kt"
+      - "app/src/test/java/com/example/Phase1DuplicateInitiationProtectionTest.kt"
+      - "app/src/test/java/com/example/Phase1UnknownOutcomeResolutionTest.kt"
+    adversarial_fixtures:
+      - "app/src/test/java/com/example/Phase1TwoDeviceConvergenceTest.kt"
+      - "app/src/test/java/com/example/Phase1SameIdDivergentPayloadTest.kt"
+    evidence_xml:
+      - "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1TwoDeviceConvergenceTest.xml"
+      - "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1SameIdDivergentPayloadTest.xml"
+      - "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1DuplicateInitiationProtectionTest.xml"
+      - "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1UnknownOutcomeResolutionTest.xml"
+    test_metrics:
+      total_tests: 39
+      failures: 0
+      errors: 0
+      skipped: 0
+
+summary:
+  total_phase1_requirements: 7
+  total_blocking_requirements: 7
+  passed_requirements: 7
+  failed_requirements: 0
+  total_unit_tests: 97
+  unit_test_failures: 0
+  unit_test_errors: 0
+  unit_test_skipped: 0
+  verdict: "GATE CLOSED - ALL REQUIREMENTS PASS"

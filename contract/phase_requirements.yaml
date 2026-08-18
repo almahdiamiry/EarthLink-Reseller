@@ -28,6 +28,10 @@ requirements:
       evidence: true
     production_code_location: "scripts/verify_invariant_contract.py"
     behavioral_test_location: "scripts/verify_invariant_contract.py"
+    adversarial_fixture_location: "scripts/test_meta_gate_fixtures.py"
+    registry_location: "contract/invariant_contract.yaml"
+    evidence_reference: "evidence/baseline_manifest.json"
+    status: "PASS"
 
   - id: "P0-REQ-02"
     phase: 0
@@ -41,6 +45,10 @@ requirements:
       registry: true
       evidence: true
     production_code_location: "AGENTS.md"
+    adversarial_fixture_location: "scripts/test_meta_gate_fixtures.py"
+    registry_location: "contract/forbidden_patterns.yaml"
+    evidence_reference: "AGENTS.md"
+    status: "PASS"
 
   - id: "P0-REQ-03"
     phase: 0
@@ -55,6 +63,9 @@ requirements:
       evidence: true
     production_code_location: "scripts/run_verified_command.py"
     behavioral_test_location: "scripts/test_verified_runner_fixtures.py"
+    adversarial_fixture_location: "scripts/test_verified_runner_fixtures.py"
+    evidence_reference: "scripts/test_verified_runner_fixtures.py"
+    status: "PASS"
 
   - id: "P0-REQ-04"
     phase: 0
@@ -67,6 +78,9 @@ requirements:
       adversarial_fixture: false
       registry: false
       evidence: true
+    production_code_location: "docs/authority/G1-G8 Consolidated Architecture Summary.md"
+    evidence_reference: "docs/authority/G1-G8 Consolidated Architecture Summary.md"
+    status: "PASS"
 
   - id: "P0-REQ-05"
     phase: 0
@@ -81,6 +95,10 @@ requirements:
       evidence: true
     production_code_location: "scripts/verify_test_environment_matrix.py"
     behavioral_test_location: "scripts/test_meta_gate_fixtures.py"
+    adversarial_fixture_location: "scripts/test_meta_gate_fixtures.py"
+    registry_location: "contract/test_environment_matrix.yaml"
+    evidence_reference: "evidence/baseline_test_manifest.json"
+    status: "PASS"
 
   # =========================================================================
   # PHASE 1: G2 / Transport + G1 Durability Lane
@@ -97,7 +115,11 @@ requirements:
       registry: true
       evidence: true
     production_code_location: "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
-    behavioral_test_location: "app/src/test/java/com/example/Phase2ServerConfirmedLifecycleTest.kt"
+    behavioral_test_location: "app/src/test/java/com/example/Phase1OutboxDurabilityTest.kt"
+    adversarial_fixture_location: "contract/forbidden_patterns.yaml:INV-13-no-terminal-dead-letter"
+    registry_location: "contract/invariant_contract.yaml:INV-13"
+    evidence_reference: "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1OutboxDurabilityTest.xml"
+    status: "PASS"
 
   - id: "P1-G2-REQ-02"
     phase: 1
@@ -111,6 +133,9 @@ requirements:
       registry: false
       evidence: true
     production_code_location: "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    behavioral_test_location: "app/src/test/java/com/example/Phase1ItemIsolationTest.kt"
+    evidence_reference: "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1ItemIsolationTest.xml"
+    status: "PASS"
 
   - id: "P1-G2-REQ-03"
     phase: 1
@@ -123,6 +148,11 @@ requirements:
       adversarial_fixture: false
       registry: false
       evidence: true
+    production_code_location: "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt, app/src/main/java/com/example/core/sync/RemoteEntityValidator.kt"
+    behavioral_test_location: "app/src/test/java/com/example/Phase1OrphanHandlingTest.kt"
+    registry_location: "contract/invariant_contract.yaml:INV-13"
+    evidence_reference: "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1OrphanHandlingTest.xml"
+    status: "PASS"
 
   - id: "P1-G2-REQ-04"
     phase: 1
@@ -135,6 +165,11 @@ requirements:
       adversarial_fixture: false
       registry: true
       evidence: true
+    production_code_location: "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt, app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    behavioral_test_location: "app/src/test/java/com/example/Phase1FirestoreDocumentIdentityTest.kt"
+    registry_location: "contract/invariant_contract.yaml:INV-01,INV-13"
+    evidence_reference: "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1FirestoreDocumentIdentityTest.xml"
+    status: "PASS"
 
   - id: "P1-G2-REQ-05"
     phase: 1
@@ -147,6 +182,11 @@ requirements:
       adversarial_fixture: false
       registry: false
       evidence: true
+    production_code_location: "app/src/main/java/com/example/core/backup/BackupManager.kt, app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    behavioral_test_location: "app/src/test/java/com/example/Phase1RestoreTransportReconstructionTest.kt"
+    registry_location: "contract/invariant_contract.yaml:INV-01,INV-13"
+    evidence_reference: "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1RestoreTransportReconstructionTest.xml"
+    status: "PASS"
 
   - id: "P1-G2-REQ-06"
     phase: 1
@@ -159,6 +199,11 @@ requirements:
       adversarial_fixture: false
       registry: true
       evidence: true
+    production_code_location: "app/src/main/java/com/example/data/repository/Repositories.kt, app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+    behavioral_test_location: "app/src/test/java/com/example/Phase1AtomicityAndLostAckTest.kt, app/src/test/java/com/example/Phase1G1PendingOperationDurabilityTest.kt"
+    registry_location: "contract/invariant_contract.yaml:INV-11,INV-13"
+    evidence_reference: "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1AtomicityAndLostAckTest.xml, app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1G1PendingOperationDurabilityTest.xml"
+    status: "PASS"
 
   - id: "P1-G2-REQ-07"
     phase: 1
@@ -171,6 +216,12 @@ requirements:
       adversarial_fixture: true
       registry: false
       evidence: true
+    production_code_location: "app/src/main/java/com/example/core/sync/SyncConflictResolver.kt, app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt, app/src/main/java/com/example/core/sync/TransactionDeduplicator.kt, app/src/main/java/com/example/core/sync/DataOperationCoordinator.kt"
+    behavioral_test_location: "app/src/test/java/com/example/Phase1TwoDeviceConvergenceTest.kt, app/src/test/java/com/example/Phase1SameIdDivergentPayloadTest.kt, app/src/test/java/com/example/Phase1DuplicateInitiationProtectionTest.kt, app/src/test/java/com/example/Phase1UnknownOutcomeResolutionTest.kt"
+    adversarial_fixture_location: "app/src/test/java/com/example/Phase1TwoDeviceConvergenceTest.kt, app/src/test/java/com/example/Phase1SameIdDivergentPayloadTest.kt"
+    registry_location: "contract/invariant_contract.yaml:INV-01,INV-06,INV-11,INV-13"
+    evidence_reference: "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1TwoDeviceConvergenceTest.xml, app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1SameIdDivergentPayloadTest.xml, app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1DuplicateInitiationProtectionTest.xml, app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1UnknownOutcomeResolutionTest.xml"
+    status: "PASS"
 
   # =========================================================================
   # PHASE 2: G3 / Restore & Import

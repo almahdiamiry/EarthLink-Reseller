@@ -2,7 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
-The format follows Keep a Changelog.
+## [1.81.0] - 2026-08-18
+### Phase 1: Task P1-13 — Phase-1 Evidence Collection and Gate Closure
+- **100% Machine Compliance Verification**: Updated `contract/phase_requirements.yaml` with explicit production code paths, behavioral test suites, JUnit XML evidence paths, and `PASS` status for all 7 Phase 1 requirements (`P1-G2-REQ-01` through `P1-G2-REQ-07`).
+- **Canonical Compliance Matrix**: Established `contract/compliance_matrix.yaml` mapping all Phase 1 requirements to test metrics, invariants, and gate closure results.
+- **Automated Phase Compliance Verifier**: Created `scripts/verify_phase_compliance.py` validating requirement paths, XML execution metrics (tests > 0, 0 failures, 0 errors, 0 skips), and exit status.
+- **Phase 1 Closure Evidence Bundle & Memo**: Created `evidence/phase1_completion.json` and `evidence/phase-1-closure-memo.md` establishing authoritative proof of Phase 1 gate closure with 97/97 Phase 1 tests passing and 135/135 total test corpus passing.
+
+## [1.80.0] - 2026-08-18
+### Phase 1: Task P1-12 — Two-Device Convergence Fixture and Proof Suite (INV-01 / INV-06 / INV-11 / INV-13)
+- **Multi-Device Convergence Test Suite**: Implemented `Phase1TwoDeviceConvergenceTest.kt` simulating 2-device concurrency, disjoint offline operations, interleaved cloud synchronization, same-account balance reconciliation, and network partition recovery without transaction loss or divergent balance states.
+- **Contract & Matrix Mapping**: Mapped `Phase1TwoDeviceConvergenceTest` in `contract/invariant_contract.yaml`, `contract/invariant_test_map.yaml`, and `contract/test_environment_matrix.yaml`.
 
 ## [1.79.0] - 2026-08-18
 ### Phase 1: Task P1-11 — Same-ID Divergent-Payload Immutability Protection (INV-01 / INV-11 / P1-11)
