@@ -241,6 +241,7 @@ invariants:
       - "app/src/test/java/com/example/Phase1UnknownOutcomeResolutionTest.kt"
       - "app/src/test/java/com/example/Phase1SameIdDivergentPayloadTest.kt"
       - "app/src/test/java/com/example/Phase1TwoDeviceConvergenceTest.kt"
+      - "app/src/test/java/com/example/Phase2RestoreTransactionBoundaryTest.kt"
     structural_checks:
       - check_id: "RC-4-coordinator-bypass"
         description: "Forbidden currentMode bypass check in BackupManager"
@@ -311,6 +312,7 @@ invariants:
       - "app/src/main/java/com/example/core/database/AppDatabase.kt"
     required_behavior_tests:
       - "app/src/test/java/com/example/ResolveLocalVersionTest.kt"
+      - "app/src/test/java/com/example/Phase2RestoreTransactionBoundaryTest.kt"
     structural_checks:
       - check_id: "INV-14-fail-closed-encryption"
         description: "Unrecoverable database keys must throw immediately without creating new keys"

@@ -189,6 +189,19 @@ class UtowerImporter(
         }
     }
 
+    suspend fun importFromPreviewWithDecision(
+        preview: UtowerImportPreview,
+        fileName: String,
+        fileHash: String,
+        decision: RestoreMergeDecision,
+        shouldReplace: Boolean = false
+    ): ImportBatch = withContext(Dispatchers.IO) {
+        if (!decision.isValidFor(fileHash, decision.selectedBaselineId)) {
+            throw IllegalStateException("Import aborted: RestoreMergeDecision is invalidated, unapproved, or mismatched file hash.")
+        }
+        importFromPreview(preview, fileName, fileHash, shouldReplace)
+    }
+
     suspend fun importFromPreview(
         preview: UtowerImportPreview,
         fileName: String,

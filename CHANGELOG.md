@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.82.0] - 2026-08-18
+### Phase 2: Task P2-01 — Define the Final Restore/Import Business Transaction Boundary & Restore Decision Contract (P2-G3-REQ-01 / P2-G3-REQ-03 / INV-11 / INV-14)
+- **Restore Decision Contract (`Models.kt`)**: Defined deterministic `RestoreMergeDecision` and `ConflictResolutionChoice` models encapsulating `artifactIdentity`, `selectedBaselineId`, `selectedLineageScope`, `conflictDecisions`, `targetDatasetSummary`, and `isApproved`. Added strict decision invalidation checks (`isValidFor`, `isInvalidated`) ensuring that any modification to artifact identity or source baseline state invalidates the decision and halts execution.
+- **Strict Pre-Commit & Transaction Boundary Separation (`BackupManager.kt` & `UtowerImporter.kt`)**: Enforced strict segregation of restore and import phases. All network calls, UI interactions, file hashing, ZIP extraction, decryption candidate evaluations, pre-restore safety backups, and conflict evaluations execute strictly outside the Room write transaction. The final commit occurs inside an atomic ACID `liveDb.withTransaction` block containing purely local database mutations with zero network/Firebase side effects.
+- **Decision Preparation & Verification APIs (`BackupManager.kt` & `UtowerImporter.kt`)**: Added `prepareRestoreMergeDecision` and `restoreWithDecision` to `BackupManager.kt`, and `importFromPreviewWithDecision` to `UtowerImporter.kt`, ensuring pre-transaction decision validation and unapproved/tampered decision fail-closed rejection.
+- **Comprehensive Transaction Boundary Test Suite**: Implemented `Phase2RestoreTransactionBoundaryTest.kt` with 8 exhaustive unit and structural tests verifying decision contract modeling, invalidation rules, pre-commit external boundary execution, unapproved/cancelled decision zero-mutation safety, artifact hash tampering rejection, deterministic ACID transaction commit, fail-closed encryption key recovery (INV-14), Utower import decision validation, and structural verification prohibiting external/network calls inside Room transaction blocks.
+- **Contract & Matrix Mapping**: Registered `Phase2RestoreTransactionBoundaryTest` under `INV-11` and `INV-14` in `contract/invariant_contract.yaml`, `contract/invariant_test_map.yaml`, and `contract/test_environment_matrix.yaml`.
+
 ## [1.81.0] - 2026-08-18
 ### Phase 1: Task P1-13 — Phase-1 Evidence Collection and Gate Closure
 - **100% Machine Compliance Verification**: Updated `contract/phase_requirements.yaml` with explicit production code paths, behavioral test suites, JUnit XML evidence paths, and `PASS` status for all 7 Phase 1 requirements (`P1-G2-REQ-01` through `P1-G2-REQ-07`).

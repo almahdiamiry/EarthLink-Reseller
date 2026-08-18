@@ -348,13 +348,83 @@ object BackupManager {
         }
     }
 
+    fun calculateFileHash(file: File): String {
+        return try {
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+            FileInputStream(file).use { fis ->
+                val buf = ByteArray(8192)
+                var n: Int
+                while (fis.read(buf).also { n = it } != -1) {
+                    digest.update(buf, 0, n)
+                }
+            }
+            digest.digest().joinToString("") { "%02x".format(it) }
+        } catch (_: Throwable) {
+            "unknown_hash"
+        }
+    }
+
+    /**
+     * Prepares a deterministic RestoreMergeDecision outside any Room write transaction (P2-G3-REQ-01 / P2-G3-REQ-03 / INV-11).
+     * All parsing, checksum calculation, and candidate evaluation occur here without holding or modifying live database state.
+     */
+    suspend fun prepareRestoreMergeDecision(
+        context: Context,
+        backupFile: File,
+        selectedBaselineId: String = "BACKUP_SNAPSHOT",
+        selectedLineageScope: String = "COMPLETE_LINEAGE",
+        conflictDecisions: Map<String, com.example.core.model.ConflictResolutionChoice> = emptyMap(),
+        isApproved: Boolean = false
+    ): com.example.core.model.RestoreMergeDecision = withContext(Dispatchers.IO) {
+        val artifactHash = calculateFileHash(backupFile)
+        val stats = getCurrentDatabaseStats(context)
+        val summary = "Artifact: ${backupFile.name} (Hash: ${artifactHash.take(8)}), LiveAccounts: ${stats.accountCount}, LiveLedgers: ${stats.ledgerCount}"
+        com.example.core.model.RestoreMergeDecision(
+            artifactIdentity = artifactHash,
+            selectedBaselineId = selectedBaselineId,
+            selectedLineageScope = selectedLineageScope,
+            conflictDecisions = conflictDecisions,
+            targetDatasetSummary = summary,
+            isApproved = isApproved
+        )
+    }
+
+    suspend fun restoreWithDecision(
+        context: Context,
+        backupFile: File,
+        decision: com.example.core.model.RestoreMergeDecision,
+        force: Boolean = false
+    ): Boolean = withContext(Dispatchers.IO) {
+        val artifactHash = calculateFileHash(backupFile)
+        if (!decision.isValidFor(artifactHash, decision.selectedBaselineId)) {
+            Log.e(TAG, "Restore aborted: RestoreMergeDecision is invalidated, unapproved, or mismatched artifact hash.")
+            return@withContext false
+        }
+        restoreBackupZipInternal(context, backupFile, decision, force)
+    }
+
     suspend fun restoreBackupZip(context: Context, backupFile: File, force: Boolean = false): Boolean = withContext(Dispatchers.IO) {
+        restoreBackupZipInternal(context, backupFile, decision = null, force = force)
+    }
+
+    private suspend fun restoreBackupZipInternal(
+        context: Context,
+        backupFile: File,
+        decision: com.example.core.model.RestoreMergeDecision?,
+        force: Boolean = false
+    ): Boolean = withContext(Dispatchers.IO) {
         com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.RESTORE) {
             val app = context.applicationContext as? EarthlinkApp
             val currentPassphrase = try {
                 app?.preferenceManager?.getDatabasePassphrase() ?: ""
             } catch (_: Throwable) {
                 ""
+            }
+
+            val artifactHash = calculateFileHash(backupFile)
+            if (decision != null && !decision.isValidFor(artifactHash, decision.selectedBaselineId)) {
+                Log.e(TAG, "Restore aborted: RestoreMergeDecision is invalidated, unapproved, or mismatched artifact hash.")
+                return@withOperation false
             }
 
             // Safety check: verify no unsynced outbox entries exist unless force restore is explicitly requested
@@ -378,20 +448,6 @@ object BackupManager {
                 }
             } catch (_: Throwable) {
                 emptyList()
-            }
-
-            val artifactHash = try {
-                val digest = java.security.MessageDigest.getInstance("SHA-256")
-                FileInputStream(backupFile).use { fis ->
-                    val buf = ByteArray(8192)
-                    var n: Int
-                    while (fis.read(buf).also { n = it } != -1) {
-                        digest.update(buf, 0, n)
-                    }
-                }
-                digest.digest().joinToString("") { "%02x".format(it) }
-            } catch (_: Throwable) {
-                "unknown_hash"
             }
 
             val lineageSnapshotToken = "abstract_lineage_${System.currentTimeMillis()}_${java.util.UUID.randomUUID()}"

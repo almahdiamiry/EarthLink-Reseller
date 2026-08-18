@@ -28,8 +28,15 @@
 - [x] Task P1-08: Room atomicity and Lost-ACK idempotency proof (Commit: `726258d77f6954916c1febacc90ff0f51d9c7809`)
 - [x] Task P1-09: Concurrent duplicate-initiation protection (Commit: `5551bf25c1326da0443770f35b56dfac141a3d36`)
 - [x] Task P1-10: Unknown-outcome verification/resolution protocol (Commit: `6b65fb5`)
-- [x] Task P1-11: Same-ID divergent-payload immutability protection (Commit: `a225634ceba5b8776d275a5e6834a9a21d131407`)
-- [x] Task P1-12: Two-device convergence fixture and proof (Commit: `a97c9ef`)
-- [x] Task P1-13: Phase-1 evidence collection and gate closure (Commit: `e5a2dab`)
+- [x] Task P1-11: Same-ID divergent-payload immutability protection (Commit: `b0ad87d360c3e46bea43c5b98cb084b0c4177f3d`)
+- [x] Task P1-12: Two-device convergence fixture and proof (Commit: `a97c9ef59d77f4c1e9c070478bfcf1ef84809497`)
+- [x] Task P1-13: Phase-1 evidence collection and gate closure (Commit: `3121a271862860c00b87a7b41b6e6a1a5974a86e`)
 
-
+### Phase 2: G3 Restore & Import
+- [x] Task P2-01: Define the final Restore/Import business transaction boundary
+- [ ] Task P2-02: Implement Restore Merge as a complete-lineage decision operation
+- [ ] Task P2-03: Make current-position reconstruction deterministic
+- [ ] Task P2-04: Harden Restore Replace
+- [ ] Task P2-05: Harden Import as Direct Atomic Room
+- [ ] Task P2-06: Restore/Import transport reconstruction
+- [ ] Task P2-07: Phase 2 evidence and provisional exit gate

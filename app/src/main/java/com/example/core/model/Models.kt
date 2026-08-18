@@ -540,4 +540,46 @@ class DivergentPayloadConflictException(
     cause: Throwable? = null
 ) : IllegalStateException(message, cause)
 
+/**
+ * ConflictResolutionChoice: Deterministic resolution choice for conflicting entities or lineages during Restore/Import.
+ */
+enum class ConflictResolutionChoice {
+    USE_LIVE,
+    USE_BACKUP,
+    REPLACE,
+    KEEP_BOTH,
+    FAIL_ON_CONFLICT
+}
+
+/**
+ * RestoreMergeDecision: Deterministic operator-approved decision contract for Restore and Import operations (P2-G3-REQ-01 / P2-G3-REQ-03 / INV-11).
+ * Encapsulates all pre-commit conflict resolutions, lineage scope, and target dataset identity.
+ * Strictly evaluated and verified outside the final Room write transaction.
+ */
+@JsonClass(generateAdapter = true)
+data class RestoreMergeDecision(
+    val artifactIdentity: String,
+    val selectedBaselineId: String,
+    val selectedLineageScope: String,
+    val conflictDecisions: Map<String, ConflictResolutionChoice> = emptyMap(),
+    val targetDatasetSummary: String = "",
+    val isApproved: Boolean = false,
+    val createdAt: Long = System.currentTimeMillis()
+) {
+    /**
+     * Invalidation rule: if backup artifact identity (hash) or source baseline changes,
+     * or if operator has not approved the decision, the decision is invalidated and must be recomputed.
+     */
+    fun isValidFor(currentArtifactIdentity: String, currentBaselineId: String): Boolean {
+        return isApproved &&
+                artifactIdentity.equals(currentArtifactIdentity, ignoreCase = true) &&
+                selectedBaselineId == currentBaselineId
+    }
+
+    fun isInvalidated(currentArtifactIdentity: String, currentBaselineId: String): Boolean {
+        return !isValidFor(currentArtifactIdentity, currentBaselineId)
+    }
+}
+
+
 

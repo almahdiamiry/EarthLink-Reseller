@@ -407,6 +407,14 @@ test_suites:
       - "INV-08"
       - "INV-10"
 
+  - name: "Phase2RestoreTransactionBoundaryTest"
+    path: "app/src/test/java/com/example/Phase2RestoreTransactionBoundaryTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Phase 2 Restore/Import Transaction Boundary & Decision Contract test suite (P2-G3-REQ-01 / P2-G3-REQ-03 / INV-11 / INV-14)"
+    associated_invariants:
+      - "INV-11"
+      - "INV-14"
+
   - name: "CoordinatorInstrumentedTest"
     path: "app/src/androidTest/java/com/example/CoordinatorInstrumentedTest.kt"
     environment: "INSTRUMENTED"

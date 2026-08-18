@@ -130,6 +130,7 @@ invariants:
       - "app/src/test/java/com/example/Phase1UnknownOutcomeResolutionTest.kt"
       - "app/src/test/java/com/example/Phase1SameIdDivergentPayloadTest.kt"
       - "app/src/test/java/com/example/Phase1TwoDeviceConvergenceTest.kt"
+      - "app/src/test/java/com/example/Phase2RestoreTransactionBoundaryTest.kt"
 
   - id: "INV-12"
     name: "No Outbox Loops on Remote Apply"
@@ -170,6 +171,7 @@ invariants:
     tests:
       - "app/src/test/java/com/example/KeyRecoveryAndFailClosedEncryptionTest.kt"
       - "app/src/test/java/com/example/SecurityFallbackGuardTest.kt"
+      - "app/src/test/java/com/example/Phase2RestoreTransactionBoundaryTest.kt"
 
   - id: "INV-15"
     name: "Fail-Closed Release Signing"
