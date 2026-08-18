@@ -209,7 +209,8 @@ class UtowerImporter(
         shouldReplace: Boolean = false
     ): ImportBatch = withContext(Dispatchers.IO) {
         DataOperationCoordinator.withOperation(DataOperationMode.IMPORT) {
-            var batchId = if (preview.parsedSubscribers.isNotEmpty()) preview.parsedSubscribers[0].sourceBatchId ?: UUID.randomUUID().toString() else UUID.randomUUID().toString()
+            val existingBatch = appDatabase.importBatchDao().getByFileHash(fileHash)
+            var batchId = existingBatch?.id ?: UUID.nameUUIDFromBytes(fileHash.toByteArray(Charsets.UTF_8)).toString()
 
             val session = ImportSession(
                 appDatabase = appDatabase,
@@ -324,7 +325,9 @@ class UtowerImporter(
 
     suspend fun importFromFile(sourceFile: File, shouldReplace: Boolean = false): ImportResult = withContext(Dispatchers.IO) {
         DataOperationCoordinator.withOperation(DataOperationMode.IMPORT) {
-            var batchId = UUID.randomUUID().toString()
+            val hash = calculateHash(sourceFile)
+            val existingBatch = appDatabase.importBatchDao().getByFileHash(hash)
+            var batchId = existingBatch?.id ?: UUID.nameUUIDFromBytes(hash.toByteArray(Charsets.UTF_8)).toString()
             val tempDir = File(context.cacheDir, "utower_import_${System.currentTimeMillis()}").apply { mkdirs() }
             var failedFile: String? = null
 
@@ -352,7 +355,6 @@ class UtowerImporter(
                 failedFile = dbFile.name
 
                 Log.d("UtowerImporter", "Found database at ${dbFile.absolutePath}")
-                val hash = calculateHash(sourceFile)
 
                 if (dbFile.name.endsWith(".json")) {
                     Log.d("UtowerImporter", "Processing as JSON file via true streaming JsonReader - PASS 1 (Subscribers)")

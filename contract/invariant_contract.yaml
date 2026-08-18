@@ -30,6 +30,7 @@ invariants:
       - "app/src/test/java/com/example/Phase3RestoreObligationLineageLinearizationTest.kt"
       - "app/src/test/java/com/example/Phase3RemoteOrderingAdversarialTest.kt"
       - "app/src/test/java/com/example/Phase4RuntimeLedgerIdentityTest.kt"
+      - "app/src/test/java/com/example/Phase4IdentityIntegrityAdversarialTest.kt"
     structural_checks:
       - check_id: "INV-01-tier-isolation"
         description: "Verify state tier definitions and isolation"
@@ -118,6 +119,7 @@ invariants:
       - "app/src/test/java/com/example/Phase3RestoreObligationLineageLinearizationTest.kt"
       - "app/src/test/java/com/example/Phase3RemoteOrderingAdversarialTest.kt"
       - "app/src/test/java/com/example/Phase4RuntimeLedgerIdentityTest.kt"
+      - "app/src/test/java/com/example/Phase4IdentityIntegrityAdversarialTest.kt"
     structural_checks:
       - check_id: "INV-05-single-sync-authority"
         description: "All remote writes and sync routing pass through canonical synchronization channel"
@@ -148,6 +150,7 @@ invariants:
       - "app/src/test/java/com/example/Phase2CurrentPositionReconstructionTest.kt"
       - "app/src/test/java/com/example/Phase3SameLineageFinancialMutationTest.kt"
       - "app/src/test/java/com/example/Phase3RemoteOrderingAdversarialTest.kt"
+      - "app/src/test/java/com/example/Phase4IdentityIntegrityAdversarialTest.kt"
     structural_checks:
       - check_id: "RC-1-remote-version-fallback"
         description: "Forbidden local timestamp fallback when remote version is absent"
@@ -272,6 +275,7 @@ invariants:
       - "app/src/test/java/com/example/Phase3RestoreObligationLineageLinearizationTest.kt"
       - "app/src/test/java/com/example/Phase3RemoteOrderingAdversarialTest.kt"
       - "app/src/test/java/com/example/Phase4RuntimeLedgerIdentityTest.kt"
+      - "app/src/test/java/com/example/Phase4IdentityIntegrityAdversarialTest.kt"
     structural_checks:
       - check_id: "RC-4-coordinator-bypass"
         description: "Forbidden currentMode bypass check in BackupManager"

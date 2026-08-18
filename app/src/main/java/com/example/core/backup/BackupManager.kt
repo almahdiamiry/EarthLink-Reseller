@@ -234,8 +234,32 @@ object BackupManager {
         val artifactPath: String,
         val artifactHash: String,
         val lineageSnapshotToken: String,
+        val initialGeneration: Long = 1L,
         val unresolvedObligations: List<com.example.core.model.SyncOutbox>
     )
+
+    suspend fun captureRestoreTransportSnapshot(
+        liveDb: AppDatabase,
+        backupFile: File
+    ): RestoreTransportSnapshot {
+        val artifactHash = calculateFileHash(backupFile)
+        val preRestoreUnresolved = try {
+            liveDb.syncOutboxDao().getAllOneShot().filter {
+                it.status in listOf("pending", "syncing", "failed")
+            }
+        } catch (_: Throwable) {
+            emptyList()
+        }
+        val initialGen = try { liveDb.getGeneration() } catch (_: Throwable) { 1L }
+        val lineageSnapshotToken = "gen_${initialGen}_lineage_${System.currentTimeMillis()}_${java.util.UUID.randomUUID()}"
+        return RestoreTransportSnapshot(
+            artifactPath = backupFile.absolutePath,
+            artifactHash = artifactHash,
+            lineageSnapshotToken = lineageSnapshotToken,
+            initialGeneration = initialGen,
+            unresolvedObligations = preRestoreUnresolved
+        )
+    }
 
     /**
      * Executes the Transport Reconstruction Decision Table (P1-G2-REQ-05 / INV-13).
@@ -254,8 +278,17 @@ object BackupManager {
         val now = System.currentTimeMillis()
         for (ob in unresolvedObligations) {
             val targetExists = when (ob.entityType) {
-                "local_accounts", "accounts" -> liveDb.localAccountDao().getByIdOneShot(ob.entityId) != null
-                "local_ledger_entries", "ledger_entries" -> liveDb.localLedgerEntryDao().getByIdOneShot(ob.entityId) != null
+                "local_accounts", "accounts" -> {
+                    liveDb.localAccountDao().getByIdOneShot(ob.entityId) != null
+                }
+                "local_ledger_entries", "ledger_entries" -> {
+                    val entry = liveDb.localLedgerEntryDao().getByIdOneShot(ob.entityId)
+                    if (entry != null) {
+                        liveDb.localAccountDao().getByIdOneShot(entry.accountId) != null
+                    } else {
+                        false
+                    }
+                }
                 "import_batches", "batches" -> liveDb.importBatchDao().getById(ob.entityId) != null
                 "audit_logs", "audit_log" -> liveDb.auditLogDao().getById(ob.entityId) != null
                 else -> false
@@ -436,9 +469,16 @@ object BackupManager {
         liveDb: AppDatabase,
         backupDb: AppDatabase,
         unresolvedObligations: List<com.example.core.model.SyncOutbox> = emptyList(),
-        passphrase: String = ""
+        passphrase: String = "",
+        initialGeneration: Long? = null
     ) {
-        val nextGen = liveDb.syncMetadataDao().getGeneration() + 1L
+        val currentGen = liveDb.syncMetadataDao().getGeneration()
+        if (initialGeneration != null && initialGeneration != currentGen) {
+            throw IllegalStateException(
+                "TOCTOU generation shift detected during Restore Replace: captured $initialGeneration != current $currentGen"
+            )
+        }
+        val nextGen = currentGen + 1L
 
         // Exact Snapshot Restore: clear business tables and replace with exact backup snapshot
         liveDb.localLedgerEntryDao().deleteAll()
@@ -897,21 +937,7 @@ object BackupManager {
             } catch (_: Throwable) {
                 AppDatabase.getDatabase(context, ByteArray(0))
             }
-            val preRestoreUnresolved = try {
-                liveDbInstance.syncOutboxDao().getAllOneShot().filter {
-                    it.status in listOf("pending", "syncing", "failed")
-                }
-            } catch (_: Throwable) {
-                emptyList()
-            }
-
-            val lineageSnapshotToken = "abstract_lineage_${System.currentTimeMillis()}_${java.util.UUID.randomUUID()}"
-            val restoreSnapshot = RestoreTransportSnapshot(
-                artifactPath = backupFile.absolutePath,
-                artifactHash = artifactHash,
-                lineageSnapshotToken = lineageSnapshotToken,
-                unresolvedObligations = preRestoreUnresolved
-            )
+            val restoreSnapshot = captureRestoreTransportSnapshot(liveDbInstance, backupFile)
 
             try {
                 val dailyBackupsDir = getBackupsDirectory(context)
@@ -1026,8 +1052,16 @@ object BackupManager {
                         AppDatabase.getDatabase(context, ByteArray(0))
                     }
                     liveDb.withTransaction {
+                        val currentGen = liveDb.syncMetadataDao().getGeneration()
+                        if (restoreSnapshot.initialGeneration != currentGen) {
+                            throw IllegalStateException(
+                                "TOCTOU generation shift detected during Restore Merge: captured ${restoreSnapshot.initialGeneration} != current $currentGen"
+                            )
+                        }
+
                         executeRestoreMergeInternal(liveDb, backupDb!!, decision)
 
+                        liveDb.syncOutboxDao().deleteAll()
                         reconstructTransportState(liveDb, restoreSnapshot.unresolvedObligations)
 
                         val now = System.currentTimeMillis()
@@ -1106,27 +1140,13 @@ object BackupManager {
                 }
             }
 
-            // Snapshot unresolved obligations prior to restore (P1-G2-REQ-05 / INV-13)
+            // Snapshot unresolved obligations and generation prior to restore (P1-G2-REQ-05 / P3-G4-REQ-01 / INV-13)
             val liveDbInstance = try {
                 app?.database ?: AppDatabase.getDatabase(context, currentPassphrase.toByteArray(Charsets.UTF_8))
             } catch (_: Throwable) {
                 AppDatabase.getDatabase(context, ByteArray(0))
             }
-            val preRestoreUnresolved = try {
-                liveDbInstance.syncOutboxDao().getAllOneShot().filter {
-                    it.status in listOf("pending", "syncing", "failed")
-                }
-            } catch (_: Throwable) {
-                emptyList()
-            }
-
-            val lineageSnapshotToken = "abstract_lineage_${System.currentTimeMillis()}_${java.util.UUID.randomUUID()}"
-            val restoreSnapshot = RestoreTransportSnapshot(
-                artifactPath = backupFile.absolutePath,
-                artifactHash = artifactHash,
-                lineageSnapshotToken = lineageSnapshotToken,
-                unresolvedObligations = preRestoreUnresolved
-            )
+            val restoreSnapshot = captureRestoreTransportSnapshot(liveDbInstance, backupFile)
 
         // 0. Force-create persistent pre-restore backup in EarthlinkBackups directory
         var preRestoreSuccess = false
@@ -1338,7 +1358,8 @@ object BackupManager {
                             liveDb = liveDb,
                             backupDb = backupDb!!,
                             unresolvedObligations = restoreSnapshot.unresolvedObligations,
-                            passphrase = currentPassphrase
+                            passphrase = currentPassphrase,
+                            initialGeneration = restoreSnapshot.initialGeneration
                         )
                     }
 
