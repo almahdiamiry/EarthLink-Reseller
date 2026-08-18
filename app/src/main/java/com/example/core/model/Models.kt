@@ -531,3 +531,13 @@ data class PendingOperationResolution(
     val diagnosticMessage: String = ""
 )
 
+/**
+ * Thrown when a financial transaction or ledger entry write reuses an existing transaction ID
+ * but contains a divergent payload (differing amount, account, or type), strictly violating ledger immutability (INV-01 / INV-11).
+ */
+class DivergentPayloadConflictException(
+    message: String,
+    cause: Throwable? = null
+) : IllegalStateException(message, cause)
+
+

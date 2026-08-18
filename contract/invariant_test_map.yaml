@@ -14,6 +14,7 @@ invariants:
       - "app/src/test/java/com/example/ProductionExecutableInvariantsTest.kt"
       - "app/src/test/java/com/example/FinalTestMatrixCertificationTest.kt"
       - "app/src/test/java/com/example/Phase1FirestoreDocumentIdentityTest.kt"
+      - "app/src/test/java/com/example/Phase1SameIdDivergentPayloadTest.kt"
 
   - id: "INV-02"
     name: "Historical Source Immutability"
@@ -125,6 +126,7 @@ invariants:
       - "app/src/test/java/com/example/Phase1AtomicityAndLostAckTest.kt"
       - "app/src/test/java/com/example/Phase1DuplicateInitiationProtectionTest.kt"
       - "app/src/test/java/com/example/Phase1UnknownOutcomeResolutionTest.kt"
+      - "app/src/test/java/com/example/Phase1SameIdDivergentPayloadTest.kt"
 
   - id: "INV-12"
     name: "No Outbox Loops on Remote Apply"

@@ -24,10 +24,10 @@
 - [x] Task P1-04: Implement explicit orphan handling
 - [x] Task P1-05: Enforce deterministic Firestore document identity
 - [x] Task P1-06: Define and implement the Restore/Backup transport reconstruction decision table
-- [x] Task P1-07: Implement G1 pending-operation durability and call-path integration
-- [x] Task P1-08: Room atomicity and Lost-ACK idempotency proof
-- [x] Task P1-09: Concurrent duplicate-initiation protection
-- [ ] Task P1-10: Unknown-outcome verification/resolution protocol
-- [ ] Task P1-11: Same-ID divergent-payload immutability protection
+- [x] Task P1-07: Implement G1 pending-operation durability and call-path integration (Commit: `37cf26b32b6f9e52bf2304bd6a5e8b811d853e2a`)
+- [x] Task P1-08: Room atomicity and Lost-ACK idempotency proof (Commit: `726258d77f6954916c1febacc90ff0f51d9c7809`)
+- [x] Task P1-09: Concurrent duplicate-initiation protection (Commit: `5551bf25c1326da0443770f35b56dfac141a3d36`)
+- [x] Task P1-10: Unknown-outcome verification/resolution protocol (Commit: `6b65fb5`)
+- [x] Task P1-11: Same-ID divergent-payload immutability protection
 - [ ] Task P1-12: Two-device convergence fixture and proof
 - [ ] Task P1-13: Phase-1 evidence collection and gate closure

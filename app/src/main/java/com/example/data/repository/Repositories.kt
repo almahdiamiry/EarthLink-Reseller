@@ -1216,12 +1216,23 @@ class LocalLedgerRepositoryImpl(
                         ?: accountDao.findAccountByUsernameOrIdOneShot(op.accountId)
 
                     if (localAcc != null) {
+                        val renewalPrice = if (op.amountIqd > 0L) op.amountIqd.toDouble() else (if (localAcc.currentPriceIqd > 0.0) localAcc.currentPriceIqd else 40000.0)
                         val existing = ledgerDao.getByIdOneShot(businessTransactionId)
                         if (existing != null) {
-                            return@withTransaction existing
+                            val isIdentical = existing.accountId == localAcc.id &&
+                                    existing.typeRaw == "took" &&
+                                    kotlin.math.abs(existing.amountIqd - renewalPrice) < 0.0001
+                            if (isIdentical) {
+                                return@withTransaction existing
+                            } else {
+                                throw DivergentPayloadConflictException(
+                                    "Same-ID divergent payload conflict for verified pending operation $businessTransactionId: " +
+                                    "existing={accountId=${existing.accountId}, type=${existing.typeRaw}, amount=${existing.amountIqd}}, " +
+                                    "incoming={accountId=${localAcc.id}, type=took, amount=$renewalPrice}"
+                                )
+                            }
                         }
 
-                        val renewalPrice = if (op.amountIqd > 0L) op.amountIqd.toDouble() else (if (localAcc.currentPriceIqd > 0.0) localAcc.currentPriceIqd else 40000.0)
                         val finalNote = if (!chargeNote.isNullOrBlank()) chargeNote else "[VERIFIED RENEW]"
                         val accountWithPrice = localAcc.copy(currentPriceIqd = renewalPrice)
                         val savedAcc = saveAccountInternal(accountWithPrice)
@@ -1465,7 +1476,20 @@ class LocalLedgerRepositoryImpl(
         val entryId = idempotencyKey ?: java.util.UUID.randomUUID().toString()
         if (idempotencyKey != null) {
             val existing = ledgerDao.getByIdOneShot(idempotencyKey)
-            if (existing != null) return existing
+            if (existing != null) {
+                val isIdentical = existing.accountId == accountId &&
+                        existing.typeRaw == "gave" &&
+                        kotlin.math.abs(existing.amountIqd - amount) < 0.0001
+                if (isIdentical) {
+                    return existing
+                } else {
+                    throw DivergentPayloadConflictException(
+                        "Same-ID divergent payload conflict for payment transaction $idempotencyKey: " +
+                        "existing={accountId=${existing.accountId}, type=${existing.typeRaw}, amount=${existing.amountIqd}}, " +
+                        "incoming={accountId=$accountId, type=gave, amount=$amount}"
+                    )
+                }
+            }
         }
 
         val account = accountDao.getByIdOneShot(accountId)
@@ -1505,7 +1529,20 @@ class LocalLedgerRepositoryImpl(
         val entryId = idempotencyKey ?: java.util.UUID.randomUUID().toString()
         if (idempotencyKey != null) {
             val existing = ledgerDao.getByIdOneShot(idempotencyKey)
-            if (existing != null) return existing
+            if (existing != null) {
+                val isIdentical = existing.accountId == accountId &&
+                        existing.typeRaw == "took" &&
+                        kotlin.math.abs(existing.amountIqd - amount) < 0.0001
+                if (isIdentical) {
+                    return existing
+                } else {
+                    throw DivergentPayloadConflictException(
+                        "Same-ID divergent payload conflict for debt transaction $idempotencyKey: " +
+                        "existing={accountId=${existing.accountId}, type=${existing.typeRaw}, amount=${existing.amountIqd}}, " +
+                        "incoming={accountId=$accountId, type=took, amount=$amount}"
+                    )
+                }
+            }
         }
 
         val account = accountDao.getByIdOneShot(accountId)

@@ -433,6 +433,28 @@ class RemoteSyncCoordinator(
         val localVersion = resolveLocalVersion("ledger", event.entityId)
         val localTimestamp = localVersion.toComparableTimestamp()
 
+        // 3. Same-ID divergent-payload immutability protection (INV-01 / INV-11 / P1-11)
+        if (existing != null) {
+            val isDivergent = existing.accountId != entry.accountId ||
+                    existing.typeRaw != entry.typeRaw ||
+                    kotlin.math.abs(existing.amountIqd - entry.amountIqd) >= 0.0001
+            if (isDivergent) {
+                Log.w("RemoteSyncCoordinator", "Quarantining same-ID divergent ledger payload: id=${event.entityId}, local={account=${existing.accountId}, type=${existing.typeRaw}, amount=${existing.amountIqd}}, remote={account=${entry.accountId}, type=${entry.typeRaw}, amount=${entry.amountIqd}}, version=${event.remoteVersion}")
+                val payloadHash = entry.hashCode().toString()
+                val quarantineAudit = AuditLog(
+                    action = "QUARANTINE_IDENTITY_CONFLICT",
+                    entityType = "local_ledger_entries",
+                    entityId = event.entityId,
+                    summary = "Quarantined same-ID divergent ledger payload conflict: remote=${event.entityId}, localAccount=${existing.accountId}, remoteAccount=${entry.accountId}, localType=${existing.typeRaw}, remoteType=${entry.typeRaw}, localAmount=${existing.amountIqd}, remoteAmount=${entry.amountIqd}, version=${event.remoteVersion}, payloadHash=$payloadHash",
+                    createdAt = System.currentTimeMillis(),
+                    severity = "WARNING",
+                    origin = AuditOrigin.SYSTEM_ACTION.name
+                )
+                auditDao?.insert(quarantineAudit)
+                return EventSyncResult.QUARANTINED_CONFLICT
+            }
+        }
+
         // G2: Duplicate Ledger
         val incomingExternalId = entry.sourceExternalId
         if (incomingExternalId != null) {

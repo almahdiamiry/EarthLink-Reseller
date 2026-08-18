@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format follows Keep a Changelog.
 
+## [1.79.0] - 2026-08-18
+### Phase 1: Task P1-11 — Same-ID Divergent-Payload Immutability Protection (INV-01 / INV-11 / P1-11)
+- **Same-ID Divergent-Payload Protection in Local Ledger**: Updated `LocalLedgerRepositoryImpl.kt` (`addPaymentInternal`, `addDebtInternal`, `resolvePendingOperationVerifiedSuccess`) to strictly verify existing transaction state when an `idempotencyKey` / `businessTransactionId` collision occurs. Replaying an identical payload (same account, same amount, same transaction type) is treated as an idempotent no-op returning the existing record without duplicating outbox obligations or altering balances. Replaying a divergent payload (different amount, different account ID, or different transaction type) strictly fails closed and throws `DivergentPayloadConflictException`, preventing silent ledger corruption or financial balance tampering.
+- **Inbound Sync Immutability Protection in RemoteSyncCoordinator**: Updated `RemoteSyncCoordinator.kt` (`applyLedgerUpsert`) to check for pre-existing local ledger records with the same entity ID. Inbound remote ledger events with divergent business fields (`accountId`, `typeRaw`, `amountIqd`) are quarantined with `EventSyncResult.QUARANTINED_CONFLICT` and an audit log with action `QUARANTINE_IDENTITY_CONFLICT`, preventing remote overwrites of authoritative local ledger truth.
+- **DivergentPayloadConflictException**: Introduced domain exception `DivergentPayloadConflictException` in `Models.kt` to signal strict fail-closed ledger immutability violations.
+- **Comprehensive Immutability & Conflict Test Suite**: Implemented `Phase1SameIdDivergentPayloadTest.kt` with 11 exhaustive unit and sync tests covering idempotent payment/debt replay, divergent payment/debt amount conflict rejection, cross-account transaction ID reuse rejection, debt-vs-payment type collision rejection, renewal replay/divergence, pending operation verified resolution divergence, and inbound remote sync conflict quarantine across amount, account, and transaction type divergence.
+- **Contract & Matrix Mapping**: Mapped `Phase1SameIdDivergentPayloadTest` in `contract/invariant_contract.yaml`, `contract/invariant_test_map.yaml`, and `contract/test_environment_matrix.yaml`.
+
+
 ## [1.73.0] - 2026-08-18
 ### Phase 1: Task P1-05 — Enforce Deterministic Firestore Document Identity (INV-01 / INV-13 / P1-G2-REQ-04)
 - **Canonical Document Path Construction**: Verified and enforced 1:1 `entityId` -> `documentId` mapping in `SyncRepositoryImpl.kt` across all entity collections (`local_accounts`, `local_ledger_entries`, `import_batches`, `audit_logs`). Exposed `@VisibleForTesting internal fun getCollectionRef` with canonical alias support and `buildOutboxPayloadMap`.
