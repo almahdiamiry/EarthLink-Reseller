@@ -411,6 +411,7 @@ requirements:
       adversarial_fixture: false
       registry: true
       evidence: true
+    behavioral_test_location: "app/src/test/java/com/example/Phase4RuntimeLedgerIdentityTest.kt"
 
   - id: "P4-G5-REQ-02"
     phase: 4
@@ -423,6 +424,7 @@ requirements:
       adversarial_fixture: false
       registry: false
       evidence: true
+    behavioral_test_location: "app/src/test/java/com/example/Phase4RuntimeLedgerIdentityTest.kt"
 
   - id: "P4-G5-REQ-03"
     phase: 4
@@ -435,6 +437,7 @@ requirements:
       adversarial_fixture: false
       registry: false
       evidence: true
+    behavioral_test_location: "app/src/test/java/com/example/Phase4RuntimeLedgerIdentityTest.kt"
 
   - id: "P4-G5-REQ-04"
     phase: 4
@@ -447,6 +450,7 @@ requirements:
       adversarial_fixture: false
       registry: false
       evidence: true
+    behavioral_test_location: "app/src/test/java/com/example/Phase4RuntimeLedgerIdentityTest.kt"
 
   # =========================================================================
   # PHASE 5: G6/G7 / Semantics + Migration

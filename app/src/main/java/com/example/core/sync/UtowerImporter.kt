@@ -1397,10 +1397,16 @@ private class ImportSession(
 
                 val combinedNote = listOf(note ?: "", txJson.optString("message", "")).filter { it.isNotEmpty() && it != "null" }.joinToString(" | ")
 
+                val sourceExtId = if (sourceKey.isNotEmpty()) {
+                    sourceKey
+                } else {
+                    "import_${batchId}_${transactionsRead}"
+                }
+
                 val candidateTx = LocalLedgerEntry(
                     id = "",
                     accountId = accountId,
-                    sourceExternalId = sourceKey.takeIf { it.isNotEmpty() },
+                    sourceExternalId = sourceExtId,
                     sourceBatchId = batchId,
                     typeRaw = typeNormalized,
                     amountIqd = amountIqdVal,
@@ -1419,20 +1425,16 @@ private class ImportSession(
                 )
 
                 if (existingTx == null) {
-                    val txSeed = "tx_${accountId}_${sourceKey.ifEmpty { "nokey" }}_${occurredAt}_${amountIqdVal}_${typeNormalized}"
+                    val txSeed = "tx_${accountId}_${sourceExtId}"
                     val txId = UUID.nameUUIDFromBytes(txSeed.toByteArray(Charsets.UTF_8)).toString()
                     val tx = candidateTx.copy(id = txId)
 
                     val rowId = appDatabase.localLedgerEntryDao().insert(tx)
                     if (rowId <= 0L) {
                         transactionsMerged++
-                        val resolvedTx = if (sourceKey.isNotEmpty()) {
-                            appDatabase.localLedgerEntryDao().findDuplicateTx(accountId, sourceKey, occurredAt, amountIqdVal, typeNormalized)
-                                ?: existingTxBySourceExtId[TransactionDeduplicator.buildExtIdKey(accountId, sourceKey)]
-                        } else {
-                            appDatabase.localLedgerEntryDao().findDuplicateTx(accountId, null, occurredAt, amountIqdVal, typeNormalized)
-                                ?: existingTxByMatch[TransactionDeduplicator.buildMatchKey(accountId, occurredAt, amountIqdVal, typeNormalized, tx.note)]
-                        }
+                        val resolvedTx = appDatabase.localLedgerEntryDao().findDuplicateTx(accountId, sourceExtId, occurredAt, amountIqdVal, typeNormalized)
+                            ?: existingTxBySourceExtId[TransactionDeduplicator.buildExtIdKey(accountId, sourceExtId)]
+                            ?: existingTxByMatch[TransactionDeduplicator.buildMatchKey(accountId, occurredAt, amountIqdVal, typeNormalized, tx.note)]
                         val finalTxId = resolvedTx?.id ?: txId
                         touchedTxIds.add(finalTxId)
                         if (resolvedTx != null) {

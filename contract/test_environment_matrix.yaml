@@ -524,6 +524,15 @@ test_suites:
       - "INV-06"
       - "INV-11"
 
+  - name: "Phase4RuntimeLedgerIdentityTest"
+    path: "app/src/test/java/com/example/Phase4RuntimeLedgerIdentityTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Phase 4 Runtime Ledger Identity and Import Collision Safety Test Suite (P4-G5-REQ-01 / P4-G5-REQ-02 / P4-G5-REQ-03 / P4-G5-REQ-04 / INV-01 / INV-05 / INV-11)"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+      - "INV-11"
+
   - name: "CoordinatorInstrumentedTest"
     path: "app/src/androidTest/java/com/example/CoordinatorInstrumentedTest.kt"
     environment: "INSTRUMENTED"

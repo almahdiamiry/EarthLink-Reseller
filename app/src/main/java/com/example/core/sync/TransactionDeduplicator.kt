@@ -34,8 +34,7 @@ object TransactionDeduplicator {
     ): LocalLedgerEntry? {
         val extId = tx.sourceExternalId?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
         if (extId != null) {
-            val dupByExtId = existingByExtId[buildExtIdKey(tx.accountId, extId)]
-            if (dupByExtId != null) return dupByExtId
+            return existingByExtId[buildExtIdKey(tx.accountId, extId)]
         }
 
         val matchKey = buildMatchKey(tx.accountId, tx.occurredAt, tx.amountIqd, tx.typeRaw, tx.note)
