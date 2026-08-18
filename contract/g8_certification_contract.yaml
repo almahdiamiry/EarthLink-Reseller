@@ -1,0 +1,44 @@
+schema_version: 1
+contract_name: "g8_certification_contract"
+description: "External G8 Machine Certification Contract defining invariants, certification suites, derived states, and requirement bindings."
+
+invariants:
+  - id: "INV-15"
+    name: "Fail-Closed Release Signing"
+    description: "Release build must fail if valid signing credentials are not present or invalid. Debug fallback or unsigned release artifacts are strictly prohibited."
+    verification_mode: "FAIL_CLOSED_BUILD"
+  - id: "INV-16"
+    name: "Immutable Certification Evidence"
+    description: "Certification test suites and baseline regression suites are frozen contracts. Tests must never be weakened, skipped, or rewritten."
+    certification_suites:
+      - "FinalTestMatrixCertificationTest"
+      - "ProductionCertificationPipelineTest"
+      - "ProductionExecutableInvariantsTest"
+      - "DeepCrossLayerInvariantsTest"
+  - id: "INV-17"
+    name: "Machine-Verified Closure"
+    description: "Phase and final production closure must be strictly derived from machine-executable evidence."
+
+derived_states:
+  - id: "ARCHITECTURE_COMPLETE"
+    description: "Frozen authority and architecture set is intact with zero forbidden architecture drift."
+  - id: "IMPLEMENTATION_COMPLETE"
+    description: "All blocking G1-G7 implementation requirements have final-artifact-bound evidence, and G8 certification implementation is present."
+  - id: "VERIFIED"
+    description: "All required executable verification, adversarial fixtures, instrumentation, structural checks, and contract rows pass over sealed PRODUCT_ARTIFACT_ID."
+  - id: "PRODUCTION_READY"
+    description: "VERIFIED plus required signed release artifact exists, is bound to PRODUCT_ARTIFACT_ID, and all fail-closed release checks pass."
+
+requirements:
+  - id: "P6-G8-REQ-01"
+    name: "External machine certification independent of runtime"
+    mandatory_proof: "Verifier runs outside app/runtime; machine-derived closure bundle; self-tests pass."
+  - id: "P6-G8-REQ-02"
+    name: "Exact artifact binding"
+    mandatory_proof: "Product/certification artifact, corpus, contract, run, and release identity consistency."
+  - id: "P6-G8-REQ-03"
+    name: "Full actual test corpus + adversarial fixtures"
+    mandatory_proof: "100% PASS, 0 failures, 0 skips, 0 NO-SOURCE; instrumentation executed."
+  - id: "P6-G8-REQ-04"
+    name: "Release artifact + fail-closed signing"
+    mandatory_proof: "Exact signed release artifact hash, trusted production certificate fingerprint match, exact-artifact release execution, signing failure fixtures."

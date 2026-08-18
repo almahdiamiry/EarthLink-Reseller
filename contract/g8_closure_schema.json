@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "G8ClosureBundle",
+  "description": "Schema for G8 External Machine Certification Closure Bundle",
+  "type": "object",
+  "required": [
+    "certification_run_id",
+    "product_artifact_id",
+    "product_build_input_manifest_id",
+    "certification_artifact_id",
+    "product_test_corpus_id",
+    "certification_test_corpus_id",
+    "upstream_closure_snapshot_id",
+    "contract_hashes",
+    "toolchain",
+    "adversarial_results",
+    "derived_states",
+    "requirements_results",
+    "closure_status"
+  ],
+  "properties": {
+    "certification_run_id": { "type": "string" },
+    "created_at": { "type": "string" },
+    "product_artifact_id": { "type": "string" },
+    "product_build_input_manifest_id": { "type": "string" },
+    "certification_artifact_id": { "type": "string" },
+    "product_test_corpus_id": { "type": "string" },
+    "certification_test_corpus_id": { "type": "string" },
+    "upstream_closure_snapshot_id": { "type": "string" },
+    "release_artifact": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "sha256": { "type": "string" },
+        "signing_status": { "type": "string" },
+        "certificate_fingerprint": { "type": "string" }
+      }
+    },
+    "contract_hashes": {
+      "type": "object"
+    },
+    "toolchain": {
+      "type": "object",
+      "properties": {
+        "os": { "type": "string" },
+        "python_version": { "type": "string" },
+        "gradle_wrapper": { "type": "string" }
+      }
+    },
+    "adversarial_results": {
+      "type": "object"
+    },
+    "derived_states": {
+      "type": "object",
+      "required": [
+        "ARCHITECTURE_COMPLETE",
+        "IMPLEMENTATION_COMPLETE",
+        "VERIFIED",
+        "PRODUCTION_READY"
+      ],
+      "properties": {
+        "ARCHITECTURE_COMPLETE": { "type": "string", "enum": ["PASS", "FAIL"] },
+        "IMPLEMENTATION_COMPLETE": { "type": "string", "enum": ["PASS", "FAIL"] },
+        "VERIFIED": { "type": "string", "enum": ["PASS", "FAIL"] },
+        "PRODUCTION_READY": { "type": "string", "enum": ["PASS", "FAIL"] }
+      }
+    },
+    "requirements_results": {
+      "type": "object"
+    },
+    "closure_status": {
+      "type": "string",
+      "enum": ["CLOSED", "NOT_READY_FOR_CLOSURE", "FAIL"]
+    },
+    "evidence_artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256", "producer_command"],
+        "properties": {
+          "path": { "type": "string" },
+          "sha256": { "type": "string" },
+          "producer_command": { "type": "string" }
+        }
+      }
+    }
+  }
+}

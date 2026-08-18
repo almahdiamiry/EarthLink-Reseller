@@ -220,6 +220,20 @@ def verify_matrix() -> bool:
         if not os.path.exists(full_p):
             errors.append(f"REGRESSION: Required Phase 1/2 physical test file missing from disk: {p_file}")
 
+    # Load G8 certification suites if present
+    g8_scope_path = os.path.join(REPO_ROOT, "contract", "g8_certification_scope.yaml")
+    if os.path.exists(g8_scope_path):
+        try:
+            with open(g8_scope_path, "r", encoding="utf-8") as gf:
+                g8_data = yaml.safe_load(gf)
+            for dom in g8_data.get("domains", []):
+                if dom.get("domain") == "CERTIFICATION":
+                    for pat in dom.get("patterns", []):
+                        if pat.startswith("app/src/test/"):
+                            registered_paths.add(pat)
+        except Exception:
+            pass
+
     # 6. Check for unmapped test files on disk
     unit_test_dir = os.path.join(REPO_ROOT, "app", "src", "test", "java", "com", "example")
     androidTest_dir = os.path.join(REPO_ROOT, "app", "src", "androidTest", "java", "com", "example")

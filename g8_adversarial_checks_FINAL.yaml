@@ -1,0 +1,798 @@
+schema_version: 1
+declared_count: 79
+canonical_source: contract/g8_adversarial_checks.yaml
+rule: Rendered plan checklist must match this machine-readable source exactly; mismatch
+  is blocking.
+checks:
+- id: G8-ADV-001
+  mandatory: true
+  failure_condition: Can a historical test manifest produce PASS when the current
+    test file is missing?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-001
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-001
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-001
+- id: G8-ADV-002
+  mandatory: true
+  failure_condition: Can a stale JUnit result from source X be accepted against `PRODUCT_ARTIFACT_ID`?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-002
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-002
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-002
+- id: G8-ADV-003
+  mandatory: true
+  failure_condition: Can a changed source file leave the source manifest unchanged?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-003
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-003
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-003
+- id: G8-ADV-004
+  mandatory: true
+  failure_condition: Can a changed test file leave the test-corpus identity unchanged?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-004
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-004
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-004
+- id: G8-ADV-005
+  mandatory: true
+  failure_condition: Can an unmapped current test file be silently ignored?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-005
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-005
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-005
+- id: G8-ADV-006
+  mandatory: true
+  failure_condition: Can `NO-SOURCE` produce PASS?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-006
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-006
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-006
+- id: G8-ADV-007
+  mandatory: true
+  failure_condition: Can a skipped mandatory test produce PASS?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-007
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-007
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-007
+- id: G8-ADV-008
+  mandatory: true
+  failure_condition: Can an instrumentation suite be unavailable yet counted as PASS?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-008
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-008
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-008
+- id: G8-ADV-009
+  mandatory: true
+  failure_condition: Can a report-only PASS be accepted without execution results?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-009
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-009
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-009
+- id: G8-ADV-010
+  mandatory: true
+  failure_condition: Can a vacuous assertion fixture satisfy a mandatory test?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-010
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-010
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-010
+- id: G8-ADV-011
+  mandatory: true
+  failure_condition: Can a debug-signed artifact satisfy the release gate?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-011
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-011
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-011
+- id: G8-ADV-012
+  mandatory: true
+  failure_condition: Can an unsigned artifact satisfy the release gate?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-012
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-012
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-012
+- id: G8-ADV-013
+  mandatory: true
+  failure_condition: Can an artifact hash be changed after evidence sealing without
+    detection?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-013
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-013
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-013
+- id: G8-ADV-014
+  mandatory: true
+  failure_condition: Can a different release artifact be paired with the same source
+    identity?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-014
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-014
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-014
+- id: G8-ADV-015
+  mandatory: true
+  failure_condition: Can contract files change after evidence collection without invalidating
+    the bundle?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-015
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-015
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-015
+- id: G8-ADV-016
+  mandatory: true
+  failure_condition: Can a different Gradle/JDK/Android environment be silently represented
+    as the same evidence identity?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-016
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-016
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-016
+- id: G8-ADV-017
+  mandatory: true
+  failure_condition: Can secrets appear in evidence, logs, reports, screenshots, or
+    checkpoints?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-017
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-017
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-017
+- id: G8-ADV-018
+  mandatory: true
+  failure_condition: Can a malformed evidence bundle produce a PASS state?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-018
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-018
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-018
+- id: G8-ADV-019
+  mandatory: true
+  failure_condition: Can the renderer manufacture `CLOSED`/`PASS` without machine
+    evidence?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-019
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-019
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-019
+- id: G8-ADV-020
+  mandatory: true
+  failure_condition: Can G8 be imported into production runtime code?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-020
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-020
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-020
+- id: G8-ADV-021
+  mandatory: true
+  failure_condition: Can G8 write to Room, Firebase, or business state?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-021
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-021
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-021
+- id: G8-ADV-022
+  mandatory: true
+  failure_condition: Can G8 introduce a runtime governance registry?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-022
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-022
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-022
+- id: G8-ADV-023
+  mandatory: true
+  failure_condition: Can one current certification run mix unit results from artifact
+    identified by `PRODUCT_ARTIFACT_ID` with instrumentation results from artifact
+    X?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-023
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-023
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-023
+- id: G8-ADV-024
+  mandatory: true
+  failure_condition: Can final evidence reference a prior phase artifact after a later
+    shared-surface change?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-024
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-024
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-024
+- id: G8-ADV-025
+  mandatory: true
+  failure_condition: "Can the verifier pass when a mandatory G1\u2013G7 blocking requirement\
+    \ has no final executable evidence?"
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-025
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-025
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-025
+- id: G8-ADV-026
+  mandatory: true
+  failure_condition: Can a failed release signing configuration be bypassed with `--dry-run`,
+    debug signing, or a placeholder key?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-026
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-026
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-026
+- id: G8-ADV-027
+  mandatory: true
+  failure_condition: Can report formatting alter the machine-derived certification
+    state?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-027
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-027
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-027
+- id: G8-ADV-028
+  mandatory: true
+  failure_condition: Can a malformed historical provenance record override current
+    executable evidence?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-028
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-028
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-028
+- id: G8-ADV-029
+  mandatory: true
+  failure_condition: Can a hardcoded historical certification-test list allow a newly
+    required current test to remain unexecuted?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-029
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-029
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-029
+- id: G8-ADV-030
+  mandatory: true
+  failure_condition: Can the production gate select a system Gradle installation different
+    from the project wrapper and still claim reproducible certification?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-030
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-030
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-030
+- id: G8-ADV-031
+  mandatory: true
+  failure_condition: Can a compliance matrix report fixed historical requirement counts/statuses
+    instead of current `phase_requirements.yaml` evidence?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-031
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-031
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-031
+- id: G8-ADV-032
+  mandatory: true
+  failure_condition: Can baseline manifest hashes satisfy current-artifact identity
+    without a current source/test manifest?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-032
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-032
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-032
+- id: G8-ADV-033
+  mandatory: true
+  failure_condition: Can a failed certification run be overwritten by a later run
+    using the same final source SHA?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-033
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-033
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-033
+- id: G8-ADV-034
+  mandatory: true
+  failure_condition: Can G8 implementation files change after `PRODUCT_ARTIFACT_ID`
+    is declared while the verifier still treats `PRODUCT_ARTIFACT_ID` as unchanged?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-034
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-034
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-034
+- id: G8-ADV-035
+  mandatory: true
+  failure_condition: Can a correctly signed but unauthorized certificate fingerprint
+    pass `PRODUCTION_READY`?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-035
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-035
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-035
+- id: G8-ADV-036
+  mandatory: true
+  failure_condition: Can a signed release artifact pass without the exact signed artifact
+    being installed/launched/tested?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-036
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-036
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-036
+- id: G8-ADV-037
+  mandatory: true
+  failure_condition: "Can an unexpected production source/control-plane file be added\
+    \ within the sealed `PRODUCT_ARTIFACT_ID` without being covered by the authorized\
+    \ Phase-1\u20135/G8 change inventory?"
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-037
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-037
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-037
+- id: G8-ADV-038
+  mandatory: true
+  failure_condition: Can a PASS requirement exist with no exact executable evidence
+    reference?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-038
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-038
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-038
+- id: G8-ADV-039
+  mandatory: true
+  failure_condition: Can a timed-out certification command leave child processes running
+    and contaminate the next certification run?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-039
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-039
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-039
+- id: G8-ADV-040
+  mandatory: true
+  failure_condition: Can the frozen INV-16 certification-suite names differ between
+    authority text, canonical definition, test map, and disk without blocking?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-040
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-040
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-040
+- id: G8-ADV-041
+  mandatory: true
+  failure_condition: Can `required_behavior_tests` silently substitute for the frozen
+    INV-16 certification suites?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-041
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-041
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-041
+- id: G8-ADV-042
+  mandatory: true
+  failure_condition: Can duplicate governance identifiers such as ADR IDs remain unresolved
+    while the certification verifier claims authoritative consistency?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-042
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-042
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-042
+- id: G8-ADV-043
+  mandatory: true
+  failure_condition: Can an existing evidence directory for the same `PRODUCT_ARTIFACT_ID`
+    be silently reused rather than creating a fresh certification run identity?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-043
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-043
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-043
+- id: G8-ADV-044
+  mandatory: true
+  failure_condition: Can the verifier infer the expected production signing certificate
+    fingerprint from the artifact being verified?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-044
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-044
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-044
+- id: G8-ADV-045
+  mandatory: true
+  failure_condition: Can final certification combine product `PRODUCT_ARTIFACT_ID`
+    with certification-infrastructure scripts/contracts from a later revision?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-045
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-045
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-045
+- id: G8-ADV-046
+  mandatory: true
+  failure_condition: Can a release smoke/instrumentation PASS be obtained from a debug
+    artifact while the signed release artifact was never executed?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-046
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-046
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-046
+- id: G8-ADV-047
+  mandatory: true
+  failure_condition: Can any PASS row point only to a rendered report rather than
+    a hashed executable evidence artifact?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-047
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-047
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-047
+- id: G8-ADV-048
+  mandatory: true
+  failure_condition: "Can G8 execution start before final G1\u2013G7 closure, final-artifact\
+    \ sweep, and integrated Phase-1\u20135 adversarial review are complete?"
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-048
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-048
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-048
+- id: G8-ADV-049
+  mandatory: true
+  failure_condition: Can frozen authority or frozen ADR text be edited by G8 merely
+    to manufacture certification-suite consistency?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-049
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-049
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-049
+- id: G8-ADV-050
+  mandatory: true
+  failure_condition: Can the exact signed release artifact be executed against an
+    unapproved production endpoint, real subscriber, or real financial/credential
+    mutation path during certification?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-050
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-050
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-050
+- id: G8-ADV-051
+  mandatory: true
+  failure_condition: Can the trusted expected production certificate fingerprint be
+    derived from the artifact under test rather than supplied independently?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-051
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-051
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-051
+- id: G8-ADV-052
+  mandatory: true
+  failure_condition: Can a certification run reuse or overwrite an existing run directory
+    or run ID?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-052
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-052
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-052
+- id: G8-ADV-053
+  mandatory: true
+  failure_condition: "Can adding G8-only certification tests invalidate G1\u2013G7\
+    \ product evidence solely because the overall test-corpus hash changed?"
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-053
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-053
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-053
+- id: G8-ADV-054
+  mandatory: true
+  failure_condition: Can G8 certification evidence combine a matching `PRODUCT_ARTIFACT_ID`
+    with a different/unknown `CERTIFICATION_ARTIFACT_ID`, or vice versa?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-054
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-054
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-054
+- id: G8-ADV-055
+  mandatory: true
+  failure_condition: Can the exact signed release artifact reach a real production
+    Firebase project or ISP endpoint despite the declared certification environment?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-055
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-055
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-055
+- id: G8-ADV-056
+  mandatory: true
+  failure_condition: Can stale app data, authentication state, or a prior debug installation
+    contaminate the exact signed release smoke run?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-056
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-056
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-056
+- id: G8-ADV-057
+  mandatory: true
+  failure_condition: Can a missing test-result directory, malformed result file, or
+    collector parse warning be treated as successful execution?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-057
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-057
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-057
+- id: G8-ADV-058
+  mandatory: true
+  failure_condition: Can the production gate choose system Gradle instead of the project
+    wrapper while still claiming reproducible certification?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-058
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-058
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-058
+- id: G8-ADV-059
+  mandatory: true
+  failure_condition: Can a correctly signed APK with the wrong application ID/version/variant
+    pass `PRODUCTION_READY`?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-059
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-059
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-059
+- id: G8-ADV-060
+  mandatory: true
+  failure_condition: Can the final G8 verifier still read legacy `evidence/<source_sha>/closure_bundle.json`
+    as current proof?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-060
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-060
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-060
+- id: G8-ADV-061
+  mandatory: true
+  failure_condition: "Can G8 alter a product/runtime contract after G1\u2013G7 closure\
+    \ and continue using the old upstream evidence snapshot without forcing a new\
+    \ closure?"
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-061
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-061
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-061
+- id: G8-ADV-062
+  mandatory: true
+  failure_condition: Can an artifact/environment certificate fingerprint or endpoint
+    allowlist be self-derived from the artifact or from an untrusted declaration rather
+    than an independent trusted input?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-062
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-062
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-062
+- id: G8-ADV-063
+  mandatory: true
+  failure_condition: Can `g8_certification_scope.yaml` authorize its own creation
+    or classification without an independent `G8_BOOTSTRAP_*` root of trust?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-063
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-063
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-063
+- id: G8-ADV-064
+  mandatory: true
+  failure_condition: Can `g8_certification_test_matrix.yaml` reduce, omit, or silently
+    weaken a bootstrap-mandated certification suite after activation?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-064
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-064
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-064
+- id: G8-ADV-065
+  mandatory: true
+  failure_condition: Can a certification overlay change the effective `PRODUCT_BUILD_INPUT_MANIFEST_ID`
+    without invalidating the product/certification identity relationship?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-065
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-065
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-065
+- id: G8-ADV-066
+  mandatory: true
+  failure_condition: "Can an upstream G1\u2013G7 PASS remain accepted without the\
+    \ mandatory fresh full-product re-execution through the hardened G8 gate?"
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-066
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-066
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-066
+- id: G8-ADV-067
+  mandatory: true
+  failure_condition: Can a generic or combined source manifest be substituted for
+    a domain-specific product or certification manifest without failing identity validation?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-067
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-067
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-067
+- id: G8-ADV-068
+  mandatory: true
+  failure_condition: Can a certification environment reach any external destination
+    not explicitly present in the approved certification allowlist?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-068
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-068
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-068
+- id: G8-ADV-069
+  mandatory: true
+  failure_condition: Can a missing certification suite be treated as a blocking error
+    before the G8 step authorized to create that suite can execute?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-069
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-069
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-069
+- id: G8-ADV-070
+  mandatory: true
+  failure_condition: Can a network-sensitive test execute before its machine-readable
+    environment_sensitivity classification and approved environment enforcement are
+    present?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-070
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-070
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-070
+- id: G8-ADV-071
+  mandatory: true
+  failure_condition: Can the frozen authority snapshot be self-hashed from a modified
+    authority bundle and still be accepted as the trusted authority identity?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-071
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-071
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-071
+- id: G8-ADV-072
+  mandatory: true
+  failure_condition: Can an unsigned or unauthenticated G8 bootstrap record authorize
+    its own scope/matrix/fingerprint inputs?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-072
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-072
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-072
+- id: G8-ADV-073
+  mandatory: true
+  failure_condition: Can network-capable instrumentation execute before the certification
+    environment allowlist is mechanically enforced?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-073
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-073
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-073
+- id: G8-ADV-074
+  mandatory: true
+  failure_condition: Can an upstream or G8 test that requires external access silently
+    bypass the approved destination allowlist?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-074
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-074
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-074
+- id: G8-ADV-075
+  mandatory: true
+  failure_condition: Can the external bootstrap verifier hash refer to a future G8
+    verifier that has not yet been created, creating a bootstrap deadlock?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-075
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-075
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-075
+- id: G8-ADV-076
+  mandatory: true
+  failure_condition: Can `g8_certification_test_matrix.yaml` reduce the mandatory
+    execution set because the matrix itself is treated as the source of required tests?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-076
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-076
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-076
+- id: G8-ADV-077
+  mandatory: true
+  failure_condition: Can a network-capable test be classified `OFFLINE_SAFE` by declaration
+    alone and execute before environment enforcement?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-077
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-077
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-077
+- id: G8-ADV-078
+  mandatory: true
+  failure_condition: Can a broad Gradle task execute G8-only certification suites
+    while the evidence is labeled `PRODUCT_TEST_CORPUS`?
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-078
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-078
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-078
+- id: G8-ADV-079
+  mandatory: true
+  failure_condition: "Can G8 recollect or overwrite upstream G1\u2013G7 closure evidence\
+    \ instead of consuming the sealed `UPSTREAM_CLOSURE_SNAPSHOT_ID`?"
+  proof_mode: MUTATION_OR_ENFORCEMENT
+  expected_outcome: FAIL_OR_BLOCKING_STATE
+  proof_target_id: g8-adv-proof-G8-ADV-079
+  evidence_required: true
+  proof_result_id: g8-adv-result-G8-ADV-079
+  primary_evidence_artifact_id: g8-adv-evidence-G8-ADV-079
+proof_binding_rule:
+  mandatory_rows: exactly one proof_target_id, proof_result_id, and primary_evidence_artifact_id
+    per mandatory G8-ADV row
+  uniqueness: proof_target_id, proof_result_id, and primary_evidence_artifact_id values
+    must each be unique across mandatory rows
+  evidence_requirement: every mandatory row must produce an execution result and a
+    primary hashed evidence artifact recorded in the sealed certification run bundle
+  evidence_identity: primary evidence must bind to the certification run, producing
+    command/tool identity, and applicable artifact/test-corpus identities
+  failure_mode: missing, duplicate, unmapped, stale, unhashed, or mismatched proof/evidence
+    binding is blocking
