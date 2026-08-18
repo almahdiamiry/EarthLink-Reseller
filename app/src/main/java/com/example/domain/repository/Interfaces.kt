@@ -64,6 +64,7 @@ interface LocalAccountRepository {
     suspend fun saveAccount(account: LocalAccount): LocalAccount
     suspend fun deleteAccount(id: String)
     suspend fun deleteAllAccounts()
+    suspend fun clearAllData(): Long
 }
 
 interface LocalLedgerRepository {
@@ -139,7 +140,7 @@ interface SyncRepository {
     suspend fun emailSignIn(email: String, password: String): String?
     suspend fun googleSignIn(idToken: String): String?
     fun getFirebaseUid(): String?
-    suspend fun signOut(force: Boolean = false)
+    suspend fun signOut(force: Boolean = false, clearData: Boolean = true)
 }
 
 enum class SyncStatusState {

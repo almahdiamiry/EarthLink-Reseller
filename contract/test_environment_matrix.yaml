@@ -485,6 +485,14 @@ test_suites:
       - "INV-05"
       - "INV-11"
 
+  - name: "Phase3GenerationAdvanceBoundaryTest"
+    path: "app/src/test/java/com/example/Phase3GenerationAdvanceBoundaryTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Phase 3 Generation Advance on Full Replacement/Clear test suite (P3-G4-REQ-03 / P3-G4-REQ-04 / INV-05 / INV-11)"
+    associated_invariants:
+      - "INV-05"
+      - "INV-11"
+
   - name: "CoordinatorInstrumentedTest"
     path: "app/src/androidTest/java/com/example/CoordinatorInstrumentedTest.kt"
     environment: "INSTRUMENTED"

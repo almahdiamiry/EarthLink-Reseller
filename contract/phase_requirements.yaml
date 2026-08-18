@@ -369,6 +369,7 @@ requirements:
       adversarial_fixture: false
       registry: false
       evidence: true
+    behavioral_test_location: "app/src/test/java/com/example/Phase3GenerationAdvanceBoundaryTest.kt"
 
   - id: "P3-G4-REQ-04"
     phase: 3

@@ -1438,17 +1438,20 @@ class SyncRepositoryImpl(
         return auth?.currentUser?.uid
     }
 
-    override suspend fun signOut(force: Boolean) {
-        DataOperationCoordinator.withOperation(DataOperationMode.CLEAR_DATA) {
+    override suspend fun signOut(force: Boolean, clearData: Boolean) {
+        val mode = if (clearData) DataOperationMode.CLEAR_DATA else DataOperationMode.SYNC
+        DataOperationCoordinator.withOperation(mode) {
             val pendingCount = appDatabase.syncOutboxDao().getAllUnsyncedCount()
-            if (!force && pendingCount > 0) {
+            if (clearData && !force && pendingCount > 0) {
                 throw IllegalStateException("UNSYNCED_CHANGES:$pendingCount")
             }
             try {
                 auth?.signOut()
                 stopRealtimeSync()
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    appDatabase.clearAllTables()
+                if (clearData) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        appDatabase.clearAllData()
+                    }
                 }
                 try {
                     val prefs = com.example.core.security.PreferenceManager(context)
@@ -1463,7 +1466,7 @@ class SyncRepositoryImpl(
                     Log.e("FirebaseSync", "Failed to clear ISP credentials on sign out", e)
                 }
                 _syncState.value = SyncStatusState.AUTH_REQUIRED
-                Log.d("FirebaseSync", "Successfully signed out from Firebase Auth and cleared local database")
+                Log.d("FirebaseSync", "Successfully signed out from Firebase Auth (clearData=$clearData)")
             } catch (e: kotlinx.coroutines.CancellationException) { 
                 throw e 
             } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;

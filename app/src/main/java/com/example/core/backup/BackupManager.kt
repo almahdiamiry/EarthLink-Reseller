@@ -438,12 +438,16 @@ object BackupManager {
         unresolvedObligations: List<com.example.core.model.SyncOutbox> = emptyList(),
         passphrase: String = ""
     ) {
+        val nextGen = liveDb.syncMetadataDao().getGeneration() + 1L
+
         // Exact Snapshot Restore: clear business tables and replace with exact backup snapshot
         liveDb.localLedgerEntryDao().deleteAll()
         liveDb.localAccountDao().deleteAll()
         liveDb.importBatchDao().deleteAll()
         liveDb.syncOutboxDao().deleteAll()
+        liveDb.pendingExternalOperationDao().deleteAll()
         liveDb.syncMetadataDao().deleteAll()
+        liveDb.syncMetadataDao().setGeneration(nextGen)
 
         val batchSize = 500
         var accOffset = 0

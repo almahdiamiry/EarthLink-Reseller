@@ -62,6 +62,7 @@ invariants:
     tests:
       - "app/src/test/java/com/example/Phase3PersistedGenerationTest.kt"
       - "app/src/test/java/com/example/Phase3G4LineageStaleResultTest.kt"
+      - "app/src/test/java/com/example/Phase3GenerationAdvanceBoundaryTest.kt"
       - "app/src/test/java/com/example/DeepCrossLayerInvariantsTest.kt"
       - "app/src/test/java/com/example/InfiniteCycleAdversarialIntegrationTest.kt"
 
@@ -130,6 +131,7 @@ invariants:
     tests:
       - "app/src/test/java/com/example/Phase3PersistedGenerationTest.kt"
       - "app/src/test/java/com/example/Phase3G4LineageStaleResultTest.kt"
+      - "app/src/test/java/com/example/Phase3GenerationAdvanceBoundaryTest.kt"
       - "app/src/test/java/com/example/CoordinatorOwnershipRegressionTest.kt"
       - "app/src/test/java/com/example/DataOperationCoordinatorConcurrencyTest.kt"
       - "app/src/test/java/com/example/MaintenanceLockExclusiveSyncTest.kt"

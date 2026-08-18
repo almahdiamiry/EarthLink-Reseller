@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.89.0] - 2026-08-18
+### Phase 3: Task P3-03 / Task 23 — Advance Generation on Full Replacement/Clear Only (P3-G4-REQ-03 / P3-G4-REQ-04 / INV-05 / INV-11)
+- **Generation Advancement on Full Replacement/Clear (`BackupManager.kt`, `UtowerImporter.kt`, `SyncRepositoryImpl.kt`, `AppDatabase.kt`, `Repositories.kt`)**:
+  - **Restore Replace**: Transactionally incremented local lineage generation (`g4_local_generation`) by +1 inside `BackupManager.executeRestoreReplaceInternal` atomically with wiping live business tables and populating backup snapshot records.
+  - **uTower Import with Replace**: Transactionally incremented generation inside Room write transaction when `shouldReplace == true` in both `importFromPreview` and `importFromFile` in `UtowerImporter.kt`.
+  - **Full Dataset Clear & Sign-Out**: Added atomic `AppDatabase.clearAllData(): Long` and `LocalAccountRepository.clearAllData(): Long` executing complete table wiping and generation increment within a single Room transaction. Updated `SyncRepositoryImpl.signOut(force, clearData)` to call `clearAllData()` when `clearData == true`.
+  - **Preservation of Same-Lineage Operations (P3-G4-REQ-04)**: Guaranteed that normal financial mutations (account save/delete, ledger payment, debt, renewal, transaction deletion), diff-merge imports (`shouldReplace == false`), Restore Merge (`executeRestoreMergeInternal`), and sign-out without data clear (`clearData == false`) execute within the existing lineage and strictly DO NOT increment generation.
+  - **In-Flight Stale Operation Rejection**: Verified that any remote sync event initiated prior to a replacement or clear operation is rejected immediately upon transaction entry due to generation mismatch.
+- **Comprehensive Behavioral Test Suite (`Phase3GenerationAdvanceBoundaryTest.kt`)**:
+  - Implemented 17 unit tests verifying transactional increment on restore replace, failure rollback preservation, restore merge lineage preservation, import replace vs merge generation behavior, full dataset clear and sign-out invalidation, same-lineage normal financial mutations preservation, and stale in-flight remote operation rejection.
+- **Contract & Matrix Mapping**:
+  - Registered `Phase3GenerationAdvanceBoundaryTest` under `INV-05` and `INV-11` in `contract/invariant_contract.yaml`, `contract/invariant_test_map.yaml`, `contract/test_environment_matrix.yaml`, and `contract/phase_requirements.yaml` (under `P3-G4-REQ-03`).
+
 ## [1.88.0] - 2026-08-18
 ### Phase 3: Task P3-02 / Task 22 — Same-Transaction Generation Validation & Stale Result Rejection (P3-G4-REQ-02 / INV-05 / INV-11)
 - **Same-Transaction Generation Validation (`RemoteSyncCoordinator.kt`)**:

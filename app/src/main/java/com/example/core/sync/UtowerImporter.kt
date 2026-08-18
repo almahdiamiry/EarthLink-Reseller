@@ -283,6 +283,7 @@ class UtowerImporter(
                 if (shouldReplace) {
                     appDatabase.localLedgerEntryDao().deleteAll()
                     appDatabase.localAccountDao().deleteAll()
+                    appDatabase.syncMetadataDao().incrementGeneration()
                 }
 
                 val existingAccounts = appDatabase.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE)
@@ -609,6 +610,7 @@ class UtowerImporter(
                     if (shouldReplace) {
                         appDatabase.localLedgerEntryDao().deleteAll()
                         appDatabase.localAccountDao().deleteAll()
+                        appDatabase.syncMetadataDao().incrementGeneration()
                     }
 
                     val existingAccounts = appDatabase.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE)

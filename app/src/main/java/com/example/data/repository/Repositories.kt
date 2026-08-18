@@ -1118,7 +1118,14 @@ class LocalAccountRepositoryImpl(
 
                 database.localLedgerEntryDao().deleteAll()
                 accountDao.deleteAll()
+                database.syncMetadataDao().incrementGeneration()
             }
+        }
+    }
+
+    override suspend fun clearAllData(): Long {
+        return com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.CLEAR_DATA) {
+            database.clearAllData()
         }
     }
 }

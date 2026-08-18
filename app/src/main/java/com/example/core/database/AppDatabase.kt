@@ -294,7 +294,7 @@ interface SyncMetadataDao {
     @Query("DELETE FROM sync_metadata WHERE key != :preserveKey")
     suspend fun deleteAllExcept(preserveKey: String)
 
-    @Query("SELECT * FROM sync_metadata")
+    @Query("SELECT * FROM sync_metadata WHERE key != 'g4_local_generation'")
     suspend fun getAllOneShot(): List<com.example.core.model.SyncData>
 
     @Transaction
@@ -433,6 +433,16 @@ abstract class AppDatabase : RoomDatabase() {
     suspend fun incrementGeneration(): Long = syncMetadataDao().incrementGeneration()
 
     suspend fun setGeneration(gen: Long) = syncMetadataDao().setGeneration(gen)
+
+    suspend fun clearAllData(): Long = withTransaction {
+        localLedgerEntryDao().deleteAll()
+        localAccountDao().deleteAll()
+        importBatchDao().deleteAll()
+        syncOutboxDao().deleteAll()
+        pendingExternalOperationDao().deleteAll()
+        syncMetadataDao().deleteAllExcept(SyncMetadataDao.KEY_G4_LOCAL_GENERATION)
+        syncMetadataDao().incrementGeneration()
+    }
 
     companion object {
         const val VERSION = 12
