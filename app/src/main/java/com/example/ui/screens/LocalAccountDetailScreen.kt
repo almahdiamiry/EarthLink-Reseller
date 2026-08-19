@@ -90,7 +90,7 @@ fun LocalAccountDetailScreen(
             onConfirm = {
                 showPaymentDialog = false
                 val amt = com.example.core.ledger.MoneyParser.parseUiThousandsAmount(inputAmt)?.toDouble() ?: 0.0
-                viewModel.addPaymentLocal(accountId, amt, inputNote, paymentIdempotencyKey)
+                viewModel.addPaymentLocal(accountId, amt, inputNote, paymentIdempotencyKey.ifBlank { null })
             }
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -123,7 +123,7 @@ fun LocalAccountDetailScreen(
             onConfirm = {
                 showDebtDialog = false
                 val amt = com.example.core.ledger.MoneyParser.parseUiThousandsAmount(inputAmt)?.toDouble() ?: 0.0
-                viewModel.addDebtLocal(accountId, amt, inputNote, debtIdempotencyKey)
+                viewModel.addDebtLocal(accountId, amt, inputNote, debtIdempotencyKey.ifBlank { null })
             }
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

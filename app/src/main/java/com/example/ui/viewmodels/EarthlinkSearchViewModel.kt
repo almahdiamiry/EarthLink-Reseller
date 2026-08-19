@@ -18,7 +18,8 @@ class EarthlinkSearchViewModel(
     val audit: com.example.domain.repository.AuditRepository,
     val prefs: com.example.core.security.PreferenceManager,
     val localAccountRepository: com.example.domain.repository.LocalAccountRepository,
-    val localLedgerRepository: com.example.domain.repository.LocalLedgerRepository
+    val localLedgerRepository: com.example.domain.repository.LocalLedgerRepository,
+    val syncRepo: com.example.domain.repository.SyncRepository
 ) : ViewModel() {
 
     companion object {
@@ -486,7 +487,7 @@ class EarthlinkSearchViewModel(
                                 localLedgerRepository.recordAccountRenewal(
                                     account = localAcc,
                                     newPriceIqd = finalPrice,
-                                    chargeNote = if (finalNote.isNotBlank()) "[RENEW] ${finalNote.trim()}" else "[RENEW]",
+                                    chargeNote = if (finalNote.isNotBlank()) "[RENEW] ${finalNote.trim()}" else "",
                                     payNote = null,
                                     idempotencyKey = businessTxId
                                 )

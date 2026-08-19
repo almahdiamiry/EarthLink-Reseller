@@ -560,8 +560,8 @@ fun UserDetailScreenV2(
                                             note = noteVal,
                                             onSuccessCallback = { txId ->
                                                 try {
-                                                    val chargeNote = if (noteVal.isNotBlank()) "[RENEW] ${noteVal.trim()}" else "[RENEW]"
-                                                    val payNote = if (isWasil) (if (noteVal.isNotBlank()) "[RENEW_PAY] ${noteVal.trim()}" else "[RENEW_PAY]") else null
+                                                    val chargeNote = if (noteVal.isNotBlank()) "[RENEW] ${noteVal.trim()}" else ""
+                                                    val payNote = if (isWasil) (if (noteVal.isNotBlank()) "[RENEW_PAY] ${noteVal.trim()}" else null) else null
                                                     
                                                     viewModel.localLedgerRepository.recordAccountRenewal(
                                                         account = accToUse,
@@ -570,6 +570,7 @@ fun UserDetailScreenV2(
                                                         payNote = payNote,
                                                         idempotencyKey = txId
                                                     )
+                                                    viewModel.syncRepo.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
                                                 } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
                                                     android.util.Log.e("UserDetailScreen", "Failed to add ledger entry", e)
                                                     try {
@@ -871,13 +872,14 @@ fun UserDetailScreenV2(
                                         try {
                                             val accToUse = matchingAccount ?: finalAcc
                                             val baseNote = if ((matchingAccount?.debtIqd ?: 0.0) > 0) "[PAYMENT]" else "[DEPOSIT]"
-                                            val payNote = if (noteInput.isNotBlank()) "$baseNote ${noteInput.trim()}" else baseNote
+                                            val payNote = if (noteInput.isNotBlank()) "$baseNote ${noteInput.trim()}" else null
                                             
                                             viewModel.localLedgerRepository.recordAccountPayment(
                                                 account = accToUse,
                                                 amount = parsedPriceVal,
                                                 note = payNote
                                             )
+                                            viewModel.syncRepo.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
 
                                             showDepositDialog = false
                                             android.widget.Toast.makeText(
@@ -1210,13 +1212,14 @@ fun UserDetailScreenV2(
                                         coroutineScope.launch {
                                             try {
                                                 val accToUse = matchingAccount ?: finalAcc
-                                                val debtNote = if (noteInput.isNotBlank()) "[DEBT] ${noteInput.trim()}" else "[DEBT]"
+                                                val debtNote = if (noteInput.isNotBlank()) "[DEBT] ${noteInput.trim()}" else null
                                                 
                                                 viewModel.localLedgerRepository.recordAccountDebt(
                                                     account = accToUse,
                                                     amount = parsedPriceVal,
                                                     note = debtNote
                                                 )
+                                                viewModel.syncRepo.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
 
                                                 showDebtDialog = false
                                                 android.widget.Toast.makeText(

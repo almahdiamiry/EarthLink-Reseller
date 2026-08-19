@@ -454,11 +454,7 @@ fun getRemainingTime(expirationDateStr: String?, activeDaysLeftStr: String? = nu
                 val absDiff = Math.abs(actDays - finalDays)
                 if (absDiff <= 2L) {
                     finalDays = actDays
-                }
-                // Only update hours from actHours if actHours is actually > 0 (meaning the API specifically gave us a precise hour count like "4 hours" or "29.5")
-                // Otherwise, keep the hours we calculated from expireDate
-                if (actHours > 0) {
-                    finalHours = actHours
+                    finalHours = actHours // Always override hours if we override days to prevent mixing Date math hours with API days
                 }
             }
         } else {

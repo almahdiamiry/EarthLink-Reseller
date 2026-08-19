@@ -483,6 +483,9 @@ class SyncRepositoryImpl(
         val keys = json.keys()
         while (keys.hasNext()) {
             val k = keys.next()
+            if (item.entityType == "local_accounts" && (k == "packageName" || k == "towerName" || k == "zoneName")) {
+                continue
+            }
             val v = json.get(k)
             dataMap[k] = if (v == JSONObject.NULL) null else v
         }
@@ -504,6 +507,14 @@ class SyncRepositoryImpl(
         dataMap["schemaVersion"] = 1
         if (item.entityType == "local_accounts") {
             dataMap["isFullSnapshot"] = true
+            // Strip ISP-specific diagnostic/meta fields only.
+            // Keep essential fields for multi-device sync, including nanoIp (Custom IP managed by reseller).
+            dataMap.remove("rawJson")
+            dataMap.remove("stateSource")
+            dataMap.remove("stateConfidence")
+            dataMap.remove("address")
+            dataMap.remove("latitude")
+            dataMap.remove("longitude")
         }
         val deviceId = prefManager.getDeviceId()
         dataMap["deviceId"] = deviceId

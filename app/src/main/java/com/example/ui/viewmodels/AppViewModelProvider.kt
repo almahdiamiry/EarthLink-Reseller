@@ -35,7 +35,8 @@ object AppViewModelProvider {
                 audit = app.auditRepository,
                 prefs = app.preferenceManager,
                 localAccountRepository = app.localAccountRepository,
-                localLedgerRepository = app.localLedgerRepository
+                localLedgerRepository = app.localLedgerRepository,
+                syncRepo = app.syncRepository
             )
         }
         initializer {

@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.95.0] - 2026-08-18
+
+### Critical Audit & Business Logic Fixes
+- **Sync Optimization (Firestore Cost Reduction)**:
+  - Modified `SyncRepositoryImpl.kt` to strip bulky ISP-specific diagnostic data (`rawJson`, `address`, `latitude`, `longitude`, `stateSource`, `stateConfidence`) from Firebase sync payload to drastically reduce bandwidth and Firestore costs.
+  - Ensured that `nanoIp` (custom reseller IP) and `note` fields are strictly preserved and synced, matching business needs.
+- **Subscription Time Calculation Fix**:
+  - Fixed logic in `SharedComponents.kt` (`getRemainingTime`) that incorrectly showed "1 day 23 hours" instead of "1 day" due to a mismatch between API day counts and local date-diff hours.
+- **UI/Database Clutter Cleanup**:
+  - Removed annoying auto-generation of note tags (`[PAYMENT]`, `[DEPOSIT]`, `[RENEW]`, `[DEBT]`) in `UserDetailScreenV2.kt` and `EarthlinkSearchViewModel.kt`. 
+  - If a user leaves the note field blank during a financial transaction, the system now correctly passes `null` instead of cluttering the database and UI with redundant string tags.
+- **Full Codebase Audit & Defect Discovery**:
+  - Conducted a comprehensive codebase audit to identify hidden structural defects.
+  - Documented severe architectural violations in `ISSUE_LOG.md`, including: UI thread blocking via `DataOperationCoordinator` mutex (causing button freezes), missing Legacy User Garbage Collection logic, and a dangerous `ON DELETE CASCADE` constraint on the Ledger table.
+
 ## [1.94.0] - 2026-08-18
 ### Phase 6: G8 Machine Certification & Final Release Artifact Sealing
 - **Official Release Keystore & Signing Configuration (`earthlink_reseller_release.jks`, `app/build.gradle.kts`)**:

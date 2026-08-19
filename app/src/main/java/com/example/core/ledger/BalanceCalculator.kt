@@ -14,14 +14,14 @@ object BalanceCalculator {
                 val debtAdded = amount - advanceUsed
                 val newAdvance = currentAdvance - advanceUsed
                 val newDebt = currentDebt + debtAdded
-                AccountBalances(debtIqd = newDebt, advanceIqd = newAdvance, loanIqd = newDebt)
+                AccountBalances(debtIqd = newDebt, advanceIqd = newAdvance, loanIqd = currentLoan)
             }
             "gave", "payment", "deposit", "pay" -> {
                 val debtPayment = minOf(currentDebt, amount)
                 val advanceAdded = amount - debtPayment
                 val newDebt = currentDebt - debtPayment
                 val newAdvance = currentAdvance + advanceAdded
-                AccountBalances(debtIqd = newDebt, advanceIqd = newAdvance, loanIqd = newDebt)
+                AccountBalances(debtIqd = newDebt, advanceIqd = newAdvance, loanIqd = currentLoan)
             }
             else -> AccountBalances(currentDebt, currentAdvance, currentLoan)
         }

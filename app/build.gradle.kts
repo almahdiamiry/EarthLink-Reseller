@@ -8,6 +8,34 @@ plugins {
   alias(libs.plugins.firebase.crashlytics)
 }
 
+import java.util.Base64
+import java.io.File
+
+// Decode google-services.json from Base64 if present in environment
+val googleServicesBase64 = System.getenv("GOOGLE_SERVICES_JSON_BASE64") ?: ""
+if (googleServicesBase64.isNotBlank()) {
+    try {
+        val bytes = Base64.getDecoder().decode(googleServicesBase64.replace("\n", "").trim())
+        file("google-services.json").writeBytes(bytes)
+        println("Successfully generated google-services.json from GOOGLE_SERVICES_JSON_BASE64 secret.")
+    } catch (e: Exception) {
+        println("Warning: Failed to decode GOOGLE_SERVICES_JSON_BASE64. ${e.message}")
+    }
+}
+
+// Decode release keystore from Base64 if present in environment
+val releaseKeystoreBase64 = System.getenv("RELEASE_KEYSTORE_BASE64") ?: ""
+if (releaseKeystoreBase64.isNotBlank()) {
+    try {
+        val bytes = Base64.getDecoder().decode(releaseKeystoreBase64.replace("\n", "").trim())
+        val ksFile = rootProject.file("earthlink_reseller_release.jks")
+        ksFile.writeBytes(bytes)
+        println("Successfully generated earthlink_reseller_release.jks from RELEASE_KEYSTORE_BASE64 secret.")
+    } catch (e: Exception) {
+        println("Warning: Failed to decode RELEASE_KEYSTORE_BASE64. ${e.message}")
+    }
+}
+
 android {
   namespace = "com.alamiry.earthlinkreseller"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
