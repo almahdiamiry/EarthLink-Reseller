@@ -62,11 +62,16 @@ android {
         file("earthlink_reseller_release.jks")
       ).filterNotNull().firstOrNull { it.exists() } ?: rootProject.file("earthlink_reseller_release.jks")
 
-      val storePwd = System.getenv("STORE_PASSWORD")?.takeIf { it.isNotBlank() }
-        ?: throw GradleException("STORE_PASSWORD environment variable is missing or blank.")
+      val storePwd = System.getenv("STORE_PASSWORD")?.takeIf { it.isNotBlank() } ?: ""
       val kAlias = System.getenv("KEY_ALIAS")?.takeIf { it.isNotBlank() } ?: "alamiry.earthlink.reseller"
-      val kPwd = System.getenv("KEY_PASSWORD")?.takeIf { it.isNotBlank() }
-        ?: throw GradleException("KEY_PASSWORD environment variable is missing or blank.")
+      val kPwd = System.getenv("KEY_PASSWORD")?.takeIf { it.isNotBlank() } ?: ""
+
+      val isReleaseRequested = gradle.startParameter.taskNames.any {
+        it.contains("Release", ignoreCase = true) || it.contains("bundle") || it.contains("assemble")
+      }
+      if (isReleaseRequested && (storePwd.isBlank() || kPwd.isBlank())) {
+        throw GradleException("Release build requested but STORE_PASSWORD or KEY_PASSWORD environment variable is missing or blank.")
+      }
 
       storeFile = ksFile
       storePassword = storePwd
