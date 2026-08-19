@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Release Build Protection, R8 Safety Gates & Play Services Diagnostics
 - **Dynamic & Safe Release Build Signing Gates (`INV-16`)**:
   - Refactored `app/build.gradle.kts` release signing block to perform dynamic configuration evaluation. The build now safely bypasses throwing configuration exceptions during local development and testing tasks when release signing credentials (`STORE_PASSWORD`, `KEY_PASSWORD`) are not present in the local environment.
+  - Enforced a precise release task matcher (excluding tasks with `Debug` such as `assembleDebug`) to prevent greedy false-positives and ensure development/testing commands execute with zero friction.
   - Enforced a fails-closed posture: the build strictly throws a `GradleException` and halts immediately if a release-related task (e.g., `assembleRelease`, `bundleRelease`) is actively requested while release environment credentials are missing.
 - **R8 Minification Protection & Startup Crash Prevention (`BUG-009` / `INV-15`)**:
   - Engineered the resilient config wrapper `AppBuildConfig` in `com.example.core.util` to safely gate access to AGP generated `BuildConfig` fields, preventing `NoClassDefFoundError` or `ClassNotFoundException` in minified production release builds.

@@ -55,7 +55,7 @@ android {
   signingConfigs {
     create("release") {
       val isReleaseRequested = gradle.startParameter.taskNames.any {
-        it.contains("Release", ignoreCase = true) || it.contains("bundle") || it.contains("assemble")
+        it.contains("Release", ignoreCase = true) || (it.contains("bundle") && !it.contains("Debug", ignoreCase = true))
       }
 
       if (isReleaseRequested) {
