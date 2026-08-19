@@ -54,29 +54,42 @@ android {
 
   signingConfigs {
     create("release") {
-      val envKs = System.getenv("KEYSTORE_PATH")?.takeIf { it.isNotBlank() }
-      val ksFile = sequenceOf(
-        envKs?.let { file(it) },
-        envKs?.let { rootProject.file(it.removePrefix("/")) },
-        rootProject.file("earthlink_reseller_release.jks"),
-        file("earthlink_reseller_release.jks")
-      ).filterNotNull().firstOrNull { it.exists() } ?: rootProject.file("earthlink_reseller_release.jks")
-
-      val storePwd = System.getenv("STORE_PASSWORD")?.takeIf { it.isNotBlank() } ?: ""
-      val kAlias = System.getenv("KEY_ALIAS")?.takeIf { it.isNotBlank() } ?: "alamiry.earthlink.reseller"
-      val kPwd = System.getenv("KEY_PASSWORD")?.takeIf { it.isNotBlank() } ?: ""
-
       val isReleaseRequested = gradle.startParameter.taskNames.any {
         it.contains("Release", ignoreCase = true) || it.contains("bundle") || it.contains("assemble")
       }
-      if (isReleaseRequested && (storePwd.isBlank() || kPwd.isBlank())) {
-        throw GradleException("Release build requested but STORE_PASSWORD or KEY_PASSWORD environment variable is missing or blank.")
-      }
 
-      storeFile = ksFile
-      storePassword = storePwd
-      keyAlias = kAlias
-      keyPassword = kPwd
+      if (isReleaseRequested) {
+        val envKs = System.getenv("KEYSTORE_PATH")?.takeIf { it.isNotBlank() }
+          ?.removeSurrounding("\"")?.removeSurrounding("'")
+        val ksFile = sequenceOf(
+          envKs?.let { file(it) },
+          envKs?.let { rootProject.file(it.removePrefix("/")) },
+          rootProject.file("earthlink_reseller_release.jks"),
+          file("earthlink_reseller_release.jks")
+        ).filterNotNull().firstOrNull { it.exists() } ?: rootProject.file("earthlink_reseller_release.jks")
+
+        val storePwd = System.getenv("STORE_PASSWORD")?.takeIf { it.isNotBlank() }
+          ?.removeSurrounding("\"")?.removeSurrounding("'") ?: ""
+        val kAlias = System.getenv("KEY_ALIAS")?.takeIf { it.isNotBlank() }
+          ?.removeSurrounding("\"")?.removeSurrounding("'") ?: "alamiry.earthlink.reseller"
+        val kPwd = System.getenv("KEY_PASSWORD")?.takeIf { it.isNotBlank() }
+          ?.removeSurrounding("\"")?.removeSurrounding("'") ?: ""
+
+        if (storePwd.isBlank() || kPwd.isBlank()) {
+          throw GradleException("Release build requested but STORE_PASSWORD or KEY_PASSWORD environment variable is missing or blank.")
+        }
+
+        storeFile = ksFile
+        storePassword = storePwd
+        keyAlias = kAlias
+        keyPassword = kPwd
+      } else {
+        // Fallback to debug configuration during local non-release runs to prevent validation failures!
+        storeFile = file("${rootDir}/debug.keystore")
+        storePassword = "android"
+        keyAlias = "androiddebugkey"
+        keyPassword = "android"
+      }
     }
     create("debugConfig") {
       storeFile = file("${rootDir}/debug.keystore")
