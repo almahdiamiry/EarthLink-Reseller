@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.96.0] - 2026-08-19
+
+### ISP Lifecycle Decoupling, Financial Preservation & Plan v7 Remediation
+- **Subscriber Lifecycle & Legacy Field Decoupling (RC-03 / MIGRATION_12_13)**:
+  - Added dedicated monotonic lifecycle column `isHistoryOnlySubscriber: Boolean = false` to `LocalAccount` and applied SQLite schema migration `MIGRATION_12_13`.
+  - Preserved `LocalAccount.isLegacy` strictly for version-resolution fallback suppression (`resolveLocalVersionState`), preventing semantic conflation between import-format version tracking and business subscriber departures.
+  - Updated `UtowerImporter.kt` to write solely to `isLegacyJsonFormat` without corrupting account lifecycle state.
+  - Implemented monotonic remote merge in `RemoteEntityValidator.kt` to ensure `isHistoryOnlySubscriber` never resets from `true` to `false`.
+- **Authoritative ISP Disappearance Reconciliation (RC-04 / `IspDisappearanceReconciler.kt`)**:
+  - Implemented verified ISP reconciliation using authoritative `LocalAccount.earthlinkUsername` ↔ ISP `userID` mapping.
+  - Non-ISP local accounts (null or blank `earthlinkUsername`) are strictly excluded from disappearance evaluation.
+  - Accounts missing from authoritative ISP snapshots transition monotonically to `isHistoryOnlySubscriber = true`, preserving ledger entries and financial debt history.
+- **Active vs. Historical Query Filtering**:
+  - Updated `AppDatabase.kt` and `Repositories.kt` (`getAll`, `searchAccounts`, `searchAccountsFilteredFlow`, `countAccountsFilteredFlow`) to filter `isHistoryOnlySubscriber = 0` from active subscriber listings.
+  - Updated `DashboardScreen.kt` so that the "محذوفة" (Deleted) panel specifically displays history-only accounts while the active panel displays active subscribers.
+- **Full Suite Regression & Invariant Certification**:
+  - Successfully executed full test suite (292 unit and Robolectric tests passing with zero failures).
+  - Maintained all G8 machine-certified invariants and zero-trust guarantees across local and remote channels.
+
 ## [1.95.0] - 2026-08-18
 
 ### Critical Audit & Business Logic Fixes
