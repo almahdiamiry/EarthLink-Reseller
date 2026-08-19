@@ -7,10 +7,10 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface LocalAccountDao {
-    @Query("SELECT * FROM local_accounts ORDER BY displayName ASC LIMIT :limit")
+    @Query("SELECT * FROM local_accounts WHERE isHistoryOnlySubscriber = 0 ORDER BY displayName ASC LIMIT :limit")
     fun getAll(limit: Int = 100000): Flow<List<LocalAccount>>
 
-    @Query("SELECT * FROM local_accounts ORDER BY displayName ASC, id ASC LIMIT :limit OFFSET :offset")
+    @Query("SELECT * FROM local_accounts WHERE isHistoryOnlySubscriber = 0 ORDER BY displayName ASC, id ASC LIMIT :limit OFFSET :offset")
     suspend fun getAllOneShot(limit: Int = 100000, offset: Int = 0): List<LocalAccount>
 
     @Query("SELECT * FROM local_accounts WHERE id = :id")
@@ -71,7 +71,7 @@ interface LocalAccountDao {
 
     @Query("""
         SELECT * FROM local_accounts 
-        WHERE (:query = '' OR displayName LIKE :query || '%' OR earthlinkUsername LIKE :query || '%' OR phone1 LIKE :query || '%' OR phone2 LIKE :query || '%')
+        WHERE isHistoryOnlySubscriber = 0 AND (:query = '' OR displayName LIKE :query || '%' OR earthlinkUsername LIKE :query || '%' OR phone1 LIKE :query || '%' OR phone2 LIKE :query || '%')
         ORDER BY displayName ASC 
         LIMIT :limit OFFSET :offset
     """)
@@ -79,9 +79,12 @@ interface LocalAccountDao {
 
     @Query("""
         SELECT COUNT(*) FROM local_accounts 
-        WHERE (:query = '' OR displayName LIKE :query || '%' OR earthlinkUsername LIKE :query || '%' OR phone1 LIKE :query || '%' OR phone2 LIKE :query || '%')
+        WHERE isHistoryOnlySubscriber = 0 AND (:query = '' OR displayName LIKE :query || '%' OR earthlinkUsername LIKE :query || '%' OR phone1 LIKE :query || '%' OR phone2 LIKE :query || '%')
     """)
     suspend fun getSearchCount(query: String): Int
+
+    @Query("SELECT COUNT(*) FROM local_accounts WHERE isHistoryOnlySubscriber = 0")
+    suspend fun getActiveTotalCount(): Int
 
     @Query("SELECT COUNT(*) FROM local_accounts")
     suspend fun getTotalCount(): Int
@@ -445,7 +448,7 @@ abstract class AppDatabase : RoomDatabase() {
     }
 
     companion object {
-        const val VERSION = 12
+        const val VERSION = 13
 
         @Volatile
         private var INSTANCE: AppDatabase? = null
@@ -743,6 +746,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_12_13 = object : androidx.room.migration.Migration(12, 13) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `local_accounts` ADD COLUMN `isHistoryOnlySubscriber` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         private val INSTANCES = java.util.concurrent.ConcurrentHashMap<String, AppDatabase>()
 
         fun getDatabase(context: Context, passphrase: ByteArray, dbName: String = "earthlink_reseller_db"): AppDatabase {
@@ -758,7 +767,7 @@ abstract class AppDatabase : RoomDatabase() {
                 val dbFile = context.applicationContext.getDatabasePath(dbName)
                 dbFile.parentFile?.mkdirs()
                 val builder = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, dbName)
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                             super.onCreate(db)

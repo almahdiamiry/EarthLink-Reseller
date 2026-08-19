@@ -129,9 +129,9 @@ fun DashboardScreen(
             var list = baseList.filter { user ->
                 val matchingAccount = localAccountMatcher.findMatchingByUsername(user.userID) ?: localAccountMatcher.findMatching(user)
                 val panelMatch = when (selectedPanel) {
-                    "الكل" -> true
-                    "EarthLink admin@sacx" -> matchingAccount?.towerName?.equals("sacx", ignoreCase = true) == true
-                    "محذوفة" -> false
+                    "الكل" -> matchingAccount?.isHistoryOnlySubscriber != true
+                    "EarthLink admin@sacx" -> matchingAccount?.towerName?.equals("sacx", ignoreCase = true) == true && matchingAccount.isHistoryOnlySubscriber != true
+                    "محذوفة" -> matchingAccount?.isHistoryOnlySubscriber == true
                     else -> true
                 }
                 

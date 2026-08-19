@@ -995,7 +995,7 @@ class LocalAccountRepositoryImpl(
         limit: Int,
         offset: Int
     ): Flow<List<LocalAccount>> {
-        var sql = "SELECT * FROM local_accounts WHERE 1=1"
+        var sql = "SELECT * FROM local_accounts WHERE isHistoryOnlySubscriber = 0"
         val args = mutableListOf<Any>()
         if (query.isNotEmpty()) {
             sql += " AND (displayName LIKE '%' || ? || '%' OR earthlinkUsername LIKE '%' || ? || '%' OR phone1 LIKE '%' || ? || '%' OR phone2 LIKE '%' || ? || '%' OR packageName LIKE '%' || ? || '%' OR towerName LIKE '%' || ? || '%' OR address LIKE '%' || ? || '%')"
@@ -1027,7 +1027,7 @@ class LocalAccountRepositoryImpl(
         filterNoUsername: Boolean,
         filterCoordinates: Boolean
     ): Flow<Int> {
-        var sql = "SELECT COUNT(*) FROM local_accounts WHERE 1=1"
+        var sql = "SELECT COUNT(*) FROM local_accounts WHERE isHistoryOnlySubscriber = 0"
         val args = mutableListOf<Any>()
         if (query.isNotEmpty()) {
             sql += " AND (displayName LIKE '%' || ? || '%' OR earthlinkUsername LIKE '%' || ? || '%' OR phone1 LIKE '%' || ? || '%' OR phone2 LIKE '%' || ? || '%' OR packageName LIKE '%' || ? || '%' OR towerName LIKE '%' || ? || '%' OR address LIKE '%' || ? || '%')"

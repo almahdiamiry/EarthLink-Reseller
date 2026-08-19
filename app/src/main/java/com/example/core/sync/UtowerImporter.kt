@@ -974,7 +974,7 @@ private class ImportSession(
     val parsedSubs = mutableListOf<ParsedSub>()
     val parsedTxs = mutableListOf<ParsedTx>()
 
-    data class ParsedSub(val sourceKey: String, val json: JSONObject, val isLegacy: Boolean, val originalId: String? = null)
+    data class ParsedSub(val sourceKey: String, val json: JSONObject, val isLegacyJsonFormat: Boolean, val originalId: String? = null)
     data class ParsedTx(val sourceKey: String, val json: JSONObject)
 
     val subscriberMap = mutableMapOf<String, String>()
@@ -1013,17 +1013,17 @@ private class ImportSession(
             .toMutableMap()
     }
 
-    fun insertOrUpdateUser(sourceKey: String, json: JSONObject, isLegacy: Boolean, originalId: String? = null) {
-        parsedSubs.add(ParsedSub(sourceKey, json, isLegacy, originalId))
+    fun insertOrUpdateUser(sourceKey: String, json: JSONObject, isLegacyJsonFormat: Boolean, originalId: String? = null) {
+        parsedSubs.add(ParsedSub(sourceKey, json, isLegacyJsonFormat, originalId))
     }
 
-    suspend fun insertOrUpdateUserInternal(sourceKey: String, json: JSONObject, isLegacy: Boolean, originalId: String? = null) {
+    suspend fun insertOrUpdateUserInternal(sourceKey: String, json: JSONObject, isLegacyJsonFormat: Boolean, originalId: String? = null) {
         subscribersRead++
         try {
             val liveObj = json.optJSONObject("live") ?: JSONObject()
             val utowerObj = json.optJSONObject("utower") ?: JSONObject()
 
-            var earthlinkUsername = (if (isLegacy) {
+            var earthlinkUsername = (if (isLegacyJsonFormat) {
                 json.optString("userName", json.optString("username", json.optString("earthlink_username")))
             } else {
                 liveObj.optString("username", liveObj.optString("userName", json.optString("userName", json.optString("username", json.optString("earthlink_username")))))
@@ -1032,7 +1032,7 @@ private class ImportSession(
                 earthlinkUsername = json.optString("earthlink_username", json.optString("username", json.optString("userName")))?.trim()
             }
 
-            var phone1 = (if (isLegacy) {
+            var phone1 = (if (isLegacyJsonFormat) {
                 json.optString("phoneNumber", json.optString("phone", json.optString("phone1")))
             } else {
                 (liveObj.optString("phone", liveObj.optString("phoneNumber", json.optString("phoneNumber", json.optString("phone", json.optString("phone1")))))
@@ -1042,7 +1042,7 @@ private class ImportSession(
                 phone1 = json.optString("phone1", json.optString("phone", json.optString("phoneNumber")))?.trim()
             }
 
-            var name = (if (isLegacy) {
+            var name = (if (isLegacyJsonFormat) {
                 json.optString("name", json.optString("display_name"))
             } else {
                 liveObj.optString("name", json.optString("name", json.optString("display_name", utowerObj.optString("name"))))
@@ -1062,14 +1062,14 @@ private class ImportSession(
             val debtKeys = listOf("totalDebit", "debts", "debt", "remindPrice", "totalPrice", "debt_unit")
             val priceKeys = listOf("currentPrice", "price", "current_price_unit")
 
-            val debtUnit = if (isLegacy) com.example.core.ledger.MoneyParser.parseAmount(json, keys = debtKeys) else com.example.core.ledger.MoneyParser.parseAmount(utowerObj, json, keys = debtKeys)
+            val debtUnit = if (isLegacyJsonFormat) com.example.core.ledger.MoneyParser.parseAmount(json, keys = debtKeys) else com.example.core.ledger.MoneyParser.parseAmount(utowerObj, json, keys = debtKeys)
 
             val directDebtIqd = com.example.core.ledger.MoneyParser.parseAmount(json, utowerObj, keys = listOf("debt_iqd"))
             val directPriceIqd = com.example.core.ledger.MoneyParser.parseAmount(json, utowerObj, keys = listOf("price_iqd", "current_price_iqd"))
-            val priceUnit = if (isLegacy) com.example.core.ledger.MoneyParser.parseAmount(json, keys = priceKeys) else com.example.core.ledger.MoneyParser.parseAmount(utowerObj, json, keys = priceKeys)
+            val priceUnit = if (isLegacyJsonFormat) com.example.core.ledger.MoneyParser.parseAmount(json, keys = priceKeys) else com.example.core.ledger.MoneyParser.parseAmount(utowerObj, json, keys = priceKeys)
 
             val directLoanIqd = com.example.core.ledger.MoneyParser.parseAmount(json, utowerObj, keys = listOf("loan_iqd", "loanIqd"))
-            val loanUnit = if (isLegacy) com.example.core.ledger.MoneyParser.parseAmount(json, keys = listOf("loan")) else com.example.core.ledger.MoneyParser.parseAmount(utowerObj, json, keys = listOf("loan"))
+            val loanUnit = if (isLegacyJsonFormat) com.example.core.ledger.MoneyParser.parseAmount(json, keys = listOf("loan")) else com.example.core.ledger.MoneyParser.parseAmount(utowerObj, json, keys = listOf("loan"))
 
             var debtIqd = if (directDebtIqd != null) com.example.core.ledger.MoneyParser.parseRawIqd(directDebtIqd) else com.example.core.ledger.MoneyParser.parseUtowerAmount(debtUnit)
             val priceIqd = if (directPriceIqd != null) com.example.core.ledger.MoneyParser.parseRawIqd(directPriceIqd) else com.example.core.ledger.MoneyParser.parseUtowerAmount(priceUnit)
@@ -1104,17 +1104,17 @@ private class ImportSession(
 
             val resolvedStateSource = if (resolvedDebtFromHistory != null) "UTOWER_SNAPSHOT_RESOLVED" else "UTOWER_CURRENT_STATE"
 
-            val nanoIp = if (isLegacy) (json.optString("nanoIp", json.optString("nano_ip"))) else (utowerObj.optString("nanoIp").takeIf { !it.isNullOrBlank() } ?: json.optString("nanoIp", json.optString("nano_ip")))
+            val nanoIp = if (isLegacyJsonFormat) (json.optString("nanoIp", json.optString("nano_ip"))) else (utowerObj.optString("nanoIp").takeIf { !it.isNullOrBlank() } ?: json.optString("nanoIp", json.optString("nano_ip")))
             if (!nanoIp.isNullOrBlank() && nanoIp != "null") {
                 nanoIpsImported++
             }
 
-            val note = if (isLegacy) json.optString("note") else (utowerObj.optString("note").takeIf { !it.isNullOrBlank() } ?: json.optString("note").takeIf { !it.isNullOrBlank() } ?: liveObj.optString("note"))
+            val note = if (isLegacyJsonFormat) json.optString("note") else (utowerObj.optString("note").takeIf { !it.isNullOrBlank() } ?: json.optString("note").takeIf { !it.isNullOrBlank() } ?: liveObj.optString("note"))
             if (!note.isNullOrBlank() && note != "null") {
                 subsNotesImported++
             }
 
-            val endMs = if (isLegacy) (json.optLong("end", 0L).takeIf { it > 0L } ?: json.optLong("subscription_end_ms", 0L)) else (liveObj.optLong("end", 0L).takeIf { it > 0L } ?: json.optLong("subscription_end_ms", 0L))
+            val endMs = if (isLegacyJsonFormat) (json.optLong("end", 0L).takeIf { it > 0L } ?: json.optLong("subscription_end_ms", 0L)) else (liveObj.optLong("end", 0L).takeIf { it > 0L } ?: json.optLong("subscription_end_ms", 0L))
             val expiresAt = if (endMs > 0) formatBghFull(endMs) else null
 
             val finalId = if (existing != null) {
@@ -1140,8 +1140,7 @@ private class ImportSession(
                     nanoIp = existing.nanoIp.takeIf { !it.isNullOrBlank() } ?: nanoIp.takeIf { it != "null" },
                     note = existing.note.takeIf { !it.isNullOrBlank() } ?: note.takeIf { it != "null" },
                     expiresAt = existing.expiresAt.takeIf { !it.isNullOrBlank() } ?: expiresAt,
-                    updatedAt = System.currentTimeMillis(),
-                    isLegacy = existing.isLegacy && isLegacy
+                    updatedAt = System.currentTimeMillis()
                 )
                 appDatabase.localAccountDao().update(updated)
 
@@ -1164,7 +1163,7 @@ private class ImportSession(
                     earthlinkUsername = if (earthlinkUsername == "null") null else earthlinkUsername,
                     phone1 = if (phone1 == "null") null else phone1,
                     phone2 = utowerObj.optString("phoneNumber2").takeIf { it != "null" },
-                    packageName = (if (isLegacy) json.optString("packageName") else liveObj.optString("profileName")).takeIf { !it.isNullOrBlank() && it != "null" },
+                    packageName = (if (isLegacyJsonFormat) json.optString("packageName") else liveObj.optString("profileName")).takeIf { !it.isNullOrBlank() && it != "null" },
                     currentPriceIqd = priceIqd,
                     debtIqd = debtIqd,
                     loanIqd = loanIqdVal,
@@ -1180,7 +1179,6 @@ private class ImportSession(
                     note = note.takeIf { it != "null" },
                     expiresAt = expiresAt,
                     rawJson = json.toString(),
-                    isLegacy = isLegacy,
                     createdAt = System.currentTimeMillis(),
                     updatedAt = System.currentTimeMillis()
                 )
@@ -1488,7 +1486,7 @@ private class ImportSession(
         val subChunks = parsedSubs.chunked(500)
         for (chunk in subChunks) {
             for (sub in chunk) {
-                insertOrUpdateUserInternal(sub.sourceKey, sub.json, sub.isLegacy, sub.originalId)
+                insertOrUpdateUserInternal(sub.sourceKey, sub.json, sub.isLegacyJsonFormat, sub.originalId)
             }
         }
 

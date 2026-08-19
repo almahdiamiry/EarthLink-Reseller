@@ -342,6 +342,7 @@ data class LocalAccount(
     val lastPaymentAt: Long? = null,
     val rawJson: String? = null,
     val isLegacy: Boolean = false,
+    val isHistoryOnlySubscriber: Boolean = false,
     val openingDebtIqd: Double = 0.0,
     val openingAdvanceIqd: Double = 0.0,
     val openingLoanIqd: Double = 0.0,

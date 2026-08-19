@@ -65,6 +65,7 @@ object RemoteEntityValidator {
             phone2 = d["phone2"] as? String ?: existingLocalAccount?.phone2,
             packageName = d["packageName"] as? String ?: existingLocalAccount?.packageName,
             isLegacy = d["isLegacy"] as? Boolean ?: existingLocalAccount?.isLegacy ?: false,
+            isHistoryOnlySubscriber = if (d["isHistoryOnlySubscriber"] == true) true else existingLocalAccount?.isHistoryOnlySubscriber ?: false,
             currentPriceIqd = (d["currentPriceIqd"] as? Number)?.toDouble() ?: existingLocalAccount?.currentPriceIqd ?: 0.0,
             debtIqd = effectiveDebt,
             loanIqd = loanIqd,

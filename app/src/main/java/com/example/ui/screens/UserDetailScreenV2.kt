@@ -570,7 +570,7 @@ fun UserDetailScreenV2(
                                                         payNote = payNote,
                                                         idempotencyKey = txId
                                                     )
-                                                    viewModel.syncRepo.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
+                                                    viewModel.syncRepo?.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
                                                 } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
                                                     android.util.Log.e("UserDetailScreen", "Failed to add ledger entry", e)
                                                     try {
@@ -879,7 +879,7 @@ fun UserDetailScreenV2(
                                                 amount = parsedPriceVal,
                                                 note = payNote
                                             )
-                                            viewModel.syncRepo.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
+                                            viewModel.syncRepo?.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
 
                                             showDepositDialog = false
                                             android.widget.Toast.makeText(
@@ -1219,7 +1219,7 @@ fun UserDetailScreenV2(
                                                     amount = parsedPriceVal,
                                                     note = debtNote
                                                 )
-                                                viewModel.syncRepo.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
+                                                viewModel.syncRepo?.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
 
                                                 showDebtDialog = false
                                                 android.widget.Toast.makeText(

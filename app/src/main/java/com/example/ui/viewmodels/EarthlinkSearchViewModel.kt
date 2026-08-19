@@ -19,7 +19,7 @@ class EarthlinkSearchViewModel(
     val prefs: com.example.core.security.PreferenceManager,
     val localAccountRepository: com.example.domain.repository.LocalAccountRepository,
     val localLedgerRepository: com.example.domain.repository.LocalLedgerRepository,
-    val syncRepo: com.example.domain.repository.SyncRepository
+    val syncRepo: com.example.domain.repository.SyncRepository? = null
 ) : ViewModel() {
 
     companion object {
