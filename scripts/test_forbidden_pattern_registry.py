@@ -419,6 +419,40 @@ class AdversarialFixtureScannerTest(unittest.TestCase):
         pat_res = result["pattern_results"].get("RC-5-direct-settings-sync-caller", {})
         self.assertEqual(pat_res.get("status"), "FAIL", "Direct syncUserSettings call from ViewModel must fail RC-5")
 
+    def test_adversarial_rc07_clear_local_data_ui_gate_detection_and_exemption(self):
+        """Scanner must flag clearLocalData calls in UI layer outside SettingsScreen or ViewModel definition."""
+        # Case A: Inside SettingsScreen -> PASS (Allowed)
+        settings_file = "app/src/main/java/com/example/ui/screens/SettingsScreen.kt"
+        clean_settings = """
+        package com.example.ui.screens
+        @Composable
+        fun SettingsScreen(dashboardViewModel: DashboardViewModel) {
+            if (BuildConfig.DEBUG) {
+                dashboardViewModel.clearLocalData(force = false, onSuccess = {}, onError = {})
+            }
+        }
+        """
+        self._write_fixture(settings_file, clean_settings)
+        result = scan_patterns(root_dir=self.test_dir, registry_path=self.registry_file)
+        pat_res = result["pattern_results"].get("RC-07-clear-local-data-ui-gate", {})
+        self.assertEqual(pat_res.get("status"), "PASS", f"SettingsScreen clearLocalData must pass: {pat_res.get('violations')}")
+
+        # Case B: Invoking clearLocalData from HomeScreen or other screen -> FAIL
+        invalid_screen = "app/src/main/java/com/example/ui/screens/HomeScreen.kt"
+        seeded_screen = """
+        package com.example.ui.screens
+        @Composable
+        fun HomeScreen(dashboardViewModel: DashboardViewModel) {
+            Button(onClick = { dashboardViewModel.clearLocalData() }) {
+                Text("Clear")
+            }
+        }
+        """
+        self._write_fixture(invalid_screen, seeded_screen)
+        result = scan_patterns(root_dir=self.test_dir, registry_path=self.registry_file)
+        pat_res = result["pattern_results"].get("RC-07-clear-local-data-ui-gate", {})
+        self.assertEqual(pat_res.get("status"), "FAIL", "clearLocalData in HomeScreen must fail RC-07")
+
     def test_clean_workspace_passes_with_zero_violations(self):
         """When all seeded violations are cleaned, scanner must return clean PASS."""
         # Create compliant clean files

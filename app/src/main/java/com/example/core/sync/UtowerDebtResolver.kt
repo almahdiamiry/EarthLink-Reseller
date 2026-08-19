@@ -46,7 +46,8 @@ object UtowerDebtResolver {
         }
 
         // Priority 3: Reconstruct incrementally from valid post-reset movements
-        var resolvedDebt = 0.0
+        val openingDebt = explicitSourceDebt ?: account.openingDebtIqd.takeIf { it >= 0.0 } ?: account.debtIqd
+        var resolvedDebt = openingDebt
         var resolvedAdvance = 0.0
         var resolvedLoan = 0.0
 
@@ -56,10 +57,6 @@ object UtowerDebtResolver {
             resolvedDebt = balances.debtIqd
             resolvedAdvance = balances.advanceIqd
             resolvedLoan = balances.loanIqd
-        }
-
-        if (postResetTxs.last().debtAfterIqd > 0.0) {
-            return postResetTxs.last().debtAfterIqd
         }
 
         return resolvedDebt

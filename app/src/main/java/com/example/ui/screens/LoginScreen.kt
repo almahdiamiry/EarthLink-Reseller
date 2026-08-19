@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.widget.Toast
+import com.example.core.util.AppBuildConfig
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -216,7 +217,7 @@ fun LoginScreen(viewModel: AuthViewModel) {
                 )
             }
 
-            if (com.alamiry.earthlinkreseller.BuildConfig.DEBUG) {
+            if (AppBuildConfig.DEBUG) {
                 val loginDemoMode by viewModel.prefs.demoModeFlow.collectAsStateWithLifecycle()
                 Row(
                     modifier = Modifier

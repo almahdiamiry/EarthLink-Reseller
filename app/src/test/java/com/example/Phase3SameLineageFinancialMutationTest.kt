@@ -315,7 +315,11 @@ class Phase3SameLineageFinancialMutationTest {
         // Deleting a single account is a normal same-lineage mutation -> generation must NOT change
         accountRepo.deleteAccount("acc_fin_04")
         assertEquals("Single account delete must preserve generation at 1L", 1L, db.getGeneration())
-        assertNull(db.localAccountDao().getByIdOneShot("acc_fin_04"))
+        val preservedAccount = db.localAccountDao().getByIdOneShot("acc_fin_04")
+        assertNotNull(preservedAccount)
+        assertTrue(preservedAccount!!.isHistoryOnlySubscriber)
+        val childLedgers = db.localLedgerEntryDao().getByAccountIdOneShot("acc_fin_04")
+        assertEquals(1, childLedgers.size)
 
         // Contrast: deleteAllAccounts() / clearAllData() represents a complete lineage reset -> increments generation
         accountRepo.deleteAllAccounts()
@@ -610,7 +614,7 @@ class Phase3SameLineageFinancialMutationTest {
         val resLedgerDel = coordinator.processEvent(evLedgerDelete)
         assertEquals(EventSyncResult.APPLIED, resLedgerDel)
         assertEquals("Local generation must remain 1L after remote LedgerDelete", 1L, db.getGeneration())
-        assertNull(db.localLedgerEntryDao().getByIdOneShot(ledger.id))
+        assertNotNull(db.localLedgerEntryDao().getByIdOneShot(ledger.id))
         assertEquals("500300", db.syncMetadataDao().get("remote_version:ledger:rem_tx_01"))
 
         // 5. Remote AccountDelete with server timestamp remoteVersion = 500400L
@@ -622,7 +626,9 @@ class Phase3SameLineageFinancialMutationTest {
         val resAccDel = coordinator.processEvent(evAccountDelete)
         assertEquals(EventSyncResult.APPLIED, resAccDel)
         assertEquals("Local generation must remain 1L after remote AccountDelete", 1L, db.getGeneration())
-        assertNull(db.localAccountDao().getByIdOneShot(account.id))
+        val remAcc = db.localAccountDao().getByIdOneShot(account.id)
+        assertNotNull(remAcc)
+        assertTrue(remAcc!!.isHistoryOnlySubscriber)
         assertEquals("500400", db.syncMetadataDao().get("remote_version:account:rem_acc_01"))
 
         // Final generation assertion

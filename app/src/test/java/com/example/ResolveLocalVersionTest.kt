@@ -64,7 +64,7 @@ class ResolveLocalVersionTest {
     }
 
     @Test
-    fun untrackedEntity_withLegacyTimestamp_returnsFallback() = runBlocking {
+    fun untrackedEntity_returnsUntrackedNullFallback() = runBlocking {
         val accountId = "acc_untracked_with_fallback"
         db.localAccountDao().upsert(
             LocalAccount(
@@ -78,7 +78,7 @@ class ResolveLocalVersionTest {
         )
         val untracked = coordinator.resolveLocalVersion("account", accountId)
         assertTrue(untracked is LocalVersionState.Untracked)
-        assertEquals(999_999_999_999L, (untracked as LocalVersionState.Untracked).legacyFallback)
+        assertNull((untracked as LocalVersionState.Untracked).legacyFallback)
     }
 
     @Test
@@ -142,7 +142,7 @@ class ResolveLocalVersionTest {
         )
         val untracked = coordinator.resolveLocalVersion("account", accountId)
         assertTrue(untracked is LocalVersionState.Untracked)
-        assertEquals(42L, (untracked as LocalVersionState.Untracked).legacyFallback)
+        assertNull((untracked as LocalVersionState.Untracked).legacyFallback)
 
         // 3. ServerTracked
         db.syncMetadataDao().put("remote_version:account:$accountId", "1750000000000")
@@ -184,7 +184,7 @@ class ResolveLocalVersionTest {
         )
         val untracked = coordinator.resolveLocalVersion("ledger", ledgerId)
         assertTrue(untracked is LocalVersionState.Untracked)
-        assertEquals(55L, (untracked as LocalVersionState.Untracked).legacyFallback)
+        assertNull((untracked as LocalVersionState.Untracked).legacyFallback)
 
         // 3. ServerTracked
         db.syncMetadataDao().put("remote_version:ledger:$ledgerId", "1760000000000")
@@ -215,7 +215,7 @@ class ResolveLocalVersionTest {
         )
         val untracked = coordinator.resolveLocalVersion("batch", batchId)
         assertTrue(untracked is LocalVersionState.Untracked)
-        assertEquals(99L, (untracked as LocalVersionState.Untracked).legacyFallback)
+        assertNull((untracked as LocalVersionState.Untracked).legacyFallback)
 
         // 3. ServerTracked
         db.syncMetadataDao().put("remote_version:batch:$batchId", "1770000000000")

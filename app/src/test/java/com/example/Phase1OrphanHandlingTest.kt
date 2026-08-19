@@ -325,7 +325,8 @@ class Phase1OrphanHandlingTest {
             payloadJson = """{"id":"$ledgerId","accountId":"$parentAccountId"}"""
         )
 
-        // 3. Delete parent account from SQLite (cascading removal of parent and child records)
+        // 3. Delete child ledger and parent account from SQLite
+        ledgerDao.deleteById(ledgerId)
         accountDao.deleteById(parentAccountId)
         assertNull(accountDao.getByIdOneShot(parentAccountId))
         assertNull(ledgerDao.getByIdOneShot(ledgerId))

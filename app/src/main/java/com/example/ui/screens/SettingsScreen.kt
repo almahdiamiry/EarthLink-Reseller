@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.widget.Toast
+import com.example.core.util.AppBuildConfig
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -661,97 +662,97 @@ fun SettingsScreen(
             }
         }
 
-        // --- DEV MODE ---
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(
-                text = if (currentLang == "ar") "وضع المطور" else "Developer Mode",
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(horizontal = 4.dp)
-            )
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (com.alamiry.earthlinkreseller.BuildConfig.DEBUG) {
+        // --- DEV MODE (DEBUG BUILD ONLY) ---
+        if (com.alamiry.earthlinkreseller.BuildConfig.DEBUG) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = if (currentLang == "ar") "وضع المطور" else "Developer Mode",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(16.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text(if (currentLang == "ar") "وضع التجريب (Demo)" else "Demo Mode")
                             Switch(checked = isDemoMode, onCheckedChange = { prefs.setDemoMode(it) })
                         }
-                    }
-                    var showConfirmDelete by rememberSaveable { mutableStateOf(false) }
-                    var unsyncedWarningClearDataDialog by rememberSaveable { mutableStateOf(false) }
-                    var pendingClearDataCountState by rememberSaveable { mutableStateOf(0) }
+                        var showConfirmDelete by rememberSaveable { mutableStateOf(false) }
+                        var unsyncedWarningClearDataDialog by rememberSaveable { mutableStateOf(false) }
+                        var pendingClearDataCountState by rememberSaveable { mutableStateOf(0) }
 
-                    if (showConfirmDelete) {
-                        AlertDialog(
-                            onDismissRequest = { showConfirmDelete = false },
-                            title = { Text(if (currentLang == "ar") "حذف البيانات نهائياً؟" else "Delete Data Permanently?") },
-                            text = { Text(if (currentLang == "ar") "سيتم حذف جميع البيانات نهائياً من هذا الجهاز ومن السحابة (Firestore). لا يمكن التراجع عن هذا الإجراء أبداً." else "All data will be permanently deleted from this device AND the cloud (Firestore). This action cannot be undone.") },
-                            confirmButton = {
-                                Button(
-                                    onClick = {
-                                        showConfirmDelete = false
-                                        dashboardViewModel.clearLocalData(
-                                            force = false,
-                                            onSuccess = {},
-                                            onError = { err ->
-                                                if (err.startsWith("UNSYNCED_CHANGES:")) {
-                                                    pendingClearDataCountState = err.substringAfter("UNSYNCED_CHANGES:").toIntOrNull() ?: 1
-                                                    unsyncedWarningClearDataDialog = true
+                        if (showConfirmDelete) {
+                            AlertDialog(
+                                onDismissRequest = { showConfirmDelete = false },
+                                title = { Text(if (currentLang == "ar") "حذف البيانات نهائياً؟" else "Delete Data Permanently?") },
+                                text = { Text(if (currentLang == "ar") "سيتم حذف جميع البيانات نهائياً من هذا الجهاز ومن السحابة (Firestore). لا يمكن التراجع عن هذا الإجراء أبداً." else "All data will be permanently deleted from this device AND the cloud (Firestore). This action cannot be undone.") },
+                                confirmButton = {
+                                    Button(
+                                        onClick = {
+                                            showConfirmDelete = false
+                                            dashboardViewModel.clearLocalData(
+                                                force = false,
+                                                onSuccess = {},
+                                                onError = { err ->
+                                                    if (err.startsWith("UNSYNCED_CHANGES:")) {
+                                                        pendingClearDataCountState = err.substringAfter("UNSYNCED_CHANGES:").toIntOrNull() ?: 1
+                                                        unsyncedWarningClearDataDialog = true
+                                                    }
                                                 }
-                                            }
-                                        )
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                                ) {
-                                    Text(if (currentLang == "ar") "حذف نهائي" else "Permanent Delete")
-                                }
-                            },
-                            dismissButton = { TextButton(onClick = { showConfirmDelete = false }) { Text(if (currentLang == "ar") "إلغاء" else "Cancel") } }
-                        )
-                    }
+                                            )
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                                    ) {
+                                        Text(if (currentLang == "ar") "حذف نهائي" else "Permanent Delete")
+                                    }
+                                },
+                                dismissButton = { TextButton(onClick = { showConfirmDelete = false }) { Text(if (currentLang == "ar") "إلغاء" else "Cancel") } }
+                            )
+                        }
 
-                    if (unsyncedWarningClearDataDialog) {
-                        AlertDialog(
-                            onDismissRequest = { unsyncedWarningClearDataDialog = false },
-                            title = { Text(if (currentLang == "ar") "تنبيه: تغييرات غير مزامنة!" else "Warning: Unsynced Changes!") },
-                            text = {
-                                Text(
-                                    if (currentLang == "ar")
-                                        "يوجد $pendingClearDataCountState عملية لم يتم رفعها للسيرفر بعد. مسح البيانات الآن سيؤدي لحذف هذه البيانات نهائياً!"
-                                    else
-                                        "There are $pendingClearDataCountState unsynced operations pending. Clearing data now will permanently delete these pending changes!"
-                                )
-                            },
-                            confirmButton = {
-                                Button(
-                                    onClick = {
-                                        unsyncedWarningClearDataDialog = false
-                                        dashboardViewModel.clearLocalData(
-                                            force = true,
-                                            onSuccess = {},
-                                            onError = {}
-                                        )
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                                ) {
-                                    Text(if (currentLang == "ar") "حذف بالقوة (مسح البيانات)" else "Force Clear (Delete)")
+                        if (unsyncedWarningClearDataDialog) {
+                            AlertDialog(
+                                onDismissRequest = { unsyncedWarningClearDataDialog = false },
+                                title = { Text(if (currentLang == "ar") "تنبيه: تغييرات غير مزامنة!" else "Warning: Unsynced Changes!") },
+                                text = {
+                                    Text(
+                                        if (currentLang == "ar")
+                                            "يوجد $pendingClearDataCountState عملية لم يتم رفعها للسيرفر بعد. مسح البيانات الآن سيؤدي لحذف هذه البيانات نهائياً!"
+                                        else
+                                            "There are $pendingClearDataCountState unsynced operations pending. Clearing data now will permanently delete these pending changes!"
+                                    )
+                                },
+                                confirmButton = {
+                                    Button(
+                                        onClick = {
+                                            unsyncedWarningClearDataDialog = false
+                                            dashboardViewModel.clearLocalData(
+                                                force = true,
+                                                onSuccess = {},
+                                                onError = {}
+                                            )
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                                    ) {
+                                        Text(if (currentLang == "ar") "حذف بالقوة (مسح البيانات)" else "Force Clear (Delete)")
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { unsyncedWarningClearDataDialog = false }) {
+                                        Text(if (currentLang == "ar") "إلغاء" else "Cancel")
+                                    }
                                 }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = { unsyncedWarningClearDataDialog = false }) {
-                                    Text(if (currentLang == "ar") "إلغاء" else "Cancel")
-                                }
-                            }
-                        )
-                    }
-                    TextButton(onClick = { showConfirmDelete = true }, modifier = Modifier.fillMaxWidth()) {
-                        Text(if (currentLang == "ar") "مسح جميع البيانات المحلية" else "Clear All Local Data", color = MaterialTheme.colorScheme.error)
+                            )
+                        }
+                        TextButton(onClick = { showConfirmDelete = true }, modifier = Modifier.fillMaxWidth()) {
+                            Text(if (currentLang == "ar") "مسح جميع البيانات المحلية" else "Clear All Local Data", color = MaterialTheme.colorScheme.error)
+                        }
                     }
                 }
             }

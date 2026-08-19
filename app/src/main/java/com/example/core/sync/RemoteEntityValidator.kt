@@ -64,7 +64,7 @@ object RemoteEntityValidator {
             phone1 = d["phone1"] as? String ?: existingLocalAccount?.phone1,
             phone2 = d["phone2"] as? String ?: existingLocalAccount?.phone2,
             packageName = d["packageName"] as? String ?: existingLocalAccount?.packageName,
-            isLegacy = d["isLegacy"] as? Boolean ?: existingLocalAccount?.isLegacy ?: false,
+            isLegacy = if (existingLocalAccount?.isLegacy == true) true else (d["isLegacy"] as? Boolean ?: false),
             isHistoryOnlySubscriber = if (d["isHistoryOnlySubscriber"] == true) true else existingLocalAccount?.isHistoryOnlySubscriber ?: false,
             currentPriceIqd = (d["currentPriceIqd"] as? Number)?.toDouble() ?: existingLocalAccount?.currentPriceIqd ?: 0.0,
             debtIqd = effectiveDebt,
@@ -95,39 +95,41 @@ object RemoteEntityValidator {
     fun validateAndMapLedgerEntry(
         id: String,
         d: Map<String, Any>,
-        remoteUpdatedAt: Long
+        remoteUpdatedAt: Long,
+        existingLocalLedgerEntry: LocalLedgerEntry? = null
     ): RemoteEntityValidationResult<LocalLedgerEntry> {
         if (id.isBlank()) return RemoteEntityValidationResult.Malformed("Ledger ID is blank")
-        val accountId = d["accountId"] as? String
+        val accountId = d["accountId"] as? String ?: existingLocalLedgerEntry?.accountId
         if (accountId.isNullOrBlank()) return RemoteEntityValidationResult.Malformed("Ledger entry $id has missing or blank accountId")
 
         val amountNumber = d["amountIqd"] as? Number
+        val amountIqd = amountNumber?.toDouble() ?: existingLocalLedgerEntry?.amountIqd
             ?: return RemoteEntityValidationResult.Malformed("Ledger entry $id is missing mandatory amountIqd")
-        val amountIqd = amountNumber.toDouble()
 
-        val typeRaw = d["typeRaw"] as? String
+        val typeRaw = d["typeRaw"] as? String ?: existingLocalLedgerEntry?.typeRaw
             ?: return RemoteEntityValidationResult.Malformed("Ledger entry $id is missing mandatory typeRaw")
 
         val occurredAt = RemoteSyncCursor.parseRemoteTimestamp(d["occurredAt"])
             ?: RemoteSyncCursor.parseRemoteTimestamp(d["timestamp"])
+            ?: existingLocalLedgerEntry?.occurredAt
             ?: return RemoteEntityValidationResult.Malformed("Ledger entry $id has invalid or missing occurredAt timestamp")
 
-        val createdAt = RemoteSyncCursor.parseRemoteTimestamp(d["createdAt"]) ?: remoteUpdatedAt
+        val createdAt = RemoteSyncCursor.parseRemoteTimestamp(d["createdAt"]) ?: existingLocalLedgerEntry?.createdAt ?: remoteUpdatedAt
         val debtAfterNumber = d["debtAfterIqd"] as? Number
-        val debtAfterIqd = debtAfterNumber?.toDouble() ?: 0.0
-        val isSnapshotHistory = d["isSnapshotHistory"] as? Boolean ?: false
+        val debtAfterIqd = debtAfterNumber?.toDouble() ?: existingLocalLedgerEntry?.debtAfterIqd ?: 0.0
+        val isSnapshotHistory = d["isSnapshotHistory"] as? Boolean ?: existingLocalLedgerEntry?.isSnapshotHistory ?: false
 
         val entry = LocalLedgerEntry(
             id = id,
             accountId = accountId,
-            sourceExternalId = d["sourceExternalId"] as? String,
-            sourceBatchId = d["sourceBatchId"] as? String,
+            sourceExternalId = d["sourceExternalId"] as? String ?: existingLocalLedgerEntry?.sourceExternalId,
+            sourceBatchId = d["sourceBatchId"] as? String ?: existingLocalLedgerEntry?.sourceBatchId,
             typeRaw = typeRaw,
             amountIqd = amountIqd,
             debtAfterIqd = debtAfterIqd,
-            note = d["note"] as? String,
+            note = d["note"] as? String ?: existingLocalLedgerEntry?.note,
             occurredAt = occurredAt,
-            rawJson = d["rawJson"] as? String,
+            rawJson = d["rawJson"] as? String ?: existingLocalLedgerEntry?.rawJson,
             createdAt = createdAt,
             isSnapshotHistory = isSnapshotHistory
         )

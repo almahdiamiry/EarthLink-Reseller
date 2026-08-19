@@ -25,6 +25,12 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             android.util.Log.e("SyncWorker", "Expiry alert monitor failed", e)
         }
 
+        try {
+            app.localLedgerRepository.sweepAndResolvePendingOperations(app.earthlinkGateway)
+        } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+            android.util.Log.e("SyncWorker", "Pending operation recovery sweep failed", e)
+        }
+
         return try {
             val syncRepo = app.syncRepository
             if (runAttemptCount >= 3) {

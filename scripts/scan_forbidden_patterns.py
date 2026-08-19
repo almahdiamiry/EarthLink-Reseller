@@ -330,21 +330,28 @@ def extract_kotlin_function_spans(lines: list[str]) -> list[dict]:
 
         body_start = None
         brace_count = 0
+        paren_count = 1 if cleaned_text[match.end() - 1] == '(' else 0
         search_idx = match.end()
         found_brace = False
 
         while search_idx < len(cleaned_text):
             ch = cleaned_text[search_idx]
-            if ch == '{':
+            if ch == '(':
+                paren_count += 1
+            elif ch == ')':
+                if paren_count > 0:
+                    paren_count -= 1
+            elif ch == '{':
                 body_start = search_idx
                 brace_count = 1
                 found_brace = True
                 search_idx += 1
                 break
-            elif ch in (';', '=') and brace_count == 0:
-                break
-            elif cleaned_text[search_idx:search_idx+3] in ('fun', 'val', 'var') and search_idx > 0 and cleaned_text[search_idx-1:search_idx].isspace():
-                break
+            elif paren_count == 0:
+                if ch in (';', '='):
+                    break
+                elif cleaned_text[search_idx:search_idx+3] in ('fun', 'val', 'var') and search_idx > 0 and cleaned_text[search_idx-1:search_idx].isspace():
+                    break
             search_idx += 1
 
         if found_brace and body_start is not None:

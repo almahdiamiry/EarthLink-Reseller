@@ -282,6 +282,7 @@ class UtowerImporter(
                 }
 
                 if (shouldReplace) {
+                    appDatabase.syncOutboxDao().deleteAll()
                     appDatabase.localLedgerEntryDao().deleteAll()
                     appDatabase.localAccountDao().deleteAll()
                     appDatabase.syncMetadataDao().incrementGeneration()
@@ -610,6 +611,7 @@ class UtowerImporter(
                     }
 
                     if (shouldReplace) {
+                        appDatabase.syncOutboxDao().deleteAll()
                         appDatabase.localLedgerEntryDao().deleteAll()
                         appDatabase.localAccountDao().deleteAll()
                         appDatabase.syncMetadataDao().incrementGeneration()

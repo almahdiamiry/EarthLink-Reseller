@@ -7,6 +7,9 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import com.example.core.util.AppBuildConfig
+import com.example.ui.theme.MyApplicationTheme
+import com.example.ui.screens.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -294,7 +297,7 @@ fun OperatorMainScreen(authViewModel: AuthViewModel) {
                     }
                 }
                 composable("create_test_user") {
-                    if (!com.alamiry.earthlinkreseller.BuildConfig.DEBUG) {
+                    if (!AppBuildConfig.DEBUG) {
                         androidx.compose.runtime.LaunchedEffect(Unit) {
                             navController.popBackStack()
                         }
@@ -382,7 +385,7 @@ fun CreateChooserScreen(
 
         Spacer(modifier = Modifier.padding(16.dp))
 
-        if (com.alamiry.earthlinkreseller.BuildConfig.DEBUG) {
+        if (AppBuildConfig.DEBUG) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()

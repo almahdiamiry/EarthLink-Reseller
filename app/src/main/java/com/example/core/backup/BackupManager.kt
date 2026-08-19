@@ -1064,6 +1064,9 @@ object BackupManager {
                         liveDb.syncOutboxDao().deleteAll()
                         reconstructTransportState(liveDb, restoreSnapshot.unresolvedObligations)
 
+                        val nextGen = currentGen + 1L
+                        liveDb.syncMetadataDao().setGeneration(nextGen)
+
                         val now = System.currentTimeMillis()
                         val salt = try { app?.preferenceManager?.getDatabasePassphrase() ?: currentPassphrase } catch (_: Throwable) { "default_test_salt" }
                         val rawString = "$now|INFO|DATABASE_RESTORE_MERGE|Backup merged and verified successfully with complete lineage.|system|$salt"
@@ -1172,10 +1175,8 @@ object BackupManager {
                 action = "PRE_RESTORE_BACKUP_FAILED",
                 message = "Failed to create persistent pre-restore backup: ${e.localizedMessage}"
             )
-            if (!force) {
-                Log.e(TAG, "Aborting restore because pre-restore safety backup could not be created and force=false.")
-                return@withOperation false
-            }
+            Log.e(TAG, "Aborting restore because pre-restore safety backup could not be created.")
+            throw IllegalStateException("Pre-restore safety backup failed: ${e.localizedMessage}")
         }
 
         val tempDbName = "merged_backup.db"
@@ -1240,20 +1241,7 @@ object BackupManager {
                                                     } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e }
                                                 }
                                             } else {
-                                                // Legacy AES/ECB decryption path
-                                                for (seed in candidateSeeds) {
-                                                    try {
-                                                        val key = java.security.MessageDigest.getInstance("SHA-256").digest(seed.toByteArray(Charsets.UTF_8))
-                                                        val secretKey = javax.crypto.spec.SecretKeySpec(key, "AES")
-                                                        val cipher = javax.crypto.Cipher.getInstance("AES/ECB/PKCS5Padding")
-                                                        cipher.init(javax.crypto.Cipher.DECRYPT_MODE, secretKey)
-                                                        val res = String(cipher.doFinal(android.util.Base64.decode(encPass, android.util.Base64.NO_WRAP)), Charsets.UTF_8)
-                                                        if (res.isNotBlank()) {
-                                                            decrypted = res
-                                                            break
-                                                        }
-                                                    } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e }
-                                                }
+                                                // Legacy AES/ECB decryption path removed (RC-11)
                                             }
                                             extractedPassphrase = decrypted ?: encPass
                                         }
@@ -1324,7 +1312,6 @@ object BackupManager {
                         }
                     }
 
-                    System.err.println("RESTORE_DEBUG: Testing candidate: '$candPass'")
                     testDb = AppDatabase.getDatabase(context, candPass.toByteArray(Charsets.UTF_8), tempDbName)
                     val sqliteDb = testDb.openHelper.writableDatabase
                     sqliteDb.query("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='local_accounts'").use { cursor ->
@@ -1334,11 +1321,9 @@ object BackupManager {
                     }
                     verifiedPassphrase = candPass
                     backupDb = testDb
-                    System.err.println("RESTORE_DEBUG: SUCCESS on candidate: '$candPass'")
                     Log.i(TAG, "Verified database decryption with passphrase candidate (${if (candPass.isEmpty()) "unencrypted" else "passphrase-protected"})")
                     break
                 } catch (e: Throwable) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                    System.err.println("RESTORE_DEBUG: Candidate '$candPass' failed: ${e.message}")
                     Log.w(TAG, "Candidate passphrase failed to open restored database: ${e.message}")
                     testDb?.close()
                     AppDatabase.closeAndRemoveInstance(tempDbName)

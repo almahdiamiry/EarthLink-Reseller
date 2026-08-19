@@ -13,7 +13,7 @@ import com.google.firebase.FirebaseOptions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import com.alamiry.earthlinkreseller.BuildConfig
+import com.example.core.util.AppBuildConfig
 
 class EarthlinkApp : Application() {
 
@@ -23,7 +23,7 @@ class EarthlinkApp : Application() {
 
     @androidx.annotation.VisibleForTesting
     internal fun isSafeDebugFallbackAllowed(): Boolean {
-        if (!BuildConfig.DEBUG) return false
+        if (!AppBuildConfig.DEBUG) return false
         return isSafeDebugFallbackAllowedOverride
             ?: (android.os.Build.FINGERPRINT.lowercase(java.util.Locale.ROOT) != "robolectric")
     }
@@ -81,10 +81,10 @@ class EarthlinkApp : Application() {
             }
 
             if (!initialized) {
-                val apiKey = BuildConfig.FIREBASE_API_KEY
-                val appId = BuildConfig.FIREBASE_APPLICATION_ID
-                val projectId = BuildConfig.FIREBASE_PROJECT_ID
-                val dbUrl = BuildConfig.FIREBASE_DATABASE_URL
+                val apiKey = AppBuildConfig.FIREBASE_API_KEY
+                val appId = AppBuildConfig.FIREBASE_APPLICATION_ID
+                val projectId = AppBuildConfig.FIREBASE_PROJECT_ID
+                val dbUrl = AppBuildConfig.FIREBASE_DATABASE_URL
                 if (apiKey.isBlank() || apiKey.contains("Dummy") || appId.isBlank() || appId.contains("1234567890")) { 
                     throw RuntimeException("Configuration error: Firebase credentials missing. Please set real values in .env for FIREBASE_API_KEY, FIREBASE_APPLICATION_ID, FIREBASE_PROJECT_ID, FIREBASE_DATABASE_URL.")
                 } else {
@@ -109,6 +109,16 @@ class EarthlinkApp : Application() {
                 SyncRepositoryImpl.setupPeriodicSync(this@EarthlinkApp)
             } catch (e: Throwable) {
                 android.util.Log.e("EarthlinkApp", "Failed to schedule periodic background sync via WorkManager.", e)
+            }
+        }
+
+        // G1 Crash-Recovery: Startup sweep for pending/failed external ISP operations
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                localLedgerRepository.sweepAndResolvePendingOperations(earthlinkGateway)
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                android.util.Log.e("EarthlinkApp", "Startup pending operations recovery sweep failed", e)
             }
         }
     }

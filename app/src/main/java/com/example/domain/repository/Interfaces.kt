@@ -94,6 +94,7 @@ interface LocalLedgerRepository {
     suspend fun resolvePendingOperationVerifiedFailure(businessTransactionId: String, diagnostic: String): Boolean
     suspend fun resolvePendingOperationInconclusive(businessTransactionId: String, diagnostic: String): Boolean
     suspend fun verifyAndResolvePendingOperation(businessTransactionId: String, gateway: EarthlinkGateway, baselineExpirationDate: String? = null): PendingOperationResolution
+    suspend fun sweepAndResolvePendingOperations(gateway: EarthlinkGateway, graceWindowMs: Long = 5000L): List<PendingOperationResolution>
 }
 
 interface UtowerImportRepository {

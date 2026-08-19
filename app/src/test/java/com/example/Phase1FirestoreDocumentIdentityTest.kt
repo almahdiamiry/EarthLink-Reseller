@@ -358,8 +358,10 @@ class Phase1FirestoreDocumentIdentityTest {
         )
         val deleteResult = coordinator.processEvent(deleteEvent)
         assertEquals(EventSyncResult.APPLIED, deleteResult)
-        // Account is deleted in Room SQLite
-        assertNull(db.localAccountDao().getByIdOneShot(accountId))
+        // Account is marked history-only in Room SQLite (non-destructive)
+        val localAccount = db.localAccountDao().getByIdOneShot(accountId)
+        assertNotNull(localAccount)
+        assertTrue(localAccount!!.isHistoryOnlySubscriber)
         // Tombstone recorded against exact entityId
         assertEquals("1760000000000", db.syncMetadataDao().get("tombstone:account:$accountId"))
     }

@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.example.core.model.*
 import com.example.core.security.PreferenceManager
+import com.example.core.util.AppBuildConfig
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.JsonClass
 import okhttp3.*
@@ -314,7 +315,7 @@ class NetworkClient(private val context: Context) {
     // Custom logger that masks passwords, passphrases, tokens, authorization headers
     private val redactingLogger = object : HttpLoggingInterceptor.Logger {
         override fun log(message: String) {
-            if (!com.alamiry.earthlinkreseller.BuildConfig.DEBUG) return
+            if (!AppBuildConfig.DEBUG) return
             var sanitized = JSON_SENSITIVE.replace(message) { match ->
                 val key = match.value.substringBefore(":")
                 "$key:\"[REDACTED]\""
@@ -326,7 +327,7 @@ class NetworkClient(private val context: Context) {
     }
 
     private val loggingInterceptor = HttpLoggingInterceptor(redactingLogger).apply {
-        level = if (com.alamiry.earthlinkreseller.BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
+        level = if (AppBuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
     }
 
     private val okHttpClient = OkHttpClient.Builder()

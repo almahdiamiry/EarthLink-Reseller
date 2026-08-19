@@ -14,14 +14,14 @@ object BalanceCalculator {
                 val debtAdded = amount - advanceUsed
                 val newAdvance = currentAdvance - advanceUsed
                 val newDebt = currentDebt + debtAdded
-                AccountBalances(debtIqd = newDebt, advanceIqd = newAdvance, loanIqd = newDebt)
+                AccountBalances(debtIqd = newDebt, advanceIqd = newAdvance, loanIqd = currentLoan)
             }
             "gave", "payment", "deposit", "pay" -> {
                 val debtPayment = minOf(currentDebt, amount)
                 val advanceAdded = amount - debtPayment
                 val newDebt = currentDebt - debtPayment
                 val newAdvance = currentAdvance + advanceAdded
-                AccountBalances(debtIqd = newDebt, advanceIqd = newAdvance, loanIqd = newDebt)
+                AccountBalances(debtIqd = newDebt, advanceIqd = newAdvance, loanIqd = currentLoan)
             }
             else -> AccountBalances(currentDebt, currentAdvance, currentLoan)
         }
@@ -33,13 +33,13 @@ object BalanceCalculator {
                 val reversedAdvance = maxOf(0.0, currentAdvance - amount)
                 val remainingPaymentToRevert = maxOf(0.0, amount - currentAdvance)
                 val newDebt = currentDebt + remainingPaymentToRevert
-                AccountBalances(debtIqd = newDebt, advanceIqd = reversedAdvance, loanIqd = newDebt)
+                AccountBalances(debtIqd = newDebt, advanceIqd = reversedAdvance, loanIqd = currentLoan)
             }
             "took", "debt", "debt_added", "renewal", "renew", "sub_renew", "sub_renewal", "debt_renew" -> {
                 val reversedDebt = maxOf(0.0, currentDebt - amount)
                 val remainingDebtToRevert = maxOf(0.0, amount - currentDebt)
                 val newAdvance = currentAdvance + remainingDebtToRevert
-                AccountBalances(debtIqd = reversedDebt, advanceIqd = newAdvance, loanIqd = reversedDebt)
+                AccountBalances(debtIqd = reversedDebt, advanceIqd = newAdvance, loanIqd = currentLoan)
             }
             else -> AccountBalances(currentDebt, currentAdvance, currentLoan)
         }
@@ -63,7 +63,8 @@ object BalanceCalculator {
         openingAdvance: Double,
         openingLoan: Double,
         transactions: List<com.example.core.model.LocalLedgerEntry>,
-        isSnapshotBaseline: Boolean = false
+        isSnapshotBaseline: Boolean = false,
+        onUnrecognizedType: ((com.example.core.model.LocalLedgerEntry, String) -> Unit)? = null
     ): Pair<AccountBalances, List<com.example.core.model.LocalLedgerEntry>> {
         val eligibleTxs = if (isSnapshotBaseline) {
             transactions.filter { !it.isSnapshotHistory }
@@ -84,6 +85,9 @@ object BalanceCalculator {
         val updatedEntries = mutableListOf<com.example.core.model.LocalLedgerEntry>()
 
         for (tx in sortedTxs) {
+            if (!TransactionTypeNormalizer.isRecognizedType(tx.typeRaw)) {
+                onUnrecognizedType?.invoke(tx, tx.typeRaw ?: "NULL")
+            }
             val canonicalType = TransactionTypeNormalizer.normalizeTransactionType(tx.typeRaw)
             val updatedBalances = applyTransaction(
                 currentDebt = runningDebt,

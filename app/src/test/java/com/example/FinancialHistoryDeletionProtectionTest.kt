@@ -11,6 +11,7 @@ import com.example.core.sync.RemoteEvent
 import com.example.core.sync.RemoteEventSource
 import com.example.core.sync.RemoteSyncCoordinator
 import com.example.data.repository.LocalAccountRepositoryImpl
+import com.example.data.repository.LocalLedgerRepositoryImpl
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
@@ -37,6 +38,7 @@ class FinancialHistoryDeletionProtectionTest {
     private lateinit var database: AppDatabase
     private lateinit var coordinator: RemoteSyncCoordinator
     private lateinit var accountRepository: LocalAccountRepositoryImpl
+    private lateinit var ledgerRepo: LocalLedgerRepositoryImpl
 
     @Before
     fun setUp() {
@@ -57,6 +59,13 @@ class FinancialHistoryDeletionProtectionTest {
 
         accountRepository = LocalAccountRepositoryImpl(
             database = database,
+            accountDao = database.localAccountDao(),
+            outboxDao = database.syncOutboxDao()
+        )
+
+        ledgerRepo = LocalLedgerRepositoryImpl(
+            database = database,
+            ledgerDao = database.localLedgerEntryDao(),
             accountDao = database.localAccountDao(),
             outboxDao = database.syncOutboxDao()
         )
@@ -148,5 +157,140 @@ class FinancialHistoryDeletionProtectionTest {
         assertEquals("700", tombstone)
         val remoteVer = database.syncMetadataDao().get("remote_version:ledger:tx_tomb_entry")
         assertEquals("700", remoteVer)
+
+        // The local financial history row is preserved in Room
+        val preservedLedger = database.localLedgerEntryDao().getByIdOneShot("tx_tomb_entry")
+        assertNotNull(preservedLedger)
+    }
+
+    @Test
+    fun testRemoteAccountDelete_marksHistoryOnlyAndPreservesLedgerHistory() = runBlocking {
+        val accountId = "acc_remote_del_prot"
+        val account = LocalAccount(
+            id = accountId,
+            displayName = "Remote Deleted User",
+            debtIqd = 30000.0,
+            isHistoryOnlySubscriber = false
+        )
+        database.localAccountDao().insert(account)
+
+        val tx = LocalLedgerEntry(id = "tx_remote_del_child", accountId = accountId, amountIqd = 30000.0, debtAfterIqd = 30000.0, typeRaw = "took")
+        database.localLedgerEntryDao().insert(tx)
+
+        val deleteEvent = RemoteEvent.AccountDelete(
+            entityId = accountId,
+            remoteVersion = 1800000000000L,
+            source = RemoteEventSource.PULL
+        )
+        val result = coordinator.processEvent(deleteEvent)
+        assertEquals(EventSyncResult.APPLIED, result)
+
+        val preservedAcc = database.localAccountDao().getByIdOneShot(accountId)
+        assertNotNull(preservedAcc)
+        assertTrue(preservedAcc!!.isHistoryOnlySubscriber)
+
+        val preservedLedger = database.localLedgerEntryDao().getByIdOneShot("tx_remote_del_child")
+        assertNotNull(preservedLedger)
+
+        assertEquals("1800000000000", database.syncMetadataDao().get("tombstone:account:$accountId"))
+        assertEquals("1800000000000", database.syncMetadataDao().get("tombstone:ledger:tx_remote_del_child"))
+    }
+
+    @Test
+    fun testLocalAccountDelete_marksHistoryOnlyWithoutDeletingLedgers() = runBlocking {
+        val accountId = "acc_local_del_prot"
+        val account = LocalAccount(
+            id = accountId,
+            displayName = "Local Deleted User",
+            debtIqd = 15000.0,
+            isHistoryOnlySubscriber = false
+        )
+        database.localAccountDao().insert(account)
+
+        val tx = LocalLedgerEntry(id = "tx_local_del_child", accountId = accountId, amountIqd = 15000.0, debtAfterIqd = 15000.0, typeRaw = "took")
+        database.localLedgerEntryDao().insert(tx)
+
+        accountRepository.deleteAccount(accountId)
+
+        val preservedAcc = database.localAccountDao().getByIdOneShot(accountId)
+        assertNotNull(preservedAcc)
+        assertTrue(preservedAcc!!.isHistoryOnlySubscriber)
+
+        val preservedLedger = database.localLedgerEntryDao().getByIdOneShot("tx_local_del_child")
+        assertNotNull(preservedLedger)
+    }
+
+    @Test
+    fun testLoanIqdPreservation_acrossFinancialMutations() {
+        val initialDebt = 50000.0
+        val initialAdvance = 0.0
+        val fixedLoan = 25000.0 // Distinct, non-zero loanIqd different from debt
+
+        // Apply payment
+        val afterPay = com.example.core.ledger.BalanceCalculator.applyTransaction(
+            currentDebt = initialDebt,
+            currentAdvance = initialAdvance,
+            currentLoan = fixedLoan,
+            txType = "payment",
+            amount = 20000.0
+        )
+        assertEquals(30000.0, afterPay.debtIqd, 0.001)
+        assertEquals(fixedLoan, afterPay.loanIqd, 0.001)
+
+        // Apply additional debt
+        val afterDebt = com.example.core.ledger.BalanceCalculator.applyTransaction(
+            currentDebt = afterPay.debtIqd,
+            currentAdvance = afterPay.advanceIqd,
+            currentLoan = afterPay.loanIqd,
+            txType = "debt",
+            amount = 10000.0
+        )
+        assertEquals(40000.0, afterDebt.debtIqd, 0.001)
+        assertEquals(fixedLoan, afterDebt.loanIqd, 0.001)
+
+        // Revert debt
+        val afterRevert = com.example.core.ledger.BalanceCalculator.revertTransaction(
+            currentDebt = afterDebt.debtIqd,
+            currentAdvance = afterDebt.advanceIqd,
+            currentLoan = afterDebt.loanIqd,
+            txType = "debt",
+            amount = 10000.0
+        )
+        assertEquals(30000.0, afterRevert.debtIqd, 0.001)
+        assertEquals(fixedLoan, afterRevert.loanIqd, 0.001)
+    }
+
+    @Test
+    fun testLoanIqd_unchangedThroughRepositoryTransactionSequence() = runBlocking {
+        val accountId = "acc_loan_repo_test"
+        val distinctLoan = 75000.0
+        val initialDebt = 40000.0
+        val acc = LocalAccount(
+            id = accountId,
+            displayName = "Protected Loan Customer",
+            debtIqd = initialDebt,
+            openingDebtIqd = initialDebt,
+            advanceIqd = 0.0,
+            openingAdvanceIqd = 0.0,
+            loanIqd = distinctLoan,
+            openingLoanIqd = distinctLoan
+        )
+        accountRepository.saveAccount(acc)
+
+        // 1. Add payment transaction via real repository path
+        ledgerRepo.recordAccountPayment(acc, 15000.0, "Payment 15k", null)
+        val accAfterPay = database.localAccountDao().getByIdOneShot(accountId)
+        assertNotNull(accAfterPay)
+        assertEquals(25000.0, accAfterPay!!.debtIqd, 0.001)
+        assertEquals(0.0, accAfterPay.advanceIqd, 0.001)
+        assertEquals("loanIqd must remain unchanged after payment", distinctLoan, accAfterPay.loanIqd, 0.001)
+
+        // 2. Add debt transaction via real repository path
+        ledgerRepo.recordAccountDebt(accAfterPay, 30000.0, "Debt 30k", null)
+        val accAfterDebt = database.localAccountDao().getByIdOneShot(accountId)
+        assertNotNull(accAfterDebt)
+        assertEquals(55000.0, accAfterDebt!!.debtIqd, 0.001)
+        assertEquals(0.0, accAfterDebt.advanceIqd, 0.001)
+        assertEquals("loanIqd must remain unchanged after debt addition", distinctLoan, accAfterDebt.loanIqd, 0.001)
     }
 }

@@ -112,14 +112,12 @@ class Phase2CurrentPositionReconstructionTest {
                     val debtAdded = tx.amountIqd - advanceUsed
                     runningAdvance -= advanceUsed
                     runningDebt += debtAdded
-                    runningLoan = runningDebt
                 }
                 "gave", "payment", "deposit", "pay" -> {
                     val debtPayment = minOf(runningDebt, tx.amountIqd)
                     val advanceAdded = tx.amountIqd - debtPayment
                     runningDebt -= debtPayment
                     runningAdvance += advanceAdded
-                    runningLoan = runningDebt
                 }
             }
         }
@@ -217,7 +215,7 @@ class Phase2CurrentPositionReconstructionTest {
         assertNotNull(healedAccount)
         assertEquals(20000.0, healedAccount!!.debtIqd, 0.001)
         assertEquals(0.0, healedAccount.advanceIqd, 0.001)
-        assertEquals(20000.0, healedAccount.loanIqd, 0.001)
+        assertEquals(40000.0, healedAccount.loanIqd, 0.001)
 
         val updatedLedgers = database.localLedgerEntryDao().getByAccountIdOneShot(accId, limit = 10).sortedBy { it.occurredAt }
         assertEquals(50000.0, updatedLedgers[0].debtAfterIqd, 0.001)

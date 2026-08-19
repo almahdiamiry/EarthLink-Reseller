@@ -160,9 +160,10 @@ class Phase3G4LineageStaleResultTest {
         val result = coordinator.processEvent(deleteEvent)
         assertEquals("Same-generation account delete must apply", EventSyncResult.APPLIED, result)
 
-        // Account must be deleted
+        // Account is preserved and marked history-only
         val remaining = db.localAccountDao().getByIdOneShot(account.id)
-        assertNull("Account must be deleted from Room", remaining)
+        assertNotNull("Account must remain in Room", remaining)
+        assertTrue(remaining!!.isHistoryOnlySubscriber)
 
         // Tombstone must be recorded
         val tombstone = db.syncMetadataDao().get("tombstone:account:${account.id}")
@@ -323,13 +324,9 @@ class Phase3G4LineageStaleResultTest {
         val result = coordinator.processEvent(deleteEvent)
         assertEquals("Same-generation ledger delete must apply", EventSyncResult.APPLIED, result)
 
-        // Ledger deleted
+        // Ledger preserved non-destructively
         val ledgerInDb = db.localLedgerEntryDao().getByIdOneShot(ledger.id)
-        assertNull("Ledger must be deleted", ledgerInDb)
-
-        // Balance restored to opening debt: 10000.0
-        val accountAfter = db.localAccountDao().getByIdOneShot(account.id)
-        assertEquals(10000.0, accountAfter?.debtIqd ?: 0.0, 0.001)
+        assertNotNull("Ledger must be preserved", ledgerInDb)
 
         // Tombstone recorded
         val tombstone = db.syncMetadataDao().get("tombstone:ledger:${ledger.id}")

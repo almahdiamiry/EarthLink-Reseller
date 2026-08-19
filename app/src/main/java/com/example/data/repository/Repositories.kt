@@ -19,6 +19,7 @@ import org.json.JSONObject
 import java.security.MessageDigest
 import androidx.room.withTransaction
 import androidx.annotation.VisibleForTesting
+import com.example.core.util.AppBuildConfig
 
 class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private val prefs: com.example.core.security.PreferenceManager) : EarthlinkGateway {
 
@@ -221,7 +222,7 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
     override suspend fun getTestUsersCount(affiliateIndex: Int?): Int {
         return try {
             val responseBody = apiService.getTestUsersCount(affiliateIndex).string()
-            if (com.alamiry.earthlinkreseller.BuildConfig.DEBUG) {
+            if (AppBuildConfig.DEBUG) {
                 android.util.Log.d("EarthlinkRepository", "DEBUG: getTestUsersCount RAW: $responseBody")
             }
             try {
@@ -237,7 +238,7 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
                 responseBody.trim().toDoubleOrNull()?.toInt() ?: 0
             }
         } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-            if (com.alamiry.earthlinkreseller.BuildConfig.DEBUG) {
+            if (AppBuildConfig.DEBUG) {
                 android.util.Log.d("EarthlinkRepository", "DEBUG: getTestUsersCount EXCEPTION: ${e.message}")
             }
             0
@@ -1095,14 +1096,15 @@ class LocalAccountRepositoryImpl(
     override suspend fun deleteAccount(id: String) {
         com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
             database.withTransaction {
-                val childEntries = database.localLedgerEntryDao().getByAccountIdOneShot(id, limit = Int.MAX_VALUE)
-                for (entry in childEntries) {
-                    OutboxManager.deleteWithTombstone(outboxDao, "local_ledger_entries", entry.id, "{}")
+                val existing = accountDao.getByIdOneShot(id)
+                if (existing != null) {
+                    val updated = existing.copy(
+                        isHistoryOnlySubscriber = true,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                    accountDao.update(updated)
+                    OutboxManager.upsertWithOutbox(outboxDao, "local_accounts", updated.id, adapter.toJson(updated))
                 }
-                database.localLedgerEntryDao().deleteByAccountId(id)
-
-                accountDao.deleteById(id)
-                OutboxManager.deleteWithTombstone(outboxDao, "local_accounts", id, "{}")
             }
         }
     }
@@ -1444,6 +1446,45 @@ class LocalLedgerRepositoryImpl(
         }
     }
 
+    private val sweepAccountLocks = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>()
+    private fun getSweepAccountLock(accountId: String): kotlinx.coroutines.sync.Mutex =
+        sweepAccountLocks.computeIfAbsent(accountId) { kotlinx.coroutines.sync.Mutex() }
+
+    override suspend fun sweepAndResolvePendingOperations(
+        gateway: EarthlinkGateway,
+        graceWindowMs: Long
+    ): List<PendingOperationResolution> {
+        val unresolved = getUnresolvedPendingOperations()
+        if (unresolved.isEmpty()) return emptyList()
+
+        val now = System.currentTimeMillis()
+        val resolutions = mutableListOf<PendingOperationResolution>()
+
+        for (op in unresolved) {
+            if (graceWindowMs > 0 && (now - op.createdAt < graceWindowMs)) {
+                continue
+            }
+
+            val lock = if (op.accountId.isNotBlank()) getSweepAccountLock(op.accountId) else null
+            if (lock != null && !lock.tryLock()) {
+                android.util.Log.w("LocalLedgerRepo", "Sweep skipped op ${op.businessTransactionId}: account ${op.accountId} lock held")
+                continue
+            }
+
+            try {
+                val resolution = verifyAndResolvePendingOperation(op.businessTransactionId, gateway)
+                resolutions.add(resolution)
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                android.util.Log.e("LocalLedgerRepo", "Sweep error for op ${op.businessTransactionId}", e)
+            } finally {
+                lock?.unlock()
+            }
+        }
+
+        return resolutions
+    }
+
     private suspend fun saveAccountInternal(account: LocalAccount): LocalAccount {
         val existing = accountDao.getByIdOneShot(account.id)
             ?: if (!account.earthlinkUsername.isNullOrBlank()) {
@@ -1705,7 +1746,6 @@ class LocalLedgerRepositoryImpl(
                 val allLedgers = ledgerDao.getAllOneShot(limit = Int.MAX_VALUE)
                 val allAccounts = accountDao.getAllOneShot(limit = Int.MAX_VALUE)
                 OutboxManager.deleteWithTombstoneBatch(outboxDao, "local_ledger_entries", allLedgers.map { it.id }, "{}")
-                ledgerDao.deleteAll()
                 for (account in allAccounts) {
                     if (account.debtIqd > 0.0 || account.advanceIqd > 0.0 || account.loanIqd > 0.0) {
                         val updatedAccount = account.copy(
@@ -2308,7 +2348,7 @@ class AuditRepositoryImpl(
 
 @VisibleForTesting
 fun getMockAccountsForDemo(): List<LocalAccount> {
-    if (!com.alamiry.earthlinkreseller.BuildConfig.DEBUG) return emptyList()
+    if (!AppBuildConfig.DEBUG) return emptyList()
     return listOf(
         LocalAccount(
             id = "ali_hassan",
@@ -2480,7 +2520,7 @@ fun getMockAccountsForDemo(): List<LocalAccount> {
 }
 @VisibleForTesting
 suspend fun getMockUserListForDemo(repo: LocalAccountRepository? = null): List<UserListItem> {
-    if (!com.alamiry.earthlinkreseller.BuildConfig.DEBUG) return emptyList()
+    if (!AppBuildConfig.DEBUG) return emptyList()
     val localAccounts = try {
         repo?.getAllAccounts()?.first() ?: emptyList()
     } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
@@ -2522,7 +2562,7 @@ suspend fun getMockUserListForDemo(repo: LocalAccountRepository? = null): List<U
 }
 @VisibleForTesting
 suspend fun getMockUserDetailForDemo(userIndex: Int, repo: LocalAccountRepository? = null): UserDetail {
-    if (!com.alamiry.earthlinkreseller.BuildConfig.DEBUG) return UserDetail(userIndexLower = userIndex, customerFullNameLower = "N/A", userIDLower = "N/A")
+    if (!AppBuildConfig.DEBUG) return UserDetail(userIndexLower = userIndex, customerFullNameLower = "N/A", userIDLower = "N/A")
     val localAccounts = try {
         repo?.getAllAccounts()?.first() ?: emptyList()
     } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;

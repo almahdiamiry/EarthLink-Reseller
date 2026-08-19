@@ -11,7 +11,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.WorkManager
 import androidx.work.BackoffPolicy
-import com.alamiry.earthlinkreseller.BuildConfig
+import com.example.core.util.AppBuildConfig
 import com.example.core.database.*
 import com.example.core.model.*
 import com.example.core.security.CloudSecretEncryptor
@@ -258,52 +258,51 @@ class SyncRepositoryImpl(
     }
 
     private suspend fun executeSyncPassInternal(): Boolean {
-        return DataOperationCoordinator.withOperation(DataOperationMode.SYNC) {
-            _syncState.value = SyncStatusState.SYNCING
+        _syncState.value = SyncStatusState.SYNCING
 
-            if (prefManager.getAuthToken().isNullOrEmpty()) {
-                Log.w("FirebaseSync", "No active session auth token in PreferenceManager. Sync requires authentication.")
-                _syncState.value = SyncStatusState.AUTH_REQUIRED
-                return@withOperation false
+        if (prefManager.getAuthToken().isNullOrEmpty()) {
+            Log.w("FirebaseSync", "No active session auth token in PreferenceManager. Sync requires authentication.")
+            _syncState.value = SyncStatusState.AUTH_REQUIRED
+            return false
+        }
+
+        val fbAuth = auth
+        val fbFirestore = firestore
+        if (fbAuth == null || fbFirestore == null) {
+            _syncState.value = SyncStatusState.OFFLINE
+            return false
+        }
+        return try {
+            val uid = fbAuth.currentUser?.uid
+            if (uid == null) {
+                // Try to sign in anonymously
+                val anonymousUid = anonymousSignIn()
+                if (anonymousUid == null) {
+                    _syncState.value = SyncStatusState.AUTH_REQUIRED
+                    return false
+                }
             }
 
-            val fbAuth = auth
-            val fbFirestore = firestore
-            if (fbAuth == null || fbFirestore == null) {
-                _syncState.value = SyncStatusState.OFFLINE
-                return@withOperation false
+            val currentUid = fbAuth.currentUser?.uid ?: return false
+            val syncStartTime = System.currentTimeMillis()
+
+            // Sync user settings (ISP credentials & deposit pass) with Firestore
+            triggerSettingsSync(currentUid, "pull_remote_changes")
+
+            // Reset any items stuck in 'syncing' status from a previous interrupted sync run
+            OutboxManager.resetSyncingToPending(outboxDao)
+
+            // Critical Maintenance rule: pause sync if global data maintenance (restore/import/signout) is in progress
+            if (DataOperationCoordinator.isMaintenanceActive) {
+                Log.w("SyncRepository", "Sync paused because global data maintenance is active.")
+                return false
             }
-            try {
-                val uid = fbAuth.currentUser?.uid
-                if (uid == null) {
-                    // Try to sign in anonymously
-                    val anonymousUid = anonymousSignIn()
-                    if (anonymousUid == null) {
-                        _syncState.value = SyncStatusState.AUTH_REQUIRED
-                        return@withOperation false
-                    }
-                }
 
-                val currentUid = fbAuth.currentUser?.uid ?: return@withOperation false
-                val syncStartTime = System.currentTimeMillis()
-
-                // Sync user settings (ISP credentials & deposit pass) with Firestore
-                triggerSettingsSync(currentUid, "pull_remote_changes")
-
-                // Reset any items stuck in 'syncing' status from a previous interrupted sync run
-                OutboxManager.resetSyncingToPending(outboxDao)
-
-                // Critical Maintenance rule: pause sync if global data maintenance (restore/import/signout) is in progress
-                if (DataOperationCoordinator.isMaintenanceActive) {
-                    Log.w("SyncRepository", "Sync paused because global data maintenance is active.")
-                    return@withOperation false
-                }
-
-                // Critical Outbox rule: pause sync if an import is running or incomplete (running or failed/resumable)
-                if (appDatabase.importBatchDao().getIncompleteCount() > 0) {
-                    Log.w("SyncRepository", "Sync paused because import is incomplete.")
-                    return@withOperation false
-                }
+            // Critical Outbox rule: pause sync if an import is running or incomplete (running or failed/resumable)
+            if (appDatabase.importBatchDao().getIncompleteCount() > 0) {
+                Log.w("SyncRepository", "Sync paused because import is incomplete.")
+                return false
+            }
 
             // 1. Process local outbox changes and upload to Firestore
             val rawPendingItems = OutboxManager.getPending(outboxDao)
@@ -442,7 +441,6 @@ class SyncRepositoryImpl(
             }
             false
         }
-    }
     }
 
     @androidx.annotation.VisibleForTesting
@@ -709,27 +707,25 @@ class SyncRepositoryImpl(
                     val collectionsToSync = listOf("local_accounts", "local_ledger_entries", "import_batches", "audit_logs")
                     val activeCursors = mutableMapOf<String, RemoteSyncCursor>()
 
-                    DataOperationCoordinator.withOperation(DataOperationMode.SYNC) {
-                        singleFlightMutex.withLock {
-                            for (collName in collectionsToSync) {
-                                val initialCursor = getCollectionCursor(collName)
-                                var updatedCursor = initialCursor
-                                try {
-                                    updatedCursor = pullRemoteChanges(uid, collName, initialCursor, fbFirestore)
-                                    if (updatedCursor.lastServerTimestamp > initialCursor.lastServerTimestamp ||
-                                        (updatedCursor.lastServerTimestamp == initialCursor.lastServerTimestamp && updatedCursor.lastDocumentId > initialCursor.lastDocumentId)) {
-                                        saveCollectionCursor(collName, updatedCursor)
-                                    }
-                                } catch (e: Exception) {
-                                    if (e is kotlinx.coroutines.CancellationException) throw e
-                                    Log.w("FirebaseSync", "Initial bootstrap pull failed for $collName", e)
-                                }
-                                activeCursors[collName] = if (updatedCursor.lastServerTimestamp > initialCursor.lastServerTimestamp ||
+                    singleFlightMutex.withLock {
+                        for (collName in collectionsToSync) {
+                            val initialCursor = getCollectionCursor(collName)
+                            var updatedCursor = initialCursor
+                            try {
+                                updatedCursor = pullRemoteChanges(uid, collName, initialCursor, fbFirestore)
+                                if (updatedCursor.lastServerTimestamp > initialCursor.lastServerTimestamp ||
                                     (updatedCursor.lastServerTimestamp == initialCursor.lastServerTimestamp && updatedCursor.lastDocumentId > initialCursor.lastDocumentId)) {
-                                    updatedCursor
-                                } else {
-                                    initialCursor
+                                    saveCollectionCursor(collName, updatedCursor)
                                 }
+                            } catch (e: Exception) {
+                                if (e is kotlinx.coroutines.CancellationException) throw e
+                                Log.w("FirebaseSync", "Initial bootstrap pull failed for $collName", e)
+                            }
+                            activeCursors[collName] = if (updatedCursor.lastServerTimestamp > initialCursor.lastServerTimestamp ||
+                                (updatedCursor.lastServerTimestamp == initialCursor.lastServerTimestamp && updatedCursor.lastDocumentId > initialCursor.lastDocumentId)) {
+                                updatedCursor
+                            } else {
+                                initialCursor
                             }
                         }
                     }
@@ -890,7 +886,8 @@ class SyncRepositoryImpl(
                 if (isDeleted) {
                     RemoteEvent.LedgerDelete(entityId = id, remoteVersion = version, source = source, syncMutationId = syncMutationId)
                 } else {
-                    when (val validated = RemoteEntityValidator.validateAndMapLedgerEntry(id, data, remoteUpdatedAt ?: version)) {
+                    val existingLocalLedger = ledgerDao.getByIdOneShot(id)
+                    when (val validated = RemoteEntityValidator.validateAndMapLedgerEntry(id, data, remoteUpdatedAt ?: version, existingLocalLedger)) {
                         is RemoteEntityValidationResult.Valid -> {
                             RemoteEvent.LedgerUpsert(entityId = id, remoteVersion = version, source = source, entry = validated.entity, preFetchedParentAccount = preFetchedParentAccount, syncMutationId = syncMutationId)
                         }
@@ -1228,7 +1225,8 @@ class SyncRepositoryImpl(
     }
 
     private suspend fun mapToLocalLedgerEntry(id: String, d: Map<String, Any>, updatedAt: Long = 0L): LocalLedgerEntry? {
-        return when (val res = RemoteEntityValidator.validateAndMapLedgerEntry(id, d, updatedAt)) {
+        val existingLocalLedger = ledgerDao.getByIdOneShot(id)
+        return when (val res = RemoteEntityValidator.validateAndMapLedgerEntry(id, d, updatedAt, existingLocalLedger)) {
             is RemoteEntityValidationResult.Valid -> res.entity
             is RemoteEntityValidationResult.Malformed -> {
                 Log.w("SyncRepositoryImpl", "Malformed remote ledger $id: ${res.reason}")
@@ -1308,7 +1306,7 @@ class SyncRepositoryImpl(
     }
 
     override suspend fun googleSignIn(idToken: String): String? {
-        if (BuildConfig.DEBUG && idToken == "simulated_google_token") {
+        if (AppBuildConfig.DEBUG && idToken == "simulated_google_token") {
             _syncState.value = SyncStatusState.IDLE
             return "simulated_google_uid"
         }
@@ -1358,6 +1356,14 @@ class SyncRepositoryImpl(
                 kotlinx.coroutines.withTimeoutOrNull(10000) {
                     val userDocRef = fbFirestore.collection("users").document(targetUid)
                     val snapshot = userDocRef.get(Source.SERVER).await()
+
+                    // RC-09b / P5-G6-REQ-02: Strict session isolation verification after network await
+                    val activeUidAfterFetch = auth?.currentUser?.uid
+                    if (activeUidAfterFetch != targetUid) {
+                        Log.w("FirebaseSync", "Session identity changed during settings fetch await (targetUid=$targetUid, activeUid=$activeUidAfterFetch). Aborting syncUserSettings.")
+                        return@withTimeoutOrNull false
+                    }
+
                     if (snapshot.metadata.hasPendingWrites() || snapshot.metadata.isFromCache) {
                         return@withTimeoutOrNull false
                     }
@@ -1426,6 +1432,14 @@ class SyncRepositoryImpl(
                             userDocRef.set(updates, SetOptions.merge()).await()
 
                             val updatedSnapshot = userDocRef.get().await()
+
+                            // RC-09b / P5-G6-REQ-02: Re-check session identity after write await
+                            val activeUidAfterWrite = auth?.currentUser?.uid
+                            if (activeUidAfterWrite != targetUid) {
+                                Log.w("FirebaseSync", "Session identity changed during settings write await (targetUid=$targetUid, activeUid=$activeUidAfterWrite). Aborting local preference update.")
+                                return@withTimeoutOrNull false
+                            }
+
                             val newRemoteUpdatedAt = RemoteSyncCursor.parseRemoteTimestamp(updatedSnapshot.get("updatedAt")) ?: 0L
                             if (newRemoteUpdatedAt > 0L) {
                                 prefManager.saveSettingsLastSyncedTimestamp(newRemoteUpdatedAt)

@@ -169,4 +169,16 @@ patterns:
       - "markDeadLetter"
     explanation: "INV-13 / P1-G2-REQ-01 mandates that outbox mutations are permanently durable and retryable; terminal dead-letter transitions are strictly forbidden."
 
+  - id: "RC-07-clear-local-data-ui-gate"
+    invariant: "INV-15"
+    description: "Forbidden invocation of clearLocalData outside debug-gated SettingsScreen"
+    check_type: "regex"
+    file_glob: "app/src/main/java/com/example/ui/**/*.kt"
+    allowed_in_functions:
+      - "clearLocalData"
+      - "SettingsScreen"
+    forbidden_regexes:
+      - "\\.clearLocalData\\("
+    explanation: "INV-15 / RC-07 mandates that destructive clearLocalData must never be reachable in release builds and must only exist inside debug-gated SettingsScreen."
+
 

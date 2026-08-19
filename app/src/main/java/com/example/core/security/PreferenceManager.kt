@@ -3,6 +3,7 @@ package com.example.core.security
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Base64
+import com.example.core.util.AppBuildConfig
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -80,7 +81,7 @@ open class PreferenceManager(private val context: Context) {
             }
             (keyStore.getEntry("EarthlinkDatabaseLocalKey", null) as java.security.KeyStore.SecretKeyEntry).secretKey
         } catch (e: Throwable) {
-            if (!com.alamiry.earthlinkreseller.BuildConfig.DEBUG) {
+            if (!AppBuildConfig.DEBUG) {
                 android.util.Log.e("PreferenceManager", "AndroidKeyStore is unavailable in release runtime!", e)
                 throw IllegalStateException("AndroidKeyStore unavailable in release build: ${e.message}", e)
             }
@@ -467,7 +468,7 @@ open class PreferenceManager(private val context: Context) {
                 newPrefs
             } catch (retryException: Throwable) {
                 android.util.Log.e("PreferenceManager", "Fatal: EncryptedSharedPreferences creation failed after cleanup", retryException)
-                if (com.alamiry.earthlinkreseller.BuildConfig.DEBUG) {
+                if (AppBuildConfig.DEBUG) {
                     // Resilience fallback for Robolectric / test environments
                     context.getSharedPreferences("reseller_prefs_fallback", Context.MODE_PRIVATE)
                 } else {
@@ -664,7 +665,7 @@ open class PreferenceManager(private val context: Context) {
     }
 
     fun setDemoMode(enabled: Boolean) {
-        if (!com.alamiry.earthlinkreseller.BuildConfig.DEBUG) {
+        if (!AppBuildConfig.DEBUG) {
             prefs.edit().putBoolean(KEY_DEMO_MODE, false).apply()
             _demoModeFlow.value = false
             return
@@ -677,7 +678,7 @@ open class PreferenceManager(private val context: Context) {
     }
 
     fun getDemoMode(): Boolean {
-        if (!com.alamiry.earthlinkreseller.BuildConfig.DEBUG) return false
+        if (!AppBuildConfig.DEBUG) return false
         return prefs.getBoolean(KEY_DEMO_MODE, false) // Default to false so user gets live connections by default
     }
 

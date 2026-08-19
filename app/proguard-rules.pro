@@ -27,3 +27,8 @@
 # Preserve line numbers for crash reporting
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
+
+-keep class com.alamiry.earthlinkreseller.BuildConfig { *; }
+-keepclassmembers class com.alamiry.earthlinkreseller.BuildConfig {
+    public static <fields>;
+}

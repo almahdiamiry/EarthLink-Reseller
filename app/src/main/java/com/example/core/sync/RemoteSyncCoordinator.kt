@@ -158,42 +158,20 @@ class RemoteSyncCoordinator(
         }
         
         // 2. No server version -> check if entity exists locally
-        //    If it does, return Untracked with legacy fallback for safe comparison
-        //    The CALLER (SyncConflictResolver) decides what to do with Untracked.
+        //    If it does, return Untracked (without synthetic cross-domain timestamp comparison)
+        //    The CALLER (SyncConflictResolver) decides what to do with Untracked (falls through to UNKNOWN_MISSING).
         return when (entityType) {
             "account" -> {
                 val existing = accountDao.getByIdOneShot(entityId)
-                if (existing == null) LocalVersionState.New
-                else {
-                    // Sequence version fallback: ONLY for non-legacy entities with small version sequence values (< 1 Billion)
-                    val isLegacyEntity = existing.isLegacy || existing.id.startsWith("acc_legacy")
-                    val legacyTs = if (!isLegacyEntity) {
-                        existing.updatedAt.takeIf { it < 1_000_000_000_000L }
-                    } else null
-                    LocalVersionState.Untracked(legacyTs)
-                }
+                if (existing == null) LocalVersionState.New else LocalVersionState.Untracked(null)
             }
             "ledger" -> {
                 val existing = ledgerDao.getByIdOneShot(entityId)
-                if (existing == null) LocalVersionState.New
-                else {
-                    val isLegacyEntity = existing.isSnapshotHistory || existing.id.startsWith("ledger_legacy")
-                    val legacyTs = if (!isLegacyEntity) {
-                        existing.occurredAt.takeIf { it < 1_000_000_000_000L }
-                    } else null
-                    LocalVersionState.Untracked(legacyTs)
-                }
+                if (existing == null) LocalVersionState.New else LocalVersionState.Untracked(null)
             }
             "batch" -> {
                 val existing = batchDao.getById(entityId)
-                if (existing == null) LocalVersionState.New
-                else {
-                    val isLegacyEntity = existing.id.startsWith("batch_legacy")
-                    val legacyTs = if (!isLegacyEntity) {
-                        existing.createdAt.takeIf { it < 1_000_000_000_000L }
-                    } else null
-                    LocalVersionState.Untracked(legacyTs)
-                }
+                if (existing == null) LocalVersionState.New else LocalVersionState.Untracked(null)
             }
             else -> LocalVersionState.New
         }
@@ -204,7 +182,7 @@ class RemoteSyncCoordinator(
      */
     private fun LocalVersionState.toComparableTimestamp(): Long? = when (this) {
         is LocalVersionState.ServerTracked -> version
-        is LocalVersionState.Untracked -> legacyFallback
+        is LocalVersionState.Untracked -> null
         is LocalVersionState.New -> null
     }
 
@@ -403,8 +381,9 @@ class RemoteSyncCoordinator(
                         metadataDao.put("tombstone:ledger:${child.id}", event.remoteVersion.toString())
                         metadataDao.put("remote_version:ledger:${child.id}", event.remoteVersion.toString())
                     }
-                    ledgerDao.deleteByAccountId(event.entityId)
-                    accountDao.deleteById(event.entityId)
+                    if (existing != null) {
+                        accountDao.update(existing.copy(isHistoryOnlySubscriber = true, updatedAt = event.remoteVersion))
+                    }
                     metadataDao.put("tombstone:account:${event.entityId}", event.remoteVersion.toString())
                     metadataDao.put("remote_version:account:${event.entityId}", event.remoteVersion.toString())
                     EventSyncResult.APPLIED
@@ -596,10 +575,6 @@ class RemoteSyncCoordinator(
 
         return when (decision) {
             ConflictDecision.APPLY_DELETE -> {
-                if (existing != null) {
-                    ledgerDao.deleteById(event.entityId)
-                    recalculateAccountBalance(existing.accountId)
-                }
                 metadataDao.put("tombstone:ledger:${event.entityId}", event.remoteVersion.toString())
                 metadataDao.put("remote_version:ledger:${event.entityId}", event.remoteVersion.toString())
                 EventSyncResult.APPLIED

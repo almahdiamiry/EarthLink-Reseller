@@ -229,13 +229,13 @@ interface SyncOutboxDao {
     @Query("DELETE FROM sync_outbox WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<Int>)
 
-    @Query("DELETE FROM sync_outbox WHERE entityId = :entityId AND entityType = :entityType")
+    @Query("DELETE FROM sync_outbox WHERE entityId = :entityId AND entityType = :entityType AND status IN ('pending', 'failed')")
     suspend fun clearPendingByEntity(entityId: String, entityType: String)
 
-    @Query("DELETE FROM sync_outbox WHERE entityId IN (:entityIds) AND entityType = :entityType")
+    @Query("DELETE FROM sync_outbox WHERE entityId IN (:entityIds) AND entityType = :entityType AND status IN ('pending', 'failed')")
     suspend fun clearPendingByEntityIds(entityIds: List<String>, entityType: String)
 
-    @Query("DELETE FROM sync_outbox WHERE entityType = :entityType")
+    @Query("DELETE FROM sync_outbox WHERE entityType = :entityType AND status IN ('pending', 'failed')")
     suspend fun clearPendingByEntityType(entityType: String)
 
     @Query("SELECT * FROM sync_outbox WHERE entityId = :entityId AND entityType = :entityType")
@@ -448,7 +448,7 @@ abstract class AppDatabase : RoomDatabase() {
     }
 
     companion object {
-        const val VERSION = 13
+        const val VERSION = 14
 
         @Volatile
         private var INSTANCE: AppDatabase? = null
@@ -514,6 +514,8 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                 """.trimIndent())
 
+                val tookRenewalIn = com.example.core.ledger.TransactionTypeNormalizer.SQL_TOOK_RENEWAL_IN_CLAUSE
+                val gaveIn = com.example.core.ledger.TransactionTypeNormalizer.SQL_GAVE_IN_CLAUSE
                 // 4.5. Recompute survivor account balances (debtIqd, advanceIqd, loanIqd) based on newly merged and deduplicated ledger entries
                 db.execSQL("""
                     UPDATE `local_accounts`
@@ -521,8 +523,8 @@ abstract class AppDatabase : RoomDatabase() {
                         `debtIqd` = MAX(0.0, (
                             SELECT COALESCE(SUM(
                                 CASE 
-                                    WHEN LOWER(typeRaw) IN ('took', 'debt', 'debt_added', 'renewal', 'renew', 'sub_renew', 'sub_renewal', 'debt_renew') THEN amountIqd
-                                    WHEN LOWER(typeRaw) IN ('gave', 'payment', 'deposit', 'pay') THEN -amountIqd
+                                    WHEN LOWER(typeRaw) IN ($tookRenewalIn) THEN amountIqd
+                                    WHEN LOWER(typeRaw) IN ($gaveIn) THEN -amountIqd
                                     ELSE 0.0
                                 END
                             ), 0.0)
@@ -532,8 +534,8 @@ abstract class AppDatabase : RoomDatabase() {
                         `advanceIqd` = MAX(0.0, -1.0 * (
                             SELECT COALESCE(SUM(
                                 CASE 
-                                    WHEN LOWER(typeRaw) IN ('took', 'debt', 'debt_added', 'renewal', 'renew', 'sub_renew', 'sub_renewal', 'debt_renew') THEN amountIqd
-                                    WHEN LOWER(typeRaw) IN ('gave', 'payment', 'deposit', 'pay') THEN -amountIqd
+                                    WHEN LOWER(typeRaw) IN ($tookRenewalIn) THEN amountIqd
+                                    WHEN LOWER(typeRaw) IN ($gaveIn) THEN -amountIqd
                                     ELSE 0.0
                                 END
                             ), 0.0)
@@ -543,8 +545,8 @@ abstract class AppDatabase : RoomDatabase() {
                         `loanIqd` = MAX(0.0, (
                             SELECT COALESCE(SUM(
                                 CASE 
-                                    WHEN LOWER(typeRaw) IN ('took', 'debt', 'debt_added', 'renewal', 'renew', 'sub_renew', 'sub_renewal', 'debt_renew') THEN amountIqd
-                                    WHEN LOWER(typeRaw) IN ('gave', 'payment', 'deposit', 'pay') THEN -amountIqd
+                                    WHEN LOWER(typeRaw) IN ($tookRenewalIn) THEN amountIqd
+                                    WHEN LOWER(typeRaw) IN ($gaveIn) THEN -amountIqd
                                     ELSE 0.0
                                 END
                             ), 0.0)
@@ -752,6 +754,45 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_13_14 = object : androidx.room.migration.Migration(13, 14) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `local_ledger_entries_new` (
+                        `id` TEXT NOT NULL,
+                        `accountId` TEXT NOT NULL,
+                        `sourceExternalId` TEXT,
+                        `sourceBatchId` TEXT,
+                        `typeRaw` TEXT NOT NULL,
+                        `amountIqd` REAL NOT NULL,
+                        `debtAfterIqd` REAL NOT NULL,
+                        `note` TEXT,
+                        `occurredAt` INTEGER NOT NULL,
+                        `rawJson` TEXT,
+                        `createdAt` INTEGER NOT NULL,
+                        `isSnapshotHistory` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`),
+                        FOREIGN KEY(`accountId`) REFERENCES `local_accounts`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION
+                    )
+                """.trimIndent())
+                db.execSQL("""
+                    INSERT INTO `local_ledger_entries_new` (
+                        `id`, `accountId`, `sourceExternalId`, `sourceBatchId`, `typeRaw`,
+                        `amountIqd`, `debtAfterIqd`, `note`, `occurredAt`, `rawJson`, `createdAt`, `isSnapshotHistory`
+                    )
+                    SELECT `id`, `accountId`, `sourceExternalId`, `sourceBatchId`, `typeRaw`,
+                           `amountIqd`, `debtAfterIqd`, `note`, `occurredAt`, `rawJson`, `createdAt`, `isSnapshotHistory`
+                    FROM `local_ledger_entries`
+                """.trimIndent())
+                db.execSQL("DROP TABLE `local_ledger_entries`")
+                db.execSQL("ALTER TABLE `local_ledger_entries_new` RENAME TO `local_ledger_entries`")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_local_ledger_entries_accountId` ON `local_ledger_entries` (`accountId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_local_ledger_entries_sourceBatchId` ON `local_ledger_entries` (`sourceBatchId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_local_ledger_entries_occurredAt` ON `local_ledger_entries` (`occurredAt`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_local_ledger_entries_sourceExternalId` ON `local_ledger_entries` (`sourceExternalId`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_local_ledger_entries_accountId_sourceExternalId` ON `local_ledger_entries` (`accountId`, `sourceExternalId`)")
+            }
+        }
+
         private val INSTANCES = java.util.concurrent.ConcurrentHashMap<String, AppDatabase>()
 
         fun getDatabase(context: Context, passphrase: ByteArray, dbName: String = "earthlink_reseller_db"): AppDatabase {
@@ -767,7 +808,7 @@ abstract class AppDatabase : RoomDatabase() {
                 val dbFile = context.applicationContext.getDatabasePath(dbName)
                 dbFile.parentFile?.mkdirs()
                 val builder = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, dbName)
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                             super.onCreate(db)

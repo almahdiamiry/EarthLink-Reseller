@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.content.Intent
+import com.example.core.util.AppBuildConfig
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -115,7 +116,7 @@ fun UserDetailScreenV2(
 
     val isDemoMode by viewModel.prefs.demoModeFlow.collectAsStateWithLifecycle()
     val finalLedgerList = remember(ledgerList, showHistoryDialog, isDemoMode) {
-        if (ledgerList.isEmpty() && isDemoMode && com.alamiry.earthlinkreseller.BuildConfig.DEBUG) {
+        if (ledgerList.isEmpty() && isDemoMode && AppBuildConfig.DEBUG) {
             listOf(
                 com.example.core.model.LocalLedgerEntry(
                     id = "mock1",

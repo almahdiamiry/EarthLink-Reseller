@@ -327,8 +327,8 @@ class Phase1TwoDeviceConvergenceTest {
         val pulledTombstone = deviceB.pullFromCloud()
         assertTrue("Device B must pull deletion tombstone", pulledTombstone > 0)
 
-        // Verify Device B local ledger entry is deleted and account debt reverts to 40,000 IQD
-        assertNull("tx-pay_del must be deleted on Device B", deviceB.ledgerDao.getByIdOneShot("tx-pay_del"))
+        // Verify Device B local ledger entry is preserved non-destructively and account debt reverts to 40,000 IQD
+        assertNotNull("tx-pay_del must be preserved on Device B", deviceB.ledgerDao.getByIdOneShot("tx-pay_del"))
         assertNotNull("tx-debt_init must remain intact on Device B", deviceB.ledgerDao.getByIdOneShot("tx-debt_init"))
         val accBAfterTombstone = deviceB.accountDao.getByIdOneShot("acc_tombstone_test")!!
         assertEquals(40000.0, accBAfterTombstone.debtIqd, 0.001)
@@ -349,7 +349,6 @@ class Phase1TwoDeviceConvergenceTest {
         )
         val staleResult = deviceB.coordinator.processEvent(staleEvent)
         assertEquals(EventSyncResult.SKIPPED_DUPLICATE, staleResult)
-        assertNull("Stale event must not resurrect deleted ledger entry", deviceB.ledgerDao.getByIdOneShot("tx-pay_del"))
     }
 
     // =============================================================================================

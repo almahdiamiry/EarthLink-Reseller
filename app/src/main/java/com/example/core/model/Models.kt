@@ -362,7 +362,7 @@ data class LocalAccount(
             entity = LocalAccount::class,
             parentColumns = ["id"],
             childColumns = ["accountId"],
-            onDelete = ForeignKey.CASCADE
+            onDelete = ForeignKey.NO_ACTION
         )
     ],
     indices = [

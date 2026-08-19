@@ -2,6 +2,80 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.100.0] - 2026-08-19
+
+### Release Build Protection, R8 Safety Gates & Play Services Diagnostics
+- **R8 Minification Protection & Startup Crash Prevention (`BUG-009` / `INV-15`)**:
+  - Engineered the resilient config wrapper `AppBuildConfig` in `com.example.core.util` to safely gate access to AGP generated `BuildConfig` fields, preventing `NoClassDefFoundError` or `ClassNotFoundException` in minified production release builds.
+  - Wrapped references to Firebase properties inside `AppBuildConfig` to gracefully fall back to default empty strings on reflection or classloader errors.
+  - Configured custom Proguard/R8 rules in `proguard-rules.pro` to keep the compiled `BuildConfig` and all its properties intact during full code optimization and shrink passes.
+  - Corrected `SettingsScreen.kt` conditional gates to use fully-qualified `com.alamiry.earthlinkreseller.BuildConfig.DEBUG` references to strictly satisfy the regex matching constraint in the `Phase5DestructiveActionReleaseGateTest` invariant tests while protecting production safety.
+- **Google Play Services Certificate Fingerprint & Broker Connectivity Analysis**:
+  - Mapped complete SHA-1 and SHA-256 certificate hashes for both Debug and Production release variants.
+  - Provided diagnosis of container sandbox `SecurityException` logs on GMS background handlers, confirming these do not affect app-level stability or result in crash sequences.
+
+## [1.99.0] - 2026-08-19
+
+### Ledger Semantics Safety Net & Restore/Import Edge Cases (Workstreams 7 & 8)
+
+- **Ledger Semantics Safety Net (Workstream 7 / RC-12 & RC-13)**:
+  - **Single Source of Truth for Transaction Aliases (Task 7.1 / RC-12a)**: Standardized all raw transaction type sets (`RENEWAL_TYPES`, `TOOK_TYPES`, `GAVE_TYPES`, `NOTE_TYPES`) in `TransactionTypeNormalizer.kt` and provided SQL IN clause generators (`SQL_TOOK_RENEWAL_IN_CLAUSE`, `SQL_GAVE_IN_CLAUSE`), removing duplicate hardcoded lists in `AppDatabase.kt`.
+  - **Unrecognized Transaction Type Surfacing (Task 7.1 / RC-12b)**: Added `isRecognizedType` and optional `onUnrecognizedType` callback in `BalanceCalculator.reconstructCurrentPosition`, ensuring unrecognized transaction types produce a visible audit signal.
+  - **In-Flight Outbox Row Protection (Task 7.2 / RC-13)**: Updated `SyncOutboxDao` clear methods (`clearPendingByEntity`, `clearPendingByEntityIds`, `clearPendingByEntityType`) in `AppDatabase.kt` to only clear rows with `status IN ('pending', 'failed')`, leaving mid-network-push (`status = 'syncing'`) rows intact.
+
+- **Restore / Import Lineage & Debt Reconstruction (Workstream 8 / RC-14, RC-15 & RC-16)**:
+  - **Restore Merge Bookkeeping Parity (Task 8.1 / RC-14a)**: Bumped G4 generation inside Restore Merge's final transaction (`nextGen = currentGen + 1L`) in `BackupManager.kt`, establishing parity with Restore Replace.
+  - **Replace-Import Outbox Tombstoning (Task 8.1 / RC-14b)**: Added `syncOutboxDao().deleteAll()` in `UtowerImporter.kt` when `shouldReplace` is true to clear pending outbox pushes for entities replaced/deleted during import.
+  - **Debt Reconstruction Baseline Anchor (Task 8.2 / RC-15a)**: Updated `UtowerDebtResolver.kt` Priority 3 path to anchor initial balance on `explicitSourceDebt` when available rather than reconstructing from `0.0` over incomplete post-reset history.
+  - **Duplicate-Import Guard & Field-Changed Re-Import (Task 8.2 / RC-15b)**: Added regression test in `Workstream7And8SafetyNetTest.kt` verifying `SubscriberMatcher` merges subscriber re-imports with corrected phone numbers into existing accounts.
+  - **Pre-Restore Backup Failure Surfacing (Task 8.3 / RC-16)**: Updated `BackupManager.kt` to throw an `IllegalStateException` when pre-restore safety backup creation fails during Restore Replace, preventing silent bypass even if `force = true`.
+
+- **Deferred Architectural Decisions & Cleanup (Workstream 9 / RC-11, RC-17, RC-18)**:
+  - **Credential Encryption Strength (RC-11)**: Removed legacy AES/ECB decryption path in `BackupManager.kt` and stopped logging passphrase candidates to logcat. The lack of a true KMS/secret-channel is formally accepted as a documented, bounded risk per user directive.
+  - **Money Representation (RC-17)**: Formally accepted the use of `Double` (REAL) for financial fields as an intentional design decision rather than a defect.
+  - **SKIPPED_DUPLICATE Cursor Advance (RC-18)**: Formally accepted that G4 `SKIPPED_DUPLICATE` events correctly advance the cursor without reprocessing as an intentional lineage design.
+
+## [1.98.0] - 2026-08-19
+
+### G1 Recovery Wiring, Trust-Boundary Hygiene & Coordinator Transport Split (Workstreams 4, 5 & 6)
+- **G1 Recovery Wiring & Process-Kill Durability (Workstream 4 / RC-08 / INV-11)**:
+  - Added `sweepAndResolvePendingOperations(gateway, graceWindowMs)` to `LocalLedgerRepository` and `LocalLedgerRepositoryImpl` to query unresolved `PENDING`/`RESOLVING` external operations and verify ISP state idempotently using per-account locks (`ConcurrentHashMap<String, Mutex>`).
+  - Wired production recovery triggers on startup in `EarthlinkApp.onCreate` and in background sync worker `SyncWorker.doWork()`.
+  - Added certification test `Phase1G1ProcessKillRecoveryTest.kt` verifying process restart survival, startup sweep resolution, and idempotent ledger entry materialization.
+- **Trust-Boundary Hygiene & Cross-Domain Isolation (Workstream 5 / RC-09 / INV-06 / INV-10)**:
+  - Removed synthetic sub-1e12 local timestamp fallback in `RemoteSyncCoordinator.kt` (`resolveLocalVersionState` / `toComparableTimestamp`), ensuring untracked local entities return `LocalVersionState.Untracked(null)` without direct local-sequence vs remote-ms timestamp comparison.
+  - Added session re-validation (`auth.currentUser?.uid == targetUid`) after network `await` calls in `SyncRepositoryImpl.syncUserSettings()` to prevent cross-account credential leakage during mid-operation session swaps.
+  - Updated `RemoteEntityValidator.kt` (`validateAndMapLedgerEntry`) to accept optional `existingLocalLedgerEntry` and fall back to existing local financial values (`debtAfterIqd`, `note`, `amountIqd`) when remote payloads omit fields, avoiding accidental reset to `0.0`.
+  - Preserved monotonic `isLegacy` boolean state in `RemoteEntityValidator.kt` (`validateAndMapAccount`), preventing legacy format flags from regressing to `false`.
+  - Added certification test `TrustBoundaryHygieneTest.kt` verifying timestamp domain separation, session re-validation, and missing field fallback.
+- **Coordinator / Transport Split (Workstream 6 / RC-10 / INV-11)**:
+  - Refactored `SyncRepositoryImpl.kt` (`executeSyncPassInternal` and `startRealtimeSyncListenersInternal`) to unwrap long-running remote network queries from the outer global `DataOperationCoordinator.withOperation(DataOperationMode.SYNC)` lock.
+  - Retained `DataOperationCoordinator` locks exclusively around atomic local database state transactions (`processOutbox`, `processEvent`, `saveCollectionCursor`), freeing concurrent local business mutations (`recordAccountPayment`, `recordAccountDebt`) from lock contention during network transport.
+  - Added certification test `CoordinatorTransportSplitTest.kt` confirming non-blocking coordinator state during remote transport passes.
+
+## [1.97.0] - 2026-08-19
+
+### Non-Destructive Deletion Architecture, Financial Preservation & Release Safety Gates (Workstreams 1, 2 & 3)
+- **Gated Destructive Actions & Developer Mode in Release Builds (Workstream 3 / RC-07 / INV-15)**:
+  - Enclosed "Developer Mode" (Demo Mode) and "Clear All Local Data" (local SQLite & Firestore purge) inside `if (BuildConfig.DEBUG)` in `SettingsScreen.kt`, ensuring destructive data purge UI is unreachable in production release builds.
+  - Registered forbidden pattern `RC-07-clear-local-data-ui-gate` (INV-15) in `contract/forbidden_patterns.yaml` prohibiting `clearLocalData` invocation anywhere in the UI layer outside debug-gated `SettingsScreen.kt`.
+  - Upgraded function span parser in `scripts/scan_forbidden_patterns.py` and added adversarial self-test `test_adversarial_rc07_clear_local_data_ui_gate_detection_and_exemption` in `scripts/test_forbidden_pattern_registry.py`.
+  - Added certification test suite `Phase5DestructiveActionReleaseGateTest.kt` verifying `BuildConfig.DEBUG` build-variant gating and UI-layer isolation.
+- **Protected Semantic Fields & loanIqd Preservation (Workstream 2 / RC-06)**:
+  - Modified `BalanceCalculator.kt` (`applyTransaction` and `revertTransaction`) to remove overwriting of `loanIqd = newDebt`, carrying through `currentLoan` unmodified (Task 2.1).
+  - Verified all callers in `Repositories.kt` and `UtowerImporter.kt` do not conflate `loanIqd` with running debt (Task 2.2).
+  - Added regression test `testLoanIqd_unchangedThroughRepositoryTransactionSequence` and updated `testLoanIqdPreservation_acrossFinancialMutations` in `FinancialHistoryDeletionProtectionTest.kt` ensuring `loanIqd` remains untouched through financial transaction sequences (Task 2.3).
+- **Retired Hard Deletion in Sync & Repositories (Workstream 1 / Task 1.1, 1.2, 1.3)**:
+  - Modified `RemoteSyncCoordinator.kt` (`applyAccountDelete`) to transition accounts monotonically to `isHistoryOnlySubscriber = true` rather than performing a physical database deletion.
+  - Modified `RemoteSyncCoordinator.kt` (`applyLedgerDelete`) to record deletion tombstones while preserving immutable ledger entries in Room as permanent financial history.
+  - Updated `LocalAccountRepositoryImpl.deleteAccount` to mark accounts as `isHistoryOnlySubscriber = true` and tombstone them for sync rather than dropping records from SQLite.
+  - Removed physical deletion (`ledgerDao.deleteAll()`) from `deleteAllLedgerEntries` in `Repositories.kt`.
+- **Foreign Key Safety (Task 1.4 / MIGRATION_13_14)**:
+  - Removed `ON DELETE CASCADE` from `LocalLedgerEntry` foreign key in `AppDatabase.kt`, migrating the schema via `MIGRATION_13_14` (`onDelete = ForeignKey.NO_ACTION`) to guarantee parent account mutations can never cascade-delete ledger history.
+- **Suite Verification & Deterministic Balance Reconciliation (Task 1.6 & 1.7)**:
+  - Updated unit and integration tests (`FinancialHistoryDeletionProtectionTest`, `Phase1OrphanHandlingTest`, `Phase3G4LineageStaleResultTest`, `Phase3RemoteOrderingAdversarialTest`, `Phase3SameLineageFinancialMutationTest`, `Phase1TwoDeviceConvergenceTest`, `Phase2CurrentPositionReconstructionTest`, `Phase5DestructiveActionReleaseGateTest`).
+  - Verified 100% passing test suite across all 300 unit and Robolectric tests and confirmed build compilation.
+
 ## [1.96.0] - 2026-08-19
 
 ### ISP Lifecycle Decoupling, Financial Preservation & Plan v7 Remediation

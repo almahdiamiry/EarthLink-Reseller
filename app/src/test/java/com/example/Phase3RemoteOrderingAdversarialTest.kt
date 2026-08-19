@@ -88,8 +88,10 @@ class Phase3RemoteOrderingAdversarialTest {
         val res2 = coordinator.processEvent(deleteEvent)
         assertEquals(EventSyncResult.APPLIED, res2)
 
-        // Entity is deleted
-        assertNull("Entity must be deleted", db.localAccountDao().getByIdOneShot("acc_ord_1"))
+        // Entity is marked history-only non-destructively
+        val acc = db.localAccountDao().getByIdOneShot("acc_ord_1")
+        assertNotNull("Entity must remain in Room", acc)
+        assertTrue(acc!!.isHistoryOnlySubscriber)
 
         // Tombstone recorded at 200L
         val tombstone = db.syncMetadataDao().get("tombstone:account:acc_ord_1")
