@@ -15,11 +15,13 @@ This file is the single active operational entry point for any AI coding agent w
 5. **Use `docs/authority/Final Independent Adjudication Memo.md` as final architectural judgment / implementation boundary.**
 6. **Inspect the current source/artifact for implementation state.**
 7. **Use executable tests/evidence as verification proof.**
-8. **Do not select tasks from Git history, historical plans, ADRs, reports, SDD artifacts, or lessons learned.**
-9. **Use historical material only when the current task explicitly requests forensic archaeology or historical rationale.**
+8. **For any EarthLink API work, read the canonical API specification `docs/earthlink_reseller_app_api_documentation_v0_7_0.md` and the reference POC `docs/earthlink_app_api_poc_v0_6_48.py` before reasoning about endpoints, requests, payloads, responses, authentication, unwrapping, or edge cases.**
+9. **Do not select tasks from Git history, historical plans, ADRs, reports, SDD artifacts, or lessons learned.**
+10. **Use historical material only when the current task explicitly requests forensic archaeology or historical rationale.**
 
 > **CRITICAL RULE**: Only `AGENTS.md` and the explicitly named current-phase plan are active implementation instructions. Other repository documents are context, evidence, or history unless explicitly designated current by the frozen authority chain.
 > `DESIGN_DECISIONS.md` is a technical ADR and historical context layer subordinate to the frozen authority bundle.
+> The API specification and API POC are permanent technical reference material, not implementation plans.
 
 ---
 
@@ -31,8 +33,11 @@ This file is the single active operational entry point for any AI coding agent w
 4. **Implementation Transition Guidance (Subordinate)**:
    - `docs/authority/EARTHLINK_V1_HANDOVER.md`
    - `docs/authority/EARTHLINK_IMPLEMENTATION_HANDOVER_APPENDIX_v1.0.md`
-5. **Implementation State Evidence**: Exact current source tree and build configuration.
-6. **Verification Proof**: Executable automated tests, test matrix, and verification commands.
+5. **API Protocol Reference**:
+   - `docs/earthlink_reseller_app_api_documentation_v0_7_0.md`
+   - `docs/earthlink_app_api_poc_v0_6_48.py`
+6. **Implementation State Evidence**: Exact current source tree and build configuration.
+7. **Verification Proof**: Executable automated tests, test matrix, and verification commands.
 
 ---
 
@@ -72,14 +77,6 @@ Historical data, Snapshot state, and Runtime state are different concepts:
 
 ### 7. Certification Freeze
 Existing certification tests are immutable during implementation and certification runs.
-
----
-
-## API Documentation Reference
-
-When working with network requests and API integrations, consult:
-1. `/DOC/earthlink_reseller_app_api_documentation_v0_7_0.md`: Primary API specification.
-2. `/DOC/earthlink_app_api_poc_v0_6_48.py`: Python reference implementation for payload unwrapping and edge cases.
 
 ---
 
