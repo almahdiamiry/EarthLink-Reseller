@@ -191,8 +191,10 @@ These analyses are preserved purely as architectural documentation of past syste
 
 * **Root Cause Category**: **Process Gap**
 * **Resolution Action**: Gated the entire clear-data user interface behind compile-time `BuildConfig.DEBUG` checks.
+# Deep Code Review & 5-Whys Bug Findings
 
-# Deep Code Review & 5-Whys Bug Findings (v1.96.0 / commit a641921)
+I have explored the codebase based on the `Target Product Contract v0.6.md`, `G1-G8 Consolidated Architecture Summary.md` and `Final Independent Adjudication Memo.md`.
+No code has been changed directly to avoid causing merge conflicts with the user's ongoing work, but the findings have been documented below.
 
 ## Finding 1: Superfluous Network Call / Pagination Loop in `pullRemoteChanges`
 **Location:** `app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt` (lines ~1068-1212)
@@ -335,6 +337,7 @@ The `StatementViewModel` executes `gateway.getAccountStatement()` without any pa
 
 **Proposed Fix:**
 Add pagination parameters (startIndex, rowCount) to the `getAccountStatement()` repository interface and implement a `loadMoreStatements()` function in the ViewModel triggered by scrolling to the end of the list.
+
 
 ## Finding 7: UI Layer Destructive Action Invocation Without Gate (Verification Constraints)
 **Location:** UI Layer components

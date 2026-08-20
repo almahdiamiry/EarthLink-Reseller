@@ -28,4 +28,3 @@ __pycache__/
 .pytest_cache/
 /app/google-services.json
 /evidence/g8/
-/test-fixtures/
