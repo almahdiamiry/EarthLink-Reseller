@@ -814,7 +814,7 @@ abstract class AppDatabase : RoomDatabase() {
 
         val MIGRATION_15_16 = object : androidx.room.migration.Migration(15, 16) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
-                db.execSQL("ALTER TABLE `PendingExternalOperation` ADD COLUMN `verificationEvidence` TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE `pending_external_operations` ADD COLUMN `verificationEvidence` TEXT DEFAULT NULL")
             }
         }
 

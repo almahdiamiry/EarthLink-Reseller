@@ -10,6 +10,7 @@ import com.example.core.database.PendingExternalOperationDao
 import com.example.core.database.SyncOutboxDao
 import com.example.core.model.LocalAccount
 import com.example.core.model.PendingExternalOperation
+import com.example.core.model.UnknownOutcomeResolutionResult
 import com.example.data.repository.LocalLedgerRepositoryImpl
 import com.example.domain.repository.LocalLedgerRepository
 import kotlinx.coroutines.runBlocking
@@ -208,5 +209,42 @@ class PendingOperationFinancialIntentTest {
         // Outbox entry should also reuse txId
         val outbox = outboxDao.getByEntity(txId, "local_ledger_entries")
         assertFalse("Outbox entry should exist with stable txId", outbox.isEmpty())
+    }
+
+    @Test
+    fun testSubmitManualVerificationEvidence_persistsEvidenceAndResolvesSuccess() = runBlocking {
+        val txId = "tx_manual_ev_" + UUID.randomUUID()
+        val intentId = "intent_manual_ev_" + UUID.randomUUID()
+        val accountId = "acc_manual_ev_01"
+        val amount = 40000L
+
+        val account = LocalAccount(
+            id = accountId,
+            displayName = "Manual Evidence Test",
+            currentPriceIqd = amount.toDouble()
+        )
+        accountDao.insert(account)
+
+        val pending = PendingExternalOperation(
+            businessTransactionId = txId,
+            operationIntentId = intentId,
+            accountId = accountId,
+            operationType = "ACTIVATION",
+            amountIqd = amount,
+            status = "PENDING"
+        )
+        ledgerRepository.recordPendingOperation(pending)
+
+        val evidence = "Confirmed by ISP ref #987654"
+        val resolution = ledgerRepository.submitManualVerificationEvidence(txId, evidence)
+
+        assertEquals(UnknownOutcomeResolutionResult.VERIFIED_SUCCESS, resolution.result)
+        assertEquals("COMPLETED", resolution.operation.status)
+        assertEquals(evidence, resolution.operation.verificationEvidence)
+
+        val retrieved = pendingDao.getByBusinessTransactionId(txId)
+        assertNotNull(retrieved)
+        assertEquals("COMPLETED", retrieved?.status)
+        assertEquals(evidence, retrieved?.verificationEvidence)
     }
 }

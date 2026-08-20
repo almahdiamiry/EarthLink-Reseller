@@ -1487,7 +1487,7 @@ class LocalLedgerRepositoryImpl(
         // Record the evidence, then route through the standard success resolver
         pendingDao.updateStatus(businessTransactionId, op.status, System.currentTimeMillis(), op.lastError)
         database.withTransaction {
-            val statement = database.openHelper.writableDatabase.compileStatement("UPDATE PendingExternalOperation SET verificationEvidence = ? WHERE businessTransactionId = ?")
+            val statement = database.openHelper.writableDatabase.compileStatement("UPDATE pending_external_operations SET verificationEvidence = ? WHERE businessTransactionId = ?")
             statement.bindString(1, externalEvidence)
             statement.bindString(2, businessTransactionId)
             statement.executeUpdateDelete()
