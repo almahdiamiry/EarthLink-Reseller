@@ -28,6 +28,8 @@ object TransactionTypeNormalizer {
         }
     }
 
+    fun normalize(rawType: String?): String = normalizeTransactionType(rawType)
+
     /**
      * Returns true if [rawType] resolves to a known canonical type ("took", "gave", "renewal", "note").
      */

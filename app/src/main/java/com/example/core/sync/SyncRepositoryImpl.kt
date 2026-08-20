@@ -631,7 +631,7 @@ class SyncRepositoryImpl(
                             if (item.operation == "delete" || isDeleted) {
                                 metadataDao.put("tombstone:$entityTypeKey:${item.entityId}", serverVersion.toString())
                             }
-                            metadataDao.put("remote_version:$entityTypeKey:${item.entityId}", serverVersion.toString())
+                            metadataDao.putMonotonicRemoteVersion("remote_version:$entityTypeKey:${item.entityId}", serverVersion)
                             metadataDao.put("version_capture_retry:$entityTypeKey:${item.entityId}", "0")
                         }
                         Log.d("FirebaseSync", "Captured server-confirmed remote_version $serverVersion for $entityTypeKey:${item.entityId}")

@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -82,8 +83,8 @@ fun ImportUtowerScreen(
 
     if (showWipeWarning) {
         ConfirmationDialog(
-            title = "تأكيد مسح واستبدال جميع البيانات",
-            message = "تحذير: سيتم مسح جميع المشتركين والسجلات المالية الحالية نهائياً واستبدالها بالبيانات الموجودة في الملف المحدد. لا يمكن التراجع عن هذا الإجراء. هل تريد المتابعة؟\n\nWarning: All existing local subscriber accounts and financial ledger history will be permanently wiped and overwritten by the contents of this file. This action cannot be undone. Do you want to proceed?",
+            title = "تأكيد استبدال وتعيين البيانات الأساسية",
+            message = "تحذير: يؤدي هذا الخيار إلى جعل الملف المحدد هو قاعدة البيانات الأساسية والنهائية للتطبيق والمزامنة السحابية. سيتم مسح واستبدال جميع المشتركين والسجلات الحالية نهائياً. لا يمكن التراجع عن هذا الإجراء.\n\nWarning: This establishes the selected file as the new canonical starting dataset. All existing subscriber accounts, financial ledger history, and sync records will be permanently wiped and overwritten locally and in cloud sync. This action cannot be undone. Do you want to proceed?",
             needsPasswordField = false,
             onCancel = { showWipeWarning = false },
             onConfirm = {
@@ -219,8 +220,26 @@ fun ImportUtowerScreen(
                                 fontSize = 11.sp
                             )
                         }
-                        IconButton(onClick = { showRollbackConfirmId = batch.id }) {
-                            Icon(imageVector = Icons.Default.Undo, contentDescription = "Rollback", tint = Color.Red)
+                        if (batch.status != "completed" && batch.status != "accepted") {
+                            IconButton(
+                                onClick = { showRollbackConfirmId = batch.id },
+                                modifier = Modifier.testTag("rollback_batch_button_${batch.id}")
+                            ) {
+                                Icon(imageVector = Icons.Default.Undo, contentDescription = "Rollback Unaccepted Batch", tint = Color.Red)
+                            }
+                        } else {
+                            Surface(
+                                color = Color(0xFFE8F5E9),
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = "Accepted History",
+                                    color = Color(0xFF2E7D32),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
                         }
                     }
                 }

@@ -72,6 +72,7 @@ interface LocalLedgerRepository {
     suspend fun addPayment(accountId: String, amount: Double, note: String?, idempotencyKey: String? = null): LocalLedgerEntry
     suspend fun addDebt(accountId: String, amount: Double, note: String?, idempotencyKey: String? = null): LocalLedgerEntry
     suspend fun addNoteTransaction(accountId: String, note: String): LocalLedgerEntry
+    suspend fun correctTransaction(originalEntryId: String, intendedAmount: Double, note: String? = null, idempotencyKey: String? = null): LocalLedgerEntry
     suspend fun deleteTransaction(id: String)
     suspend fun deleteAllLedgerEntries()
     suspend fun recordAccountRenewal(account: LocalAccount, newPriceIqd: Double, chargeNote: String, payNote: String?, idempotencyKey: String? = null): LocalLedgerEntry
@@ -94,6 +95,7 @@ interface LocalLedgerRepository {
     suspend fun resolvePendingOperationVerifiedFailure(businessTransactionId: String, diagnostic: String): Boolean
     suspend fun resolvePendingOperationInconclusive(businessTransactionId: String, diagnostic: String): Boolean
     suspend fun verifyAndResolvePendingOperation(businessTransactionId: String, gateway: EarthlinkGateway, baselineExpirationDate: String? = null): PendingOperationResolution
+    suspend fun resolvePendingOperationSerialized(businessTransactionId: String, gateway: EarthlinkGateway, baselineExpirationDate: String? = null): PendingOperationResolution
     suspend fun sweepAndResolvePendingOperations(gateway: EarthlinkGateway, graceWindowMs: Long = 5000L): List<PendingOperationResolution>
 }
 

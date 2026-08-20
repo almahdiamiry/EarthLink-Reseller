@@ -2,6 +2,81 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.105.0] - 2026-08-20
+
+### G1 Process Restart Certification, BuildConfig Consistency, & Transport Concurrency (Workstreams 13, 14, 15)
+- **G1 Crash Recovery Real Process-Restart & File-Backed Persistence Certification (Workstream 13, `INV-11`)**:
+  - Implemented real process-kill and file-backed SQLite persistence verification across distinct `AppDatabase` instances.
+  - Certified that closed database instances are completely unusable, preventing any in-memory state leakage.
+  - Verified recovery sweep handles definitely successful operations (materializes 1 ledger entry, updates account balance, enqueues outbox), definitely failed operations (zero ledgers created, marked FAILED), and inconclusive states (remains safe with zero ledger pollution).
+  - Certified idempotent re-execution on subsequent sweeps without ledger duplication.
+  - Verified `EarthlinkApp.onCreate` startup wiring for automatic pending operation recovery sweeps.
+  - Created `Workstream13G1RealRestartCertificationTest.kt`.
+- **BuildConfig Debug Consistency & Proguard Release Gate Verification (Workstream 14, `INV-15`)**:
+  - Eliminated all raw `com.alamiry.earthlinkreseller.BuildConfig.DEBUG` references across UI screens, unifying them under canonical `AppBuildConfig.DEBUG`.
+  - Created `Workstream14BuildConfigConsistencyTest.kt` certifying complete absence of raw BuildConfig references in UI code and verifying typed `AppBuildConfig` properties.
+- **Coordinator / Transport Concurrency & Eventual Financial Coherence (Workstream 15, `INV-01`, `INV-04`, `INV-11`)**:
+  - Proved mathematical equilibrium across the local-mutation versus remote-sync-apply boundary.
+  - Verified Ordering A (local mutation first, then remote event application) and Ordering B (remote event first, then local mutation).
+  - Verified genuinely concurrent interleaved asynchronous execution across coroutine thread boundaries.
+  - Created `Workstream15CoordinatorTransportConcurrencyTest.kt` asserting exact settled Room/outbox/financial state.
+
+## [1.104.0] - 2026-08-20
+
+### Unknown Transaction Type Observability & Financial Neutrality (Workstream 11)
+- **Unknown Transaction Type Observability & Neutrality (`INV-01`, `INV-04`, `INV-06`, `INV-11`)**:
+  - Maintained canonical `TransactionTypeNormalizer` as the single source of truth for transaction normalization and recognition without secondary hardcoded lists.
+  - Enforced three distinct transaction input states:
+    - State A (null/blank): Treated as standard neutral note with zero balance distortion and no warning audit log.
+    - State B (recognized neutral type e.g. "NOTE"): Treated as neutral note with zero balance distortion and no warning audit log.
+    - State C (genuinely unrecognized nonblank type e.g. "UNKNOWN_FEE"): Remains strictly financially non-authoritative (does not modify debt, advance, or loan balances), while emitting an observable `AuditLog` entry.
+  - Threaded `onUnrecognizedType` callback through `BalanceCalculator.deriveAccountBalance` and `reconstructCurrentPosition`.
+  - Wired audit log recording with `entityId`, raw `typeRaw`, and `accountId` into `RemoteSyncCoordinator` and `recalculateAccountHistoryInternal`.
+  - Verified backup reconstruction callers do not pollute backup artifacts or inject runtime audit records into restored datasets.
+  - Created comprehensive test suite `Workstream11UnknownTypeObservabilityTest.kt` certifying three-state semantics, financial neutrality, and audit log generation.
+
+## [1.103.0] - 2026-08-20
+
+### Dataset Replacement Semantics & Cloud Reconciliation (Workstream 9C)
+- **Dataset Replacement Canonical Authority & Resurrection Prevention (`INV-05`, `INV-11`, `INV-13`)**:
+  - Implemented owner-mandated uTower dataset replacement semantics: when `shouldReplace = true`, the imported uTower dataset becomes the new canonical starting dataset locally and in cloud sync.
+  - Resolved the data resurrection risk where replaced/wiped pre-existing records would reappear upon later remote sync/pulls.
+  - Hardened `importFromPreview` and `importFromArchive` in `UtowerImporter.kt`:
+    - Atomically captures pre-existing accounts, ledger entries, and import batches prior to clearing tables.
+    - Atomically purges obsolete outbox obligations and advances lineage generation (`incrementGeneration()`).
+    - Enqueues delete tombstones (`deleteWithTombstoneBatch`) to sync outbox for obsolete pre-existing entities not present in the new replacement dataset.
+    - Records local tombstones (`tombstone:account:...`, `tombstone:ledger:...`) in `syncMetadataDao` to guarantee remote sync ignores stale incoming versions.
+    - Resets sync cursors (`last_sync_timestamp`, collection cursors) to force clean, uncorrupted reconciliation on subsequent synchronization cycles.
+  - Added `@Query("DELETE FROM sync_metadata WHERE key = :key") suspend fun remove(key: String)` in `SyncMetadataDao`.
+  - Updated `ImportUtowerScreen.kt` confirmation dialog to explicitly state that Replace establishes a new canonical starting dataset and overwrites existing data locally and in cloud sync.
+  - Created comprehensive certification suite `Workstream9CDatasetReplacementTest.kt` verifying wipe + tombstone semantics, stale remote pull resurrection resistance, sync cursor reset, and merge isolation.
+
+
+## [1.102.0] - 2026-08-20
+
+### Import Rollback Semantics: Restriction to Unaccepted Batches Only (Workstream 9B)
+- **Import Rollback Boundary & Permanent Financial Record Preservation (`INV-01`, `INV-04`, `INV-13`)**:
+  - Implemented the Owner-mandated decision that `rollbackImportBatch` applies ONLY to unaccepted / in-progress import batches.
+  - Hardened `rollbackImportBatch` in `Repositories.kt` (`UtowerImportRepositoryImpl`) to reject rollback attempts for batches with status `"completed"` or `"accepted"`, returning `false` and logging an audit warning.
+  - Eliminated delete tombstone generation during rollback: rolled back unaccepted/staged batches now cleanly purge local database records and outbox entries without emitting delete tombstones to Firestore.
+  - Updated `LocalAccountsViewModel.kt` to provide user-facing feedback explaining that accepted financial history cannot be removed via rollback and must use correction-by-difference.
+  - Updated `ImportUtowerScreen.kt` to only display the Rollback action for unaccepted / in-progress batches and show an "Accepted History" indicator for accepted batches.
+  - Created complete behavioral certification test suite `Workstream9BRollbackTest.kt` verifying unaccepted batch cleanup without tombstones, rejection of rollback on accepted history, and ViewModel error feedback.
+
+## [1.101.0] - 2026-08-20
+
+### Financial History Deletion Authority Closure & Correction-by-Difference (Workstream 9A)
+- **Financial History Deletion Closure & Lineage Tracking (`INV-01`, `INV-04`, `INV-13`)**:
+  - Closed the financial history physical deletion vulnerability. Direct row deletion from `local_ledger_entries` is prohibited for financial records.
+  - Added `correctsEntryId: String?` to `LocalLedgerEntry` and established index `index_local_ledger_entries_correctsEntryId` in SQLite schema.
+  - Implemented Room `MIGRATION_14_15` in `AppDatabase.kt` and bumped database schema version to 15 with full backward compatibility and zero data loss.
+  - Refactored `deleteTransaction` in `LocalLedgerRepositoryImpl` to perform full reversal (correction to 0.0) by generating a compensating `LocalLedgerEntry` rather than removing records from the database.
+  - Implemented `correctTransaction` in `LocalLedgerRepositoryImpl` enabling correction-by-difference: calculates the exact delta between the original transaction amount and intended target amount, applying an additive compensating transaction.
+  - Enforced anti-chain rule: targeting a correction automatically resolves and anchors to the root original transaction.
+  - Guaranteed idempotent execution with deterministic ID derivation and conflict detection via `DivergentPayloadConflictException`.
+  - Added monotonic remote version write atomic helper `putMonotonicRemoteVersion` in `SyncMetadataDao` preventing stale sequence regression.
+  - Created full behavioral certification suite in `Workstream9AFinancialCorrectionTest.kt` verifying non-destructive migrations, delta compensation calculations, outbox upserts without delete tombstones, and cross-device convergence.
+
 ## [1.100.0] - 2026-08-19
 
 ### Release Build Protection, R8 Safety Gates & Play Services Diagnostics

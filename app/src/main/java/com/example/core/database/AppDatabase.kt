@@ -291,6 +291,18 @@ interface SyncMetadataDao {
     @Query("INSERT OR REPLACE INTO sync_metadata (key, value, updatedAt) VALUES (:key, :value, :timestamp)")
     suspend fun put(key: String, value: String, timestamp: Long = System.currentTimeMillis())
 
+    @Query("""
+        INSERT INTO sync_metadata (`key`, `value`, `updatedAt`) 
+        VALUES (:key, CAST(:newVersion AS TEXT), :timestamp)
+        ON CONFLICT(`key`) DO UPDATE SET 
+            `value` = CAST(MAX(CAST(sync_metadata.`value` AS INTEGER), :newVersion) AS TEXT),
+            `updatedAt` = :timestamp
+    """)
+    suspend fun putMonotonicRemoteVersion(key: String, newVersion: Long, timestamp: Long = System.currentTimeMillis())
+
+    @Query("DELETE FROM sync_metadata WHERE key = :key")
+    suspend fun remove(key: String)
+
     @Query("DELETE FROM sync_metadata")
     suspend fun deleteAll()
 
@@ -448,7 +460,7 @@ abstract class AppDatabase : RoomDatabase() {
     }
 
     companion object {
-        const val VERSION = 14
+        const val VERSION = 15
 
         @Volatile
         private var INSTANCE: AppDatabase? = null
@@ -793,6 +805,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_14_15 = object : androidx.room.migration.Migration(14, 15) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `local_ledger_entries` ADD COLUMN `correctsEntryId` TEXT DEFAULT NULL")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_local_ledger_entries_correctsEntryId` ON `local_ledger_entries` (`correctsEntryId`)")
+            }
+        }
+
         private val INSTANCES = java.util.concurrent.ConcurrentHashMap<String, AppDatabase>()
 
         fun getDatabase(context: Context, passphrase: ByteArray, dbName: String = "earthlink_reseller_db"): AppDatabase {
@@ -808,7 +827,7 @@ abstract class AppDatabase : RoomDatabase() {
                 val dbFile = context.applicationContext.getDatabasePath(dbName)
                 dbFile.parentFile?.mkdirs()
                 val builder = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, dbName)
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                             super.onCreate(db)
