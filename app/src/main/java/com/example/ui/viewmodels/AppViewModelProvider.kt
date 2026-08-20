@@ -53,7 +53,8 @@ object AppViewModelProvider {
         initializer {
             val app = (this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as EarthlinkApp)
             StatementViewModel(
-                gateway = app.earthlinkGateway
+                gateway = app.earthlinkGateway,
+                ledgerRepository = app.localLedgerRepository
             )
         }
         initializer {

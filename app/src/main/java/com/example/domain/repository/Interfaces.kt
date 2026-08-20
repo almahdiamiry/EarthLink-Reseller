@@ -29,7 +29,7 @@ interface EarthlinkGateway {
     suspend fun toggleUserActive(userIndex: Int, active: Boolean): Boolean
     suspend fun changeAccountType(userIndex: Int, userId: String, accountIndex: Int): Boolean
     suspend fun updateUserDisplayName(userIndex: Int, newName: String): Boolean
-    fun addCustomStatement(statement: AccountStatementItem)
+
 
 }
 
@@ -95,7 +95,9 @@ interface LocalLedgerRepository {
     suspend fun resolvePendingOperationVerifiedFailure(businessTransactionId: String, diagnostic: String): Boolean
     suspend fun resolvePendingOperationInconclusive(businessTransactionId: String, diagnostic: String): Boolean
     suspend fun verifyAndResolvePendingOperation(businessTransactionId: String, gateway: EarthlinkGateway, baselineExpirationDate: String? = null): PendingOperationResolution
+    suspend fun submitManualVerificationEvidence(businessTransactionId: String, externalEvidence: String): PendingOperationResolution
     suspend fun resolvePendingOperationSerialized(businessTransactionId: String, gateway: EarthlinkGateway, baselineExpirationDate: String? = null): PendingOperationResolution
+    suspend fun getPendingSyntheticHistory(): List<LocalLedgerEntry>
     suspend fun sweepAndResolvePendingOperations(gateway: EarthlinkGateway, graceWindowMs: Long = 5000L): List<PendingOperationResolution>
 }
 

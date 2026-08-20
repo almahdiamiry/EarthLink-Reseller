@@ -1476,3 +1476,4 @@ Implemented uTower Data Importer
   - Added `RestoreFailureTest` verifying that malformed ZIPs and corrupted database structures trigger atomic rollback and do not modify live data.
 ### Audited
 - **Task 21: Zero-Trust Code-First Forensic Audit**: Completed forensic audit across synchronization layer, identifying two critical safety invariant violations masking as passes (Permanent Split-Brain Divergence upon Backup Restore, and Settings Sync Offline Data Loss). Findings captured in `FORENSIC_AUDIT_REPORT.md` and ROADMAP updated.
+- G1 Implementation Plan Tasks 6-12 Complete: Fixed verification freshness, invariant atomic Room transactions, separated statement evidence, and emitted FinalTestMatrixCertificationTest.

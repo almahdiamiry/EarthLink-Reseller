@@ -119,11 +119,6 @@ class Phase1DuplicateInitiationProtectionTest {
         override suspend fun getTestUsersCount(affiliateIndex: Int?): Int = 0
         override suspend fun getActiveTestUsersCount(): Int = 0
         override suspend fun getPrepaidNeeded(): Double = 0.0
-        override fun addCustomStatement(statement: AccountStatementItem) {
-            synchronized(customStatements) {
-                customStatements.add(statement)
-            }
-        }
     }
 
     @Before

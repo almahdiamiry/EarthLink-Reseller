@@ -399,13 +399,14 @@ class EarthlinkSearchViewModel(
                     _error.value = "Username $username is already taken."
                     return@launch
                 }
+                val cost = try { gateway.getAccountCost(pkgIndex) } catch (e: Exception) { 40000.0 }
                 localLedgerRepository.recordPendingOperation(
                     PendingExternalOperation(
                         businessTransactionId = businessTxId,
                         operationIntentId = opIntentId,
                         accountId = username,
                         operationType = "ACTIVATION",
-                        amountIqd = 0L,
+                        amountIqd = cost.toLong(),
                         payloadJson = "{\"username\":\"$username\",\"phone\":\"$phone\",\"fullName\":\"$fullName\",\"pkgIndex\":$pkgIndex}",
                         status = "PENDING"
                     )
@@ -523,7 +524,6 @@ class EarthlinkSearchViewModel(
                         balanceAfter = currentBalance,
                         note = noteText
                     )
-                    gateway.addCustomStatement(statementItem)
 
                     audit.logAction(
                         action = "REFILL_USER",

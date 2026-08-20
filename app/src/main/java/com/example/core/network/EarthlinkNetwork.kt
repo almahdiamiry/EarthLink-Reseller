@@ -6,6 +6,7 @@ import com.example.core.model.*
 import com.example.core.security.PreferenceManager
 import com.example.core.util.AppBuildConfig
 import com.squareup.moshi.Moshi
+import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 import okhttp3.*
 import okhttp3.logging.HttpLoggingInterceptor
@@ -110,7 +111,7 @@ interface EarthlinkApiService {
         @Field("DisplayName") displayName: String,
         @Field("AffiliateIndex") affiliateIndex: Int,
         @Field("UserPass") userPass: String
-    ): ApiEnvelope<Boolean>
+    ): NewTestUserResult
 
     @FormUrlEncoded
     @POST("user/newuserdeposit")
@@ -123,7 +124,7 @@ interface EarthlinkApiService {
         @Field("UserPass") userPass: String,
         @Field("DepositPassword") depositPass: String,
         @Field("customerId") customerId: Int
-    ): ApiEnvelope<Boolean>
+    ): NewUserDepositResult
 
     @FormUrlEncoded
     @POST("user/newrefilldeposit")
@@ -177,6 +178,38 @@ interface EarthlinkApiService {
         @Query("fromDate") fromDate: String,
         @Query("toDate") toDate: String
     ): ApiEnvelope<AccountStatementResponse>
+}
+
+@JsonClass(generateAdapter = true)
+data class NewUserDepositResult(
+    @Json(name = "value") val userIndex: Int? = null,
+    @Json(name = "responseMessage") val responseMessage: String? = null,
+    @Json(name = "error") val error: Any? = null,
+    @Json(name = "statusCode") val statusCode: Int? = null,
+    @Json(name = "isSuccessful") val isSuccessful: Boolean? = false
+) {
+    val errorMessage: String?
+        get() = when (error) {
+            is String -> error
+            is Map<*, *> -> (error["message"] as? String) ?: error.toString()
+            else -> responseMessage
+        }
+}
+
+@JsonClass(generateAdapter = true)
+data class NewTestUserResult(
+    @Json(name = "value") val userIndex: Int? = null,
+    @Json(name = "responseMessage") val responseMessage: String? = null,
+    @Json(name = "error") val error: Any? = null,
+    @Json(name = "statusCode") val statusCode: Int? = null,
+    @Json(name = "isSuccessful") val isSuccessful: Boolean? = false
+) {
+    val errorMessage: String?
+        get() = when (error) {
+            is String -> error
+            is Map<*, *> -> (error["message"] as? String) ?: error.toString()
+            else -> responseMessage
+        }
 }
 
 @JsonClass(generateAdapter = true)

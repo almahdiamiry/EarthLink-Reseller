@@ -516,7 +516,8 @@ data class PendingExternalOperation(
     val status: String = "PENDING", // "PENDING", "RESOLVING", "COMPLETED", "FAILED"
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
-    val lastError: String? = null
+    val lastError: String? = null,
+    val verificationEvidence: String? = null
 )
 
 typealias StringComponents = String

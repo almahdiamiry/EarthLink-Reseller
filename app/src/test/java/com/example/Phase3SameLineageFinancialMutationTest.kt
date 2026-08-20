@@ -133,7 +133,6 @@ class Phase3SameLineageFinancialMutationTest {
         override suspend fun toggleUserActive(userIndex: Int, active: Boolean): Boolean = true
         override suspend fun changeAccountType(userIndex: Int, userId: String, accountIndex: Int): Boolean = true
         override suspend fun updateUserDisplayName(userIndex: Int, newName: String): Boolean = true
-        override fun addCustomStatement(statement: AccountStatementItem) {}
     }
 
     @Before

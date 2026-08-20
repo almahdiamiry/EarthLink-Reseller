@@ -142,7 +142,6 @@ class Phase1UnknownOutcomeResolutionTest {
         override suspend fun toggleUserActive(userIndex: Int, active: Boolean): Boolean = true
         override suspend fun changeAccountType(userIndex: Int, userId: String, accountIndex: Int): Boolean = true
         override suspend fun updateUserDisplayName(userIndex: Int, newName: String): Boolean = true
-        override fun addCustomStatement(statement: AccountStatementItem) {}
     }
 
     @Before
@@ -514,9 +513,9 @@ class Phase1UnknownOutcomeResolutionTest {
             gateway = testGateway
         )
 
-        assertEquals(UnknownOutcomeResolutionResult.VERIFIED_SUCCESS, resolution.result)
+        assertEquals(UnknownOutcomeResolutionResult.INCONCLUSIVE, resolution.result)
         val updatedOp = pendingDao.getByBusinessTransactionId(txId)
-        assertEquals("COMPLETED", updatedOp?.status)
+        assertEquals("PENDING", updatedOp?.status)
     }
 
     // 6. Activation Verification: Confirms subscriber does not exist on ISP (checkUsernameAvailable = true -> VERIFIED_FAILURE)
