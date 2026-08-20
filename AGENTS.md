@@ -15,7 +15,7 @@ This file is the single active operational entry point for any AI coding agent w
 5. **Use `docs/authority/Final Independent Adjudication Memo.md` as final architectural judgment / implementation boundary.**
 6. **Inspect the current source/artifact for implementation state.**
 7. **Use executable tests/evidence as verification proof.**
-8. **For any EarthLink API work, read the canonical API specification `docs/earthlink_reseller_app_api_documentation_v0_7_0.md` and the reference POC `docs/earthlink_app_api_poc_v0_6_48.py` before reasoning about endpoints, requests, payloads, responses, authentication, unwrapping, or edge cases.**
+8. **For any EarthLink API work, read the canonical API specification and the reference POC in the repository before reasoning about endpoints, requests, payloads, responses, authentication, unwrapping, or edge cases. Current repository paths: `DOC/earthlink_reseller_app_api_documentation_v0_7_0.md` and `DOC/earthlink_app_api_poc_v0_6_48.py`.**
 9. **Do not select tasks from Git history, historical plans, ADRs, reports, SDD artifacts, or lessons learned.**
 10. **Use historical material only when the current task explicitly requests forensic archaeology or historical rationale.**
 
@@ -34,8 +34,8 @@ This file is the single active operational entry point for any AI coding agent w
    - `docs/authority/EARTHLINK_V1_HANDOVER.md`
    - `docs/authority/EARTHLINK_IMPLEMENTATION_HANDOVER_APPENDIX_v1.0.md`
 5. **API Protocol Reference**:
-   - `docs/earthlink_reseller_app_api_documentation_v0_7_0.md`
-   - `docs/earthlink_app_api_poc_v0_6_48.py`
+   - `DOC/earthlink_reseller_app_api_documentation_v0_7_0.md`
+   - `DOC/earthlink_app_api_poc_v0_6_48.py`
 6. **Implementation State Evidence**: Exact current source tree and build configuration.
 7. **Verification Proof**: Executable automated tests, test matrix, and verification commands.
 
