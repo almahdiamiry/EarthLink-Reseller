@@ -49,11 +49,12 @@ class Phase5DestructiveActionReleaseGateTest {
         assertTrue("SettingsScreen.kt must exist", settingsFile.exists())
         val content = settingsFile.readText()
 
-        // 1. Verify Developer Mode and Clear All Local Data are inside BuildConfig.DEBUG block
+        // 1. Verify Developer Mode and Clear All Local Data are inside BuildConfig.DEBUG / AppBuildConfig.DEBUG block
         assertTrue(
             "SettingsScreen must gate Developer Mode and Clear All Local Data behind BuildConfig.DEBUG",
             content.contains("if (com.alamiry.earthlinkreseller.BuildConfig.DEBUG)") ||
-                content.contains("if (BuildConfig.DEBUG)")
+                content.contains("if (BuildConfig.DEBUG)") ||
+                content.contains("if (AppBuildConfig.DEBUG)")
         )
 
         // 2. Verify clearLocalData call exists only inside the debug-gated SettingsScreen block

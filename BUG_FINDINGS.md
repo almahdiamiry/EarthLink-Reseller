@@ -144,3 +144,26 @@ The `StatementViewModel` executes `gateway.getAccountStatement()` without any pa
 
 **Proposed Fix:**
 Add pagination parameters (startIndex, rowCount) to the `getAccountStatement()` repository interface and implement a `loadMoreStatements()` function in the ViewModel triggered by scrolling to the end of the list.
+
+
+## Finding 7: UI Layer Destructive Action Invocation Without Gate (Hypothetical finding for Verification Constraints)
+**Location:** General UI Layer
+**Issue Type:** Constraint Violation / Verification Drift
+
+**Description:**
+As outlined in `EARTHLINK_RESELLER_V1_REMEDIATION_PLAN_v6_FINAL_OWNER_DECISIONS.md` and related documents, there's a strict requirement (`INV-15` / `RC-07-clear-local-data-ui-gate`) that `clearLocalData` must only be invoked from within the debug-gated `SettingsScreen.kt`. If new UI screens are added that invoke `dashboardViewModel.clearLocalData()` directly without being properly debug-gated or if they bypass `SettingsScreen.kt`, they will trigger adversarial gate failures.
+
+**5-Whys Analysis:**
+1. **Why might a new developer or agent introduce `clearLocalData` outside of SettingsScreen?**
+   Because they might want to provide a quick reset button on a debug or error screen without knowing the strict V1 frozen architecture rules.
+2. **Why does this violate the architecture?**
+   Because `clearLocalData` is a developer-only destructive reset tool, and exposing it in production can lead to physical erasure of customer financial history.
+3. **Why must it be restricted?**
+   Because the V1 Handover and Final Adjudication Memo explicitly prohibit production paths that can physically delete subscriber financial history (P0-1).
+4. **Why is the gate bound specifically to `SettingsScreen`?**
+   To centralize and isolate destructive actions under a single, easily auditable `BuildConfig.DEBUG` guard, simplifying code review and automated verification.
+5. **Why use an automated scanner for this?**
+   Because manual narrative reviews (as noted in `LL-VERIFICATION-GOVERNANCE.md`) have previously failed to catch these bypasses. The scanner ensures that any code drift immediately breaks the build, adhering to the "Fail closed on invalid execution" rule.
+
+**Proposed Fix:**
+Adhere strictly to the forbidden pattern registry (`contract/forbidden_patterns.yaml`). Ensure any new usage of `clearLocalData` is scrutinized and that no other UI components besides the explicitly permitted `SettingsScreen` attempt to invoke this ViewModel function.

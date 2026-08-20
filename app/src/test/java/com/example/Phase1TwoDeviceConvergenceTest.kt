@@ -312,27 +312,37 @@ class Phase1TwoDeviceConvergenceTest {
         assertNotNull(deviceB.ledgerDao.getByIdOneShot("tx-debt_init"))
         assertNotNull(deviceB.ledgerDao.getByIdOneShot("tx-pay_del"))
 
-        // Device A deletes the payment transaction
+        // Device A reverses the payment transaction (correction-by-difference)
         deviceA.ledgerRepository.deleteTransaction("tx-pay_del")
 
-        // Device A balance immediately reverts to 40,000 IQD debt
-        assertNull(deviceA.ledgerDao.getByIdOneShot("tx-pay_del"))
+        // Device A balance immediately reverts to 40,000 IQD debt while preserving original record
+        assertNotNull("tx-pay_del must be preserved on Device A", deviceA.ledgerDao.getByIdOneShot("tx-pay_del"))
         assertEquals(40000.0, deviceA.accountDao.getByIdOneShot("acc_tombstone_test")!!.debtIqd, 0.001)
 
-        // Device A pushes tombstone to Cloud
-        val pushedTombstone = deviceA.pushToCloud()
-        assertTrue("Device A must push deletion tombstone", pushedTombstone > 0)
+        // Device A pushes correction to Cloud
+        val pushedCorrection = deviceA.pushToCloud()
+        assertTrue("Device A must push correction", pushedCorrection > 0)
 
-        // Device B pulls tombstone from Cloud
-        val pulledTombstone = deviceB.pullFromCloud()
-        assertTrue("Device B must pull deletion tombstone", pulledTombstone > 0)
+        // Device B pulls correction from Cloud
+        val pulledCorrection = deviceB.pullFromCloud()
+        assertTrue("Device B must pull correction", pulledCorrection > 0)
 
-        // Verify Device B local ledger entry is preserved non-destructively and account debt reverts to 40,000 IQD
+        // Verify Device B local ledger entries are preserved and account debt converges to 40,000 IQD
         assertNotNull("tx-pay_del must be preserved on Device B", deviceB.ledgerDao.getByIdOneShot("tx-pay_del"))
         assertNotNull("tx-debt_init must remain intact on Device B", deviceB.ledgerDao.getByIdOneShot("tx-debt_init"))
-        val accBAfterTombstone = deviceB.accountDao.getByIdOneShot("acc_tombstone_test")!!
-        assertEquals(40000.0, accBAfterTombstone.debtIqd, 0.001)
-        assertEquals(0.0, accBAfterTombstone.advanceIqd, 0.001)
+        val accBAfterCorrection = deviceB.accountDao.getByIdOneShot("acc_tombstone_test")!!
+        assertEquals(40000.0, accBAfterCorrection.debtIqd, 0.001)
+        assertEquals(0.0, accBAfterCorrection.advanceIqd, 0.001)
+
+        // Test applyLedgerDelete tombstone handling
+        val deleteEvent = RemoteEvent.LedgerDelete(
+            entityId = "tx-pay_del",
+            remoteVersion = System.currentTimeMillis() + 1000L,
+            source = RemoteEventSource.PULL,
+            syncMutationId = "test_del_mutation"
+        )
+        val deleteResult = deviceB.coordinator.processEvent(deleteEvent)
+        assertEquals(EventSyncResult.APPLIED, deleteResult)
 
         // Verify tombstone metadata is recorded on Device B
         val tombstoneOnB = deviceB.metadataDao.get("tombstone:ledger:tx-pay_del")

@@ -1220,32 +1220,36 @@ class LocalLedgerRepositoryImpl(
 
                 pendingDao.updateStatus(businessTransactionId, "COMPLETED", System.currentTimeMillis(), null)
 
-                if (op.operationType.equals("REFILL", ignoreCase = true) || op.operationType.equals("RENEWAL", ignoreCase = true)) {
+                if (op.operationType.equals("REFILL", ignoreCase = true) ||
+                    op.operationType.equals("RENEWAL", ignoreCase = true) ||
+                    op.operationType.equals("ACTIVATION", ignoreCase = true)
+                ) {
                     val localAcc = accountDao.getByIdOneShot(op.accountId)
                         ?: accountDao.findAccountByUsernameOrIdOneShot(op.accountId)
 
                     if (localAcc != null) {
-                        val renewalPrice = if (op.amountIqd > 0L) op.amountIqd.toDouble() else (if (localAcc.currentPriceIqd > 0.0) localAcc.currentPriceIqd else 40000.0)
+                        val operationPrice = if (op.amountIqd > 0L) op.amountIqd.toDouble() else (if (localAcc.currentPriceIqd > 0.0) localAcc.currentPriceIqd else 40000.0)
                         val existing = ledgerDao.getByIdOneShot(businessTransactionId)
                         if (existing != null) {
                             val isIdentical = existing.accountId == localAcc.id &&
                                     existing.typeRaw == "took" &&
-                                    kotlin.math.abs(existing.amountIqd - renewalPrice) < 0.0001
+                                    kotlin.math.abs(existing.amountIqd - operationPrice) < 0.0001
                             if (isIdentical) {
                                 return@withTransaction existing
                             } else {
                                 throw DivergentPayloadConflictException(
                                     "Same-ID divergent payload conflict for verified pending operation $businessTransactionId: " +
                                     "existing={accountId=${existing.accountId}, type=${existing.typeRaw}, amount=${existing.amountIqd}}, " +
-                                    "incoming={accountId=${localAcc.id}, type=took, amount=$renewalPrice}"
+                                    "incoming={accountId=${localAcc.id}, type=took, amount=$operationPrice}"
                                 )
                             }
                         }
 
-                        val finalNote = if (!chargeNote.isNullOrBlank()) chargeNote else "[VERIFIED RENEW]"
-                        val accountWithPrice = localAcc.copy(currentPriceIqd = renewalPrice)
+                        val defaultNote = if (op.operationType.equals("ACTIVATION", ignoreCase = true)) "[VERIFIED ACTIVATION]" else "[VERIFIED RENEW]"
+                        val finalNote = if (!chargeNote.isNullOrBlank()) chargeNote else defaultNote
+                        val accountWithPrice = localAcc.copy(currentPriceIqd = operationPrice)
                         val savedAcc = saveAccountInternal(accountWithPrice)
-                        val chargeEntry = addDebtInternal(savedAcc.id, renewalPrice, finalNote, businessTransactionId)
+                        val chargeEntry = addDebtInternal(savedAcc.id, operationPrice, finalNote, businessTransactionId)
                         chargeEntry
                     } else {
                         null
@@ -1446,9 +1450,69 @@ class LocalLedgerRepositoryImpl(
         }
     }
 
-    private val sweepAccountLocks = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>()
-    private fun getSweepAccountLock(accountId: String): kotlinx.coroutines.sync.Mutex =
-        sweepAccountLocks.computeIfAbsent(accountId) { kotlinx.coroutines.sync.Mutex() }
+    private val repositoryAccountLocks = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>()
+    private fun getRepositoryAccountLock(accountId: String): kotlinx.coroutines.sync.Mutex =
+        repositoryAccountLocks.computeIfAbsent(accountId) { kotlinx.coroutines.sync.Mutex() }
+
+    override suspend fun resolvePendingOperationSerialized(
+        businessTransactionId: String,
+        gateway: EarthlinkGateway,
+        baselineExpirationDate: String?
+    ): PendingOperationResolution {
+        val initialOp = getPendingOperationByTransactionId(businessTransactionId)
+            ?: throw IllegalArgumentException("Pending operation $businessTransactionId not found")
+
+        val accountId = initialOp.accountId
+        val lock = if (accountId.isNotBlank()) getRepositoryAccountLock(accountId) else null
+
+        return if (lock != null) {
+            lock.withLock {
+                val op = getPendingOperationByTransactionId(businessTransactionId)
+                    ?: throw IllegalArgumentException("Pending operation $businessTransactionId not found")
+
+                if (op.status == "COMPLETED") {
+                    val existingLedger = ledgerDao.getByIdOneShot(businessTransactionId)
+                    return@withLock PendingOperationResolution(
+                        result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
+                        operation = op,
+                        ledgerEntry = existingLedger,
+                        diagnosticMessage = "Operation was already confirmed successful"
+                    )
+                }
+                if (op.status == "FAILED") {
+                    return@withLock PendingOperationResolution(
+                        result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                        operation = op,
+                        ledgerEntry = null,
+                        diagnosticMessage = op.lastError ?: "Operation was previously marked failed"
+                    )
+                }
+
+                verifyAndResolvePendingOperation(businessTransactionId, gateway, baselineExpirationDate)
+            }
+        } else {
+            val op = getPendingOperationByTransactionId(businessTransactionId)
+                ?: throw IllegalArgumentException("Pending operation $businessTransactionId not found")
+            if (op.status == "COMPLETED") {
+                val existingLedger = ledgerDao.getByIdOneShot(businessTransactionId)
+                return PendingOperationResolution(
+                    result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
+                    operation = op,
+                    ledgerEntry = existingLedger,
+                    diagnosticMessage = "Operation was already confirmed successful"
+                )
+            }
+            if (op.status == "FAILED") {
+                return PendingOperationResolution(
+                    result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                    operation = op,
+                    ledgerEntry = null,
+                    diagnosticMessage = op.lastError ?: "Operation was previously marked failed"
+                )
+            }
+            verifyAndResolvePendingOperation(businessTransactionId, gateway, baselineExpirationDate)
+        }
+    }
 
     override suspend fun sweepAndResolvePendingOperations(
         gateway: EarthlinkGateway,
@@ -1465,20 +1529,12 @@ class LocalLedgerRepositoryImpl(
                 continue
             }
 
-            val lock = if (op.accountId.isNotBlank()) getSweepAccountLock(op.accountId) else null
-            if (lock != null && !lock.tryLock()) {
-                android.util.Log.w("LocalLedgerRepo", "Sweep skipped op ${op.businessTransactionId}: account ${op.accountId} lock held")
-                continue
-            }
-
             try {
-                val resolution = verifyAndResolvePendingOperation(op.businessTransactionId, gateway)
+                val resolution = resolvePendingOperationSerialized(op.businessTransactionId, gateway)
                 resolutions.add(resolution)
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 android.util.Log.e("LocalLedgerRepo", "Sweep error for op ${op.businessTransactionId}", e)
-            } finally {
-                lock?.unlock()
             }
         }
 
@@ -1723,21 +1779,116 @@ class LocalLedgerRepositoryImpl(
             }
         }
     }
-    override suspend fun deleteTransaction(id: String) {
-        com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
+
+    override suspend fun correctTransaction(
+        originalEntryId: String,
+        intendedAmount: Double,
+        note: String?,
+        idempotencyKey: String?
+    ): LocalLedgerEntry {
+        return com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
             database.withTransaction {
-                val tx = ledgerDao.getByIdOneShot(id)
-                if (tx != null) {
-                    val targetAccountId = tx.accountId
-                    ledgerDao.deleteById(id)
+                val target = ledgerDao.getByIdOneShot(originalEntryId)
+                    ?: throw IllegalArgumentException("Original transaction not found: $originalEntryId")
 
-                    // Queue delete sync
-                    OutboxManager.deleteWithTombstone(outboxDao, "local_ledger_entries", id, "{}")
-
-                    recalculateAccountHistoryInternal(targetAccountId, accountDao, ledgerDao, outboxDao, ledgerAdapter, origin = RecalcOrigin.LOCAL_MUTATION)
+                // Anti-chain: A correction must ultimately reference an original business transaction.
+                // If the selected target is already a correction, resolve/redirect to its original target.
+                val rootOriginal = if (target.correctsEntryId != null) {
+                    ledgerDao.getByIdOneShot(target.correctsEntryId) ?: target
+                } else {
+                    target
                 }
+                val rootOriginalId = rootOriginal.id
+                val accountId = rootOriginal.accountId
+                val account = accountDao.getByIdOneShot(accountId)
+                    ?: throw IllegalStateException("Account not found: $accountId")
+
+                val origType = com.example.core.ledger.TransactionTypeNormalizer.normalize(rootOriginal.typeRaw)
+                val origAmount = rootOriginal.amountIqd
+                require(intendedAmount >= 0.0) { "Intended amount must be non-negative." }
+
+                // Calculate economic difference
+                // For "took" / "renewal": original effect was +debt of origAmount. Intended effect is +debt of intendedAmount.
+                // Difference = intendedAmount - origAmount.
+                // If diff > 0: need MORE debt -> correction typeRaw = "took", amount = diff.
+                // If diff < 0: need LESS debt (reversal if intended=0) -> correction typeRaw = "gave", amount = -diff.
+                // For "gave": original effect was -debt (payment) of origAmount. Intended effect is -debt of intendedAmount.
+                // Difference = intendedAmount - origAmount.
+                // If diff > 0: need MORE payment -> correction typeRaw = "gave", amount = diff.
+                // If diff < 0: need LESS payment (reversal if intended=0) -> correction typeRaw = "took", amount = -diff.
+                val diff = intendedAmount - origAmount
+                val (corrType, corrAmount) = when (origType) {
+                    "took", "renewal" -> {
+                        if (diff > 0) "took" to diff
+                        else "gave" to kotlin.math.abs(diff)
+                    }
+                    "gave" -> {
+                        if (diff > 0) "gave" to diff
+                        else "took" to kotlin.math.abs(diff)
+                    }
+                    else -> {
+                        "note" to 0.0
+                    }
+                }
+
+                // Deterministic identity for idempotency:
+                val entryId = idempotencyKey ?: java.util.UUID.nameUUIDFromBytes(
+                    "correction:$rootOriginalId:$intendedAmount:${note ?: ""}".toByteArray()
+                ).toString()
+
+                val existing = ledgerDao.getByIdOneShot(entryId)
+                if (existing != null) {
+                    val isIdentical = existing.accountId == accountId &&
+                            existing.correctsEntryId == rootOriginalId &&
+                            existing.typeRaw == corrType &&
+                            kotlin.math.abs(existing.amountIqd - corrAmount) < 0.0001
+                    if (isIdentical) {
+                        return@withTransaction existing
+                    } else {
+                        throw DivergentPayloadConflictException(
+                            "Same-ID divergent payload conflict for correction $entryId: existing=$existing, incoming intended=$intendedAmount"
+                        )
+                    }
+                }
+
+                val balances = com.example.core.ledger.BalanceCalculator.applyTransaction(
+                    account.debtIqd, account.advanceIqd, account.loanIqd, corrType, corrAmount
+                )
+
+                val updatedAccount = account.copy(
+                    debtIqd = balances.debtIqd,
+                    loanIqd = balances.loanIqd,
+                    advanceIqd = balances.advanceIqd,
+                    updatedAt = System.currentTimeMillis()
+                )
+                accountDao.update(updatedAccount)
+                OutboxManager.upsertWithOutbox(outboxDao, "local_accounts", updatedAccount.id, accountAdapter.toJson(updatedAccount))
+
+                val corrNote = note ?: "[CORRECTION for ${rootOriginal.id}]"
+                val correctionEntry = LocalLedgerEntry(
+                    id = entryId,
+                    accountId = accountId,
+                    typeRaw = corrType,
+                    amountIqd = corrAmount,
+                    debtAfterIqd = balances.debtIqd,
+                    note = corrNote,
+                    correctsEntryId = rootOriginalId
+                )
+                ledgerDao.insert(correctionEntry)
+
+                // Outbox: normal LedgerUpsert, NO delete tombstone for original entry
+                OutboxManager.upsertWithOutbox(outboxDao, "local_ledger_entries", correctionEntry.id, ledgerAdapter.toJson(correctionEntry))
+
+                recalculateAccountHistoryInternal(accountId, accountDao, ledgerDao, outboxDao, ledgerAdapter, origin = RecalcOrigin.LOCAL_MUTATION, auditDao = database.auditLogDao())
+                correctionEntry
             }
         }
+    }
+
+    override suspend fun deleteTransaction(id: String) {
+        // Normal financial correction: physical deletion of original financial event is forbidden (§3.2).
+        // Full reversal is the special case where intended amount = 0.0.
+        correctTransaction(originalEntryId = id, intendedAmount = 0.0, note = "[FULL REVERSAL for $id]")
     }
 
     override suspend fun deleteAllLedgerEntries() {
@@ -2107,58 +2258,54 @@ class UtowerImportRepositoryImpl(
             database.withTransaction {
                 val batch = batchDao.getById(batchId) ?: return@withTransaction false
 
-                // Purge pending outbox upserts and queue tombstones for ledger entries of this batch
+                // WS9B: Rollback applies ONLY to an unaccepted import.
+                // Accepted financial history cannot be erased or tombstoned through rollback.
+                if (batch.status == "completed" || batch.status == "accepted") {
+                    auditRepo?.log(
+                        severity = AuditSeverity.WARNING,
+                        action = "IMPORT_BATCH_ROLLBACK_REJECTED",
+                        message = "Cannot rollback accepted import batch $batchId. Accepted financial history cannot be removed via rollback; use correction-by-difference."
+                    )
+                    return@withTransaction false
+                }
+
+                // Unaccepted import: remove temporary local records and purge outbox without emitting tombstones
                 val txs = ledgerDao.getByBatchId(batchId)
                 for (tx in txs) {
-                    val pendingTxOutbox = OutboxManager.getByEntity(outboxDao, tx.id, "local_ledger_entries")
-                    val isTxUnsyncedLocal = pendingTxOutbox.any { it.operation == "upsert" && it.status != "synced" }
-                    if (!isTxUnsyncedLocal) {
-                        OutboxManager.deleteWithTombstone(outboxDao, "local_ledger_entries", tx.id, "{}")
-                    } else {
-                        OutboxManager.clearByEntity(outboxDao, tx.id, "local_ledger_entries")
-                    }
+                    OutboxManager.clearByEntity(outboxDao, tx.id, "local_ledger_entries")
                 }
                 ledgerDao.deleteByBatchId(batchId)
 
-                // Purge pending outbox upserts and queue tombstones for accounts created in this batch
                 val accounts = accountDao.getByBatchId(batchId)
                 val deletedAccountIds = accounts.map { it.id }.toSet()
                 val affectedAccountIds = txs.map { it.accountId }.toSet()
                 for (accId in affectedAccountIds) {
                     if (accId !in deletedAccountIds) {
-                        recalculateAccountHistoryInternal(accId, accountDao, ledgerDao, outboxDao, ledgerAdapter, origin = RecalcOrigin.LOCAL_MUTATION)
+                        recalculateAccountHistoryInternal(accId, accountDao, ledgerDao, outboxDao, ledgerAdapter, origin = RecalcOrigin.LOCAL_MUTATION, auditDao = database.auditLogDao())
                     }
                 }
 
                 for (acc in accounts) {
                     val remainingLedgers = ledgerDao.getByAccountIdOneShot(acc.id, limit = Int.MAX_VALUE)
                     if (remainingLedgers.isNotEmpty()) {
-                        // Account has manual transactions or other batch transactions. Do NOT delete it.
-                        // Just recalculate its history based on remaining transactions.
-                        recalculateAccountHistoryInternal(acc.id, accountDao, ledgerDao, outboxDao, ledgerAdapter, origin = RecalcOrigin.LOCAL_MUTATION)
+                        recalculateAccountHistoryInternal(acc.id, accountDao, ledgerDao, outboxDao, ledgerAdapter, origin = RecalcOrigin.LOCAL_MUTATION, auditDao = database.auditLogDao())
                         continue
                     }
 
-                    val pendingAccOutbox = OutboxManager.getByEntity(outboxDao, acc.id, "local_accounts")
-                    val isAccUnsyncedLocal = pendingAccOutbox.any { it.operation == "upsert" && it.status != "synced" }
-                    if (!isAccUnsyncedLocal) {
-                        OutboxManager.deleteWithTombstone(outboxDao, "local_accounts", acc.id, "{}")
-                    } else {
-                        OutboxManager.clearByEntity(outboxDao, acc.id, "local_accounts")
-                    }
+                    OutboxManager.clearByEntity(outboxDao, acc.id, "local_accounts")
                     accountDao.deleteById(acc.id)
                 }
 
-                // Purge pending outbox upsert and queue tombstone for import batch record
-                OutboxManager.deleteWithTombstone(outboxDao, "import_batches", batchId, "{}")
+                // Purge pending outbox for import batch record without emitting delete tombstone
+                OutboxManager.clearByEntity(outboxDao, batchId, "import_batches")
 
-                // Delete batch record locally
+                // Delete temporary batch record locally
                 batchDao.delete(batch)
 
                 auditRepo?.log(
                     severity = AuditSeverity.WARNING,
                     action = "IMPORT_BATCH_ROLLED_BACK",
-                    message = "Successfully rolled back import batch $batchId: deleted ${accounts.size} accounts and ${txs.size} transactions"
+                    message = "Successfully rolled back unaccepted import batch $batchId: removed ${accounts.size} temporary accounts and ${txs.size} temporary transactions"
                 )
 
                 true
@@ -2614,7 +2761,8 @@ suspend fun recalculateAccountHistoryInternal(
     ledgerDao: com.example.core.database.LocalLedgerEntryDao,
     outboxDao: com.example.core.database.SyncOutboxDao,
     ledgerAdapter: com.squareup.moshi.JsonAdapter<com.example.core.model.LocalLedgerEntry>,
-    origin: RecalcOrigin
+    origin: RecalcOrigin,
+    auditDao: com.example.core.database.AuditLogDao? = null
 ) {
     val account = accountDao.getByIdOneShot(accountId) ?: return
 
@@ -2627,13 +2775,30 @@ suspend fun recalculateAccountHistoryInternal(
     val allTxs = ledgerDao.getByAccountIdOneShot(accountId, limit = Int.MAX_VALUE)
     val isSnapshot = account.stateSource != null
 
+    val unrecognizedTxs = mutableListOf<Pair<com.example.core.model.LocalLedgerEntry, String>>()
     val (derivedBalances, updatedEntries) = com.example.core.ledger.BalanceCalculator.reconstructCurrentPosition(
         openingDebt = account.openingDebtIqd,
         openingAdvance = account.openingAdvanceIqd,
         openingLoan = account.openingLoanIqd,
         transactions = allTxs,
-        isSnapshotBaseline = isSnapshot
+        isSnapshotBaseline = isSnapshot,
+        onUnrecognizedType = { tx, unrecType ->
+            unrecognizedTxs.add(tx to unrecType)
+        }
     )
+
+    for ((tx, unrecType) in unrecognizedTxs) {
+        val audit = com.example.core.model.AuditLog(
+            action = "UNRECOGNIZED_TRANSACTION_TYPE",
+            entityType = "local_ledger_entries",
+            entityId = tx.id,
+            summary = "Unrecognized transaction type '$unrecType' encountered during balance derivation for account ${tx.accountId}",
+            createdAt = System.currentTimeMillis(),
+            severity = "WARNING",
+            origin = com.example.core.model.AuditOrigin.SYSTEM_ACTION.name
+        )
+        auditDao?.insert(audit)
+    }
 
     val runningDebt = derivedBalances.debtIqd
     val runningAdvance = derivedBalances.advanceIqd
@@ -2686,7 +2851,7 @@ suspend fun rebuildAccountBalances(
     val accounts = accountDao.getAllOneShot(limit = Int.MAX_VALUE)
     var count = 0
     for (acc in accounts) {
-        recalculateAccountHistoryInternal(acc.id, accountDao, ledgerDao, outboxDao, ledgerAdapter, origin)
+        recalculateAccountHistoryInternal(acc.id, accountDao, ledgerDao, outboxDao, ledgerAdapter, origin, auditDao = database.auditLogDao())
         count++
     }
     return count

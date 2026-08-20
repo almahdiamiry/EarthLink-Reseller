@@ -331,7 +331,7 @@ class RemoteSyncCoordinator(
         return when (decision) {
             ConflictDecision.APPLY_UPSERT -> {
                 accountDao.upsert(account)
-                metadataDao.put("remote_version:account:${event.entityId}", event.remoteVersion.toString())
+                metadataDao.putMonotonicRemoteVersion("remote_version:account:${event.entityId}", event.remoteVersion)
                 EventSyncResult.APPLIED
             }
             ConflictDecision.REJECT_MALFORMED -> {
@@ -379,13 +379,13 @@ class RemoteSyncCoordinator(
                 if (!hasPendingChild) {
                     childLedgers.forEach { child ->
                         metadataDao.put("tombstone:ledger:${child.id}", event.remoteVersion.toString())
-                        metadataDao.put("remote_version:ledger:${child.id}", event.remoteVersion.toString())
+                        metadataDao.putMonotonicRemoteVersion("remote_version:ledger:${child.id}", event.remoteVersion)
                     }
                     if (existing != null) {
                         accountDao.update(existing.copy(isHistoryOnlySubscriber = true, updatedAt = event.remoteVersion))
                     }
                     metadataDao.put("tombstone:account:${event.entityId}", event.remoteVersion.toString())
-                    metadataDao.put("remote_version:account:${event.entityId}", event.remoteVersion.toString())
+                    metadataDao.putMonotonicRemoteVersion("remote_version:account:${event.entityId}", event.remoteVersion)
                     EventSyncResult.APPLIED
                 } else EventSyncResult.FAILED_RETRYABLE
             }
@@ -525,12 +525,12 @@ class RemoteSyncCoordinator(
                     val preFetchedAccountTombstone = metadataDao.get("tombstone:account:${entry.accountId}")?.toLongOrNull()
                     if (preFetchedAccountTombstone == null || preFetchedAccountTombstone <= 0L) {
                         accountDao.upsert(event.preFetchedParentAccount)
-                        metadataDao.put("remote_version:account:${event.preFetchedParentAccount.id}", event.remoteVersion.toString())
+                        metadataDao.putMonotonicRemoteVersion("remote_version:account:${event.preFetchedParentAccount.id}", event.remoteVersion)
                     }
                 }
                 if (accountDao.getByIdOneShot(entry.accountId) != null) {
                     ledgerDao.upsert(entry)
-                    metadataDao.put("remote_version:ledger:${event.entityId}", event.remoteVersion.toString())
+                    metadataDao.putMonotonicRemoteVersion("remote_version:ledger:${event.entityId}", event.remoteVersion)
                     recalculateAccountBalance(entry.accountId)
                     EventSyncResult.APPLIED
                 } else EventSyncResult.FAILED_RETRYABLE
@@ -576,7 +576,7 @@ class RemoteSyncCoordinator(
         return when (decision) {
             ConflictDecision.APPLY_DELETE -> {
                 metadataDao.put("tombstone:ledger:${event.entityId}", event.remoteVersion.toString())
-                metadataDao.put("remote_version:ledger:${event.entityId}", event.remoteVersion.toString())
+                metadataDao.putMonotonicRemoteVersion("remote_version:ledger:${event.entityId}", event.remoteVersion)
                 EventSyncResult.APPLIED
             }
             ConflictDecision.REJECT_MALFORMED -> {
@@ -620,7 +620,7 @@ class RemoteSyncCoordinator(
         return when (decision) {
             ConflictDecision.APPLY_UPSERT -> {
                 batchDao.insert(batch)
-                metadataDao.put("remote_version:batch:${event.entityId}", event.remoteVersion.toString())
+                metadataDao.putMonotonicRemoteVersion("remote_version:batch:${event.entityId}", event.remoteVersion)
                 EventSyncResult.APPLIED
             }
             ConflictDecision.REJECT_MALFORMED -> {
@@ -699,13 +699,30 @@ class RemoteSyncCoordinator(
         val ledgers = ledgerDao.getByAccountIdOneShot(accountId, limit = Int.MAX_VALUE)
         
         val isSnapshot = account.stateSource != null
+        val unrecognizedTxs = mutableListOf<Pair<LocalLedgerEntry, String>>()
         val (derivedBalances, _) = com.example.core.ledger.BalanceCalculator.reconstructCurrentPosition(
             openingDebt = account.openingDebtIqd,
             openingAdvance = account.openingAdvanceIqd,
             openingLoan = account.openingLoanIqd,
             transactions = ledgers,
-            isSnapshotBaseline = isSnapshot
+            isSnapshotBaseline = isSnapshot,
+            onUnrecognizedType = { tx, unrecType ->
+                unrecognizedTxs.add(tx to unrecType)
+            }
         )
+
+        for ((tx, unrecType) in unrecognizedTxs) {
+            val quarantineAudit = AuditLog(
+                action = "UNRECOGNIZED_TRANSACTION_TYPE",
+                entityType = "local_ledger_entries",
+                entityId = tx.id,
+                summary = "Unrecognized transaction type '$unrecType' encountered during balance derivation for account ${tx.accountId}",
+                createdAt = System.currentTimeMillis(),
+                severity = "WARNING",
+                origin = AuditOrigin.SYSTEM_ACTION.name
+            )
+            auditDao?.insert(quarantineAudit)
+        }
 
         // Preserve business updatedAt timestamp when updating derived calculation! (INV-04)
         accountDao.upsert(

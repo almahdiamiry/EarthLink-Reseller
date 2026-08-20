@@ -296,10 +296,12 @@ class Phase3SameLineageFinancialMutationTest {
         assertEquals(0.0, accAfterDelete?.debtIqd ?: -1.0, 0.001)
         assertEquals(20000.0, accAfterDelete?.advanceIqd ?: -1.0, 0.001)
 
-        // Verify outbox has tombstone for tx_del_1
-        val tombstone = db.syncOutboxDao().getPending().firstOrNull { it.entityId == "tx_del_1" }
-        assertNotNull(tombstone)
-        assertEquals("delete", tombstone?.operation?.lowercase())
+        // Verify outbox has correction upsert, NOT a delete tombstone for tx_del_1
+        val outbox = db.syncOutboxDao().getPending()
+        val tombstone = outbox.firstOrNull { it.entityId == "tx_del_1" && it.operation == "delete" }
+        assertNull("Original entry must NOT receive a delete tombstone", tombstone)
+        val correctionOutbox = outbox.firstOrNull { it.operation == "upsert" && it.entityType == "local_ledger_entries" }
+        assertNotNull("Outbox must contain correction upsert", correctionOutbox)
         assertEquals(1L, db.getGeneration())
     }
 

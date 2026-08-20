@@ -663,7 +663,7 @@ fun SettingsScreen(
         }
 
         // --- DEV MODE (DEBUG BUILD ONLY) ---
-        if (com.alamiry.earthlinkreseller.BuildConfig.DEBUG) {
+        if (AppBuildConfig.DEBUG) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
                     text = if (currentLang == "ar") "وضع المطور" else "Developer Mode",
@@ -1035,7 +1035,7 @@ fun SettingsScreen(
                     fontSize = 14.sp,
                     color = Color.White
                 )
-                if (com.alamiry.earthlinkreseller.BuildConfig.DEBUG) {
+                if (AppBuildConfig.DEBUG) {
                     HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
                     val isDemoEnabled by prefs.demoModeFlow.collectAsStateWithLifecycle()
                     Row(

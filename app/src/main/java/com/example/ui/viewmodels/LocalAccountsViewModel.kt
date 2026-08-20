@@ -144,7 +144,7 @@ class LocalAccountsViewModel(
         viewModelScope.launch {
             try {
                 localRepo.deleteAccount(id)
-                audit.logAction("DELETE_LOCAL_ACCOUNT", "LOCAL_ACCOUNT", id, "Hard deleted subscriber from local DB")
+                audit.logAction("DELETE_LOCAL_ACCOUNT", "LOCAL_ACCOUNT", id, "Marked subscriber as deleted/history-only in local DB")
                 if (_selectedAccount.value?.id == id) {
                     _selectedAccount.value = null
                 }
@@ -260,22 +260,20 @@ class LocalAccountsViewModel(
         }
     }
 
-    fun rollbackBatch(batchId: String) {
-        viewModelScope.launch {
-            _isLoading.value = true
-            try {
-                val success = utowerRepo.rollbackImportBatch(batchId)
-                if (success) {
-                    audit.logAction("ROLLBACK_IMPORT_BATCH", "BATCH", batchId, "Rolled back/reverted imported JSON batch")
-                    syncRepo.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
-                } else {
-                    _error.value = "Fallback failed. Batch not found."
-                }
-            } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                _error.value = e.message
-            } finally {
-                _isLoading.value = false
+    fun rollbackBatch(batchId: String): kotlinx.coroutines.Job = viewModelScope.launch {
+        _isLoading.value = true
+        try {
+            val success = utowerRepo.rollbackImportBatch(batchId)
+            if (success) {
+                audit.logAction("ROLLBACK_IMPORT_BATCH", "BATCH", batchId, "Rolled back unaccepted temporary import batch")
+                syncRepo.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
+            } else {
+                _error.value = "Cannot rollback import batch: Batch is already accepted into canonical financial history or was not found. Use correction-by-difference for accepted transactions."
             }
+        } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+            _error.value = e.message
+        } finally {
+            _isLoading.value = false
         }
     }
     private val _importResult = kotlinx.coroutines.flow.MutableStateFlow<com.example.core.sync.ImportResult?>(null)

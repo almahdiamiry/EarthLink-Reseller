@@ -631,18 +631,10 @@ class EarthlinkSearchViewModel(
         onResolved: ((PendingOperationResolution) -> Unit)? = null
     ): kotlinx.coroutines.Job {
         return viewModelScope.launch(Dispatchers.IO) {
-            val pendingOp = localLedgerRepository.getPendingOperationByTransactionId(businessTransactionId)
-            val accountId = pendingOp?.accountId ?: ""
-            val lock = if (accountId.isNotBlank()) getAccountLock(accountId) else null
-
-            if (lock != null && !lock.tryLock()) {
-                Log.w("EarthlinkSearchVM", "Resolution suppressed: account $accountId has an active inflight operation")
-                return@launch
-            }
             try {
                 _isActionLoading.value = true
                 _error.value = null
-                val resolution = localLedgerRepository.verifyAndResolvePendingOperation(
+                val resolution = localLedgerRepository.resolvePendingOperationSerialized(
                     businessTransactionId = businessTransactionId,
                     gateway = gateway,
                     baselineExpirationDate = baselineExpirationDate
@@ -664,7 +656,6 @@ class EarthlinkSearchViewModel(
                 _error.value = "Resolution error: ${e.message}"
             } finally {
                 _isActionLoading.value = false
-                lock?.unlock()
             }
         }
     }

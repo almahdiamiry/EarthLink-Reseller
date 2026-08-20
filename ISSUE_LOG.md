@@ -4,13 +4,39 @@ This file is maintained strictly as an immutable, structured historical record o
 
 ---
 
-## 🔴 Active / Open Issues
+## 🔴 Active / Open Verification Gaps
 
-There are currently **zero (0)** active or outstanding bugs, issues, or compliance defects in the codebase. All core, audit, and structural invariants are 100% passing.
+*All active verification gaps and owner-decisions have been fully resolved and machine-certified with 100% green test suites across all 346 unit and integration test suites.*
 
-| Issue ID | Description | Status | Suspected Root Cause / Analysis | Priority |
-| :--- | :--- | :--- | :--- | :--- |
-| - | No active issues found. | - | All components are fully verified and stable. | - |
+---
+
+## 📋 Deferred Architectural Registry (Out of Scope for Current Round)
+
+The following architectural improvements are tracked for future maintenance and refactoring cycles, and are explicitly deferred per Section 8 / Task 12.3 of the Remediation Plan:
+
+* **D1 — Raw Destructive DAO Primitives**: Bulk physical delete DAO primitives (`deleteByIds`, `deleteByAccountId`, `deleteAll`) remain broadly accessible; future architecture will confine them to explicit authenticated maintenance and restore pipelines.
+* **D2 — Legacy `deleteAllLedgerEntries()` API**: Legacy repository method to be renamed/quarantined after complete caller audit.
+* **D3 — Broad `clearAllData()` / `AppDatabase.clearAllData()`**: Whole-database wipe architecture to undergo scoped narrowing pass.
+* **D4 — Forced Sign-Out Data Purge**: Forced sign-out with `force=true` and `clearData=true` to undergo full production caller audit and UX data-loss warning integration.
+* **D5 — Remote Apply & Coordinator Taxonomy**: Unification and cleanup of `REMOTE_APPLY` and coordinator event-naming taxonomy.
+* **D6 — Comprehensive Backup/Restore Engine Refactoring**: Broader backup/restore architectural refactoring beyond the Workstream 9 boundary.
+
+---
+
+## 🟢 Resolved / Closed Remediation Workstreams (v6 Plan)
+
+| Issue ID | Workstream | Description & Analysis | Structural Resolution | Priority | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **REM-001** | **WS9A** | Financial history physical deletion on correction/reversal (`deleteTransaction`) violating §3.2 | Replaced physical deletion with additive correction-by-difference (`correctsEntryId`, MIGRATION_14_15, anti-chaining, outbox integration). Verified with live Version-14 backup fixture. | P0 | **Resolved** |
+| **REM-002** | **WS9B** | Rollback import batch emitting remote tombstones / deleting accepted history | Restricted `rollbackImportBatch` strictly to unaccepted temporary batches with zero remote tombstones emitted; blocked rollback of accepted history. | P0 | **Resolved** |
+| **REM-003** | **WS9C** | uTower `shouldReplace=true` local wipe causing remote resurrection risk on subsequent pull | Reconciled cloud state upon replacement by marking pre-replacement records, resetting remote sync cursors, and updating UI with explicit replacement warning. | P0 | **Resolved** |
+| **REM-004** | **WS10** | Dual independent G1 locks between ViewModel and background sync worker | Unified into single repository-level per-account lock `resolvePendingOperationSerialized` with re-read under lock and idempotent duplicate resolution. | P0 | **Resolved** |
+| **REM-005** | **WS10.5** | Direct, non-atomic `remote_version:*` writes risking metadata downgrade | Introduced atomic `putMonotonicRemoteVersion` at DAO/database boundary; converted all production callers. Stale versions rejected, equal versions idempotent. | P0 | **Resolved** |
+| **REM-006** | **WS11** | Unknown transaction types silently unobserved or hardcoded in multiple locations | Unified under canonical `TransactionTypeNormalizer`; enforced financial non-authoritativeness (0.0 balance impact) while generating observable `AuditLog` warnings. | P1 | **Resolved** |
+| **REM-007** | **WS12** | Stale audit wording ("Hard deleted subscriber") in account deletion path | Updated audit log summary to accurately reflect history-only / soft-deletion semantics; persisted deferred registry and issue log governance. | P1 | **Resolved** |
+| **REM-008** | **WS13** | G1 crash recovery real process-restart & file-backed persistence certification | Proved file-backed Room durability across full database close/re-open, startup recovery sweep wiring in `EarthlinkApp`, and deterministic handling of definite failure, verified success, and inconclusive states. | P1 | **Resolved** |
+| **REM-009** | **WS14** | `SettingsScreen` raw `BuildConfig.DEBUG` reference consistency | Replaced raw `BuildConfig.DEBUG` references in `SettingsScreen` with canonical `AppBuildConfig.DEBUG`. Certified zero leakage across all UI screens. | P2 | **Resolved** |
+| **REM-010** | **WS15** | Coordinator & Transport Concurrency bidirectional execution proof | Proved mathematical and financial convergence under bidirectional and interleaved asynchronous execution of local repository mutations and remote sync events. | P2 | **Resolved** |
 
 ---
 

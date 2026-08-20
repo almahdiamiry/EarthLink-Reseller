@@ -281,10 +281,15 @@ class UtowerImporter(
                     session.batchId = batchId
                 }
 
+                val oldAccounts = if (shouldReplace) appDatabase.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE) else emptyList()
+                val oldLedgers = if (shouldReplace) appDatabase.localLedgerEntryDao().getAllOneShot(limit = Int.MAX_VALUE) else emptyList()
+                val oldBatches = if (shouldReplace) appDatabase.importBatchDao().getAllOneShot() else emptyList()
+
                 if (shouldReplace) {
                     appDatabase.syncOutboxDao().deleteAll()
                     appDatabase.localLedgerEntryDao().deleteAll()
                     appDatabase.localAccountDao().deleteAll()
+                    appDatabase.importBatchDao().deleteAll()
                     appDatabase.syncMetadataDao().incrementGeneration()
                 }
 
@@ -293,6 +298,40 @@ class UtowerImporter(
                 session.init(existingAccounts, existingTxList)
 
                 session.commitAll()
+
+                if (shouldReplace) {
+                    val newAccounts = appDatabase.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE)
+                    val newAccountIds = newAccounts.map { it.id }.toSet()
+                    val deletedAccountIds = oldAccounts.map { it.id }.filter { it !in newAccountIds }
+                    if (deletedAccountIds.isNotEmpty()) {
+                        OutboxManager.deleteWithTombstoneBatch(appDatabase.syncOutboxDao(), "local_accounts", deletedAccountIds, "{}")
+                        val now = System.currentTimeMillis()
+                        for (accId in deletedAccountIds) {
+                            appDatabase.syncMetadataDao().put("tombstone:account:$accId", now.toString())
+                        }
+                    }
+
+                    val newLedgers = appDatabase.localLedgerEntryDao().getAllOneShot(limit = Int.MAX_VALUE)
+                    val newLedgerIds = newLedgers.map { it.id }.toSet()
+                    val deletedLedgerIds = oldLedgers.map { it.id }.filter { it !in newLedgerIds }
+                    if (deletedLedgerIds.isNotEmpty()) {
+                        OutboxManager.deleteWithTombstoneBatch(appDatabase.syncOutboxDao(), "local_ledger_entries", deletedLedgerIds, "{}")
+                        val now = System.currentTimeMillis()
+                        for (txId in deletedLedgerIds) {
+                            appDatabase.syncMetadataDao().put("tombstone:ledger:$txId", now.toString())
+                        }
+                    }
+
+                    val deletedBatchIds = oldBatches.map { it.id }.filter { it != batchId }
+                    if (deletedBatchIds.isNotEmpty()) {
+                        OutboxManager.deleteWithTombstoneBatch(appDatabase.syncOutboxDao(), "import_batches", deletedBatchIds, "{}")
+                    }
+
+                    appDatabase.syncMetadataDao().remove("last_sync_timestamp")
+                    appDatabase.syncMetadataDao().remove("coll_cursor:local_accounts")
+                    appDatabase.syncMetadataDao().remove("coll_cursor:local_ledger_entries")
+                    appDatabase.syncMetadataDao().remove("coll_cursor:import_batches")
+                }
 
                 val freshAccounts = appDatabase.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE)
                 val totalImportedDebt = freshAccounts.sumOf { it.debtIqd }
@@ -610,10 +649,15 @@ class UtowerImporter(
                         session.batchId = batchId
                     }
 
+                    val oldAccounts = if (shouldReplace) appDatabase.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE) else emptyList()
+                    val oldLedgers = if (shouldReplace) appDatabase.localLedgerEntryDao().getAllOneShot(limit = Int.MAX_VALUE) else emptyList()
+                    val oldBatches = if (shouldReplace) appDatabase.importBatchDao().getAllOneShot() else emptyList()
+
                     if (shouldReplace) {
                         appDatabase.syncOutboxDao().deleteAll()
                         appDatabase.localLedgerEntryDao().deleteAll()
                         appDatabase.localAccountDao().deleteAll()
+                        appDatabase.importBatchDao().deleteAll()
                         appDatabase.syncMetadataDao().incrementGeneration()
                     }
 
@@ -624,12 +668,37 @@ class UtowerImporter(
                     session.commitAll()
 
                     if (shouldReplace) {
-                        val oldBatches = appDatabase.importBatchDao().getAllOneShot().filter { it.id != batchId }
-                        val oldBatchIds = oldBatches.map { it.id }
-                        if (oldBatchIds.isNotEmpty()) {
-                            OutboxManager.deleteWithTombstoneBatch(appDatabase.syncOutboxDao(), "import_batches", oldBatchIds, "{}")
-                            appDatabase.importBatchDao().deleteAllExcept(batchId)
+                        val newAccounts = appDatabase.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE)
+                        val newAccountIds = newAccounts.map { it.id }.toSet()
+                        val deletedAccountIds = oldAccounts.map { it.id }.filter { it !in newAccountIds }
+                        if (deletedAccountIds.isNotEmpty()) {
+                            OutboxManager.deleteWithTombstoneBatch(appDatabase.syncOutboxDao(), "local_accounts", deletedAccountIds, "{}")
+                            val now = System.currentTimeMillis()
+                            for (accId in deletedAccountIds) {
+                                appDatabase.syncMetadataDao().put("tombstone:account:$accId", now.toString())
+                            }
                         }
+
+                        val newLedgers = appDatabase.localLedgerEntryDao().getAllOneShot(limit = Int.MAX_VALUE)
+                        val newLedgerIds = newLedgers.map { it.id }.toSet()
+                        val deletedLedgerIds = oldLedgers.map { it.id }.filter { it !in newLedgerIds }
+                        if (deletedLedgerIds.isNotEmpty()) {
+                            OutboxManager.deleteWithTombstoneBatch(appDatabase.syncOutboxDao(), "local_ledger_entries", deletedLedgerIds, "{}")
+                            val now = System.currentTimeMillis()
+                            for (txId in deletedLedgerIds) {
+                                appDatabase.syncMetadataDao().put("tombstone:ledger:$txId", now.toString())
+                            }
+                        }
+
+                        val deletedBatchIds = oldBatches.map { it.id }.filter { it != batchId }
+                        if (deletedBatchIds.isNotEmpty()) {
+                            OutboxManager.deleteWithTombstoneBatch(appDatabase.syncOutboxDao(), "import_batches", deletedBatchIds, "{}")
+                        }
+
+                        appDatabase.syncMetadataDao().remove("last_sync_timestamp")
+                        appDatabase.syncMetadataDao().remove("coll_cursor:local_accounts")
+                        appDatabase.syncMetadataDao().remove("coll_cursor:local_ledger_entries")
+                        appDatabase.syncMetadataDao().remove("coll_cursor:import_batches")
                     }
 
                     val freshAccounts = appDatabase.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE)

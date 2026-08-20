@@ -370,7 +370,8 @@ data class LocalAccount(
         Index(value = ["sourceBatchId"]),
         Index(value = ["occurredAt"]),
         Index(value = ["sourceExternalId"]),
-        Index(value = ["accountId", "sourceExternalId"], unique = true)
+        Index(value = ["accountId", "sourceExternalId"], unique = true),
+        Index(value = ["correctsEntryId"])
     ]
 )
 @JsonClass(generateAdapter = true)
@@ -386,7 +387,8 @@ data class LocalLedgerEntry(
     val occurredAt: Long = System.currentTimeMillis(),
     val rawJson: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
-    val isSnapshotHistory: Boolean = false
+    val isSnapshotHistory: Boolean = false,
+    val correctsEntryId: String? = null
 )
 
 @Entity(tableName = "import_batches")

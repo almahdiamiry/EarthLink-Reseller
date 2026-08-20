@@ -131,7 +131,8 @@ object RemoteEntityValidator {
             occurredAt = occurredAt,
             rawJson = d["rawJson"] as? String ?: existingLocalLedgerEntry?.rawJson,
             createdAt = createdAt,
-            isSnapshotHistory = isSnapshotHistory
+            isSnapshotHistory = isSnapshotHistory,
+            correctsEntryId = d["correctsEntryId"] as? String ?: existingLocalLedgerEntry?.correctsEntryId
         )
         return RemoteEntityValidationResult.Valid(entry)
     }

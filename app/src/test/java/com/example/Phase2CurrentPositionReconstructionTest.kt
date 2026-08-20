@@ -446,11 +446,11 @@ class Phase2CurrentPositionReconstructionTest {
         assertEquals(0.0, afterDeleteAcc.advanceIqd, 0.001)
 
         val remainingTxs = database.localLedgerEntryDao().getByAccountIdOneShot(accId, limit = 10).sortedBy { it.occurredAt }
-        assertEquals(2, remainingTxs.size)
-        assertEquals(tx1.id, remainingTxs[0].id)
-        assertEquals(50000.0, remainingTxs[0].debtAfterIqd, 0.001)
-        assertEquals(tx3.id, remainingTxs[1].id)
-        assertEquals(20000.0, remainingTxs[1].debtAfterIqd, 0.001)
+        assertEquals(4, remainingTxs.size) // tx1, tx2, tx3, + reversal correction entry
+        val reversal = remainingTxs.find { it.correctsEntryId == tx2.id }
+        assertNotNull(reversal)
+        assertEquals("gave", reversal!!.typeRaw)
+        assertEquals(25000.0, reversal.amountIqd, 0.001)
     }
 
     @Test

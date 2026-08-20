@@ -113,7 +113,8 @@ object BalanceCalculator {
      */
     fun deriveAccountBalance(
         account: com.example.core.model.LocalAccount,
-        transactions: List<com.example.core.model.LocalLedgerEntry>
+        transactions: List<com.example.core.model.LocalLedgerEntry>,
+        onUnrecognizedType: ((com.example.core.model.LocalLedgerEntry, String) -> Unit)? = null
     ): AccountBalances {
         val isSnapshot = account.stateSource != null
         val (balances, _) = reconstructCurrentPosition(
@@ -121,7 +122,8 @@ object BalanceCalculator {
             openingAdvance = account.openingAdvanceIqd,
             openingLoan = account.openingLoanIqd,
             transactions = transactions,
-            isSnapshotBaseline = isSnapshot
+            isSnapshotBaseline = isSnapshot,
+            onUnrecognizedType = onUnrecognizedType
         )
         return balances
     }
