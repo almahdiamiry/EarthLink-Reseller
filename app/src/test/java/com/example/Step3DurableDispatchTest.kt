@@ -332,4 +332,204 @@ class Step3DurableDispatchTest {
         val op = ledgerRepo.getPendingOperationByAccountId("new_user_fail_cost")
         assertNull("No pending operation should be recorded when package cost lookup fails", op)
     }
+
+    @Test
+    fun test15_runtimeSweepIgnoresUnclaimedCountZeroOperations() = runTest {
+        // Op A: fresh op with count=0 (in the middle of pre-dispatch)
+        val opA = PendingExternalOperation(
+            businessTransactionId = "tx_sweep_count0",
+            operationIntentId = "intent_sweep_count0",
+            accountId = "user_sweep_0",
+            operationType = "REFILL",
+            amountIqd = 35000L,
+            status = "PENDING",
+            dispatchClaimCount = 0,
+            createdAt = 1000L
+        )
+        ledgerRepo.recordPendingOperation(opA)
+
+        // Op B: claimed op with count=1 that suffered uncertainty
+        val opB = PendingExternalOperation(
+            businessTransactionId = "tx_sweep_count1",
+            operationIntentId = "intent_sweep_count1",
+            accountId = "user_sweep_1",
+            operationType = "TEST_USER",
+            amountIqd = 0L,
+            status = "PENDING",
+            dispatchClaimCount = 1,
+            createdAt = 1000L
+        )
+        ledgerRepo.recordPendingOperation(opB)
+
+        val fakeGateway = object : FakeGateway() {
+            override suspend fun checkUsernameAvailable(userId: String): Boolean {
+                return true // user still available => verified failure
+            }
+        }
+
+        val resolutions = ledgerRepo.sweepAndResolvePendingOperations(fakeGateway, graceWindowMs = 0L)
+        
+        assertEquals("Sweep must only pick up count=1 operations", 1, resolutions.size)
+        assertEquals("tx_sweep_count1", resolutions.first().operation.businessTransactionId)
+
+        // Verify Op A remains completely untouched in PENDING count=0
+        val savedA = ledgerRepo.getPendingOperationByTransactionId("tx_sweep_count0")
+        assertNotNull(savedA)
+        assertEquals("PENDING", savedA!!.status)
+        assertEquals(0, savedA.dispatchClaimCount)
+    }
+
+    @Test
+    fun test16_claimDispatchDirectExecution() = runTest {
+        val op = PendingExternalOperation(
+            businessTransactionId = "tx_direct_claim",
+            operationIntentId = "intent_direct_claim",
+            accountId = "user_direct_claim",
+            operationType = "ACTIVATION",
+            amountIqd = 35000L,
+            status = "PENDING",
+            dispatchClaimCount = 0
+        )
+        ledgerRepo.recordPendingOperation(op)
+
+        val success = ledgerRepo.claimDispatchAuthorization("tx_direct_claim")
+        assertTrue(success)
+        val opAfter = ledgerRepo.getPendingOperationByTransactionId("tx_direct_claim")
+        assertEquals(1, opAfter!!.dispatchClaimCount)
+        assertEquals("DISPATCHING", opAfter.status)
+    }
+
+    @Test
+    fun test17_statement4TupleRejectsDifferentUserEvenWithMatchingAmountAndTime() = runTest {
+        val now = 1700000000000L
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+        sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        val dateStr = sdf.format(java.util.Date(now))
+
+        val targetUser = "subscriber_target"
+        val otherUser = "subscriber_other"
+
+        val op = PendingExternalOperation(
+            businessTransactionId = "tx_4tuple_user_test",
+            operationIntentId = "intent_4tuple_user_test",
+            accountId = targetUser,
+            operationType = "REFILL",
+            amountIqd = 35000L,
+            status = "PENDING",
+            dispatchClaimCount = 1,
+            createdAt = now
+        )
+        ledgerRepo.recordPendingOperation(op)
+
+        // Gateway returns statement item for a DIFFERENT user with same amount & time
+        val statementsWithOtherUser = listOf(
+            AccountStatementItem(
+                occurredAt = dateStr,
+                operation = "Withdraw",
+                depositAmount = 0.0,
+                withdrawalAmount = 35000.0,
+                userIDLower = otherUser // DIFFERENT USER!
+            )
+        )
+
+        val fakeGateway = FakeGateway(
+            statementsResult = statementsWithOtherUser,
+            searchUsersResult = UserListResponse(itemsList = listOf(UserListItem(userIndexLower = 999, userIDLower = targetUser))),
+            userDetailResult = UserDetail(userIndexLower = 999, userIDLower = targetUser, accountStatusLower = "Active", expirationDateLower = null)
+        )
+
+        // When baselineExpirationDate is null, verifyRenewalViaStatement is invoked
+        val resolution = ledgerRepo.verifyAndResolvePendingOperation(op.businessTransactionId, fakeGateway, baselineExpirationDate = null)
+        
+        assertEquals("Statement match for different user must be rejected as INCONCLUSIVE", UnknownOutcomeResolutionResult.INCONCLUSIVE, resolution.result)
+
+        // Now provide statement with matching targetUser
+        val statementsWithTargetUser = listOf(
+            AccountStatementItem(
+                occurredAt = dateStr,
+                operation = "Withdraw",
+                depositAmount = 0.0,
+                withdrawalAmount = 35000.0,
+                userIDLower = targetUser // MATCHING USER
+            )
+        )
+        val matchingGateway = FakeGateway(
+            statementsResult = statementsWithTargetUser,
+            searchUsersResult = UserListResponse(itemsList = listOf(UserListItem(userIndexLower = 999, userIDLower = targetUser))),
+            userDetailResult = UserDetail(userIndexLower = 999, userIDLower = targetUser, accountStatusLower = "Active", expirationDateLower = null)
+        )
+
+        // Insert local account so resolution can materialize
+        db.localAccountDao().insert(LocalAccount(id = targetUser, earthlinkUsername = targetUser, displayName = "Target User", currentPriceIqd = 35000.0, debtIqd = 0.0))
+
+        val matchingResolution = ledgerRepo.verifyAndResolvePendingOperation(op.businessTransactionId, matchingGateway, baselineExpirationDate = null)
+        assertEquals("Statement match for correct user in 4-tuple must resolve to VERIFIED_SUCCESS", UnknownOutcomeResolutionResult.VERIFIED_SUCCESS, matchingResolution.result)
+    }
+
+    @Test
+    fun test18_allFourSuccessPathsMaterializeViaCanonicalSuccessResolver() = runTest {
+        val app = context as com.example.EarthlinkApp
+        val account = LocalAccount(
+            id = "user_all_four",
+            earthlinkUsername = "user_all_four",
+            displayName = "All Four User",
+            currentPriceIqd = 35000.0,
+            debtIqd = 0.0
+        )
+        db.localAccountDao().insert(account)
+
+        val fakeGateway = object : FakeGateway() {
+            override suspend fun getAccountCost(accountIndex: Int): Double = 35000.0
+            override suspend fun checkUsernameAvailable(userId: String): Boolean = true
+            override suspend fun createTestUser(username: String, phone: String, fullName: String, accountIndex: Int): String = "test_pass"
+            override suspend fun createUserUsingDeposit(username: String, phone: String, fullName: String, accountIndex: Int, depositPassword: String): String = "deposit_pass"
+            override suspend fun refillUserDeposit(userId: String, depositPassword: String): Boolean = true
+            override suspend fun extendUser(userIndex: Int): Boolean = true
+        }
+
+        val testAccountRepo = com.example.data.repository.LocalAccountRepositoryImpl(
+            database = db,
+            accountDao = db.localAccountDao(),
+            outboxDao = db.syncOutboxDao()
+        )
+
+        val viewModel = com.example.ui.viewmodels.EarthlinkSearchViewModel(
+            gateway = fakeGateway,
+            audit = app.auditRepository,
+            prefs = app.preferenceManager,
+            localAccountRepository = testAccountRepo,
+            localLedgerRepository = ledgerRepo
+        )
+
+        // 1. createTestUser
+        val jobTest = viewModel.createTestUser("test_user_01", "07700000001", "Test User 1", 1, intentId = "intent_test_01")
+        jobTest.join()
+        val opTest = ledgerRepo.getPendingOperationByIntentId("intent_test_01")
+        assertNotNull(opTest)
+        assertEquals("COMPLETED", opTest!!.status)
+
+        // 2. createUserUsingDeposit
+        val jobDeposit = viewModel.createUserUsingDeposit("deposit_user_02", "07700000002", "Deposit User 2", 1, "pass", intentId = "intent_deposit_02")
+        jobDeposit.join()
+        val opDeposit = ledgerRepo.getPendingOperationByIntentId("intent_deposit_02")
+        assertNotNull(opDeposit)
+        assertEquals("COMPLETED", opDeposit!!.status)
+
+        // 3. refillUser
+        val jobRefill = viewModel.refillUser("user_all_four", "pass", price = 35000.0, note = "Refill Note", intentId = "intent_refill_03")
+        jobRefill.join()
+        val opRefill = ledgerRepo.getPendingOperationByIntentId("intent_refill_03")
+        assertNotNull(opRefill)
+        assertEquals("COMPLETED", opRefill!!.status)
+        val ledgerEntries = db.localLedgerEntryDao().getByAccountIdOneShot("user_all_four")
+        assertEquals("Ledger debt entry must be materialized via canonical success resolver", 1, ledgerEntries.size)
+        assertEquals(35000.0, ledgerEntries.first().amountIqd, 0.001)
+
+        // 4. extendUser
+        val jobExtend = viewModel.extendUser(101, "user_all_four", intentId = "intent_extend_04")
+        jobExtend.join()
+        val opExtend = ledgerRepo.getPendingOperationByIntentId("intent_extend_04")
+        assertNotNull(opExtend)
+        assertEquals("COMPLETED", opExtend!!.status)
+    }
 }

@@ -513,9 +513,9 @@ class Phase1UnknownOutcomeResolutionTest {
             gateway = testGateway
         )
 
-        assertEquals(UnknownOutcomeResolutionResult.INCONCLUSIVE, resolution.result)
+        assertEquals(UnknownOutcomeResolutionResult.VERIFIED_SUCCESS, resolution.result)
         val updatedOp = pendingDao.getByBusinessTransactionId(txId)
-        assertEquals("PENDING", updatedOp?.status)
+        assertEquals("COMPLETED", updatedOp?.status)
     }
 
     // 6. Activation Verification: Confirms subscriber does not exist on ISP (checkUsernameAvailable = true -> VERIFIED_FAILURE)

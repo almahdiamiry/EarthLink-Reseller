@@ -353,7 +353,7 @@ class EarthlinkSearchViewModel(
                         businessTransactionId = businessTxId,
                         operationIntentId = opIntentId,
                         accountId = username,
-                        operationType = "TEST_USER",
+                        operationType = "ACTIVATION",
                         amountIqd = 0L,
                         payloadJson = "{\"username\":\"$username\",\"phone\":\"$phone\",\"fullName\":\"$fullName\",\"pkgIndex\":$pkgIndex,\"isTest\":true}",
                         status = "PENDING",
@@ -369,7 +369,7 @@ class EarthlinkSearchViewModel(
 
                 val generatedPassword = gateway.createTestUser(username, phone, fullName, pkgIndex)
                 if (generatedPassword != null) {
-                    localLedgerRepository.completePendingOperation(businessTxId, username)
+                    localLedgerRepository.resolvePendingOperationVerifiedSuccess(businessTxId, "[TEST_USER]")
                     _actionSuccess.value = "Test subscriber $username created successfully.\nPassword: $generatedPassword"
                     audit.logAction("CREATE_TEST_USER", "USER", username, "Created test user successfully")
                 } else {
@@ -452,7 +452,20 @@ class EarthlinkSearchViewModel(
 
                 val generatedPassword = gateway.createUserUsingDeposit(username, phone, fullName, pkgIndex, depositPass)
                 if (generatedPassword != null) {
-                    localLedgerRepository.completePendingOperation(businessTxId, username)
+                    val localAcc = localAccountRepository.getAccountByIdOneShot(username)
+                        ?: localAccountRepository.findAccountByUsernameOrIdOneShot(username)
+                    if (localAcc == null) {
+                        val newAcc = LocalAccount(
+                            id = username,
+                            earthlinkUsername = username,
+                            displayName = fullName.ifBlank { username },
+                            phone1 = phone,
+                            currentPriceIqd = exactAmountIqd.toDouble(),
+                            debtIqd = 0.0
+                        )
+                        localAccountRepository.saveAccount(newAcc)
+                    }
+                    localLedgerRepository.resolvePendingOperationVerifiedSuccess(businessTxId, "[VERIFIED ACTIVATION]")
                     _actionSuccess.value = "Paid subscriber $username created successfully.\nPassword: $generatedPassword"
                     audit.logAction("CREATE_PAID_USER", "USER", username, "Created subscriber using reseller deposit")
                 } else {
@@ -546,18 +559,8 @@ class EarthlinkSearchViewModel(
                         if (onSuccessCallback != null) {
                             onSuccessCallback.invoke(businessTxId)
                         } else {
-                            val localAcc = localAccountRepository.findAccountByUsernameOrIdOneShot(userId)
-                            if (localAcc != null) {
-                                localLedgerRepository.recordAccountRenewal(
-                                    account = localAcc,
-                                    newPriceIqd = authoritativePrice,
-                                    chargeNote = if (finalNote.isNotBlank()) "[RENEW] ${finalNote.trim()}" else "",
-                                    payNote = null,
-                                    idempotencyKey = businessTxId
-                                )
-                            } else {
-                                localLedgerRepository.completePendingOperation(businessTxId, userId)
-                            }
+                            val chargeNote = if (finalNote.isNotBlank()) "[RENEW] ${finalNote.trim()}" else "[RENEW]"
+                            localLedgerRepository.resolvePendingOperationVerifiedSuccess(businessTxId, chargeNote)
                         }
                     } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
                         android.util.Log.e("EarthlinkSearchViewModel", "Failed to execute atomic post-call materialization after renewal", e)
@@ -654,7 +657,7 @@ class EarthlinkSearchViewModel(
                         businessTransactionId = businessTxId,
                         operationIntentId = opIntentId,
                         accountId = userId,
-                        operationType = "EXTEND",
+                        operationType = "RENEWAL",
                         amountIqd = 0L,
                         payloadJson = "{\"userIndex\":$userIndex,\"userId\":\"$userId\"}",
                         status = "PENDING",
@@ -670,7 +673,7 @@ class EarthlinkSearchViewModel(
 
                 val success = gateway.extendUser(userIndex)
                 if (success) {
-                    localLedgerRepository.completePendingOperation(businessTxId, userId)
+                    localLedgerRepository.resolvePendingOperationVerifiedSuccess(businessTxId, "[EXTEND]")
                     _actionSuccess.value = "Subscription for $userId extended successfully."
                     audit.logAction("EXTEND_USER", "USER", userId, "Extended subscriber duration")
                     loadUserDetail(userIndex, _selectedUser.value?.userIDLower)

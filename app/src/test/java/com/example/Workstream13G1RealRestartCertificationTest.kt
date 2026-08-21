@@ -136,6 +136,7 @@ class Workstream13G1RealRestartCertificationTest {
             accountId = "acc_g1_success",
             amountIqd = 35000L,
             status = "PENDING",
+            dispatchClaimCount = 1,
             createdAt = 1000L
         )
         val opFailed = PendingExternalOperation(
@@ -144,6 +145,7 @@ class Workstream13G1RealRestartCertificationTest {
             accountId = "acc_g1_failed",
             amountIqd = 35000L,
             status = "PENDING",
+            dispatchClaimCount = 1,
             createdAt = 1000L
         )
 

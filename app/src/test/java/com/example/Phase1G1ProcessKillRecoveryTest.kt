@@ -56,7 +56,21 @@ class Phase1G1ProcessKillRecoveryTest {
         override suspend fun createUserUsingDeposit(username: String, phone: String, fullName: String, accountIndex: Int, depositPassword: String): String? = "pass"
         override suspend fun refillUserDeposit(userId: String, depositPassword: String): Boolean = true
         override suspend fun extendUser(userIndex: Int): Boolean = true
-        override suspend fun getAccountStatement(startIndex: Int, rowCount: Int, query: String): List<AccountStatementItem> = emptyList()
+        override suspend fun getAccountStatement(startIndex: Int, rowCount: Int, query: String): List<AccountStatementItem> {
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+            sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+            val dateStr = sdf.format(java.util.Date(System.currentTimeMillis() - 10000L))
+            return listOf(
+                AccountStatementItem(
+                    occurredAt = dateStr,
+                    operation = "Withdraw",
+                    depositAmount = 0.0,
+                    withdrawalAmount = 35000.0,
+                    userIDLower = query,
+                    note = "Refill for $query"
+                )
+            )
+        }
         override suspend fun showUserPassword(userIndex: Int, userId: String): String = "pass"
         override suspend fun showAccountPassword(userIndex: Int, userId: String): String = "pass"
         override suspend fun changeUserPassword(userIndex: Int, userId: String, newPass: String): Boolean = true
@@ -115,6 +129,7 @@ class Phase1G1ProcessKillRecoveryTest {
             operationType = "RENEWAL",
             amountIqd = 35000L,
             status = "PENDING",
+            dispatchClaimCount = 1,
             createdAt = System.currentTimeMillis() - 10000L
         )
         ledgerRepository.recordPendingOperation(op)

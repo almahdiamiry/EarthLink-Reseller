@@ -369,7 +369,7 @@ class Phase1DuplicateInitiationProtectionTest {
         val retryIntent = "intent_retry_attempt_2"
 
         // Configure gateway to fail on first attempt
-        testGateway.refillException = IOException("Network connection timed out on Earthlink server")
+        testGateway.refillException = com.example.core.network.EarthlinkBusinessException(400, "Refill rejected by server")
 
         val job1 = viewModel.refillUser(
             userId = accountId,

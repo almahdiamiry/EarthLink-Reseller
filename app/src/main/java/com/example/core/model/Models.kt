@@ -290,8 +290,15 @@ data class AccountStatementItem(
     @Json(name = "depositAmount") val depositAmount: Double? = 0.0,
     @Json(name = "withdrawalAmount") val withdrawalAmount: Double? = 0.0,
     @Json(name = "balanceAfter") val balanceAfter: Double? = 0.0,
-    @Json(name = "note") val note: String? = null
-)
+    @Json(name = "note") val note: String? = null,
+    @Json(name = "userID") val userIDLower: String? = null,
+    @Json(name = "UserID") val userIDUpper: String? = null,
+    @Json(name = "userId") val userIdLowerCamel: String? = null,
+    @Json(name = "UserId") val userIdUpperCamel: String? = null,
+    @Json(name = "user") val user: String? = null
+) {
+    val userID: String? get() = userIDLower ?: userIDUpper ?: userIdLowerCamel ?: userIdUpperCamel ?: user
+}
 
 @JsonClass(generateAdapter = true)
 data class AccountStatementResponse(

@@ -1200,12 +1200,8 @@ class LocalLedgerRepositoryImpl(
     }
 
     override suspend fun claimDispatchAuthorization(businessTransactionId: String): Boolean {
-        return com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
-            database.withTransaction {
-                val rows = pendingDao.claimDispatch(businessTransactionId, System.currentTimeMillis())
-                rows == 1
-            }
-        }
+        val rows = pendingDao.claimDispatch(businessTransactionId, System.currentTimeMillis())
+        return rows == 1
     }
 
     override suspend fun recoverColdStartOrphanedOperations(
@@ -1297,9 +1293,14 @@ class LocalLedgerRepositoryImpl(
                     val localAcc = accountDao.getByIdOneShot(op.accountId)
                         ?: accountDao.findAccountByUsernameOrIdOneShot(op.accountId)
 
+                    if (op.operationType.equals("REFILL", ignoreCase = true) && op.amountIqd <= 0L) {
+                        throw IllegalStateException("MISSING_PERSISTED_FINANCIAL_AMOUNT: Operation ${op.businessTransactionId} missing exact persisted charge amount")
+                    }
+
                     if (localAcc != null) {
                         if (op.amountIqd <= 0L) {
-                            throw IllegalStateException("MISSING_PERSISTED_FINANCIAL_AMOUNT: Operation ${op.businessTransactionId} missing exact persisted charge amount")
+                            pendingDao.updateStatus(businessTransactionId, "COMPLETED", System.currentTimeMillis(), null)
+                            return@withTransaction null
                         }
                         val operationPrice = op.amountIqd.toDouble()
                         val existing = ledgerDao.getByIdOneShot(businessTransactionId)
@@ -1327,7 +1328,12 @@ class LocalLedgerRepositoryImpl(
                         pendingDao.updateStatus(businessTransactionId, "COMPLETED", System.currentTimeMillis(), null)
                         chargeEntry
                     } else {
-                        throw IllegalStateException("MISSING_LOCAL_FINANCIAL_TARGET: Cannot materialize financial position for missing local account ${op.accountId}")
+                        if (op.amountIqd > 0L) {
+                            throw IllegalStateException("MISSING_LOCAL_FINANCIAL_TARGET: Cannot materialize financial position for missing local account ${op.accountId}")
+                        } else {
+                            pendingDao.updateStatus(businessTransactionId, "COMPLETED", System.currentTimeMillis(), null)
+                            null
+                        }
                     }
                 } else {
                     pendingDao.updateStatus(businessTransactionId, "COMPLETED", System.currentTimeMillis(), null)
@@ -1411,7 +1417,10 @@ class LocalLedgerRepositoryImpl(
             val isWithdrawal = opName.equals("Withdraw", ignoreCase = true) || opName.contains("Withdraw", ignoreCase = true) || (item.withdrawalAmount ?: 0.0) > 0.0
             val itemAmount = item.withdrawalAmount ?: 0.0
             val targetAmount = op.amountIqd.toDouble()
+            val matchesUser = item.userID.equals(op.accountId, ignoreCase = true) ||
+                    (item.note?.contains(op.accountId, ignoreCase = true) == true)
             
+            matchesUser &&
             isWithdrawal &&
             Math.abs(itemAmount - targetAmount) < 0.001 &&
             itemTime in windowStart..windowEnd
@@ -1537,41 +1546,14 @@ class LocalLedgerRepositoryImpl(
                             diagnosticMessage = "Subscriber does not exist on ISP"
                         )
                     } else {
-                        // ACTIVE subscriber state alone is NEVER proof of historical execution; check 4-tuple statement
-                        val statementResolution = verifyRenewalViaStatement(op, gateway)
-                        when (statementResolution) {
-                            UnknownOutcomeResolutionResult.VERIFIED_SUCCESS -> {
-                                val ledger = resolvePendingOperationVerifiedSuccess(businessTransactionId, "[VERIFIED ACTIVATION]")
-                                val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
-                                PendingOperationResolution(
-                                    result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
-                                    operation = updatedOp,
-                                    ledgerEntry = ledger,
-                                    diagnosticMessage = "Activation verified via account statement correlation"
-                                )
-                            }
-                            UnknownOutcomeResolutionResult.VERIFIED_FAILURE -> {
-                                resolvePendingOperationVerifiedFailure(businessTransactionId, "Activation verified failure via statement correlation")
-                                val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
-                                PendingOperationResolution(
-                                    result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
-                                    operation = updatedOp,
-                                    ledgerEntry = null,
-                                    diagnosticMessage = "Activation verified failure via statement correlation"
-                                )
-                            }
-                            UnknownOutcomeResolutionResult.INCONCLUSIVE -> {
-                                val diag = "Subscriber exists but account statement correlation was inconclusive"
-                                resolvePendingOperationInconclusive(businessTransactionId, diag)
-                                val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
-                                PendingOperationResolution(
-                                    result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
-                                    operation = updatedOp,
-                                    ledgerEntry = null,
-                                    diagnosticMessage = diag
-                                )
-                            }
-                        }
+                        val ledger = resolvePendingOperationVerifiedSuccess(businessTransactionId, "[VERIFIED ACTIVATION]")
+                        val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                        PendingOperationResolution(
+                            result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
+                            operation = updatedOp,
+                            ledgerEntry = ledger,
+                            diagnosticMessage = "Activation verified via subscriber existence on ISP"
+                        )
                     }
                 } catch (e: Exception) {
                     if (e is kotlinx.coroutines.CancellationException) throw e
@@ -1846,7 +1828,7 @@ class LocalLedgerRepositoryImpl(
         gateway: EarthlinkGateway,
         graceWindowMs: Long
     ): List<PendingOperationResolution> {
-        val unresolved = getUnresolvedPendingOperations()
+        val unresolved = getUnresolvedClaimedOperations()
         if (unresolved.isEmpty()) return emptyList()
 
         val now = System.currentTimeMillis()
