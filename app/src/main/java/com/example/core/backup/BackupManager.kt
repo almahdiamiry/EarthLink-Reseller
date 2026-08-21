@@ -26,13 +26,13 @@ object BackupManager {
     private const val TAG = "BackupManager"
     private const val DB_NAME = "earthlink_reseller_db"
 
-    suspend fun createLocalBackupZip(context: Context): File = withContext(Dispatchers.IO) {
+    suspend fun createLocalBackupZip(context: Context, password: String? = null): File = withContext(Dispatchers.IO) {
         com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.BACKUP) {
-            createLocalBackupZipInternal(context)
+            createLocalBackupZipInternal(context, password)
         }
     }
 
-    private suspend fun createLocalBackupZipInternal(context: Context): File = withContext(Dispatchers.IO) {
+    private suspend fun createLocalBackupZipInternal(context: Context, password: String? = null): File = withContext(Dispatchers.IO) {
         val app = context.applicationContext as? EarthlinkApp
         val passphraseStr = app?.preferenceManager?.getDatabasePassphrase() ?: ""
         val passphrase = passphraseStr.toByteArray(Charsets.UTF_8)
@@ -41,117 +41,55 @@ object BackupManager {
         val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date())
         val zipFile = File(backupDir, "earthlink_backup_$timeStamp.zip")
 
-        val isRobolectric = try {
-            Class.forName("org.robolectric.Robolectric")
-            true
-        } catch (_: Throwable) {
-            false
-        }
+        // We clone the live database table-by-table to produce a clean, unencrypted SQLite database.
+        val tempPlainDbName = "temp_plain_$timeStamp"
+        val tempPlainDbFile = context.getDatabasePath(tempPlainDbName)
+        tempPlainDbFile.parentFile?.mkdirs()
+        if (tempPlainDbFile.exists()) tempPlainDbFile.delete()
 
-        // D-1 Fix: Use VACUUM INTO to create an atomic, uncorrupted snapshot of the live WAL database
-        val tempVacuumDbFile = if (isRobolectric) {
-            File("temp_vacuum_$timeStamp.db")
-        } else {
-            File(context.cacheDir, "temp_vacuum_$timeStamp.db")
-        }
-        tempVacuumDbFile.parentFile?.mkdirs()
-        if (tempVacuumDbFile.exists()) tempVacuumDbFile.delete()
-
-        var vacuumSuccess = false
         try {
-            val db = try {
-                (context.applicationContext as? EarthlinkApp)?.database ?: AppDatabase.getDatabase(context, passphrase)
-            } catch (_: Throwable) {
-                AppDatabase.getDatabase(context, ByteArray(0))
+            val liveDb = app?.database ?: AppDatabase.getDatabase(context, passphrase)
+            val diskDb = AppDatabase.getDatabase(context, ByteArray(0), tempPlainDbName)
+            diskDb.openHelper.writableDatabase // Force creation of database file even if no data is written
+            
+            val accList = liveDb.localAccountDao().getAllOneShot(limit = 100000, offset = 0)
+            if (accList.isNotEmpty()) diskDb.localAccountDao().insertAll(accList)
+            val ledgerList = liveDb.localLedgerEntryDao().getAllOneShot(limit = 100000, offset = 0)
+            if (ledgerList.isNotEmpty()) diskDb.localLedgerEntryDao().insertAll(ledgerList)
+            for (b in liveDb.importBatchDao().getAllOneShot()) {
+                diskDb.importBatchDao().insert(b)
             }
-            val sqliteDb = db.openHelper.writableDatabase
-            val vacuumPath = if (isRobolectric) "temp_vacuum_$timeStamp.db" else tempVacuumDbFile.absolutePath.replace('\\', '/')
-            sqliteDb.execSQL("VACUUM INTO '$vacuumPath'")
-            vacuumSuccess = tempVacuumDbFile.exists() && tempVacuumDbFile.length() > 0
-            Log.i(TAG, "VACUUM INTO succeeded, created atomic DB copy (${tempVacuumDbFile.length()} bytes)")
+            for (s in liveDb.syncMetadataDao().getAllOneShot()) {
+                diskDb.syncMetadataDao().put(s.key, s.value, s.updatedAt)
+            }
+            for (a in liveDb.auditLogDao().getAllSync()) {
+                diskDb.auditLogDao().insert(a)
+            }
+            for (p in liveDb.pendingExternalOperationDao().getAllOneShot()) {
+                diskDb.pendingExternalOperationDao().insert(p)
+            }
+            val outboxList = liveDb.syncOutboxDao().getAllOneShot()
+            if (outboxList.isNotEmpty()) {
+                diskDb.syncOutboxDao().insertAll(outboxList)
+            }
+            diskDb.close()
+            AppDatabase.closeAndRemoveInstance(tempPlainDbName)
         } catch (e: Throwable) {
             if (e is kotlinx.coroutines.CancellationException) throw e
-            Log.w(TAG, "VACUUM INTO failed, falling back to checkpoint file copy: ${e.message}")
+            Log.e(TAG, "Failed to create plaintext clone of live database: ${e.message}", e)
+            throw IllegalStateException("Database clone failed: ${e.message}", e)
         }
 
         try {
             ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
-                if (vacuumSuccess) {
-                    addFileToZip(zos, tempVacuumDbFile, DB_NAME)
+                if (password.isNullOrEmpty()) {
+                    addFileToZip(zos, tempPlainDbFile, DB_NAME)
                 } else {
-                    // Fallback: Force WAL Checkpoint to flush memory/journal data to disk
-                    try {
-                        val db = (context.applicationContext as? EarthlinkApp)?.database ?: AppDatabase.getDatabase(context, passphrase)
-                        val sqliteDb = db.openHelper.writableDatabase
-                        sqliteDb.query("PRAGMA wal_checkpoint(TRUNCATE);")?.use { cursor ->
-                            cursor.moveToFirst()
-                        }
-                    } catch (e: Throwable) {
-                        if (e is kotlinx.coroutines.CancellationException) throw e
-                        Log.e(TAG, "Failed to run WAL checkpoint before backup", e)
-                    }
-
-                    val dbFile = context.getDatabasePath(DB_NAME)
-                    val walFile = File(dbFile.path + "-wal")
-                    val shmFile = File(dbFile.path + "-shm")
-
-                    if (dbFile.exists()) {
-                        addFileToZip(zos, dbFile, DB_NAME)
-                        if (walFile.exists()) addFileToZip(zos, walFile, "$DB_NAME-wal")
-                        if (shmFile.exists()) addFileToZip(zos, shmFile, "$DB_NAME-shm")
-                    } else {
-                        // In-memory database fallback (e.g. Robolectric / Unit Test environment)
-                        val tempDiskDbName = "temp_vacuum_$timeStamp.db"
-                        val diskDbFile = context.getDatabasePath(tempDiskDbName)
-                        diskDbFile.parentFile?.mkdirs()
-                        if (diskDbFile.exists()) diskDbFile.delete()
-                        try {
-                            val diskDb = AppDatabase.getDatabase(context, ByteArray(0), tempDiskDbName)
-                            val liveDb = (context.applicationContext as? EarthlinkApp)?.database ?: AppDatabase.getDatabase(context, passphrase)
-                            
-                            val accList = liveDb.localAccountDao().getAllOneShot(limit = 100000, offset = 0)
-                            if (accList.isNotEmpty()) diskDb.localAccountDao().insertAll(accList)
-                            val ledgerList = liveDb.localLedgerEntryDao().getAllOneShot(limit = 100000, offset = 0)
-                            if (ledgerList.isNotEmpty()) diskDb.localLedgerEntryDao().insertAll(ledgerList)
-                            for (b in liveDb.importBatchDao().getAllOneShot()) {
-                                diskDb.importBatchDao().insert(b)
-                            }
-                            for (s in liveDb.syncMetadataDao().getAllOneShot()) {
-                                diskDb.syncMetadataDao().put(s.key, s.value, s.updatedAt)
-                            }
-                            for (a in liveDb.auditLogDao().getAllSync()) {
-                                diskDb.auditLogDao().insert(a)
-                            }
-                            diskDb.close()
-                            AppDatabase.closeAndRemoveInstance(tempDiskDbName)
-                            if (diskDbFile.exists() && diskDbFile.length() > 0L) {
-                                addFileToZip(zos, diskDbFile, DB_NAME)
-                            }
-                        } catch (e: Throwable) {
-                            if (e is kotlinx.coroutines.CancellationException) throw e
-                            Log.e(TAG, "Failed to export in-memory database to disk backup: ${e.message}", e)
-                        } finally {
-                            if (diskDbFile.exists()) diskDbFile.delete()
-                            File(diskDbFile.path + "-wal").delete()
-                            File(diskDbFile.path + "-shm").delete()
-                        }
-                    }
-                }
-
-                // Add metadata JSON with database encryption passphrase
-                val metadata = JSONObject().apply {
-                    put("appName", "Earthlink Reseller")
-                    put("dbVersion", AppDatabase.VERSION)
-                    put("createdAt", System.currentTimeMillis())
-                    put("formattedDate", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()))
-                    val firebaseUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
-                    val uidKeySeed = firebaseUid ?: (app?.preferenceManager?.getDeviceId() ?: "default_device_id")
-                    
                     val salt = ByteArray(16).apply { java.security.SecureRandom().nextBytes(this) }
                     val iv = ByteArray(12).apply { java.security.SecureRandom().nextBytes(this) }
 
                     val factory = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-                    val spec = javax.crypto.spec.PBEKeySpec(uidKeySeed.toCharArray(), salt, 10000, 256)
+                    val spec = javax.crypto.spec.PBEKeySpec(password.toCharArray(), salt, 15000, 256)
                     val secretKey = factory.generateSecret(spec)
                     val keySpec = javax.crypto.spec.SecretKeySpec(secretKey.encoded, "AES")
 
@@ -159,13 +97,43 @@ object BackupManager {
                     val gcmSpec = javax.crypto.spec.GCMParameterSpec(128, iv)
                     cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
 
-                    val encryptedPassBytes = cipher.doFinal(passphraseStr.toByteArray(Charsets.UTF_8))
-                    val encryptedPass = android.util.Base64.encodeToString(encryptedPassBytes, android.util.Base64.NO_WRAP)
-                    
-                    put("encVersion", 2)
-                    put("dbPassphrase", encryptedPass)
-                    put("iv", android.util.Base64.encodeToString(iv, android.util.Base64.NO_WRAP))
-                    put("salt", android.util.Base64.encodeToString(salt, android.util.Base64.NO_WRAP))
+                    val tempEncryptedDbFile = File(tempPlainDbFile.parentFile, "temp_enc_$timeStamp.db")
+                    try {
+                        val inputBytes = tempPlainDbFile.readBytes()
+                        val encryptedBytes = cipher.doFinal(inputBytes)
+                        tempEncryptedDbFile.writeBytes(encryptedBytes)
+                        addFileToZip(zos, tempEncryptedDbFile, DB_NAME)
+                    } finally {
+                        if (tempEncryptedDbFile.exists()) tempEncryptedDbFile.delete()
+                    }
+
+                    // Add metadata JSON with custom password protection attributes
+                    val metadata = JSONObject().apply {
+                        put("appName", "Earthlink Reseller")
+                        put("dbVersion", AppDatabase.VERSION)
+                        put("createdAt", System.currentTimeMillis())
+                        put("formattedDate", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()))
+                        put("encryptionMode", "PASSWORD")
+                        put("salt", android.util.Base64.encodeToString(salt, android.util.Base64.NO_WRAP))
+                        put("iv", android.util.Base64.encodeToString(iv, android.util.Base64.NO_WRAP))
+                        put("iterations", 15000)
+                        put("dbPassphrase", "password_protected")
+                    }
+                    val metadataBytes = metadata.toString().toByteArray(Charsets.UTF_8)
+                    zos.putNextEntry(ZipEntry("backup_info.json"))
+                    zos.write(metadataBytes)
+                    zos.closeEntry()
+                    return@use
+                }
+
+                // Add metadata JSON with unencrypted attributes
+                val metadata = JSONObject().apply {
+                    put("appName", "Earthlink Reseller")
+                    put("dbVersion", AppDatabase.VERSION)
+                    put("createdAt", System.currentTimeMillis())
+                    put("formattedDate", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()))
+                    put("encryptionMode", "NONE")
+                    put("dbPassphrase", "")
                 }
                 val metadataBytes = metadata.toString().toByteArray(Charsets.UTF_8)
                 zos.putNextEntry(ZipEntry("backup_info.json"))
@@ -173,7 +141,11 @@ object BackupManager {
                 zos.closeEntry()
             }
         } finally {
-            if (tempVacuumDbFile.exists()) tempVacuumDbFile.delete()
+            if (tempPlainDbFile.exists()) tempPlainDbFile.delete()
+            val wal = File(tempPlainDbFile.path + "-wal")
+            if (wal.exists()) wal.delete()
+            val shm = File(tempPlainDbFile.path + "-shm")
+            if (shm.exists()) shm.delete()
         }
 
         Log.i(TAG, "Backup ZIP created successfully at: ${zipFile.absolutePath} (${zipFile.length()} bytes)")
@@ -191,10 +163,10 @@ object BackupManager {
         return File(baseDir, "EarthlinkBackups").apply { if (!exists()) mkdirs() }
     }
 
-    suspend fun createDailyRollingBackup(context: Context): File? = withContext(Dispatchers.IO) {
+    suspend fun createDailyRollingBackup(context: Context, password: String? = null): File? = withContext(Dispatchers.IO) {
         try {
             val dailyBackupsDir = getBackupsDirectory(context)
-            val tempZip = createLocalBackupZip(context)
+            val tempZip = createLocalBackupZip(context, password)
             
             val timeStamp = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.US).format(Date())
             val finalZipFile = File(dailyBackupsDir, "backup_$timeStamp.zip")
@@ -1110,15 +1082,16 @@ object BackupManager {
         }
     }
 
-    suspend fun restoreBackupZip(context: Context, backupFile: File, force: Boolean = false): Boolean = withContext(Dispatchers.IO) {
-        restoreBackupZipInternal(context, backupFile, decision = null, force = force)
+    suspend fun restoreBackupZip(context: Context, backupFile: File, force: Boolean = false, password: String? = null): Boolean = withContext(Dispatchers.IO) {
+        restoreBackupZipInternal(context, backupFile, decision = null, force = force, password = password)
     }
 
     private suspend fun restoreBackupZipInternal(
         context: Context,
         backupFile: File,
         decision: com.example.core.model.RestoreMergeDecision?,
-        force: Boolean = false
+        force: Boolean = false,
+        password: String? = null
     ): Boolean = withContext(Dispatchers.IO) {
         com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.RESTORE) {
             val app = context.applicationContext as? EarthlinkApp
@@ -1175,8 +1148,9 @@ object BackupManager {
                 action = "PRE_RESTORE_BACKUP_FAILED",
                 message = "Failed to create persistent pre-restore backup: ${e.localizedMessage}"
             )
+            e.printStackTrace()
             Log.e(TAG, "Aborting restore because pre-restore safety backup could not be created.")
-            throw IllegalStateException("Pre-restore safety backup failed: ${e.localizedMessage}")
+            throw IllegalStateException("Pre-restore safety backup failed: ${e.localizedMessage}", e)
         }
 
         val tempDbName = "merged_backup.db"
@@ -1184,8 +1158,14 @@ object BackupManager {
         val tempWal = File(tempDb.path + "-wal")
         val tempShm = File(tempDb.path + "-shm")
 
+        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date())
         var extractedPassphrase: String? = null
         var backupDb: AppDatabase? = null
+        var isPlaintextSqlite = false
+        var encryptionMode = "NONE"
+        var saltBase64: String? = null
+        var ivBase64: String? = null
+        var iterations = 15000
 
         try {
             // Clear old target WAL/SHM sidecar files
@@ -1194,68 +1174,111 @@ object BackupManager {
             if (tempShm.exists()) tempShm.delete()
 
             if (backupFile.name.endsWith(".zip", ignoreCase = true)) {
-                // Extract DB, sidecars, and backup_info.json from ZIP
+                // First pass: extract backup_info.json to check encryptionMode
+                ZipInputStream(FileInputStream(backupFile)).use { zis ->
+                    var entry: ZipEntry? = zis.nextEntry
+                    while (entry != null) {
+                        if (entry.name == "backup_info.json") {
+                            try {
+                                val baos = java.io.ByteArrayOutputStream()
+                                val buf = ByteArray(1024)
+                                var count: Int
+                                while (zis.read(buf).also { count = it } != -1) {
+                                    baos.write(buf, 0, count)
+                                }
+                                val jsonStr = baos.toString("UTF-8")
+                                val json = JSONObject(jsonStr)
+                                encryptionMode = json.optString("encryptionMode", "NONE")
+                                saltBase64 = if (json.has("salt")) json.getString("salt") else null
+                                ivBase64 = if (json.has("iv")) json.getString("iv") else null
+                                iterations = json.optInt("iterations", 15000)
+
+                                if (json.has("dbPassphrase")) {
+                                    val encPass = json.getString("dbPassphrase")
+                                    if (encPass.isNotBlank() && encPass != "password_protected") {
+                                        val firebaseUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+                                        val deviceId = app?.preferenceManager?.getDeviceId() ?: "default_device_id"
+                                        val candidateSeeds = listOfNotNull(firebaseUid, deviceId, "default_fallback_uid").distinct()
+                                        var decrypted: String? = null
+
+                                        if (json.has("salt") && json.has("iv")) {
+                                            val iv = android.util.Base64.decode(json.getString("iv"), android.util.Base64.NO_WRAP)
+                                            val salt = android.util.Base64.decode(json.getString("salt"), android.util.Base64.NO_WRAP)
+                                            val cipherBytes = android.util.Base64.decode(encPass, android.util.Base64.NO_WRAP)
+
+                                            for (seed in candidateSeeds) {
+                                                try {
+                                                    val factory = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+                                                    val spec = javax.crypto.spec.PBEKeySpec(seed.toCharArray(), salt, 10000, 256)
+                                                    val secretKey = factory.generateSecret(spec)
+                                                    val keySpec = javax.crypto.spec.SecretKeySpec(secretKey.encoded, "AES")
+
+                                                    val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+                                                    val gcmSpec = javax.crypto.spec.GCMParameterSpec(128, iv)
+                                                    cipher.init(javax.crypto.Cipher.DECRYPT_MODE, keySpec, gcmSpec)
+
+                                                    val res = String(cipher.doFinal(cipherBytes), Charsets.UTF_8)
+                                                    if (res.isNotBlank()) {
+                                                        decrypted = res
+                                                        break
+                                                    }
+                                                } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e }
+                                            }
+                                        }
+                                        extractedPassphrase = decrypted ?: encPass
+                                    }
+                                }
+                            } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+                                Log.w(TAG, "Failed to parse backup_info.json in backup ZIP", e)
+                            }
+                        }
+                        zis.closeEntry()
+                        entry = zis.nextEntry
+                    }
+                }
+
+                // Second pass: extract database file (and decrypt if necessary)
                 ZipInputStream(FileInputStream(backupFile)).use { zis ->
                     var entry: ZipEntry? = zis.nextEntry
                     while (entry != null) {
                         when {
-                            entry.name == "backup_info.json" -> {
-                                try {
-                                    val baos = java.io.ByteArrayOutputStream()
-                                    val buf = ByteArray(1024)
-                                    var count: Int
-                                    while (zis.read(buf).also { count = it } != -1) {
-                                        baos.write(buf, 0, count)
-                                    }
-                                    val jsonStr = baos.toString("UTF-8")
-                                    val json = JSONObject(jsonStr)
-                                    if (json.has("dbPassphrase")) {
-                                        val encPass = json.getString("dbPassphrase")
-                                        if (encPass.isNotBlank()) {
-                                            val firebaseUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
-                                            val deviceId = app?.preferenceManager?.getDeviceId() ?: "default_device_id"
-                                            val candidateSeeds = listOfNotNull(firebaseUid, deviceId, "default_fallback_uid").distinct()
-                                            var decrypted: String? = null
-
-                                            if (json.has("salt") && json.has("iv")) {
-                                                val iv = android.util.Base64.decode(json.getString("iv"), android.util.Base64.NO_WRAP)
-                                                val salt = android.util.Base64.decode(json.getString("salt"), android.util.Base64.NO_WRAP)
-                                                val cipherBytes = android.util.Base64.decode(encPass, android.util.Base64.NO_WRAP)
-
-                                                for (seed in candidateSeeds) {
-                                                    try {
-                                                        val factory = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-                                                        val spec = javax.crypto.spec.PBEKeySpec(seed.toCharArray(), salt, 10000, 256)
-                                                        val secretKey = factory.generateSecret(spec)
-                                                        val keySpec = javax.crypto.spec.SecretKeySpec(secretKey.encoded, "AES")
-
-                                                        val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
-                                                        val gcmSpec = javax.crypto.spec.GCMParameterSpec(128, iv)
-                                                        cipher.init(javax.crypto.Cipher.DECRYPT_MODE, keySpec, gcmSpec)
-
-                                                        val res = String(cipher.doFinal(cipherBytes), Charsets.UTF_8)
-                                                        if (res.isNotBlank()) {
-                                                            decrypted = res
-                                                            break
-                                                        }
-                                                    } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e }
-                                                }
-                                            } else {
-                                                // Legacy AES/ECB decryption path removed (RC-11)
-                                            }
-                                            extractedPassphrase = decrypted ?: encPass
-                                        }
-                                    }
-                                } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                                    Log.w(TAG, "Failed to parse backup_info.json in backup ZIP", e)
-                                }
-                            }
                             entry.name == DB_NAME || entry.name.endsWith(".db", ignoreCase = true) -> {
                                 tempDb.parentFile?.mkdirs()
-                                FileOutputStream(tempDb).use { fos ->
-                                    zis.copyTo(fos)
+                                if (encryptionMode == "PASSWORD") {
+                                    val tempEncFile = File(context.cacheDir, "temp_enc_restore_$timeStamp.db")
+                                    try {
+                                        FileOutputStream(tempEncFile).use { fos -> zis.copyTo(fos) }
+
+                                        if (password.isNullOrEmpty()) {
+                                            Log.e(TAG, "Password required for encrypted backup restore")
+                                            return@withOperation false
+                                        }
+                                        val salt = android.util.Base64.decode(saltBase64 ?: "", android.util.Base64.NO_WRAP)
+                                        val iv = android.util.Base64.decode(ivBase64 ?: "", android.util.Base64.NO_WRAP)
+                                        val factory = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+                                        val spec = javax.crypto.spec.PBEKeySpec(password.toCharArray(), salt, iterations, 256)
+                                        val secretKey = factory.generateSecret(spec)
+                                        val keySpec = javax.crypto.spec.SecretKeySpec(secretKey.encoded, "AES")
+
+                                        val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+                                        val gcmSpec = javax.crypto.spec.GCMParameterSpec(128, iv)
+                                        cipher.init(javax.crypto.Cipher.DECRYPT_MODE, keySpec, gcmSpec)
+
+                                        val inputBytes = tempEncFile.readBytes()
+                                        val decryptedBytes = cipher.doFinal(inputBytes)
+                                        tempDb.writeBytes(decryptedBytes)
+                                        isPlaintextSqlite = true
+                                    } catch (e: Exception) {
+                                        if (e is kotlinx.coroutines.CancellationException) throw e
+                                        Log.e(TAG, "AES-GCM Decryption of database file failed: ${e.message}")
+                                        return@withOperation false
+                                    } finally {
+                                        if (tempEncFile.exists()) tempEncFile.delete()
+                                    }
+                                } else {
+                                    FileOutputStream(tempDb).use { fos -> zis.copyTo(fos) }
+                                    Log.i(TAG, "Successfully extracted DB from backup ZIP to ${tempDb.absolutePath}")
                                 }
-                                Log.i(TAG, "Successfully extracted DB from backup ZIP to ${tempDb.absolutePath}")
                             }
                             entry.name == "$DB_NAME-wal" -> {
                                 FileOutputStream(tempWal).use { fos -> zis.copyTo(fos) }
@@ -1287,15 +1310,18 @@ object BackupManager {
             // Build candidate passphrases list
             val fallbackPass = app?.preferenceManager?.getFallbackPassphrase(context)
             val firebaseUid = app?.syncRepository?.getFirebaseUid()
-            val candidates = listOfNotNull(
-                extractedPassphrase,
-                currentPassphrase,
-                fallbackPass,
-                firebaseUid,
-                "" // Empty passphrase candidate for unencrypted SQLite databases
-            ).distinct()
-            var verifiedPassphrase: String? = null
+            val candidates = mutableListOf<String>()
+            if (isPlaintextSqlite) {
+                candidates.add("")
+            } else {
+                if (extractedPassphrase != null) candidates.add(extractedPassphrase!!)
+                candidates.add(currentPassphrase)
+                if (fallbackPass != null) candidates.add(fallbackPass)
+                if (firebaseUid != null) candidates.add(firebaseUid)
+                candidates.add("") // Empty passphrase candidate for unencrypted SQLite databases
+            }
 
+            var verifiedPassphrase: String? = null
             System.err.println("RESTORE_DEBUG: tempDb.exists=${tempDb.exists()}, length=${tempDb.length()}, candidates=$candidates")
             for (candPass in candidates) {
                 var testDb: AppDatabase? = null
@@ -1400,9 +1426,9 @@ object BackupManager {
     }
 }
 
-    suspend fun exportBackupToUri(context: Context, uri: Uri): Boolean = withContext(Dispatchers.IO) {
+    suspend fun exportBackupToUri(context: Context, uri: Uri, password: String? = null): Boolean = withContext(Dispatchers.IO) {
         try {
-            val zipFile = createLocalBackupZip(context)
+            val zipFile = createLocalBackupZip(context, password)
             context.contentResolver.openOutputStream(uri)?.use { outputStream ->
                 FileInputStream(zipFile).use { inputStream ->
                     inputStream.copyTo(outputStream)
@@ -1417,7 +1443,7 @@ object BackupManager {
         }
     }
 
-    suspend fun importBackupFromUri(context: Context, uri: Uri, force: Boolean = false): Boolean = withContext(Dispatchers.IO) {
+    suspend fun importBackupFromUri(context: Context, uri: Uri, force: Boolean = false, password: String? = null): Boolean = withContext(Dispatchers.IO) {
         try {
             val tempFile = File(context.cacheDir, "imported_restore_temp.zip")
             context.contentResolver.openInputStream(uri)?.use { inputStream ->
@@ -1426,13 +1452,41 @@ object BackupManager {
                 }
             } ?: return@withContext false
 
-            val success = restoreBackupZip(context, tempFile, force = force)
+            val success = restoreBackupZip(context, tempFile, force = force, password = password)
             tempFile.delete()
             success
         } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
             Log.e(TAG, "Failed to import backup from URI: $uri", e)
             false
         }
+    }
+
+    fun isBackupPasswordProtected(backupFile: File): Boolean {
+        if (!backupFile.exists() || !backupFile.name.endsWith(".zip", ignoreCase = true)) {
+            return false
+        }
+        try {
+            ZipInputStream(FileInputStream(backupFile)).use { zis ->
+                var entry = zis.nextEntry
+                while (entry != null) {
+                    if (entry.name == "backup_info.json") {
+                        val baos = java.io.ByteArrayOutputStream()
+                        val buf = ByteArray(1024)
+                        var count: Int
+                        while (zis.read(buf).also { count = it } != -1) {
+                            baos.write(buf, 0, count)
+                        }
+                        val json = JSONObject(baos.toString("UTF-8"))
+                        return json.optString("encryptionMode", "") == "PASSWORD"
+                    }
+                    zis.closeEntry()
+                    entry = zis.nextEntry
+                }
+            }
+        } catch (e: Exception) {
+            // Safe fallback
+        }
+        return false
     }
 
     private fun addFileToZip(zos: ZipOutputStream, file: File, entryName: String) {

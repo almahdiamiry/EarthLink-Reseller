@@ -116,6 +116,19 @@ fun SettingsScreen(
     var backupRestoreDate by rememberSaveable { mutableStateOf<String?>(null) }
     var currentDbStats by remember { mutableStateOf<com.example.core.backup.BackupManager.DatabaseStats?>(null) }
 
+    // --- PORTABLE BACKUP ENCRYPTION STATES ---
+    var showBackupPasswordOptionsDialog by rememberSaveable { mutableStateOf(false) }
+    var backupPasswordInput by rememberSaveable { mutableStateOf("") }
+    var backupPasswordError by rememberSaveable { mutableStateOf<String?>(null) }
+    var isBackupOperationExport by rememberSaveable { mutableStateOf(false) }
+    var selectedEncryptionModePassword by rememberSaveable { mutableStateOf(false) }
+    var tempBackupPassword by rememberSaveable { mutableStateOf<String?>(null) }
+
+    var showRestorePasswordPromptDialog by rememberSaveable { mutableStateOf(false) }
+    var restorePasswordInput by rememberSaveable { mutableStateOf("") }
+    var restorePasswordError by rememberSaveable { mutableStateOf<String?>(null) }
+    var restoreTargetFile by remember { mutableStateOf<java.io.File?>(null) }
+
     LaunchedEffect(selectedBackupToRestore) {
         val file = selectedBackupToRestore
         if (file != null) {
@@ -132,12 +145,13 @@ fun SettingsScreen(
     ) { uri ->
         if (uri != null) {
             coroutineScope.launch {
-                val success = com.example.core.backup.BackupManager.exportBackupToUri(localContext, uri)
+                val success = com.example.core.backup.BackupManager.exportBackupToUri(localContext, uri, tempBackupPassword)
                 if (success) {
                     Toast.makeText(localContext, if (currentLang == "ar") "تم تصدير النسخة الاحتياطية بنجاح" else "Backup exported successfully!", Toast.LENGTH_SHORT).show()
                 } else {
                     Toast.makeText(localContext, if (currentLang == "ar") "فشل تصدير النسخة الاحتياطية" else "Backup export failed", Toast.LENGTH_LONG).show()
                 }
+                tempBackupPassword = null
             }
         }
     }
@@ -342,29 +356,11 @@ fun SettingsScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(
                             onClick = {
-                                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                                    isPerformingLocalBackup = true
-                                    try {
-                                        val zipFile = com.example.core.backup.BackupManager.createDailyRollingBackup(localContext)
-                                        if (zipFile != null && zipFile.exists()) {
-                                            val now = System.currentTimeMillis()
-                                            prefs.saveLocalLastBackupTime(now)
-                                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                                Toast.makeText(localContext, if (currentLang == "ar") "تم حفظ النسخة الاحتياطية بنجاح!" else "Local backup created successfully!", Toast.LENGTH_SHORT).show()
-                                            }
-                                        } else {
-                                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                                Toast.makeText(localContext, if (currentLang == "ar") "فشل إنشاء النسخة الاحتياطية" else "Backup creation failed", Toast.LENGTH_LONG).show()
-                                            }
-                                        }
-                                    } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                            Toast.makeText(localContext, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                                        }
-                                    } finally {
-                                        isPerformingLocalBackup = false
-                                    }
-                                }
+                                isBackupOperationExport = false
+                                backupPasswordInput = ""
+                                backupPasswordError = null
+                                selectedEncryptionModePassword = false
+                                showBackupPasswordOptionsDialog = true
                             },
                             enabled = !isPerformingLocalBackup,
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
@@ -416,7 +412,13 @@ fun SettingsScreen(
                         }
 
                         TextButton(
-                            onClick = { exportLocalBackupLauncher.launch("earthlink_backup_${System.currentTimeMillis()}.zip") },
+                            onClick = {
+                                isBackupOperationExport = true
+                                backupPasswordInput = ""
+                                backupPasswordError = null
+                                selectedEncryptionModePassword = false
+                                showBackupPasswordOptionsDialog = true
+                            },
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Icon(imageVector = Icons.Default.FolderZip, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -459,7 +461,14 @@ fun SettingsScreen(
                                                 pendingFileForRestore = file
                                                 showUnsyncedOutboxWarningDialog = true
                                             } else {
-                                                selectedBackupToRestore = file
+                                                if (com.example.core.backup.BackupManager.isBackupPasswordProtected(file)) {
+                                                    restoreTargetFile = file
+                                                    restorePasswordInput = ""
+                                                    restorePasswordError = null
+                                                    showRestorePasswordPromptDialog = true
+                                                } else {
+                                                    selectedBackupToRestore = file
+                                                }
                                             }
                                         }
                                     },
@@ -515,7 +524,14 @@ fun SettingsScreen(
                     Button(
                         onClick = {
                             showUnsyncedOutboxWarningDialog = false
-                            selectedBackupToRestore = fileToRestore
+                            if (com.example.core.backup.BackupManager.isBackupPasswordProtected(fileToRestore)) {
+                                restoreTargetFile = fileToRestore
+                                restorePasswordInput = ""
+                                restorePasswordError = null
+                                showRestorePasswordPromptDialog = true
+                            } else {
+                                selectedBackupToRestore = fileToRestore
+                            }
                             pendingFileForRestore = null
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
@@ -618,6 +634,267 @@ fun SettingsScreen(
                 dismissButton = {
                     TextButton(
                         onClick = { selectedBackupToRestore = null },
+                        enabled = !isRestoringFromLocal
+                    ) {
+                        Text(if (currentLang == "ar") "إلغاء" else "Cancel")
+                    }
+                }
+            )
+        }
+
+        // --- DIALOG 1.6: Backup Password / Encryption Options Dialog ---
+        if (showBackupPasswordOptionsDialog) {
+            AlertDialog(
+                onDismissRequest = { showBackupPasswordOptionsDialog = false },
+                title = {
+                    Text(
+                        text = if (currentLang == "ar") "خيارات حماية النسخة الاحتياطية" else "Backup Security Options",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            text = if (currentLang == "ar") {
+                                "اختر طريقة تشفير وحماية النسخة الاحتياطية الخاصة بك للتنقل الآمن بين الأجهزة:"
+                            } else {
+                                "Select the security format for your backup to ensure secure cross-device portability:"
+                            },
+                            fontSize = 14.sp
+                        )
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedEncryptionModePassword = false }
+                                .padding(vertical = 4.dp)
+                        ) {
+                            RadioButton(
+                                selected = !selectedEncryptionModePassword,
+                                onClick = { selectedEncryptionModePassword = false }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = if (currentLang == "ar") "بدون تشفير" else "No Encryption",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    text = if (currentLang == "ar") "غير محمية بكلمة مرور (سهلة الاسترجاع)" else "Not password protected (easy to restore)",
+                                    fontSize = 11.sp,
+                                    color = Color.Gray
+                                )
+                            }
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedEncryptionModePassword = true }
+                                .padding(vertical = 4.dp)
+                        ) {
+                            RadioButton(
+                                selected = selectedEncryptionModePassword,
+                                onClick = { selectedEncryptionModePassword = true }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = if (currentLang == "ar") "محمية بكلمة مرور" else "Password Protected",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    text = if (currentLang == "ar") "تشفير AES-256 آمن (يتطلب كلمة المرور للاسترجاع)" else "Secure AES-256 encryption (requires password to restore)",
+                                    fontSize = 11.sp,
+                                    color = Color.Gray
+                                )
+                            }
+                        }
+
+                        if (selectedEncryptionModePassword) {
+                            OutlinedTextField(
+                                value = backupPasswordInput,
+                                onValueChange = {
+                                    backupPasswordInput = it
+                                    backupPasswordError = if (it.length < 4) {
+                                        if (currentLang == "ar") "يجب أن تكون كلمة المرور 4 أحرف على الأقل" else "Password must be at least 4 characters"
+                                    } else null
+                                },
+                                label = { Text(if (currentLang == "ar") "كلمة مرور النسخة الاحتياطية" else "Backup Password") },
+                                isError = backupPasswordError != null,
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            backupPasswordError?.let {
+                                Text(text = it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (selectedEncryptionModePassword) {
+                                if (backupPasswordInput.length < 4) {
+                                    backupPasswordError = if (currentLang == "ar") "يجب أن تكون كلمة المرور 4 أحرف على الأقل" else "Password must be at least 4 characters"
+                                    return@Button
+                                }
+                                tempBackupPassword = backupPasswordInput
+                            } else {
+                                tempBackupPassword = null
+                            }
+
+                            showBackupPasswordOptionsDialog = false
+
+                            if (isBackupOperationExport) {
+                                exportLocalBackupLauncher.launch("earthlink_backup_${System.currentTimeMillis()}.zip")
+                            } else {
+                                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                                    isPerformingLocalBackup = true
+                                    try {
+                                        val zipFile = com.example.core.backup.BackupManager.createDailyRollingBackup(localContext, tempBackupPassword)
+                                        if (zipFile != null && zipFile.exists()) {
+                                            val now = System.currentTimeMillis()
+                                            prefs.saveLocalLastBackupTime(now)
+                                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                Toast.makeText(localContext, if (currentLang == "ar") "تم حفظ النسخة الاحتياطية بنجاح!" else "Local backup created successfully!", Toast.LENGTH_SHORT).show()
+                                            }
+                                        } else {
+                                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                Toast.makeText(localContext, if (currentLang == "ar") "فشل إنشاء النسخة الاحتياطية" else "Backup creation failed", Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+                                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                            Toast.makeText(localContext, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                                        }
+                                    } finally {
+                                        isPerformingLocalBackup = false
+                                        tempBackupPassword = null
+                                    }
+                                }
+                            }
+                        }
+                    ) {
+                        Text(if (currentLang == "ar") "إنشاء نسخة احتياطية" else "Create Backup")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showBackupPasswordOptionsDialog = false }) {
+                        Text(if (currentLang == "ar") "إلغاء" else "Cancel")
+                    }
+                }
+            )
+        }
+
+        // --- DIALOG 1.7: Restore Password Prompt Dialog ---
+        if (showRestorePasswordPromptDialog && restoreTargetFile != null) {
+            val fileToRestore = restoreTargetFile!!
+            AlertDialog(
+                onDismissRequest = {
+                    showRestorePasswordPromptDialog = false
+                    restoreTargetFile = null
+                },
+                title = {
+                    Text(
+                        text = if (currentLang == "ar") "أدخل كلمة مرور فك التشفير" else "Enter Decryption Password",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = if (currentLang == "ar") {
+                                "هذه النسخة الاحتياطية مشفرة بكلمة مرور. يرجى إدخال كلمة المرور لفك التشفير والاسترجاع:"
+                            } else {
+                                "This backup is password protected. Please enter the password to decrypt and restore:"
+                            },
+                            fontSize = 14.sp
+                        )
+
+                        OutlinedTextField(
+                            value = restorePasswordInput,
+                            onValueChange = {
+                                restorePasswordInput = it
+                                restorePasswordError = null
+                            },
+                            label = { Text(if (currentLang == "ar") "كلمة المرور" else "Password") },
+                            isError = restorePasswordError != null,
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        restorePasswordError?.let {
+                            Text(text = it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (restorePasswordInput.isEmpty()) {
+                                restorePasswordError = if (currentLang == "ar") "يرجى إدخال كلمة المرور" else "Please enter the password"
+                                return@Button
+                            }
+
+                            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                                isRestoringFromLocal = true
+                                try {
+                                    val restored = com.example.core.backup.BackupManager.restoreBackupZip(localContext, fileToRestore, force = true, password = restorePasswordInput)
+                                    if (restored) {
+                                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                            Toast.makeText(localContext, if (currentLang == "ar") "تم استرجاع النسخة بنجاح! جاري إعادة التشغيل..." else "Database restored successfully! Restarting...", Toast.LENGTH_LONG).show()
+                                            showRestorePasswordPromptDialog = false
+                                            restoreTargetFile = null
+                                            availableLocalBackups = null
+                                            
+                                            // Force restart to reinitialize Room InvalidationTracker and singletons
+                                            val pm = localContext.packageManager
+                                            val intent = pm.getLaunchIntentForPackage(localContext.packageName)
+                                            if (intent != null) {
+                                                val mainIntent = android.content.Intent.makeRestartActivityTask(intent.component)
+                                                localContext.startActivity(mainIntent)
+                                                Runtime.getRuntime().exit(0)
+                                            }
+                                        }
+                                    } else {
+                                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                            restorePasswordError = if (currentLang == "ar") "كلمة مرور خاطئة أو فشل فك التشفير" else "Incorrect password or decryption failed"
+                                        }
+                                    }
+                                } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                        restorePasswordError = e.message ?: "Decryption error"
+                                    }
+                                } finally {
+                                    isRestoringFromLocal = false
+                                }
+                            }
+                        },
+                        enabled = !isRestoringFromLocal
+                    ) {
+                        if (isRestoringFromLocal) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(if (currentLang == "ar") "جاري فك التشفير..." else "Decrypting...")
+                        } else {
+                            Text(if (currentLang == "ar") "فك التشفير والاسترجاع" else "Decrypt & Restore")
+                        }
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            showRestorePasswordPromptDialog = false
+                            restoreTargetFile = null
+                        },
                         enabled = !isRestoringFromLocal
                     ) {
                         Text(if (currentLang == "ar") "إلغاء" else "Cancel")
