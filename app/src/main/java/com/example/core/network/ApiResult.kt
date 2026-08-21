@@ -1,6 +1,41 @@
 package com.example.core.network
 
 /**
+ * Core Domain Exception Hierarchy (com.example.core.network)
+ * Eliminates keyword heuristic guessing and ensures all network/API boundaries
+ * are strictly typed and fail-closed.
+ */
+sealed class EarthlinkGatewayException(message: String, cause: Throwable? = null) : Exception(message, cause)
+
+/**
+ * Transport Uncertainty: Outcome is unknown. Gateway call may or may not have reached the ISP.
+ * Handled as: UNKNOWN / INCONCLUSIVE -> PENDING (dispatchClaimCount = 1). Zero ledger mutation.
+ */
+class EarthlinkTransportException(
+    message: String,
+    cause: Throwable? = null
+) : EarthlinkGatewayException(message, cause)
+
+/**
+ * Definitive Business Rejection: ISP explicitly processed and rejected the request.
+ * Handled as: EXPLICIT_FAILURE -> FAILED. Zero ledger mutation.
+ */
+class EarthlinkBusinessException(
+    val statusCode: Int? = null,
+    val errorMessage: String,
+    cause: Throwable? = null
+) : EarthlinkGatewayException(errorMessage, cause)
+
+/**
+ * Authentication / Session Failure: Session expired or invalid credentials.
+ * Handled as: EXPLICIT_FAILURE -> FAILED. Token cleared. Zero ledger mutation.
+ */
+class EarthlinkAuthException(
+    message: String,
+    cause: Throwable? = null
+) : EarthlinkGatewayException(message, cause)
+
+/**
  * Fail-Closed Typed API Result (RC-C: Fail-Closed External API Contract)
  * Eliminates keyword heuristic guessing and ensures all network/API boundaries
  * are strictly typed and fail-closed.

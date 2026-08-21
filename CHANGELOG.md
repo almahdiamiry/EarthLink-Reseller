@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.106.0] - 2026-08-21
+
+### Wave 1 / Step 2 — Financial Outcome Semantics & G1-F Correction
+- **G1-F State-Only Renewal Fallback Deletion (`Repositories.kt`)**:
+  - Strictly deleted the unverified success fallback (`Repositories.kt`) when `baselineExpirationDate == null`.
+  - Routed all unresolved renewals to the authoritative 4-tuple `accountStatement` compound correlation.
+- **AccountStatement 4-Tuple Compound Correlation (`Repositories.kt`)**:
+  - Implemented `verifyRenewalViaStatement` matching `(accountId, operationType=Withdraw, amountIqd, timestamp in [createdAt - 90s, createdAt + 90s])`.
+  - Enforced single unique match for `VERIFIED_SUCCESS`, 0 matches or multiple ambiguous matches for `INCONCLUSIVE`.
+- **Non-Financial Lifecycle Recovery (`Repositories.kt`)**:
+  - Implemented `verifyNonFinancialLifecycle` for `TEST_USER` and `EXTEND` operations enforcing negative evidence only (username available / suspended -> `VERIFIED_FAILURE`; active/taken state alone -> `INCONCLUSIVE`).
+- **Deterministic Domain Exception Hierarchy (`ApiResult.kt`)**:
+  - Integrated `EarthlinkGatewayException`, `EarthlinkTransportException`, `EarthlinkBusinessException`, `EarthlinkAuthException`.
+  - Refactored `safeApiCall` to emit typed domain exceptions preventing raw exception wrapping and heuristic guessing.
+- **Step 2 Test Suite**:
+  - Added `Step2OutcomeResolutionTest.kt` verifying TEST-06 through TEST-11 in the Master Test Matrix (100% green).
+
+
 ## [1.105.0] - 2026-08-20
 
 ### G1 Process Restart Certification, BuildConfig Consistency, & Transport Concurrency (Workstreams 13, 14, 15)

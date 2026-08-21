@@ -3,9 +3,7 @@ package com.example.data.repository
 import com.example.core.database.*
 import com.example.core.model.*
 import com.example.core.sync.OutboxManager
-import com.example.core.network.ChangePasswordReq
-import com.example.core.network.EarthlinkApiService
-import com.example.core.network.PasswordReq
+import com.example.core.network.*
 import kotlinx.coroutines.flow.distinctUntilChanged
 import com.example.domain.repository.*
 import com.squareup.moshi.Moshi
@@ -113,12 +111,12 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
     private inline suspend fun <reified T> safeApiCall(defaultOnNull: T? = null, call: suspend () -> ApiEnvelope<T>): T {
         val response = try {
             call()
-        } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            if (e is EarthlinkGatewayException) throw e
             val msg = e.localizedMessage ?: "Unknown connection error"
-            var detail = msg
-            var prefix = "API Protocol Error (Parsing/Moshi or Server error)."
             if (e is java.io.IOException || e is java.net.SocketTimeoutException || e is java.net.ConnectException || e is java.net.UnknownHostException || e is javax.net.ssl.SSLHandshakeException) {
-                prefix = "Network unavailable. Check connection and retry."
+                throw EarthlinkTransportException("Network unavailable. Check connection and retry. Detail: $msg", e)
             } else if (e is retrofit2.HttpException) {
                 val code = e.code()
                 val errorBody = try { e.response()?.errorBody()?.string() } catch(ex: Exception) { if (ex is kotlinx.coroutines.CancellationException) throw ex; null }
@@ -126,19 +124,20 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
                     val isGoogle = prefs.getAuthToken()?.startsWith("google_oauth_session_") == true
                     if (isGoogle) {
                         prefs.saveEarthlinkApiToken(null)
-                        throw Exception("Earthlink API unauthorized. Please check ISP Admin credentials in Settings.", e)
+                        throw EarthlinkAuthException("Earthlink API unauthorized. Please check ISP Admin credentials in Settings.", e)
                     } else {
                         prefs.clearAuthToken()
-                        throw Exception("Session expired. Please log in again.", e)
+                        throw EarthlinkAuthException("Session expired. Please log in again.", e)
                     }
+                } else if (code in 500..599) {
+                    throw EarthlinkTransportException("Server HTTP Error (Status $code) - live rapi.earthlink.iq reseller endpoint error. Detail: ${errorBody ?: msg}", e)
+                } else {
+                    throw EarthlinkBusinessException(statusCode = code, errorMessage = errorBody ?: msg, cause = e)
                 }
-                prefix = "Server HTTP Error (Status $code) - live rapi.earthlink.iq reseller endpoint error."
-                detail = errorBody ?: msg
             } else if (e is com.squareup.moshi.JsonDataException || e is com.squareup.moshi.JsonEncodingException) {
-                prefix = "Moshi JSON Deserialization Mismatch."
-                detail = "The server response did not match local structures: ${e.message}"
+                throw EarthlinkTransportException("Moshi JSON Deserialization Mismatch: ${e.message}", e)
             }
-            throw Exception("$prefix Detail: $detail", e)
+            throw EarthlinkTransportException("API Protocol Error: $msg", e)
         }
         if (response.isSuccessful == true) {
             val value = response.value
@@ -152,20 +151,26 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
                 @Suppress("UNCHECKED_CAST")
                 return Unit as T
             }
-            throw Exception(response.responseMessage ?: response.error ?: "API returned null payload without explicit data.")
+            throw EarthlinkBusinessException(
+                statusCode = response.statusCode ?: 200,
+                errorMessage = response.responseMessage ?: response.error ?: "API returned null payload without explicit data."
+            )
         } else {
             val msg = response.responseMessage ?: response.error ?: "Earthlink rejected this action."
             if (response.statusCode == 401 || msg.contains("Unauthorized", ignoreCase = true) || msg.contains("expired", ignoreCase = true)) {
                 val isGoogle = prefs.getAuthToken()?.startsWith("google_oauth_session_") == true
                 if (isGoogle) {
                     prefs.saveEarthlinkApiToken(null)
-                    throw Exception("Earthlink API unauthorized. Please check ISP Admin credentials in Settings.")
+                    throw EarthlinkAuthException("Earthlink API unauthorized. Please check ISP Admin credentials in Settings.")
                 } else {
                     prefs.clearAuthToken()
-                    throw Exception("Session expired. Please log in again.")
+                    throw EarthlinkAuthException("Session expired. Please log in again.")
                 }
             }
-            throw Exception(msg)
+            throw EarthlinkBusinessException(
+                statusCode = response.statusCode ?: 200,
+                errorMessage = msg
+            )
         }
     }
     override suspend fun login(username: String, password: String): LoginResponse {
@@ -659,8 +664,8 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
         val userPass = "Pass_${(100000..999999).random()}"
         val affiliateIndex = 1
 
-        val result = try {
-            apiService.createTestUser(
+        val result = safeApiCall {
+            val res = apiService.createTestUser(
                 mobile = phone,
                 accountIndex = accountIndex,
                 userId = username,
@@ -668,8 +673,13 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
                 affiliateIndex = affiliateIndex,
                 userPass = userPass
             )
-        } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-            throw e
+            ApiEnvelope(
+                value = res,
+                statusCode = res.statusCode ?: 200,
+                isSuccessful = res.isSuccessful ?: false,
+                responseMessage = res.responseMessage,
+                error = res.errorMessage
+            )
         }
 
         if (result.isSuccessful == true) {
@@ -677,10 +687,10 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
             if (userIndex != null && userIndex > 0) {
                 return userPass
             } else {
-                throw Exception("API returned success without valid userIndex payload.")
+                throw EarthlinkBusinessException(statusCode = 200, errorMessage = "API returned success without valid userIndex payload.")
             }
         } else {
-            throw Exception(result.errorMessage ?: "Failed to create test user")
+            throw EarthlinkBusinessException(statusCode = result.statusCode ?: 200, errorMessage = result.errorMessage ?: "Failed to create test user")
         }
     }
     override suspend fun createUserUsingDeposit(
@@ -730,8 +740,8 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
         val userPass = "Pass_${(100000..999999).random()}"
         val affiliateIndex = 1
 
-        val result = try {
-            apiService.createUserUsingDeposit(
+        val result = safeApiCall {
+            val res = apiService.createUserUsingDeposit(
                 mobile = phone,
                 accountIndex = accountIndex,
                 userId = username,
@@ -741,8 +751,13 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
                 depositPass = depositPassword,
                 customerId = customerId
             )
-        } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-            throw e
+            ApiEnvelope(
+                value = res,
+                statusCode = res.statusCode ?: 200,
+                isSuccessful = res.isSuccessful ?: false,
+                responseMessage = res.responseMessage,
+                error = res.errorMessage
+            )
         }
 
         if (result.isSuccessful == true) {
@@ -750,10 +765,10 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
             if (userIndex != null && userIndex > 0) {
                 return userPass
             } else {
-                throw Exception("API returned success without valid userIndex payload.")
+                throw EarthlinkBusinessException(statusCode = 200, errorMessage = "API returned success without valid userIndex payload.")
             }
         } else {
-            throw Exception(result.errorMessage ?: "Failed to create user using deposit")
+            throw EarthlinkBusinessException(statusCode = result.statusCode ?: 200, errorMessage = result.errorMessage ?: "Failed to create user using deposit")
         }
     }
     override suspend fun refillUserDeposit(userId: String, depositPassword: String): Boolean {
@@ -1308,6 +1323,109 @@ class LocalLedgerRepositoryImpl(
         }
     }
 
+    private fun parseStatementTimestamp(dateStr: String?): Long {
+        if (dateStr.isNullOrBlank()) return 0L
+        val trimmed = dateStr.trim()
+        val formats = arrayOf(
+            "yyyy-MM-dd'T'HH:mm:ss.SSSSSSS",
+            "yyyy-MM-dd'T'HH:mm:ss.SSS",
+            "yyyy-MM-dd'T'HH:mm:ss",
+            "yyyy-MM-dd HH:mm:ss",
+            "yyyy-MM-dd"
+        )
+        for (pattern in formats) {
+            try {
+                val sdf = java.text.SimpleDateFormat(pattern, java.util.Locale.US)
+                sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+                val d = sdf.parse(trimmed)
+                if (d != null) return d.time
+            } catch (_: Exception) {}
+        }
+        return 0L
+    }
+
+    private suspend fun verifyRenewalViaStatement(
+        op: PendingExternalOperation,
+        gateway: EarthlinkGateway
+    ): UnknownOutcomeResolutionResult {
+        // Window: ±90 seconds centered at the immutable operation-intent createdAt timestamp
+        val windowStart = op.createdAt - 90_000L
+        val windowEnd = op.createdAt + 90_000L
+
+        val statements = try {
+            gateway.getAccountStatement(startIndex = 0, rowCount = 50, query = op.accountId)
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            return UnknownOutcomeResolutionResult.INCONCLUSIVE
+        }
+
+        val matchingCandidates = statements.filter { item ->
+            val itemTime = parseStatementTimestamp(item.occurredAt)
+            val opName = item.operation ?: ""
+            val isWithdrawal = opName.equals("Withdraw", ignoreCase = true) || opName.contains("Withdraw", ignoreCase = true) || (item.withdrawalAmount ?: 0.0) > 0.0
+            val itemAmount = item.withdrawalAmount ?: 0.0
+            val targetAmount = op.amountIqd.toDouble()
+            
+            isWithdrawal &&
+            Math.abs(itemAmount - targetAmount) < 0.001 &&
+            itemTime in windowStart..windowEnd
+        }
+
+        return when (matchingCandidates.size) {
+            1 -> UnknownOutcomeResolutionResult.VERIFIED_SUCCESS
+            0 -> UnknownOutcomeResolutionResult.INCONCLUSIVE
+            else -> UnknownOutcomeResolutionResult.INCONCLUSIVE // Ambiguous multiple candidates
+        }
+    }
+
+    private suspend fun verifyNonFinancialLifecycle(
+        op: PendingExternalOperation,
+        gateway: EarthlinkGateway
+    ): UnknownOutcomeResolutionResult {
+        return try {
+            when (op.operationType.uppercase()) {
+                "TEST_USER" -> {
+                    // Negative evidence only: username still available proves the create did not execute.
+                    if (gateway.checkUsernameAvailable(op.accountId)) {
+                        UnknownOutcomeResolutionResult.VERIFIED_FAILURE
+                    } else {
+                        // Existing/taken/ACTIVE state may pre-date the interrupted operation.
+                        UnknownOutcomeResolutionResult.INCONCLUSIVE
+                    }
+                }
+                "EXTEND" -> {
+                    val userIndex = op.accountId.toIntOrNull() ?: run {
+                        val json = try { JSONObject(op.payloadJson) } catch(_: Exception) { JSONObject() }
+                        json.optInt("userIndex", -1)
+                    }
+                    if (userIndex <= 0) return UnknownOutcomeResolutionResult.INCONCLUSIVE
+
+                    val detail = gateway.getUserDetail(userIndex)
+                    val status = detail.accountStatus ?: ""
+                    val daysLeft = (detail.activeDaysLeft as? Number)?.toDouble() ?: (detail.activeDaysLeft as? String)?.toDoubleOrNull() ?: 0.0
+                    // Negative evidence only: still suspended/expired means this extend did not take effect.
+                    if (status.equals("Suspended", ignoreCase = true) || daysLeft <= 0.0) {
+                        UnknownOutcomeResolutionResult.VERIFIED_FAILURE
+                    } else {
+                        // ACTIVE with remaining days may pre-date this interrupted EXTEND.
+                        UnknownOutcomeResolutionResult.INCONCLUSIVE
+                    }
+                }
+                else -> UnknownOutcomeResolutionResult.INCONCLUSIVE
+            }
+        } catch (e: EarthlinkTransportException) {
+            UnknownOutcomeResolutionResult.INCONCLUSIVE
+        } catch (e: EarthlinkAuthException) {
+            UnknownOutcomeResolutionResult.INCONCLUSIVE
+        } catch (e: EarthlinkBusinessException) {
+            if (e.statusCode == 404) UnknownOutcomeResolutionResult.VERIFIED_FAILURE
+            else UnknownOutcomeResolutionResult.INCONCLUSIVE
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            UnknownOutcomeResolutionResult.INCONCLUSIVE
+        }
+    }
+
     override suspend fun verifyAndResolvePendingOperation(
         businessTransactionId: String,
         gateway: EarthlinkGateway,
@@ -1338,16 +1456,8 @@ class LocalLedgerRepositoryImpl(
             "ACTIVATION" -> {
                 try {
                     val isAvailable = gateway.checkUsernameAvailable(op.accountId)
-                    if (!isAvailable) {
-                        val ledger = resolvePendingOperationVerifiedSuccess(businessTransactionId, "[VERIFIED ACTIVATION]")
-                        val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
-                        PendingOperationResolution(
-                            result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
-                            operation = updatedOp,
-                            ledgerEntry = ledger,
-                            diagnosticMessage = "Subscriber existence verified on ISP"
-                        )
-                    } else {
+                    if (isAvailable) {
+                        // SUSPENDED / Available username is the approved V1 operational non-execution signal
                         resolvePendingOperationVerifiedFailure(businessTransactionId, "Subscriber does not exist on ISP (username still available)")
                         val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
                         PendingOperationResolution(
@@ -1356,6 +1466,42 @@ class LocalLedgerRepositoryImpl(
                             ledgerEntry = null,
                             diagnosticMessage = "Subscriber does not exist on ISP"
                         )
+                    } else {
+                        // ACTIVE subscriber state alone is NEVER proof of historical execution; check 4-tuple statement
+                        val statementResolution = verifyRenewalViaStatement(op, gateway)
+                        when (statementResolution) {
+                            UnknownOutcomeResolutionResult.VERIFIED_SUCCESS -> {
+                                val ledger = resolvePendingOperationVerifiedSuccess(businessTransactionId, "[VERIFIED ACTIVATION]")
+                                val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                                PendingOperationResolution(
+                                    result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
+                                    operation = updatedOp,
+                                    ledgerEntry = ledger,
+                                    diagnosticMessage = "Activation verified via account statement correlation"
+                                )
+                            }
+                            UnknownOutcomeResolutionResult.VERIFIED_FAILURE -> {
+                                resolvePendingOperationVerifiedFailure(businessTransactionId, "Activation verified failure via statement correlation")
+                                val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                                PendingOperationResolution(
+                                    result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                                    operation = updatedOp,
+                                    ledgerEntry = null,
+                                    diagnosticMessage = "Activation verified failure via statement correlation"
+                                )
+                            }
+                            UnknownOutcomeResolutionResult.INCONCLUSIVE -> {
+                                val diag = "Subscriber exists but account statement correlation was inconclusive"
+                                resolvePendingOperationInconclusive(businessTransactionId, diag)
+                                val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                                PendingOperationResolution(
+                                    result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
+                                    operation = updatedOp,
+                                    ledgerEntry = null,
+                                    diagnosticMessage = diag
+                                )
+                            }
+                        }
                     }
                 } catch (e: Exception) {
                     if (e is kotlinx.coroutines.CancellationException) throw e
@@ -1403,15 +1549,41 @@ class LocalLedgerRepositoryImpl(
                                 )
                             }
                         } else {
-                            // Fallback for sweeps/legacy tests where baselineExpirationDate is null/blank
-                            val ledger = resolvePendingOperationVerifiedSuccess(businessTransactionId, "[VERIFIED RENEW]")
-                            val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
-                            PendingOperationResolution(
-                                result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
-                                operation = updatedOp,
-                                ledgerEntry = ledger,
-                                diagnosticMessage = "Renewal verified without baseline expiration date (fallback)"
-                            )
+                            // Fallback is strictly deleted per G1-F. Execute the approved 4-tuple accountStatement compound correlation.
+                            val statementResolution = verifyRenewalViaStatement(op, gateway)
+                            when (statementResolution) {
+                                UnknownOutcomeResolutionResult.VERIFIED_SUCCESS -> {
+                                    val ledger = resolvePendingOperationVerifiedSuccess(businessTransactionId, "[VERIFIED RENEW]")
+                                    val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                                    PendingOperationResolution(
+                                        result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
+                                        operation = updatedOp,
+                                        ledgerEntry = ledger,
+                                        diagnosticMessage = "Renewal verified via account statement 4-tuple correlation"
+                                    )
+                                }
+                                UnknownOutcomeResolutionResult.VERIFIED_FAILURE -> {
+                                    resolvePendingOperationVerifiedFailure(businessTransactionId, "Renewal verified failure via statement correlation")
+                                    val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                                    PendingOperationResolution(
+                                        result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                                        operation = updatedOp,
+                                        ledgerEntry = null,
+                                        diagnosticMessage = "Renewal verified failure via statement correlation"
+                                    )
+                                }
+                                UnknownOutcomeResolutionResult.INCONCLUSIVE -> {
+                                    val diag = "Renewal statement correlation inconclusive: no single matching ledger transaction"
+                                    resolvePendingOperationInconclusive(businessTransactionId, diag)
+                                    val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                                    PendingOperationResolution(
+                                        result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
+                                        operation = updatedOp,
+                                        ledgerEntry = null,
+                                        diagnosticMessage = diag
+                                    )
+                                }
+                            }
                         }
                     } else {
                         val diag = "Subscriber details could not be retrieved from ISP"
@@ -1435,6 +1607,42 @@ class LocalLedgerRepositoryImpl(
                         ledgerEntry = null,
                         diagnosticMessage = diag
                     )
+                }
+            }
+            "TEST_USER", "EXTEND" -> {
+                val nonFinResolution = verifyNonFinancialLifecycle(op, gateway)
+                when (nonFinResolution) {
+                    UnknownOutcomeResolutionResult.VERIFIED_SUCCESS -> {
+                        resolvePendingOperationVerifiedSuccess(businessTransactionId, "[VERIFIED ${op.operationType}]")
+                        val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                        PendingOperationResolution(
+                            result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
+                            operation = updatedOp,
+                            ledgerEntry = null,
+                            diagnosticMessage = "${op.operationType} verified successfully"
+                        )
+                    }
+                    UnknownOutcomeResolutionResult.VERIFIED_FAILURE -> {
+                        resolvePendingOperationVerifiedFailure(businessTransactionId, "Verified operation non-execution on server")
+                        val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                        PendingOperationResolution(
+                            result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                            operation = updatedOp,
+                            ledgerEntry = null,
+                            diagnosticMessage = "Verified operation non-execution on server"
+                        )
+                    }
+                    UnknownOutcomeResolutionResult.INCONCLUSIVE -> {
+                        val diag = "${op.operationType} lifecycle recovery inconclusive: requires operation-specific evidence"
+                        resolvePendingOperationInconclusive(businessTransactionId, diag)
+                        val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                        PendingOperationResolution(
+                            result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
+                            operation = updatedOp,
+                            ledgerEntry = null,
+                            diagnosticMessage = diag
+                        )
+                    }
                 }
             }
             else -> {
