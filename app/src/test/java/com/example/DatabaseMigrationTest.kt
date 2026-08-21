@@ -84,4 +84,80 @@ class DatabaseMigrationTest {
         helper.close()
         dbFile.delete()
     }
+
+    @Test
+    fun testMigration16To17_addsDispatchClaimCountAndUpgradesExistingUnresolvedRows() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val dbFile = context.getDatabasePath("test_migration_16_17.db")
+        dbFile.parentFile?.mkdirs()
+        dbFile.delete()
+
+        val config = androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name(dbFile.name)
+            .callback(object : androidx.sqlite.db.SupportSQLiteOpenHelper.Callback(16) {
+                override fun onCreate(db: SupportSQLiteDatabase) {
+                    db.execSQL("""
+                        CREATE TABLE IF NOT EXISTS `pending_external_operations` (
+                            `businessTransactionId` TEXT NOT NULL, 
+                            `operationIntentId` TEXT NOT NULL, 
+                            `accountId` TEXT NOT NULL, 
+                            `operationType` TEXT NOT NULL, 
+                            `amountIqd` INTEGER NOT NULL, 
+                            `payloadJson` TEXT NOT NULL, 
+                            `status` TEXT NOT NULL, 
+                            `createdAt` INTEGER NOT NULL, 
+                            `updatedAt` INTEGER NOT NULL, 
+                            `lastError` TEXT,
+                            `verificationEvidence` TEXT,
+                            PRIMARY KEY(`businessTransactionId`)
+                        )
+                    """.trimIndent())
+
+                    db.execSQL("INSERT INTO pending_external_operations VALUES ('tx_pending', 'i1', 'acc1', 'ACTIVATION', 45000, '{}', 'PENDING', 100, 100, NULL, NULL)")
+                    db.execSQL("INSERT INTO pending_external_operations VALUES ('tx_dispatching', 'i2', 'acc2', 'REFILL', 45000, '{}', 'DISPATCHING', 100, 100, NULL, NULL)")
+                    db.execSQL("INSERT INTO pending_external_operations VALUES ('tx_resolving', 'i3', 'acc3', 'REFILL', 45000, '{}', 'RESOLVING', 100, 100, NULL, NULL)")
+                    db.execSQL("INSERT INTO pending_external_operations VALUES ('tx_completed', 'i4', 'acc4', 'ACTIVATION', 45000, '{}', 'COMPLETED', 100, 100, NULL, NULL)")
+                    db.execSQL("INSERT INTO pending_external_operations VALUES ('tx_failed', 'i5', 'acc5', 'ACTIVATION', 45000, '{}', 'FAILED', 100, 100, NULL, NULL)")
+                }
+
+                override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {}
+            })
+            .build()
+
+        val factory = FrameworkSQLiteOpenHelperFactory()
+        val helper = factory.create(config)
+        val v16Db = helper.writableDatabase
+
+        // Execute migration 16 -> 17
+        AppDatabase.MIGRATION_16_17.migrate(v16Db)
+
+        val cursorPending = v16Db.query("SELECT dispatchClaimCount FROM pending_external_operations WHERE businessTransactionId = 'tx_pending'")
+        assertTrue(cursorPending.moveToFirst())
+        assertEquals(1, cursorPending.getInt(0))
+        cursorPending.close()
+
+        val cursorDispatching = v16Db.query("SELECT dispatchClaimCount FROM pending_external_operations WHERE businessTransactionId = 'tx_dispatching'")
+        assertTrue(cursorDispatching.moveToFirst())
+        assertEquals(1, cursorDispatching.getInt(0))
+        cursorDispatching.close()
+
+        val cursorResolving = v16Db.query("SELECT dispatchClaimCount FROM pending_external_operations WHERE businessTransactionId = 'tx_resolving'")
+        assertTrue(cursorResolving.moveToFirst())
+        assertEquals(1, cursorResolving.getInt(0))
+        cursorResolving.close()
+
+        val cursorCompleted = v16Db.query("SELECT dispatchClaimCount FROM pending_external_operations WHERE businessTransactionId = 'tx_completed'")
+        assertTrue(cursorCompleted.moveToFirst())
+        assertEquals(0, cursorCompleted.getInt(0))
+        cursorCompleted.close()
+
+        val cursorFailed = v16Db.query("SELECT dispatchClaimCount FROM pending_external_operations WHERE businessTransactionId = 'tx_failed'")
+        assertTrue(cursorFailed.moveToFirst())
+        assertEquals(0, cursorFailed.getInt(0))
+        cursorFailed.close()
+
+        v16Db.close()
+        helper.close()
+        dbFile.delete()
+    }
 }

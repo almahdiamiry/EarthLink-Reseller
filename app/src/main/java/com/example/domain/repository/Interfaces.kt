@@ -81,6 +81,9 @@ interface LocalLedgerRepository {
 
     // G1 Durable Pending Operation methods
     suspend fun recordPendingOperation(operation: PendingExternalOperation): PendingExternalOperation
+    suspend fun claimDispatchAuthorization(businessTransactionId: String): Boolean
+    suspend fun recoverColdStartOrphanedOperations(gateway: EarthlinkGateway, processStartMs: Long)
+    suspend fun getUnresolvedClaimedOperations(): List<PendingExternalOperation>
     suspend fun getPendingOperationByIntentId(operationIntentId: String): PendingExternalOperation?
     suspend fun getPendingOperationByTransactionId(businessTransactionId: String): PendingExternalOperation?
     suspend fun getPendingOperationByAccountId(accountId: String): PendingExternalOperation?

@@ -321,15 +321,17 @@ class EarthlinkSearchViewModel(
         inflightAccountLocks.computeIfAbsent(accountId) { kotlinx.coroutines.sync.Mutex() }
 
     fun createTestUser(username: String, phone: String, fullName: String, pkgIndex: Int, intentId: String? = null): kotlinx.coroutines.Job {
-        val lock = getAccountLock(username)
-        val opIntentId = intentId ?: java.util.UUID.randomUUID().toString()
-        val businessTxId = "tx_" + opIntentId
+        val lock = getAccountLock("${username}:TEST_USER")
 
         return viewModelScope.launch(Dispatchers.IO) {
             if (!lock.tryLock()) {
-                Log.w("EarthlinkSearchVM", "Duplicate activation suppressed: account $username has an active inflight operation")
+                Log.w("EarthlinkSearchVM", "Duplicate test user creation suppressed: account $username has an active inflight operation")
+                _error.value = "Operation already in progress or awaiting verification."
                 return@launch
             }
+            val opIntentId = intentId ?: java.util.UUID.randomUUID().toString()
+            val businessTxId = "tx_" + opIntentId
+
             try {
                 _isActionLoading.value = true
                 _error.value = null
@@ -345,17 +347,26 @@ class EarthlinkSearchViewModel(
                     _error.value = "Username $username is already taken."
                     return@launch
                 }
+
                 localLedgerRepository.recordPendingOperation(
                     PendingExternalOperation(
                         businessTransactionId = businessTxId,
                         operationIntentId = opIntentId,
                         accountId = username,
-                        operationType = "ACTIVATION",
+                        operationType = "TEST_USER",
                         amountIqd = 0L,
                         payloadJson = "{\"username\":\"$username\",\"phone\":\"$phone\",\"fullName\":\"$fullName\",\"pkgIndex\":$pkgIndex,\"isTest\":true}",
-                        status = "PENDING"
+                        status = "PENDING",
+                        dispatchClaimCount = 0
                     )
                 )
+
+                val claimGranted = localLedgerRepository.claimDispatchAuthorization(businessTxId)
+                if (!claimGranted) {
+                    _error.value = "Operation is already processing or awaiting verification."
+                    return@launch
+                }
+
                 val generatedPassword = gateway.createTestUser(username, phone, fullName, pkgIndex)
                 if (generatedPassword != null) {
                     localLedgerRepository.completePendingOperation(businessTxId, username)
@@ -386,15 +397,17 @@ class EarthlinkSearchViewModel(
     }
 
     fun createUserUsingDeposit(username: String, phone: String, fullName: String, pkgIndex: Int, depositPass: String, intentId: String? = null): kotlinx.coroutines.Job {
-        val lock = getAccountLock(username)
-        val opIntentId = intentId ?: java.util.UUID.randomUUID().toString()
-        val businessTxId = "tx_" + opIntentId
+        val lock = getAccountLock("${username}:ACTIVATION")
 
         return viewModelScope.launch(Dispatchers.IO) {
             if (!lock.tryLock()) {
                 Log.w("EarthlinkSearchVM", "Duplicate activation suppressed: account $username has an active inflight operation")
+                _error.value = "Operation already in progress or awaiting verification."
                 return@launch
             }
+            val opIntentId = intentId ?: java.util.UUID.randomUUID().toString()
+            val businessTxId = "tx_" + opIntentId
+
             try {
                 _isActionLoading.value = true
                 _error.value = null
@@ -410,18 +423,33 @@ class EarthlinkSearchViewModel(
                     _error.value = "Username $username is already taken."
                     return@launch
                 }
-                val cost = try { gateway.getAccountCost(pkgIndex) } catch (e: Exception) { 40000.0 }
+
+                val cost = try { gateway.getAccountCost(pkgIndex) } catch (e: Exception) { 0.0 }
+                if (!cost.isFinite() || cost <= 0.0 || cost % 1.0 != 0.0 || cost % 250.0 != 0.0) {
+                    _error.value = "Failed to determine a valid IQD package cost. Operation aborted."
+                    return@launch
+                }
+                val exactAmountIqd = cost.toLong()
+
                 localLedgerRepository.recordPendingOperation(
                     PendingExternalOperation(
                         businessTransactionId = businessTxId,
                         operationIntentId = opIntentId,
                         accountId = username,
                         operationType = "ACTIVATION",
-                        amountIqd = cost.toLong(),
+                        amountIqd = exactAmountIqd,
                         payloadJson = "{\"username\":\"$username\",\"phone\":\"$phone\",\"fullName\":\"$fullName\",\"pkgIndex\":$pkgIndex}",
-                        status = "PENDING"
+                        status = "PENDING",
+                        dispatchClaimCount = 0
                     )
                 )
+
+                val claimGranted = localLedgerRepository.claimDispatchAuthorization(businessTxId)
+                if (!claimGranted) {
+                    _error.value = "Operation is already processing or awaiting verification."
+                    return@launch
+                }
+
                 val generatedPassword = gateway.createUserUsingDeposit(username, phone, fullName, pkgIndex, depositPass)
                 if (generatedPassword != null) {
                     localLedgerRepository.completePendingOperation(businessTxId, username)
@@ -459,17 +487,18 @@ class EarthlinkSearchViewModel(
         intentId: String? = null,
         onSuccessCallback: (suspend (String) -> Unit)? = null
     ): kotlinx.coroutines.Job {
-        val lock = getAccountLock(userId)
-        val opIntentId = intentId ?: java.util.UUID.randomUUID().toString()
-        val businessTxId = "tx_" + opIntentId
-        val finalPrice = price ?: 40000.0
-        val finalNote = note ?: ""
+        val lock = getAccountLock("${userId}:REFILL")
 
         return viewModelScope.launch(Dispatchers.IO) {
             if (!lock.tryLock()) {
                 Log.w("EarthlinkSearchVM", "Duplicate financial operation suppressed: account $userId has an active inflight operation")
+                _error.value = "Operation already in progress or awaiting verification."
                 return@launch
             }
+            val opIntentId = intentId ?: java.util.UUID.randomUUID().toString()
+            val businessTxId = "tx_" + opIntentId
+            val finalNote = note ?: ""
+
             try {
                 _isActionLoading.value = true
                 _error.value = null
@@ -484,20 +513,33 @@ class EarthlinkSearchViewModel(
                     return@launch
                 }
 
-                // 1. Durably record PendingExternalOperation prior to external API dispatch (G1 / INV-11)
+                val authoritativePrice = price
+                if (authoritativePrice == null || !authoritativePrice.isFinite() || authoritativePrice <= 0.0 ||
+                    authoritativePrice % 1.0 != 0.0 || authoritativePrice % 250.0 != 0.0) {
+                    _error.value = "Invalid, non-authoritative, or missing package price. Operation aborted."
+                    return@launch
+                }
+                val exactAmountIqd = authoritativePrice.toLong()
+
                 localLedgerRepository.recordPendingOperation(
                     PendingExternalOperation(
                         businessTransactionId = businessTxId,
                         operationIntentId = opIntentId,
                         accountId = userId,
                         operationType = "REFILL",
-                        amountIqd = finalPrice.toLong(),
-                        payloadJson = "{\"userId\":\"$userId\",\"price\":$finalPrice,\"note\":\"$finalNote\"}",
-                        status = "PENDING"
+                        amountIqd = exactAmountIqd,
+                        payloadJson = "{\"userId\":\"$userId\",\"price\":$authoritativePrice,\"note\":\"$finalNote\"}",
+                        status = "PENDING",
+                        dispatchClaimCount = 0
                     )
                 )
 
-                // 2. Dispatch external ISP operation
+                val claimGranted = localLedgerRepository.claimDispatchAuthorization(businessTxId)
+                if (!claimGranted) {
+                    _error.value = "Operation is already processing or awaiting verification."
+                    return@launch
+                }
+
                 val success = gateway.refillUserDeposit(userId, depositPass)
                 if (success) {
                     try {
@@ -508,7 +550,7 @@ class EarthlinkSearchViewModel(
                             if (localAcc != null) {
                                 localLedgerRepository.recordAccountRenewal(
                                     account = localAcc,
-                                    newPriceIqd = finalPrice,
+                                    newPriceIqd = authoritativePrice,
                                     chargeNote = if (finalNote.isNotBlank()) "[RENEW] ${finalNote.trim()}" else "",
                                     payNote = null,
                                     idempotencyKey = businessTxId
@@ -530,9 +572,9 @@ class EarthlinkSearchViewModel(
                     val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
                     val dateStr = sdf.format(java.util.Date())
                     val noteText = if (finalNote.isNotBlank()) {
-                        "تجديد اشتراك بسعر $finalPrice - $finalNote"
+                        "تجديد اشتراك بسعر $authoritativePrice - $finalNote"
                     } else {
-                        "تجديد اشتراك بسعر $finalPrice"
+                        "تجديد اشتراك بسعر $authoritativePrice"
                     }
                     
                     val currentBalance = try { gateway.getBalance() } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; 0.0 }
@@ -541,7 +583,7 @@ class EarthlinkSearchViewModel(
                         occurredAt = dateStr,
                         operation = "RENEW_SUBSCRIBER",
                         depositAmount = 0.0,
-                        withdrawalAmount = finalPrice,
+                        withdrawalAmount = authoritativePrice,
                         balanceAfter = currentBalance,
                         note = noteText
                     )
@@ -550,7 +592,7 @@ class EarthlinkSearchViewModel(
                         action = "REFILL_USER",
                         entityType = "USER",
                         entityId = userId,
-                        summary = "Renewed subscription at price $finalPrice. Note: $finalNote"
+                        summary = "Renewed subscription at price $authoritativePrice. Note: $finalNote"
                     )
                     _selectedUser.value?.userIndex?.let { loadUserDetail(it, _selectedUser.value?.userIDLower) }
                 } else {
@@ -586,15 +628,17 @@ class EarthlinkSearchViewModel(
     }
 
     fun extendUser(userIndex: Int, userId: String, intentId: String? = null): kotlinx.coroutines.Job {
-        val lock = getAccountLock(userId)
-        val opIntentId = intentId ?: java.util.UUID.randomUUID().toString()
-        val businessTxId = "tx_" + opIntentId
+        val lock = getAccountLock("${userId}:EXTEND")
 
         return viewModelScope.launch(Dispatchers.IO) {
             if (!lock.tryLock()) {
                 Log.w("EarthlinkSearchVM", "Duplicate extension suppressed: account $userId has an active inflight operation")
+                _error.value = "Operation already in progress or awaiting verification."
                 return@launch
             }
+            val opIntentId = intentId ?: java.util.UUID.randomUUID().toString()
+            val businessTxId = "tx_" + opIntentId
+
             try {
                 _isActionLoading.value = true
                 _error.value = null
@@ -610,12 +654,20 @@ class EarthlinkSearchViewModel(
                         businessTransactionId = businessTxId,
                         operationIntentId = opIntentId,
                         accountId = userId,
-                        operationType = "RENEWAL",
+                        operationType = "EXTEND",
                         amountIqd = 0L,
                         payloadJson = "{\"userIndex\":$userIndex,\"userId\":\"$userId\"}",
-                        status = "PENDING"
+                        status = "PENDING",
+                        dispatchClaimCount = 0
                     )
                 )
+
+                val claimGranted = localLedgerRepository.claimDispatchAuthorization(businessTxId)
+                if (!claimGranted) {
+                    _error.value = "Operation is already processing or awaiting verification."
+                    return@launch
+                }
+
                 val success = gateway.extendUser(userIndex)
                 if (success) {
                     localLedgerRepository.completePendingOperation(businessTxId, userId)

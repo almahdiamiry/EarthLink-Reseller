@@ -112,9 +112,11 @@ class EarthlinkApp : Application() {
             }
         }
 
-        // G1 Crash-Recovery: Startup sweep for pending/failed external ISP operations
+        // G1 Crash-Recovery: Cold-start recovery and startup sweep for pending external ISP operations
+        val processStartMs = System.currentTimeMillis()
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                localLedgerRepository.recoverColdStartOrphanedOperations(earthlinkGateway, processStartMs)
                 localLedgerRepository.sweepAndResolvePendingOperations(earthlinkGateway)
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e

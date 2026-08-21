@@ -419,6 +419,54 @@ interface PendingExternalOperationDao {
 
     @Query("SELECT * FROM pending_external_operations WHERE accountId = :accountId AND status IN ('PENDING', 'RESOLVING') LIMIT 1")
     suspend fun getUnresolvedByAccountId(accountId: String): PendingExternalOperation?
+
+    @Query("""
+        UPDATE pending_external_operations
+        SET status = 'DISPATCHING',
+            dispatchClaimCount = dispatchClaimCount + 1,
+            updatedAt = :now
+        WHERE businessTransactionId = :businessTransactionId
+          AND status = 'PENDING'
+          AND dispatchClaimCount = 0
+    """)
+    suspend fun claimDispatch(businessTransactionId: String, now: Long = System.currentTimeMillis()): Int
+
+    @Query("""
+        UPDATE pending_external_operations
+        SET status = 'RESOLVING',
+            updatedAt = :now
+        WHERE businessTransactionId = :businessTransactionId
+          AND status = 'PENDING'
+          AND dispatchClaimCount = 1
+    """)
+    suspend fun transitionToResolving(businessTransactionId: String, now: Long = System.currentTimeMillis()): Int
+
+    @Query("""
+        SELECT * FROM pending_external_operations
+        WHERE status IN ('DISPATCHING', 'RESOLVING')
+          AND dispatchClaimCount = 1
+          AND updatedAt < :processStartMs
+        ORDER BY createdAt ASC
+    """)
+    suspend fun getOrphanedInFlightOperations(processStartMs: Long): List<PendingExternalOperation>
+
+    @Query("""
+        UPDATE pending_external_operations
+        SET status = 'PENDING',
+            updatedAt = :now
+        WHERE businessTransactionId = :businessTransactionId
+          AND status IN ('DISPATCHING', 'RESOLVING')
+          AND dispatchClaimCount = 1
+    """)
+    suspend fun resetOrphanedInFlightToPending(businessTransactionId: String, now: Long = System.currentTimeMillis()): Int
+
+    @Query("""
+        SELECT * FROM pending_external_operations
+        WHERE status = 'PENDING'
+          AND dispatchClaimCount = 1
+        ORDER BY createdAt ASC
+    """)
+    suspend fun getUnresolvedClaimedOperations(): List<PendingExternalOperation>
 }
 
 @Database(
@@ -460,7 +508,7 @@ abstract class AppDatabase : RoomDatabase() {
     }
 
     companion object {
-        const val VERSION = 16
+        const val VERSION = 17
 
         @Volatile
         private var INSTANCE: AppDatabase? = null
@@ -818,6 +866,17 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_16_17 = object : androidx.room.migration.Migration(16, 17) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `pending_external_operations` ADD COLUMN `dispatchClaimCount` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("""
+                    UPDATE `pending_external_operations`
+                    SET `dispatchClaimCount` = 1
+                    WHERE `status` IN ('PENDING', 'DISPATCHING', 'RESOLVING')
+                """.trimIndent())
+            }
+        }
+
         private val INSTANCES = java.util.concurrent.ConcurrentHashMap<String, AppDatabase>()
 
         fun getDatabase(context: Context, passphrase: ByteArray, dbName: String = "earthlink_reseller_db"): AppDatabase {
@@ -833,7 +892,7 @@ abstract class AppDatabase : RoomDatabase() {
                 val dbFile = context.applicationContext.getDatabasePath(dbName)
                 dbFile.parentFile?.mkdirs()
                 val builder = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, dbName)
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                             super.onCreate(db)

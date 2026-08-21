@@ -1,0 +1,335 @@
+package com.example
+
+import android.content.Context
+import androidx.room.Room
+import androidx.test.core.app.ApplicationProvider
+import com.example.core.database.AppDatabase
+import com.example.core.model.*
+import com.example.core.network.*
+import com.example.data.repository.LocalAccountRepositoryImpl
+import com.example.data.repository.LocalLedgerRepositoryImpl
+import com.example.domain.repository.EarthlinkGateway
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.runTest
+import org.junit.After
+import org.junit.Assert.*
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import java.io.File
+import java.util.UUID
+
+@OptIn(ExperimentalCoroutinesApi::class)
+@RunWith(RobolectricTestRunner::class)
+@Config(manifest = Config.NONE)
+class Step3DurableDispatchTest {
+
+    private lateinit var context: Context
+    private lateinit var db: AppDatabase
+    private lateinit var ledgerRepo: LocalLedgerRepositoryImpl
+    private lateinit var accountRepo: LocalAccountRepositoryImpl
+    private lateinit var dbFile: File
+
+    private fun createRepository(database: AppDatabase): LocalLedgerRepositoryImpl {
+        return LocalLedgerRepositoryImpl(
+            database = database,
+            ledgerDao = database.localLedgerEntryDao(),
+            accountDao = database.localAccountDao(),
+            outboxDao = database.syncOutboxDao(),
+            pendingDao = database.pendingExternalOperationDao()
+        )
+    }
+
+    private open class FakeGateway(
+        var checkUsernameAvailableResult: Boolean = true,
+        var userDetailResult: UserDetail = UserDetail(userIndexLower = 101, userIDLower = "user1", accountStatusLower = "Active", activeDaysLeftLower = 30.0),
+        var statementsResult: List<AccountStatementItem> = emptyList(),
+        var searchUsersResult: UserListResponse = UserListResponse(itemsList = emptyList()),
+        var accountCostResult: Double = 35000.0
+    ) : EarthlinkGateway {
+        override suspend fun login(username: String, password: String): LoginResponse = throw NotImplementedError()
+        override suspend fun getBalance(): Double = 100000.0
+        override suspend fun getTestUsersCount(affiliateIndex: Int?): Int = 0
+        override suspend fun getActiveTestUsersCount(): Int = 0
+        override suspend fun getPrepaidNeeded(): Double = 0.0
+        override suspend fun getPackages(): List<AccountPackage> = emptyList()
+        override suspend fun getAccountCost(accountIndex: Int): Double = accountCostResult
+        override suspend fun searchUsers(query: String, startIndex: Int, rowCount: Int): UserListResponse = searchUsersResult
+        override suspend fun getUserDetail(userIndex: Int): UserDetail = userDetailResult
+        override suspend fun autocompleteUser(query: String): List<AutocompleteUser> = emptyList()
+        override suspend fun checkUsernameAvailable(userId: String): Boolean = checkUsernameAvailableResult
+        override suspend fun checkCustomerByPhone(phone: String): String? = null
+        override suspend fun createCustomer(name: String, phone: String): Boolean = true
+        override suspend fun createTestUser(username: String, phone: String, fullName: String, accountIndex: Int): String? = "pass123"
+        override suspend fun createUserUsingDeposit(username: String, phone: String, fullName: String, accountIndex: Int, depositPassword: String): String? = "pass456"
+        override suspend fun refillUserDeposit(userId: String, depositPassword: String): Boolean = true
+        override suspend fun extendUser(userIndex: Int): Boolean = true
+        override suspend fun getAccountStatement(startIndex: Int, rowCount: Int, query: String): List<AccountStatementItem> = statementsResult
+        override suspend fun showUserPassword(userIndex: Int, userId: String): String = "pass"
+        override suspend fun showAccountPassword(userIndex: Int, userId: String): String = "pass"
+        override suspend fun changeUserPassword(userIndex: Int, userId: String, newPass: String): Boolean = true
+        override suspend fun changeAccountPassword(userIndex: Int, userId: String, newPass: String): Boolean = true
+        override suspend fun toggleUserActive(userIndex: Int, active: Boolean): Boolean = true
+        override suspend fun changeAccountType(userIndex: Int, userId: String, accountIndex: Int): Boolean = true
+        override suspend fun updateUserDisplayName(userIndex: Int, newName: String): Boolean = true
+    }
+
+    @Before
+    fun setup() {
+        context = ApplicationProvider.getApplicationContext()
+        (context as? com.example.EarthlinkApp)?.isSafeDebugFallbackAllowedOverride = true
+        dbFile = context.getDatabasePath("step3_test_db.db")
+        dbFile.parentFile?.mkdirs()
+        dbFile.delete()
+
+        db = Room.databaseBuilder(context, AppDatabase::class.java, dbFile.name)
+            .allowMainThreadQueries()
+            .build()
+        ledgerRepo = createRepository(db)
+        accountRepo = LocalAccountRepositoryImpl(
+            accountDao = db.localAccountDao(),
+            outboxDao = db.syncOutboxDao(),
+            database = db
+        )
+    }
+
+    @After
+    fun tearDown() {
+        if (db.isOpen) {
+            db.close()
+        }
+        dbFile.delete()
+    }
+
+    @Test
+    fun test01_claimDispatchAuthorizationSucceedsForFreshOperation() = runTest {
+        val op = PendingExternalOperation(
+            businessTransactionId = "tx_claim_01",
+            operationIntentId = "intent_claim_01",
+            accountId = "user01",
+            operationType = "ACTIVATION",
+            amountIqd = 45000L,
+            status = "PENDING",
+            dispatchClaimCount = 0
+        )
+        ledgerRepo.recordPendingOperation(op)
+
+        val granted = ledgerRepo.claimDispatchAuthorization("tx_claim_01")
+        assertTrue("First dispatch claim must be granted", granted)
+
+        val updated = ledgerRepo.getPendingOperationByTransactionId("tx_claim_01")
+        assertNotNull(updated)
+        assertEquals("DISPATCHING", updated!!.status)
+        assertEquals(1, updated.dispatchClaimCount)
+    }
+
+    @Test
+    fun test02_secondClaimAttemptFails() = runTest {
+        val op = PendingExternalOperation(
+            businessTransactionId = "tx_claim_02",
+            operationIntentId = "intent_claim_02",
+            accountId = "user02",
+            operationType = "REFILL",
+            amountIqd = 40000L,
+            status = "PENDING",
+            dispatchClaimCount = 0
+        )
+        ledgerRepo.recordPendingOperation(op)
+
+        val firstClaim = ledgerRepo.claimDispatchAuthorization("tx_claim_02")
+        assertTrue(firstClaim)
+
+        val secondClaim = ledgerRepo.claimDispatchAuthorization("tx_claim_02")
+        assertFalse("Second dispatch claim must be rejected", secondClaim)
+
+        val updated = ledgerRepo.getPendingOperationByTransactionId("tx_claim_02")
+        assertNotNull(updated)
+        assertEquals(1, updated!!.dispatchClaimCount)
+    }
+
+    @Test
+    fun test03_transitionToResolvingSucceedsWhenClaimCountIs1() = runTest {
+        val op = PendingExternalOperation(
+            businessTransactionId = "tx_resolve_03",
+            operationIntentId = "intent_resolve_03",
+            accountId = "user03",
+            operationType = "ACTIVATION",
+            amountIqd = 45000L,
+            status = "PENDING",
+            dispatchClaimCount = 1
+        )
+        ledgerRepo.recordPendingOperation(op)
+
+        val rows = db.pendingExternalOperationDao().transitionToResolving("tx_resolve_03")
+        assertEquals(1, rows)
+
+        val updated = ledgerRepo.getPendingOperationByTransactionId("tx_resolve_03")
+        assertNotNull(updated)
+        assertEquals("RESOLVING", updated!!.status)
+        assertEquals(1, updated.dispatchClaimCount)
+    }
+
+    @Test
+    fun test04_coldStartRecoveryResolvesOrphanedInFlightOperations() = runTest {
+        val beforeProcessStart = 1000L
+        val processStartMs = 5000L
+
+        val opOrphaned = PendingExternalOperation(
+            businessTransactionId = "tx_orphan_04",
+            operationIntentId = "intent_orphan_04",
+            accountId = "user04",
+            operationType = "ACTIVATION",
+            amountIqd = 45000L,
+            status = "DISPATCHING",
+            dispatchClaimCount = 1,
+            createdAt = beforeProcessStart,
+            updatedAt = beforeProcessStart
+        )
+        ledgerRepo.recordPendingOperation(opOrphaned)
+
+        var isUsernameChecked = false
+        val mockGateway = object : FakeGateway() {
+            override suspend fun checkUsernameAvailable(userId: String): Boolean {
+                if (userId == "user04") {
+                    isUsernameChecked = true
+                    return true // User is available => activation never executed on ISP
+                }
+                return false
+            }
+        }
+
+        ledgerRepo.recoverColdStartOrphanedOperations(mockGateway, processStartMs)
+
+        assertTrue("Orphaned operation must be verified via gateway inspection", isUsernameChecked)
+        val resolvedOp = ledgerRepo.getPendingOperationByTransactionId("tx_orphan_04")
+        assertNotNull(resolvedOp)
+        assertEquals("FAILED", resolvedOp!!.status)
+    }
+
+    @Test
+    fun test05_coldStartIgnoresCurrentProcessOperations() = runTest {
+        val processStartMs = 5000L
+        val currentProcessTime = 7000L
+
+        val opCurrent = PendingExternalOperation(
+            businessTransactionId = "tx_current_05",
+            operationIntentId = "intent_current_05",
+            accountId = "user05",
+            operationType = "ACTIVATION",
+            amountIqd = 45000L,
+            status = "DISPATCHING",
+            dispatchClaimCount = 1,
+            createdAt = currentProcessTime,
+            updatedAt = currentProcessTime
+        )
+        ledgerRepo.recordPendingOperation(opCurrent)
+
+        var gatewayCalled = false
+        val mockGateway = object : FakeGateway() {
+            override suspend fun checkUsernameAvailable(userId: String): Boolean {
+                gatewayCalled = true
+                return false
+            }
+        }
+
+        ledgerRepo.recoverColdStartOrphanedOperations(mockGateway, processStartMs)
+
+        assertFalse("Current process operations must NOT be touched by cold start recovery", gatewayCalled)
+        val op = ledgerRepo.getPendingOperationByTransactionId("tx_current_05")
+        assertNotNull(op)
+        assertEquals("DISPATCHING", op!!.status)
+    }
+
+    @Test
+    fun test12_fullRestartCyclePreservesClaimState() = runTest {
+        val op = PendingExternalOperation(
+            businessTransactionId = "tx_restart_12",
+            operationIntentId = "intent_restart_12",
+            accountId = "user12",
+            operationType = "REFILL",
+            amountIqd = 40000L,
+            status = "PENDING",
+            dispatchClaimCount = 0
+        )
+        ledgerRepo.recordPendingOperation(op)
+        val claimed = ledgerRepo.claimDispatchAuthorization("tx_restart_12")
+        assertTrue(claimed)
+
+        // Close and simulate process death / app restart
+        db.close()
+
+        val restartedDb = Room.databaseBuilder(context, AppDatabase::class.java, dbFile.name)
+            .allowMainThreadQueries()
+            .build()
+        val restartedLedgerRepo = createRepository(restartedDb)
+
+        val restartedOp = restartedLedgerRepo.getPendingOperationByTransactionId("tx_restart_12")
+        assertNotNull(restartedOp)
+        assertEquals("DISPATCHING", restartedOp!!.status)
+        assertEquals(1, restartedOp.dispatchClaimCount)
+
+        // Attempting to claim again in new process must be rejected
+        val claimInNewProcess = restartedLedgerRepo.claimDispatchAuthorization("tx_restart_12")
+        assertFalse("Cannot claim dispatch after restart on already claimed op", claimInNewProcess)
+
+        restartedDb.close()
+    }
+
+    @Test
+    fun test13_vmRefillFailsClosedOnMissingPrice() = runTest {
+        val app = context as com.example.EarthlinkApp
+        val fakeGateway = FakeGateway()
+
+        val viewModel = com.example.ui.viewmodels.EarthlinkSearchViewModel(
+            gateway = fakeGateway,
+            audit = app.auditRepository,
+            prefs = app.preferenceManager,
+            localAccountRepository = app.localAccountRepository,
+            localLedgerRepository = ledgerRepo
+        )
+
+        val job = viewModel.refillUser(
+            userId = "user_no_price",
+            depositPass = "pass",
+            price = null // price is null and no fallback allowed!
+        )
+        job.join()
+
+        assertEquals("Invalid, non-authoritative, or missing package price. Operation aborted.", viewModel.error.value)
+        val op = ledgerRepo.getPendingOperationByAccountId("user_no_price")
+        assertNull("No pending operation should be recorded when price is missing", op)
+    }
+
+    @Test
+    fun test14_vmCreateUserFailsClosedOnInvalidCost() = runTest {
+        val app = context as com.example.EarthlinkApp
+        val throwingGateway = object : FakeGateway() {
+            override suspend fun getAccountCost(accountIndex: Int): Double {
+                throw RuntimeException("Cost lookup failed")
+            }
+        }
+
+        val viewModel = com.example.ui.viewmodels.EarthlinkSearchViewModel(
+            gateway = throwingGateway,
+            audit = app.auditRepository,
+            prefs = app.preferenceManager,
+            localAccountRepository = app.localAccountRepository,
+            localLedgerRepository = ledgerRepo
+        )
+
+        val job = viewModel.createUserUsingDeposit(
+            username = "new_user_fail_cost",
+            phone = "07700000000",
+            fullName = "New User",
+            pkgIndex = 1,
+            depositPass = "pass"
+        )
+        job.join()
+
+        assertEquals("Failed to determine a valid IQD package cost. Operation aborted.", viewModel.error.value)
+        val op = ledgerRepo.getPendingOperationByAccountId("new_user_fail_cost")
+        assertNull("No pending operation should be recorded when package cost lookup fails", op)
+    }
+}

@@ -517,7 +517,8 @@ data class PendingExternalOperation(
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
     val lastError: String? = null,
-    val verificationEvidence: String? = null
+    val verificationEvidence: String? = null,
+    @ColumnInfo(defaultValue = "0") val dispatchClaimCount: Int = 0
 )
 
 typealias StringComponents = String

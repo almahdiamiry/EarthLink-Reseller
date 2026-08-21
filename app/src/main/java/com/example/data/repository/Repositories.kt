@@ -1199,6 +1199,52 @@ class LocalLedgerRepositoryImpl(
         return pendingDao.getPendingByAccountId(accountId)
     }
 
+    override suspend fun claimDispatchAuthorization(businessTransactionId: String): Boolean {
+        return com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
+            database.withTransaction {
+                val rows = pendingDao.claimDispatch(businessTransactionId, System.currentTimeMillis())
+                rows == 1
+            }
+        }
+    }
+
+    override suspend fun recoverColdStartOrphanedOperations(
+        gateway: EarthlinkGateway,
+        processStartMs: Long
+    ) {
+        val orphaned = pendingDao.getOrphanedInFlightOperations(processStartMs)
+        if (orphaned.isEmpty()) return
+
+        for (op in orphaned) {
+            try {
+                // Previous-process in-flight state is reset to recovery-blocked PENDING(count=1).
+                // The external mutation is NEVER redispatched.
+                val reset = pendingDao.resetOrphanedInFlightToPending(
+                    op.businessTransactionId,
+                    System.currentTimeMillis()
+                )
+                if (reset != 1) continue
+
+                val resolution = verifyAndResolvePendingOperation(
+                    businessTransactionId = op.businessTransactionId,
+                    gateway = gateway,
+                    baselineExpirationDate = null
+                )
+                android.util.Log.i("ColdRecovery", "Orphaned op ${op.businessTransactionId} resolved: ${resolution.result}")
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                resolvePendingOperationInconclusive(
+                    businessTransactionId = op.businessTransactionId,
+                    diagnostic = "Cold-start recovery verification interrupted: ${e.message}"
+                )
+            }
+        }
+    }
+
+    override suspend fun getUnresolvedClaimedOperations(): List<PendingExternalOperation> {
+        return pendingDao.getUnresolvedClaimedOperations()
+    }
+
     override suspend fun getAllPendingOperations(): List<PendingExternalOperation> {
         return pendingDao.getPendingOperations()
     }
@@ -1450,6 +1496,30 @@ class LocalLedgerRepositoryImpl(
                 ledgerEntry = null,
                 diagnosticMessage = op.lastError ?: "Operation was previously marked failed"
             )
+        }
+
+        if (op.status == "PENDING") {
+            val rows = pendingDao.transitionToResolving(businessTransactionId, System.currentTimeMillis())
+            if (rows == 0) {
+                val current = getPendingOperationByTransactionId(businessTransactionId)
+                if (current != null && current.status == "COMPLETED") {
+                    val existingLedger = ledgerDao.getByIdOneShot(businessTransactionId)
+                    return PendingOperationResolution(
+                        result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
+                        operation = current,
+                        ledgerEntry = existingLedger,
+                        diagnosticMessage = "Operation was already confirmed successful"
+                    )
+                }
+                if (current != null && current.status == "FAILED") {
+                    return PendingOperationResolution(
+                        result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                        operation = current,
+                        ledgerEntry = null,
+                        diagnosticMessage = current.lastError ?: "Operation was previously marked failed"
+                    )
+                }
+            }
         }
 
         return when (op.operationType.uppercase()) {
