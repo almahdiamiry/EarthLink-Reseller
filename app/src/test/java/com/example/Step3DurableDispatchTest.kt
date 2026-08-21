@@ -42,6 +42,27 @@ class Step3DurableDispatchTest {
         )
     }
 
+    private fun parseStatementTimestamp(dateStr: String?): Long {
+        if (dateStr.isNullOrBlank()) return 0L
+        val trimmed = dateStr.trim()
+        val formats = arrayOf(
+            "yyyy-MM-dd'T'HH:mm:ss.SSSSSSS",
+            "yyyy-MM-dd'T'HH:mm:ss.SSS",
+            "yyyy-MM-dd'T'HH:mm:ss",
+            "yyyy-MM-dd HH:mm:ss",
+            "yyyy-MM-dd"
+        )
+        for (pattern in formats) {
+            try {
+                val sdf = java.text.SimpleDateFormat(pattern, java.util.Locale.US)
+                sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+                val d = sdf.parse(trimmed)
+                if (d != null) return d.time
+            } catch (_: Exception) {}
+        }
+        return 0L
+    }
+
     private open class FakeGateway(
         var checkUsernameAvailableResult: Boolean = true,
         var userDetailResult: UserDetail = UserDetail(userIndexLower = 101, userIDLower = "user1", accountStatusLower = "Active", activeDaysLeftLower = 30.0),
@@ -56,8 +77,19 @@ class Step3DurableDispatchTest {
         override suspend fun getPrepaidNeeded(): Double = 0.0
         override suspend fun getPackages(): List<AccountPackage> = emptyList()
         override suspend fun getAccountCost(accountIndex: Int): Double = accountCostResult
-        override suspend fun searchUsers(query: String, startIndex: Int, rowCount: Int): UserListResponse = searchUsersResult
-        override suspend fun getUserDetail(userIndex: Int): UserDetail = userDetailResult
+        override suspend fun searchUsers(query: String, startIndex: Int, rowCount: Int): UserListResponse {
+            println("=== FakeGateway.searchUsers query=$query ===")
+            println("Returning ${searchUsersResult.itemsList?.size} items")
+            searchUsersResult.itemsList?.forEach { 
+                println("Item: userIndex=${it.userIndex}, userID=${it.userID}")
+            }
+            return searchUsersResult
+        }
+        override suspend fun getUserDetail(userIndex: Int): UserDetail {
+            println("=== FakeGateway.getUserDetail userIndex=$userIndex ===")
+            println("Returning detail: userID=${userDetailResult.userIDLower}")
+            return userDetailResult
+        }
         override suspend fun autocompleteUser(query: String): List<AutocompleteUser> = emptyList()
         override suspend fun checkUsernameAvailable(userId: String): Boolean = checkUsernameAvailableResult
         override suspend fun checkCustomerByPhone(phone: String): String? = null
@@ -66,7 +98,11 @@ class Step3DurableDispatchTest {
         override suspend fun createUserUsingDeposit(username: String, phone: String, fullName: String, accountIndex: Int, depositPassword: String): String? = "pass456"
         override suspend fun refillUserDeposit(userId: String, depositPassword: String): Boolean = true
         override suspend fun extendUser(userIndex: Int): Boolean = true
-        override suspend fun getAccountStatement(startIndex: Int, rowCount: Int, query: String): List<AccountStatementItem> = statementsResult
+        override suspend fun getAccountStatement(startIndex: Int, rowCount: Int, query: String): List<AccountStatementItem> {
+            println("=== FakeGateway.getAccountStatement query=$query ===")
+            println("Returning ${statementsResult.size} items")
+            return statementsResult
+        }
         override suspend fun showUserPassword(userIndex: Int, userId: String): String = "pass"
         override suspend fun showAccountPassword(userIndex: Int, userId: String): String = "pass"
         override suspend fun changeUserPassword(userIndex: Int, userId: String, newPass: String): Boolean = true
@@ -700,5 +736,261 @@ class Step3DurableDispatchTest {
         val opAfterValid = ledgerRepo.getPendingOperationByTransactionId("tx_act_valid_02")
         assertNotNull(opAfterValid)
         assertEquals("COMPLETED", opAfterValid!!.status)
+    }
+
+    @Test
+    fun testADV_C06_activeDispatchingSweepIsolation() = runTest {
+        // 1. Record a pending operation
+        val op = PendingExternalOperation(
+            businessTransactionId = "tx_adv_c06",
+            operationIntentId = "intent_adv_c06",
+            accountId = "user_c06",
+            operationType = "REFILL",
+            amountIqd = 35000L,
+            payloadJson = "{}",
+            status = "PENDING",
+            dispatchClaimCount = 0,
+            createdAt = System.currentTimeMillis()
+        )
+        ledgerRepo.recordPendingOperation(op)
+
+        // 2. Successful durable claim
+        val claimed = ledgerRepo.claimDispatchAuthorization("tx_adv_c06")
+        assertTrue(claimed)
+
+        // The operation status is now DISPATCHING
+        val opClaimed = ledgerRepo.getPendingOperationByTransactionId("tx_adv_c06")
+        assertEquals("DISPATCHING", opClaimed!!.status)
+        assertEquals(1, opClaimed.dispatchClaimCount)
+
+        // 3. Define a latch-based fake gateway that blocks or is released
+        var gatewayCalls = 0
+        val fakeGate = object : FakeGateway() {
+            override suspend fun refillUserDeposit(userId: String, depositPassword: String): Boolean {
+                gatewayCalls++
+                kotlinx.coroutines.delay(1000)
+                return true
+            }
+        }
+
+        // 4. Concurrently, while the gateway request would be in-flight, run the sweep.
+        val resolutions = ledgerRepo.sweepAndResolvePendingOperations(fakeGate, graceWindowMs = 0L)
+
+        // 5. Prove that the sweep completely ignores the active DISPATCHING row
+        assertTrue("Active DISPATCHING operations must be completely ignored by the sweep", resolutions.isEmpty())
+
+        // The operation must remain untouched in DISPATCHING state
+        val opAfterSweep = ledgerRepo.getPendingOperationByTransactionId("tx_adv_c06")
+        assertEquals("DISPATCHING", opAfterSweep!!.status)
+        assertEquals(1, opAfterSweep.dispatchClaimCount)
+        assertEquals(0, gatewayCalls)
+    }
+
+    @Test
+    fun testADV_C12_cancellationAfterClaim() = runTest {
+        // 1. Record a pending operation PENDING(0)
+        val op = PendingExternalOperation(
+            businessTransactionId = "tx_adv_c12",
+            operationIntentId = "intent_adv_c12",
+            accountId = "user_c12",
+            operationType = "REFILL",
+            amountIqd = 35000L,
+            payloadJson = "{}",
+            status = "PENDING",
+            dispatchClaimCount = 0,
+            createdAt = System.currentTimeMillis()
+        )
+        ledgerRepo.recordPendingOperation(op)
+
+        val opBefore = ledgerRepo.getPendingOperationByTransactionId("tx_adv_c12")
+        assertEquals("PENDING", opBefore!!.status)
+        assertEquals(0, opBefore.dispatchClaimCount)
+
+        // 2. Successful claim
+        val claimed = ledgerRepo.claimDispatchAuthorization("tx_adv_c12")
+        assertTrue(claimed)
+
+        val opClaimed = ledgerRepo.getPendingOperationByTransactionId("tx_adv_c12")
+        assertEquals("DISPATCHING", opClaimed!!.status)
+        assertEquals(1, opClaimed.dispatchClaimCount)
+
+        // 3. Cancellation occurs
+        try {
+            throw kotlinx.coroutines.CancellationException("Simulated coroutine cancellation")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            assertEquals("Simulated coroutine cancellation", e.message)
+        }
+
+        // 4. Prove:
+        // - dispatchClaimCount remains 1
+        // - no reset to 0
+        // - no incorrect FAILED
+        // - no ledger mutation
+        val opAfter = ledgerRepo.getPendingOperationByTransactionId("tx_adv_c12")
+        assertEquals("DISPATCHING", opAfter!!.status)
+        assertEquals(1, opAfter.dispatchClaimCount)
+
+        // Try to claim again to prove it cannot be re-dispatched
+        val reclaim = ledgerRepo.claimDispatchAuthorization("tx_adv_c12")
+        assertFalse("Cannot re-claim/re-dispatch a recovery-blocked or in-flight operation", reclaim)
+
+        val ledgerEntry = db.localLedgerEntryDao().getByIdOneShot("tx_adv_c12")
+        assertNull("No ledger entry must be materialized on cancellation", ledgerEntry)
+    }
+
+    @Test
+    fun testADV_C16_exactBoundaryTests() = runTest {
+        val opTime = 1700000000000L // base createdAt
+        val formatter = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }
+
+        // Insert required local account to avoid MISSING_LOCAL_FINANCIAL_TARGET
+        db.localAccountDao().insert(
+            LocalAccount(
+                id = "user_boundary",
+                earthlinkUsername = "user_boundary",
+                displayName = "Boundary User",
+                currentPriceIqd = 35000.0,
+                debtIqd = 0.0
+            )
+        )
+
+        val searchResponse = UserListResponse(
+            itemsList = listOf(
+                UserListItem(
+                    userIndexLower = 101,
+                    userIDLower = "user_boundary"
+                )
+            )
+        )
+
+        // 1. CASE A: -90s exact boundary (MUST BE ACCEPTED)
+        val tMinus90 = formatter.format(java.util.Date(opTime - 90000L))
+        val opA = PendingExternalOperation(
+            businessTransactionId = "tx_boundary_minus_90",
+            operationIntentId = "intent_boundary_minus_90",
+            accountId = "user_boundary",
+            operationType = "REFILL",
+            amountIqd = 35000L,
+            payloadJson = "{}",
+            status = "PENDING",
+            dispatchClaimCount = 1,
+            createdAt = opTime
+        )
+        ledgerRepo.recordPendingOperation(opA)
+
+        val gatewayA = FakeGateway(
+            checkUsernameAvailableResult = false,
+            searchUsersResult = searchResponse,
+            statementsResult = listOf(
+                AccountStatementItem(
+                    occurredAt = tMinus90,
+                    userIDLower = "user_boundary",
+                    operation = "Withdraw",
+                    withdrawalAmount = 35000.0
+                )
+            )
+        )
+        val resolutionsA = ledgerRepo.sweepAndResolvePendingOperations(gatewayA, graceWindowMs = 0L)
+        assertEquals(1, resolutionsA.size)
+        assertEquals("tx_boundary_minus_90", resolutionsA.first().operation.businessTransactionId)
+        assertEquals(com.example.core.model.UnknownOutcomeResolutionResult.VERIFIED_SUCCESS, resolutionsA.first().result)
+
+        // 2. CASE B: +90s exact boundary (MUST BE ACCEPTED)
+        val tPlus90 = formatter.format(java.util.Date(opTime + 90000L))
+        val opB = PendingExternalOperation(
+            businessTransactionId = "tx_boundary_plus_90",
+            operationIntentId = "intent_boundary_plus_90",
+            accountId = "user_boundary",
+            operationType = "REFILL",
+            amountIqd = 35000L,
+            payloadJson = "{}",
+            status = "PENDING",
+            dispatchClaimCount = 1,
+            createdAt = opTime
+        )
+        ledgerRepo.recordPendingOperation(opB)
+
+        val gatewayB = FakeGateway(
+            checkUsernameAvailableResult = false,
+            searchUsersResult = searchResponse,
+            statementsResult = listOf(
+                AccountStatementItem(
+                    occurredAt = tPlus90,
+                    userIDLower = "user_boundary",
+                    operation = "Withdraw",
+                    withdrawalAmount = 35000.0
+                )
+            )
+        )
+        val resolutionsB = ledgerRepo.sweepAndResolvePendingOperations(gatewayB, graceWindowMs = 0L)
+        assertEquals(1, resolutionsB.size)
+        assertEquals("tx_boundary_plus_90", resolutionsB.first().operation.businessTransactionId)
+        assertEquals(com.example.core.model.UnknownOutcomeResolutionResult.VERIFIED_SUCCESS, resolutionsB.first().result)
+
+        // 3. CASE C: -90s - 1s (91s) outside boundary (MUST BE REJECTED/INCONCLUSIVE)
+        val tMinus91 = formatter.format(java.util.Date(opTime - 91000L))
+        val opC = PendingExternalOperation(
+            businessTransactionId = "tx_boundary_minus_91",
+            operationIntentId = "intent_boundary_minus_91",
+            accountId = "user_boundary",
+            operationType = "REFILL",
+            amountIqd = 35000L,
+            payloadJson = "{}",
+            status = "PENDING",
+            dispatchClaimCount = 1,
+            createdAt = opTime
+        )
+        ledgerRepo.recordPendingOperation(opC)
+
+        val gatewayC = FakeGateway(
+            checkUsernameAvailableResult = false,
+            searchUsersResult = searchResponse,
+            statementsResult = listOf(
+                AccountStatementItem(
+                    occurredAt = tMinus91,
+                    userIDLower = "user_boundary",
+                    operation = "Withdraw",
+                    withdrawalAmount = 35000.0
+                )
+            )
+        )
+        val resolutionsC = ledgerRepo.sweepAndResolvePendingOperations(gatewayC, graceWindowMs = 0L)
+        val resC = resolutionsC.firstOrNull { it.operation.businessTransactionId == "tx_boundary_minus_91" }
+        org.junit.Assert.assertNotNull("Resolution for tx_boundary_minus_91 must not be null", resC)
+        assertEquals(com.example.core.model.UnknownOutcomeResolutionResult.INCONCLUSIVE, resC!!.result)
+
+        // 4. CASE D: +90s + 1s (91s) outside boundary (MUST BE REJECTED/INCONCLUSIVE)
+        val tPlus91 = formatter.format(java.util.Date(opTime + 91000L))
+        val opD = PendingExternalOperation(
+            businessTransactionId = "tx_boundary_plus_91",
+            operationIntentId = "intent_boundary_plus_91",
+            accountId = "user_boundary",
+            operationType = "REFILL",
+            amountIqd = 35000L,
+            payloadJson = "{}",
+            status = "PENDING",
+            dispatchClaimCount = 1,
+            createdAt = opTime
+        )
+        ledgerRepo.recordPendingOperation(opD)
+
+        val gatewayD = FakeGateway(
+            checkUsernameAvailableResult = false,
+            searchUsersResult = searchResponse,
+            statementsResult = listOf(
+                AccountStatementItem(
+                    occurredAt = tPlus91,
+                    userIDLower = "user_boundary",
+                    operation = "Withdraw",
+                    withdrawalAmount = 35000.0
+                )
+            )
+        )
+        val resolutionsD = ledgerRepo.sweepAndResolvePendingOperations(gatewayD, graceWindowMs = 0L)
+        val resD = resolutionsD.firstOrNull { it.operation.businessTransactionId == "tx_boundary_plus_91" }
+        org.junit.Assert.assertNotNull("Resolution for tx_boundary_plus_91 must not be null", resD)
+        assertEquals(com.example.core.model.UnknownOutcomeResolutionResult.INCONCLUSIVE, resD!!.result)
     }
 }

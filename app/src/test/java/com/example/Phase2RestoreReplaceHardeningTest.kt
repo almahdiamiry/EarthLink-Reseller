@@ -7,6 +7,8 @@ import com.example.core.backup.BackupManager
 import com.example.core.database.AppDatabase
 import com.example.core.model.*
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.*
@@ -527,5 +529,92 @@ class Phase2RestoreReplaceHardeningTest {
         println("Total Duration: ${durationMs} ms")
         println("Approx Peak Memory Delta: ${(memAfterBytes - memBeforeBytes) / (1024 * 1024)} MB")
         println("=================================")
+    }
+
+    @Test
+    fun testADV_C26_TEST12_backupRestoreEvidenceGap() {
+        runBlocking {
+            // 1. Backup without password (No-password backup)
+            val noPasswordBackupFile = BackupManager.createLocalBackupZip(context, password = null)
+            assertTrue("No-password backup file must be created", noPasswordBackupFile.exists())
+            assertTrue("No-password backup file must be non-empty", noPasswordBackupFile.length() > 0)
+            assertFalse("Backup must be reported as NOT password-protected", BackupManager.isBackupPasswordProtected(noPasswordBackupFile))
+
+            // Confirm we can restore this no-password backup
+            val restoreNoPasswordSuccess = BackupManager.restoreBackupZip(context, noPasswordBackupFile, force = true, password = null)
+            assertTrue("Restore of no-password backup must succeed", restoreNoPasswordSuccess)
+
+            // 2. Password-protected backup
+            val password = "MySecurePassword123!"
+            val passwordBackupFile = BackupManager.createLocalBackupZip(context, password = password)
+            assertTrue("Password-protected backup file must be created", passwordBackupFile.exists())
+            assertTrue("Password-protected backup file must be non-empty", passwordBackupFile.length() > 0)
+            assertTrue("Backup must be reported as password-protected", BackupManager.isBackupPasswordProtected(passwordBackupFile))
+
+            // Try restoring without a password (expected behavior: fail/throw)
+            val restoreWrongPasswordSuccess = BackupManager.restoreBackupZip(context, passwordBackupFile, force = true, password = null)
+            assertFalse("Restore must fail when no password is provided for encrypted backup", restoreWrongPasswordSuccess)
+
+            // Restore with the correct password (expected behavior: success)
+            val restoreCorrectPasswordSuccess = BackupManager.restoreBackupZip(context, passwordBackupFile, force = true, password = password)
+            assertTrue("Restore must succeed when correct password is provided", restoreCorrectPasswordSuccess)
+
+            // 3. Restore checkpoint / safety behavior
+            val backupsDir = BackupManager.getBackupsDirectory(context)
+            val preBackupsBefore = backupsDir.listFiles()?.filter { it.name.startsWith("pre_restore_backup_") } ?: emptyList()
+            val countBefore = preBackupsBefore.size
+
+            val restoreSuccess = BackupManager.restoreBackupZip(context, noPasswordBackupFile, force = true)
+            assertTrue("Restore must be successful", restoreSuccess)
+
+            val preBackupsAfter = backupsDir.listFiles()?.filter { it.name.startsWith("pre_restore_backup_") } ?: emptyList()
+            assertTrue("Pre-restore safety backup checkpoint must be created", preBackupsAfter.size > countBefore)
+
+            val latestPreBackup = preBackupsAfter.maxByOrNull { it.lastModified() }
+            assertNotNull(latestPreBackup)
+            assertTrue("Safety backup checkpoint file must exist and be non-empty", latestPreBackup!!.length() > 0)
+
+            // 4. Backup/restore concurrent with attempted sync
+            val lockAcquired = kotlinx.coroutines.sync.Mutex(locked = true)
+            val syncAttempted = java.util.concurrent.atomic.AtomicBoolean(false)
+            val syncCompleted = java.util.concurrent.atomic.AtomicBoolean(false)
+
+            val job = launch {
+                com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.RESTORE) {
+                    lockAcquired.unlock()
+                    delay(200) // Hold the RESTORE lock for 200ms
+                }
+            }
+
+            lockAcquired.lock() // Wait until the background coroutine holds the RESTORE lock
+            assertEquals(com.example.core.sync.DataOperationMode.RESTORE, com.example.core.sync.DataOperationCoordinator.currentMode)
+
+            val syncJob = launch {
+                syncAttempted.set(true)
+                com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
+                    syncCompleted.set(true)
+                }
+            }
+
+            delay(50)
+            assertTrue("Sync was attempted", syncAttempted.get())
+            assertFalse("Sync must be blocked/serialized while RESTORE is active", syncCompleted.get())
+
+            job.join()
+            syncJob.join()
+            assertTrue("Sync must eventually complete after RESTORE lock is released", syncCompleted.get())
+
+            // 5. Maintenance exclusion
+            com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.IMPORT) {
+                assertTrue("Maintenance must be active when in IMPORT mode", com.example.core.sync.DataOperationCoordinator.isMaintenanceActive)
+            }
+            com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.RESTORE) {
+                assertTrue("Maintenance must be active when in RESTORE mode", com.example.core.sync.DataOperationCoordinator.isMaintenanceActive)
+            }
+
+            // Clean up temporary files
+            noPasswordBackupFile.delete()
+            passwordBackupFile.delete()
+        }
     }
 }
