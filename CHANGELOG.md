@@ -16,8 +16,13 @@ All notable changes to this project will be documented in this file.
 - **Deterministic Domain Exception Hierarchy (`ApiResult.kt`)**:
   - Integrated `EarthlinkGatewayException`, `EarthlinkTransportException`, `EarthlinkBusinessException`, `EarthlinkAuthException`.
   - Refactored `safeApiCall` to emit typed domain exceptions preventing raw exception wrapping and heuristic guessing.
+- **ViewModel Typed Exception Handling & Outcome Routing (`EarthlinkSearchViewModel.kt`)**:
+  - Replaced legacy generic catch blocks in `createTestUser`, `createUserUsingDeposit`, `refillUser`, and `extendUser` with explicit typed handlers.
+  - Routed `EarthlinkBusinessException` & `EarthlinkAuthException` to `resolvePendingOperationVerifiedFailure`.
+  - Routed `EarthlinkTransportException` & uncaught unexpected errors to `resolvePendingOperationInconclusive` (preserving `PENDING` state).
+  - Eliminated deprecated direct `markPendingOperationFailed` calls across mutation dispatch sites.
 - **Step 2 Test Suite**:
-  - Added `Step2OutcomeResolutionTest.kt` verifying TEST-06 through TEST-11 in the Master Test Matrix (100% green).
+  - Added `Step2OutcomeResolutionTest.kt` verifying TEST-06 through TEST-11 and VM-level TEST-15 in the Master Test Matrix (100% green).
 
 
 ## [1.105.0] - 2026-08-20

@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.EarthlinkApp
 import com.example.core.model.*
+import com.example.core.network.*
 import com.example.domain.repository.SyncStatusState
 import com.example.domain.repository.UtowerImportPreview
 import java.security.MessageDigest
@@ -361,12 +362,22 @@ class EarthlinkSearchViewModel(
                     _actionSuccess.value = "Test subscriber $username created successfully.\nPassword: $generatedPassword"
                     audit.logAction("CREATE_TEST_USER", "USER", username, "Created test user successfully")
                 } else {
-                    localLedgerRepository.markPendingOperationFailed(businessTxId, "Test user creation failed")
+                    localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, "Test user creation failed")
                     _error.value = "Test user creation failed."
                 }
-            } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                localLedgerRepository.markPendingOperationFailed(businessTxId, e.message ?: "Unknown error")
-                _error.value = e.message
+            } catch (e: EarthlinkBusinessException) {
+                localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, e.errorMessage)
+                _error.value = e.errorMessage
+            } catch (e: EarthlinkAuthException) {
+                localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, "Auth failed: ${e.message}")
+                _error.value = "Session expired. Please log in again."
+            } catch (e: EarthlinkTransportException) {
+                localLedgerRepository.resolvePendingOperationInconclusive(businessTxId, "Transport uncertainty: ${e.message}")
+                _error.value = "Network uncertain. Operation stored for verification."
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                localLedgerRepository.resolvePendingOperationInconclusive(businessTxId, "Unexpected error: ${e.message}")
+                _error.value = "Operation pending verification."
             } finally {
                 _isActionLoading.value = false
                 lock.unlock()
@@ -417,12 +428,22 @@ class EarthlinkSearchViewModel(
                     _actionSuccess.value = "Paid subscriber $username created successfully.\nPassword: $generatedPassword"
                     audit.logAction("CREATE_PAID_USER", "USER", username, "Created subscriber using reseller deposit")
                 } else {
-                    localLedgerRepository.markPendingOperationFailed(businessTxId, "Subscriber creation failed")
+                    localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, "Subscriber creation failed")
                     _error.value = "Subscriber creation failed."
                 }
-            } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                localLedgerRepository.markPendingOperationFailed(businessTxId, e.message ?: "Unknown error")
-                _error.value = e.message
+            } catch (e: EarthlinkBusinessException) {
+                localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, e.errorMessage)
+                _error.value = e.errorMessage
+            } catch (e: EarthlinkAuthException) {
+                localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, "Auth failed: ${e.message}")
+                _error.value = "Session expired. Please log in again."
+            } catch (e: EarthlinkTransportException) {
+                localLedgerRepository.resolvePendingOperationInconclusive(businessTxId, "Transport uncertainty: ${e.message}")
+                _error.value = "Network uncertain. Operation stored for verification."
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                localLedgerRepository.resolvePendingOperationInconclusive(businessTxId, "Unexpected error: ${e.message}")
+                _error.value = "Operation pending verification."
             } finally {
                 _isActionLoading.value = false
                 lock.unlock()
@@ -533,25 +554,29 @@ class EarthlinkSearchViewModel(
                     )
                     _selectedUser.value?.userIndex?.let { loadUserDetail(it, _selectedUser.value?.userIDLower) }
                 } else {
-                    localLedgerRepository.markPendingOperationFailed(businessTxId, "Refill action failed on server")
+                    localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, "Refill action failed on server")
                     _error.value = "Refill action failed."
                 }
-            } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                localLedgerRepository.markPendingOperationFailed(businessTxId, e.message ?: "Unknown error")
-                val isNetworkIssue = e.message?.contains("Network unavailable", ignoreCase = true) == true || 
-                                     e.message?.contains("Connection error", ignoreCase = true) == true || 
-                                     e.message?.contains("ConnectException", ignoreCase = true) == true || 
-                                     e.message?.contains("UnknownHostException", ignoreCase = true) == true || 
-                                     e.message?.contains("SocketTimeoutException", ignoreCase = true) == true
-
-                if (isNetworkIssue) {
-                    _error.value = if (prefs.getLanguage() == "ar") {
-                        "فشل الاتصال بالشبكة: تعذر تجديد الاشتراك على خوادم إيرثلنك. يرجى التأكد من الاتصال بالإنترنت وإعادة المحاولة."
-                    } else {
-                        "Network connection failed: Renewal could not be processed on Earthlink servers. Please check your internet connection and try again."
-                    }
+            } catch (e: EarthlinkBusinessException) {
+                localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, e.errorMessage)
+                _error.value = e.errorMessage
+            } catch (e: EarthlinkAuthException) {
+                localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, "Auth failed: ${e.message}")
+                _error.value = "Session expired. Please log in again."
+            } catch (e: EarthlinkTransportException) {
+                localLedgerRepository.resolvePendingOperationInconclusive(businessTxId, "Transport uncertainty: ${e.message}")
+                _error.value = if (prefs.getLanguage() == "ar") {
+                    "فشل الاتصال بالشبكة: تعذر تجديد الاشتراك على خوادم إيرثلنك. تم حفظ العملية للتحقق."
                 } else {
-                    _error.value = e.message
+                    "Network connection uncertain: Renewal stored for verification."
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                localLedgerRepository.resolvePendingOperationInconclusive(businessTxId, "Unexpected error: ${e.message}")
+                _error.value = if (prefs.getLanguage() == "ar") {
+                    "فشل الاتصال بالشبكة: تعذر تجديد الاشتراك على خوادم إيرثلنك. تم حفظ العملية للتحقق."
+                } else {
+                    "Operation pending verification."
                 }
             } finally {
                 _isActionLoading.value = false
@@ -598,25 +623,29 @@ class EarthlinkSearchViewModel(
                     audit.logAction("EXTEND_USER", "USER", userId, "Extended subscriber duration")
                     loadUserDetail(userIndex, _selectedUser.value?.userIDLower)
                 } else {
-                    localLedgerRepository.markPendingOperationFailed(businessTxId, "Extension failed on server")
+                    localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, "Extension failed on server")
                     _error.value = "Extension failed."
                 }
-            } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                localLedgerRepository.markPendingOperationFailed(businessTxId, e.message ?: "Unknown error")
-                val isNetworkIssue = e.message?.contains("Network unavailable", ignoreCase = true) == true || 
-                                     e.message?.contains("Connection error", ignoreCase = true) == true || 
-                                     e.message?.contains("ConnectException", ignoreCase = true) == true || 
-                                     e.message?.contains("UnknownHostException", ignoreCase = true) == true || 
-                                     e.message?.contains("SocketTimeoutException", ignoreCase = true) == true
-
-                if (isNetworkIssue) {
-                    _error.value = if (prefs.getLanguage() == "ar") {
-                        "فشل الاتصال بالشبكة: تعذر تمديد الاشتراك على خوادم إيرثلنك. يرجى التأكد من الاتصال بالإنترنت وإعادة المحاولة."
-                    } else {
-                        "Network connection failed: Extension could not be processed on Earthlink servers. Please check your internet connection and try again."
-                    }
+            } catch (e: EarthlinkBusinessException) {
+                localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, e.errorMessage)
+                _error.value = e.errorMessage
+            } catch (e: EarthlinkAuthException) {
+                localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, "Auth failed: ${e.message}")
+                _error.value = "Session expired. Please log in again."
+            } catch (e: EarthlinkTransportException) {
+                localLedgerRepository.resolvePendingOperationInconclusive(businessTxId, "Transport uncertainty: ${e.message}")
+                _error.value = if (prefs.getLanguage() == "ar") {
+                    "فشل الاتصال بالشبكة: تعذر تمديد الاشتراك على خوادم إيرثلنك. تم حفظ العملية للتحقق."
                 } else {
-                    _error.value = e.message
+                    "Network connection uncertain: Extension stored for verification."
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                localLedgerRepository.resolvePendingOperationInconclusive(businessTxId, "Unexpected error: ${e.message}")
+                _error.value = if (prefs.getLanguage() == "ar") {
+                    "فشل الاتصال بالشبكة: تعذر تمديد الاشتراك على خوادم إيرثلنك. تم حفظ العملية للتحقق."
+                } else {
+                    "Operation pending verification."
                 }
             } finally {
                 _isActionLoading.value = false

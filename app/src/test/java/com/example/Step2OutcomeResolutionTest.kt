@@ -61,7 +61,7 @@ class Step2OutcomeResolutionTest {
     }
 
     // Helper mock gateway
-    private class FakeGateway(
+    private open class FakeGateway(
         var checkUsernameAvailableResult: Boolean = true,
         var userDetailResult: UserDetail = UserDetail(userIndexLower = 101, userIDLower = "user1", accountStatusLower = "Active", activeDaysLeftLower = 30.0),
         var statementsResult: List<AccountStatementItem> = emptyList(),
@@ -365,4 +365,87 @@ class Step2OutcomeResolutionTest {
         val updatedAccount = accountDao.getByIdOneShot(accountId)
         assertEquals(0.0, updatedAccount?.debtIqd ?: 0.0, 0.001)
     }
+
+    /**
+     * TEST-15 (VM Level): testViewModelTransportExceptionPreservesPendingStatus
+     * When ViewModel calls refillUser and EarthlinkTransportException occurs,
+     * the pending operation is resolved INCONCLUSIVE (remains PENDING), NOT FAILED.
+     */
+    @Test
+    fun testViewModelTransportExceptionPreservesPendingStatus() = runBlocking {
+        val app = context as EarthlinkApp
+        val accountId = "user_vm_transport"
+        val account = LocalAccount(id = accountId, earthlinkUsername = accountId, displayName = "VM Test", debtIqd = 0.0)
+        accountDao.insert(account)
+
+        val throwingGateway = object : FakeGateway() {
+            override suspend fun refillUserDeposit(userId: String, depositPassword: String): Boolean {
+                throw EarthlinkTransportException("Socket timeout while contacting ISP gateway")
+            }
+        }
+
+        val viewModel = com.example.ui.viewmodels.EarthlinkSearchViewModel(
+            gateway = throwingGateway,
+            audit = app.auditRepository,
+            prefs = app.preferenceManager,
+            localAccountRepository = app.localAccountRepository,
+            localLedgerRepository = ledgerRepository
+        )
+
+        val intentId = "intent_vm_trans_" + UUID.randomUUID()
+        val job = viewModel.refillUser(
+            userId = accountId,
+            depositPass = "dep_pass",
+            price = 35000.0,
+            intentId = intentId
+        )
+        job.join()
+
+        val savedOp = pendingDao.getByOperationIntentId(intentId)
+        assertNotNull(savedOp)
+        // Must be PENDING (inconclusive), NEVER collapsed to FAILED
+        assertEquals("PENDING", savedOp?.status)
+        assertEquals(35000L, savedOp?.amountIqd)
+    }
+
+    /**
+     * TEST (VM Level): testViewModelBusinessExceptionResolvesFailed
+     * When ViewModel calls refillUser and EarthlinkBusinessException occurs (e.g. invalid password),
+     * the pending operation is resolved to FAILED.
+     */
+    @Test
+    fun testViewModelBusinessExceptionResolvesFailed() = runBlocking {
+        val app = context as EarthlinkApp
+        val accountId = "user_vm_biz"
+        val account = LocalAccount(id = accountId, earthlinkUsername = accountId, displayName = "VM Biz Test", debtIqd = 0.0)
+        accountDao.insert(account)
+
+        val throwingGateway = object : FakeGateway() {
+            override suspend fun refillUserDeposit(userId: String, depositPassword: String): Boolean {
+                throw EarthlinkBusinessException(400, "Wrong deposit password")
+            }
+        }
+
+        val viewModel = com.example.ui.viewmodels.EarthlinkSearchViewModel(
+            gateway = throwingGateway,
+            audit = app.auditRepository,
+            prefs = app.preferenceManager,
+            localAccountRepository = app.localAccountRepository,
+            localLedgerRepository = ledgerRepository
+        )
+
+        val intentId = "intent_vm_biz_" + UUID.randomUUID()
+        val job = viewModel.refillUser(
+            userId = accountId,
+            depositPass = "wrong_pass",
+            price = 35000.0,
+            intentId = intentId
+        )
+        job.join()
+
+        val savedOp = pendingDao.getByOperationIntentId(intentId)
+        assertNotNull(savedOp)
+        assertEquals("FAILED", savedOp?.status)
+    }
 }
+
