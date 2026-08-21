@@ -576,10 +576,46 @@ class Step3DurableDispatchTest {
             "Error must indicate local record confirmation is pending",
             viewModel.error.value!!.contains("local record confirmation is pending") || viewModel.error.value!!.contains("فشل تسجيل القيد المحلي")
         )
-        // 3. Operation must remain recoverable (not deleted or FAILED on server)
+        // 3. Operation must remain in DISPATCHING with claim count = 1 (recoverable, blocked from redispatch)
         val op = ledgerRepo.getPendingOperationByIntentId("intent_refill_fail_mat")
         assertNotNull(op)
-        assertNotEquals("COMPLETED", op!!.status)
+        assertEquals("DISPATCHING", op!!.status)
+        assertEquals(1, op.dispatchClaimCount)
+        assertNull(op.lastError)
+
+        // 4. Perform real cold-start recovery with fresh repository / process restart
+        // Save the missing local account so materialization can succeed on recovery verification
+        val account = LocalAccount(id = "unregistered_refill_user", displayName = "Refill User", currentPriceIqd = 35000.0)
+        accountRepo.saveAccount(account)
+
+        // Add matching subscriber user search result and statement to FakeGateway to prove statement-based resolution
+        gateway.searchUsersResult = UserListResponse(itemsList = listOf(UserListItem(userIndexLower = 101, userIDLower = "unregistered_refill_user")))
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+        val dateStr = sdf.format(java.util.Date())
+        gateway.statementsResult = listOf(
+            com.example.core.model.AccountStatementItem(
+                occurredAt = dateStr,
+                operation = "Withdraw",
+                depositAmount = 0.0,
+                withdrawalAmount = 35000.0,
+                balanceAfter = 50000.0,
+                note = "RENEW",
+                userIDLower = "unregistered_refill_user"
+            )
+        )
+
+        // Simulate process restart with processStartMs after the operation timestamp
+        val futureProcessStartMs = System.currentTimeMillis() + 1000L
+        ledgerRepo.recoverColdStartOrphanedOperations(gateway, futureProcessStartMs)
+
+        // 5. Prove transition: DISPATCHING -> PENDING(count=1) -> COMPLETED with materialized ledger entry
+        val opAfterRecovery = ledgerRepo.getPendingOperationByIntentId("intent_refill_fail_mat")
+        assertNotNull(opAfterRecovery)
+        assertEquals("COMPLETED", opAfterRecovery!!.status)
+
+        val ledgerEntry = db.localLedgerEntryDao().getByIdOneShot(op.businessTransactionId)
+        assertNotNull("Ledger debt entry must be materialized after cold-start recovery verification", ledgerEntry)
+        assertEquals(35000.0, ledgerEntry!!.amountIqd, 0.001)
     }
 
     @Test
