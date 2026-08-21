@@ -90,6 +90,7 @@ interface LocalLedgerRepository {
     suspend fun getAllPendingOperations(): List<PendingExternalOperation>
     suspend fun getUnresolvedPendingOperations(): List<PendingExternalOperation>
     suspend fun markPendingOperationFailed(businessTransactionId: String, error: String)
+    @Deprecated("Legacy helper: production external operations MUST use resolvePendingOperationVerifiedSuccess to avoid canonical financial materializer bypass.")
     suspend fun completePendingOperation(businessTransactionId: String, accountId: String, ledgerEntryId: String? = null)
     suspend fun deletePendingOperation(businessTransactionId: String)
 

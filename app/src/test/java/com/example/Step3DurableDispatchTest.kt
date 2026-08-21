@@ -515,14 +515,24 @@ class Step3DurableDispatchTest {
         assertNotNull(opDeposit)
         assertEquals("COMPLETED", opDeposit!!.status)
 
-        // 3. refillUser
-        val jobRefill = viewModel.refillUser("user_all_four", "pass", price = 35000.0, note = "Refill Note", intentId = "intent_refill_03")
+        // 3. refillUser (with onSuccessCallback to verify canonical materialization cannot be bypassed)
+        var callbackInvokedTxId: String? = null
+        val jobRefill = viewModel.refillUser(
+            userId = "user_all_four",
+            depositPass = "pass",
+            price = 35000.0,
+            note = "Refill Note",
+            intentId = "intent_refill_03",
+            onSuccessCallback = { txId -> callbackInvokedTxId = txId }
+        )
         jobRefill.join()
         val opRefill = ledgerRepo.getPendingOperationByIntentId("intent_refill_03")
         assertNotNull(opRefill)
         assertEquals("COMPLETED", opRefill!!.status)
+        assertNotNull("onSuccessCallback must be invoked", callbackInvokedTxId)
+        assertEquals(opRefill!!.businessTransactionId, callbackInvokedTxId)
         val ledgerEntries = db.localLedgerEntryDao().getByAccountIdOneShot("user_all_four")
-        assertEquals("Ledger debt entry must be materialized via canonical success resolver", 1, ledgerEntries.size)
+        assertEquals("Ledger debt entry must be materialized via canonical success resolver even when callback is present", 1, ledgerEntries.size)
         assertEquals(35000.0, ledgerEntries.first().amountIqd, 0.001)
 
         // 4. extendUser
@@ -531,5 +541,97 @@ class Step3DurableDispatchTest {
         val opExtend = ledgerRepo.getPendingOperationByIntentId("intent_extend_04")
         assertNotNull(opExtend)
         assertEquals("COMPLETED", opExtend!!.status)
+    }
+
+    @Test
+    fun test19_refillSuccessNotReportedWhenLocalMaterializationFails() = runTest {
+        val app = context as com.example.EarthlinkApp
+        val gateway = FakeGateway()
+
+        // Create a repository instance that fails in resolvePendingOperationVerifiedSuccess by omitting local account
+        // (Missing local account for positive IQD throws MISSING_LOCAL_FINANCIAL_TARGET)
+        val viewModel = com.example.ui.viewmodels.EarthlinkSearchViewModel(
+            gateway = gateway,
+            prefs = app.preferenceManager,
+            audit = app.auditRepository,
+            localAccountRepository = accountRepo,
+            localLedgerRepository = ledgerRepo
+        )
+
+        // Attempt refill without pre-existing local account -> gateway succeeds, but materialization throws MISSING_LOCAL_FINANCIAL_TARGET
+        val job = viewModel.refillUser(
+            userId = "unregistered_refill_user",
+            depositPass = "pass",
+            price = 35000.0,
+            note = "Test Refill",
+            intentId = "intent_refill_fail_mat"
+        )
+        job.join()
+
+        // 1. Action success must NOT be set
+        assertNull("Action success must not be shown when local materialization fails", viewModel.actionSuccess.value)
+        // 2. Error message must reflect pending confirmation
+        assertNotNull("Error message must be set", viewModel.error.value)
+        assertTrue(
+            "Error must indicate local record confirmation is pending",
+            viewModel.error.value!!.contains("local record confirmation is pending") || viewModel.error.value!!.contains("فشل تسجيل القيد المحلي")
+        )
+        // 3. Operation must remain recoverable (not deleted or FAILED on server)
+        val op = ledgerRepo.getPendingOperationByIntentId("intent_refill_fail_mat")
+        assertNotNull(op)
+        assertNotEquals("COMPLETED", op!!.status)
+    }
+
+    @Test
+    fun test20_canonicalFinancialMaterializerRejectsZeroOrInvalidAmountForActivation() = runTest {
+        val account = LocalAccount(id = "user_act_test", displayName = "Act User", currentPriceIqd = 35000.0)
+        accountRepo.saveAccount(account)
+
+        // 1. ACTIVATION with amountIqd = 0 must FAIL CLOSED (throw IllegalStateException, not COMPLETED, zero ledger)
+        val opZero = PendingExternalOperation(
+            businessTransactionId = "tx_act_zero_01",
+            operationIntentId = "intent_act_zero_01",
+            accountId = "user_act_test",
+            operationType = "ACTIVATION",
+            amountIqd = 0L,
+            payloadJson = "{}",
+            status = "PENDING",
+            dispatchClaimCount = 1
+        )
+        ledgerRepo.recordPendingOperation(opZero)
+
+        try {
+            ledgerRepo.resolvePendingOperationVerifiedSuccess("tx_act_zero_01", "[VERIFIED ACTIVATION]")
+            fail("Expected IllegalStateException for ACTIVATION with amountIqd == 0")
+        } catch (e: IllegalStateException) {
+            assertTrue(e.message!!.contains("missing valid positive persisted charge amount"))
+        }
+
+        val opAfterZero = ledgerRepo.getPendingOperationByTransactionId("tx_act_zero_01")
+        assertNotNull(opAfterZero)
+        assertNotEquals("COMPLETED", opAfterZero!!.status)
+        val zeroLedger = db.localLedgerEntryDao().getByIdOneShot("tx_act_zero_01")
+        assertNull("No ledger entry must be materialized for 0-amount activation", zeroLedger)
+
+        // 2. Valid ACTIVATION with amountIqd > 0 materializes normally
+        val opValid = PendingExternalOperation(
+            businessTransactionId = "tx_act_valid_02",
+            operationIntentId = "intent_act_valid_02",
+            accountId = "user_act_test",
+            operationType = "ACTIVATION",
+            amountIqd = 35000L,
+            payloadJson = "{}",
+            status = "PENDING",
+            dispatchClaimCount = 1
+        )
+        ledgerRepo.recordPendingOperation(opValid)
+
+        val materializedEntry = ledgerRepo.resolvePendingOperationVerifiedSuccess("tx_act_valid_02", "[VERIFIED ACTIVATION]")
+        assertNotNull("Valid activation must materialize ledger entry", materializedEntry)
+        assertEquals(35000.0, materializedEntry!!.amountIqd, 0.001)
+
+        val opAfterValid = ledgerRepo.getPendingOperationByTransactionId("tx_act_valid_02")
+        assertNotNull(opAfterValid)
+        assertEquals("COMPLETED", opAfterValid!!.status)
     }
 }

@@ -556,48 +556,51 @@ class EarthlinkSearchViewModel(
                 val success = gateway.refillUserDeposit(userId, depositPass)
                 if (success) {
                     try {
-                        if (onSuccessCallback != null) {
-                            onSuccessCallback.invoke(businessTxId)
+                        val chargeNote = if (finalNote.isNotBlank()) "[RENEW] ${finalNote.trim()}" else "[RENEW]"
+                        localLedgerRepository.resolvePendingOperationVerifiedSuccess(businessTxId, chargeNote)
+                        onSuccessCallback?.invoke(businessTxId)
+
+                        _actionSuccess.value = if (prefs.getLanguage() == "ar") {
+                            "تم تجديد اشتراك المشترك $userId بنجاح."
                         } else {
-                            val chargeNote = if (finalNote.isNotBlank()) "[RENEW] ${finalNote.trim()}" else "[RENEW]"
-                            localLedgerRepository.resolvePendingOperationVerifiedSuccess(businessTxId, chargeNote)
+                            "Subscriber $userId was renewed successfully."
                         }
-                    } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+                        
+                        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+                        val dateStr = sdf.format(java.util.Date())
+                        val noteText = if (finalNote.isNotBlank()) {
+                            "تجديد اشتراك بسعر $authoritativePrice - $finalNote"
+                        } else {
+                            "تجديد اشتراك بسعر $authoritativePrice"
+                        }
+                        
+                        val currentBalance = try { gateway.getBalance() } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; 0.0 }
+                        
+                        val statementItem = com.example.core.model.AccountStatementItem(
+                            occurredAt = dateStr,
+                            operation = "RENEW_SUBSCRIBER",
+                            depositAmount = 0.0,
+                            withdrawalAmount = authoritativePrice,
+                            balanceAfter = currentBalance,
+                            note = noteText
+                        )
+
+                        audit.logAction(
+                            action = "REFILL_USER",
+                            entityType = "USER",
+                            entityId = userId,
+                            summary = "Renewed subscription at price $authoritativePrice. Note: $finalNote"
+                        )
+                        _selectedUser.value?.userIndex?.let { loadUserDetail(it, _selectedUser.value?.userIDLower) }
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) throw e
                         android.util.Log.e("EarthlinkSearchViewModel", "Failed to execute atomic post-call materialization after renewal", e)
+                        _error.value = if (prefs.getLanguage() == "ar") {
+                            "تم تجديد الاشتراك ولكن فشل تسجيل القيد المحلي. العملية محفوظة للتحقق."
+                        } else {
+                            "Renewal succeeded on server but local record confirmation is pending verification."
+                        }
                     }
-
-                    _actionSuccess.value = if (prefs.getLanguage() == "ar") {
-                        "تم تجديد اشتراك المشترك $userId بنجاح."
-                    } else {
-                        "Subscriber $userId was renewed successfully."
-                    }
-                    
-                    val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
-                    val dateStr = sdf.format(java.util.Date())
-                    val noteText = if (finalNote.isNotBlank()) {
-                        "تجديد اشتراك بسعر $authoritativePrice - $finalNote"
-                    } else {
-                        "تجديد اشتراك بسعر $authoritativePrice"
-                    }
-                    
-                    val currentBalance = try { gateway.getBalance() } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; 0.0 }
-                    
-                    val statementItem = com.example.core.model.AccountStatementItem(
-                        occurredAt = dateStr,
-                        operation = "RENEW_SUBSCRIBER",
-                        depositAmount = 0.0,
-                        withdrawalAmount = authoritativePrice,
-                        balanceAfter = currentBalance,
-                        note = noteText
-                    )
-
-                    audit.logAction(
-                        action = "REFILL_USER",
-                        entityType = "USER",
-                        entityId = userId,
-                        summary = "Renewed subscription at price $authoritativePrice. Note: $finalNote"
-                    )
-                    _selectedUser.value?.userIndex?.let { loadUserDetail(it, _selectedUser.value?.userIDLower) }
                 } else {
                     localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, "Refill action failed on server")
                     _error.value = "Refill action failed."

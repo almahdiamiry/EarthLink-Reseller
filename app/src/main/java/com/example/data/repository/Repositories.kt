@@ -1257,6 +1257,7 @@ class LocalLedgerRepositoryImpl(
         }
     }
 
+    @Deprecated("Legacy helper: production external operations MUST use resolvePendingOperationVerifiedSuccess to avoid canonical financial materializer bypass.")
     override suspend fun completePendingOperation(businessTransactionId: String, accountId: String, ledgerEntryId: String?) {
         com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
             database.withTransaction {
@@ -1290,51 +1291,39 @@ class LocalLedgerRepositoryImpl(
                     op.operationType.equals("RENEWAL", ignoreCase = true) ||
                     op.operationType.equals("ACTIVATION", ignoreCase = true)
                 ) {
+                    if (op.amountIqd <= 0L) {
+                        throw IllegalStateException("MISSING_PERSISTED_FINANCIAL_AMOUNT: Financial operation ${op.businessTransactionId} (${op.operationType}) missing valid positive persisted charge amount: ${op.amountIqd}")
+                    }
+
                     val localAcc = accountDao.getByIdOneShot(op.accountId)
                         ?: accountDao.findAccountByUsernameOrIdOneShot(op.accountId)
+                        ?: throw IllegalStateException("MISSING_LOCAL_FINANCIAL_TARGET: Cannot materialize financial position for missing local account ${op.accountId}")
 
-                    if (op.operationType.equals("REFILL", ignoreCase = true) && op.amountIqd <= 0L) {
-                        throw IllegalStateException("MISSING_PERSISTED_FINANCIAL_AMOUNT: Operation ${op.businessTransactionId} missing exact persisted charge amount")
-                    }
-
-                    if (localAcc != null) {
-                        if (op.amountIqd <= 0L) {
+                    val operationPrice = op.amountIqd.toDouble()
+                    val existing = ledgerDao.getByIdOneShot(businessTransactionId)
+                    if (existing != null) {
+                        val isIdentical = existing.accountId == localAcc.id &&
+                                existing.typeRaw == "took" &&
+                                kotlin.math.abs(existing.amountIqd - operationPrice) < 0.0001
+                        if (isIdentical) {
                             pendingDao.updateStatus(businessTransactionId, "COMPLETED", System.currentTimeMillis(), null)
-                            return@withTransaction null
-                        }
-                        val operationPrice = op.amountIqd.toDouble()
-                        val existing = ledgerDao.getByIdOneShot(businessTransactionId)
-                        if (existing != null) {
-                            val isIdentical = existing.accountId == localAcc.id &&
-                                    existing.typeRaw == "took" &&
-                                    kotlin.math.abs(existing.amountIqd - operationPrice) < 0.0001
-                            if (isIdentical) {
-                                pendingDao.updateStatus(businessTransactionId, "COMPLETED", System.currentTimeMillis(), null)
-                                return@withTransaction existing
-                            } else {
-                                throw DivergentPayloadConflictException(
-                                    "Same-ID divergent payload conflict for verified pending operation $businessTransactionId: " +
-                                    "existing={accountId=${existing.accountId}, type=${existing.typeRaw}, amount=${existing.amountIqd}}, " +
-                                    "incoming={accountId=${localAcc.id}, type=took, amount=$operationPrice}"
-                                )
-                            }
-                        }
-
-                        val defaultNote = if (op.operationType.equals("ACTIVATION", ignoreCase = true)) "[VERIFIED ACTIVATION]" else "[VERIFIED RENEW]"
-                        val finalNote = if (!chargeNote.isNullOrBlank()) chargeNote else defaultNote
-                        val accountWithPrice = localAcc.copy(currentPriceIqd = operationPrice)
-                        val savedAcc = saveAccountInternal(accountWithPrice)
-                        val chargeEntry = addDebtInternal(savedAcc.id, operationPrice, finalNote, businessTransactionId)
-                        pendingDao.updateStatus(businessTransactionId, "COMPLETED", System.currentTimeMillis(), null)
-                        chargeEntry
-                    } else {
-                        if (op.amountIqd > 0L) {
-                            throw IllegalStateException("MISSING_LOCAL_FINANCIAL_TARGET: Cannot materialize financial position for missing local account ${op.accountId}")
+                            return@withTransaction existing
                         } else {
-                            pendingDao.updateStatus(businessTransactionId, "COMPLETED", System.currentTimeMillis(), null)
-                            null
+                            throw DivergentPayloadConflictException(
+                                "Same-ID divergent payload conflict for verified pending operation $businessTransactionId: " +
+                                "existing={accountId=${existing.accountId}, type=${existing.typeRaw}, amount=${existing.amountIqd}}, " +
+                                "incoming={accountId=${localAcc.id}, type=took, amount=$operationPrice}"
+                            )
                         }
                     }
+
+                    val defaultNote = if (op.operationType.equals("ACTIVATION", ignoreCase = true)) "[VERIFIED ACTIVATION]" else "[VERIFIED RENEW]"
+                    val finalNote = if (!chargeNote.isNullOrBlank()) chargeNote else defaultNote
+                    val accountWithPrice = localAcc.copy(currentPriceIqd = operationPrice)
+                    val savedAcc = saveAccountInternal(accountWithPrice)
+                    val chargeEntry = addDebtInternal(savedAcc.id, operationPrice, finalNote, businessTransactionId)
+                    pendingDao.updateStatus(businessTransactionId, "COMPLETED", System.currentTimeMillis(), null)
+                    chargeEntry
                 } else {
                     pendingDao.updateStatus(businessTransactionId, "COMPLETED", System.currentTimeMillis(), null)
                     null
