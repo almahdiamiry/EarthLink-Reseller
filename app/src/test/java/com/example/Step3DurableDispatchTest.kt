@@ -10,6 +10,7 @@ import com.example.data.repository.LocalAccountRepositoryImpl
 import com.example.data.repository.LocalLedgerRepositoryImpl
 import com.example.domain.repository.EarthlinkGateway
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
@@ -249,96 +250,151 @@ class Step3DurableDispatchTest {
     @Test
     fun test18_sweepIgnoresInFlightProductionDispatch() = runTest {
         // C06: Prove in-flight DISPATCHING operation is not touched by concurrent sweep
-        val processStartMs = 5000L
-        
-        // Operation dispatched very recently, effectively in-flight
-        val opInFlight = PendingExternalOperation(
-            businessTransactionId = "tx_c06",
-            operationIntentId = "intent_c06",
-            accountId = "user_c06",
-            operationType = "ACTIVATION",
-            amountIqd = 35000L,
-            status = "DISPATCHING",
-            dispatchClaimCount = 1,
-            createdAt = 4900L,
-            updatedAt = 6000L  // In-flight, updated after processStartMs
-        )
-        ledgerRepo.recordPendingOperation(opInFlight)
+        val app = context as com.example.EarthlinkApp
+        val opIntentId = "intent_c06"
+        val businessTxId = "tx_" + opIntentId
+
+        val gatewayStarted = CompletableDeferred<Unit>()
+        val releaseGateway = CompletableDeferred<Unit>()
+        var gatewayInvocationCount = 0
 
         val gateway = object : FakeGateway() {
-            override suspend fun createUserUsingDeposit(username: String, phone: String, fullName: String, accountIndex: Int, depositPassword: String): String? {
-                kotlinx.coroutines.delay(1000)
-                return "pass"
+            override suspend fun createUserUsingDeposit(
+                username: String,
+                phone: String,
+                fullName: String,
+                accountIndex: Int,
+                depositPassword: String
+            ): String? {
+                gatewayInvocationCount++
+                gatewayStarted.complete(Unit)
+                releaseGateway.await()
+                return "pass_c06"
             }
         }
 
-        // Run sweep concurrently
-        val sweepJob = launch {
-            ledgerRepo.recoverColdStartOrphanedOperations(gateway, processStartMs)
-        }
-        
-        val dispatchJob = launch {
-            gateway.createUserUsingDeposit("user", "phone", "name", 1, "pass")
-        }
+        val viewModel = com.example.ui.viewmodels.EarthlinkSearchViewModel(
+            gateway = gateway,
+            audit = app.auditRepository,
+            prefs = app.preferenceManager,
+            localAccountRepository = accountRepo,
+            localLedgerRepository = ledgerRepo
+        )
 
-        kotlinx.coroutines.delay(500)
-        
-        sweepJob.join()
+        val processStartMs = System.currentTimeMillis() - 1000L
+
+        // 1. Start actual production dispatch workflow
+        val dispatchJob = viewModel.createUserUsingDeposit(
+            username = "user_c06",
+            phone = "07700000000",
+            fullName = "C06 User",
+            pkgIndex = 1,
+            depositPass = "pass123",
+            intentId = opIntentId
+        )
+
+        // 2. Wait for Gateway call to become IN-FLIGHT
+        gatewayStarted.await()
+        assertEquals(1, gatewayInvocationCount)
+
+        // Verify state while IN-FLIGHT
+        val opInFlight = ledgerRepo.getPendingOperationByTransactionId(businessTxId)
+        assertNotNull(opInFlight)
+        assertEquals("DISPATCHING", opInFlight!!.status)
+        assertEquals(1, opInFlight.dispatchClaimCount)
+
+        // 3. Run recovery/runtime sweep concurrently while Gateway dispatch is held IN-FLIGHT
+        ledgerRepo.recoverColdStartOrphanedOperations(gateway, processStartMs)
+
+        // 4. Verify sweep did NOT reset, recover, resolve, or re-dispatch the active operation
+        val opAfterSweep = ledgerRepo.getPendingOperationByTransactionId(businessTxId)
+        assertNotNull(opAfterSweep)
+        assertEquals("DISPATCHING", opAfterSweep!!.status)
+        assertEquals(1, opAfterSweep.dispatchClaimCount)
+        assertEquals(1, gatewayInvocationCount)
+
+        // 5. Release Gateway and complete dispatch
+        releaseGateway.complete(Unit)
         dispatchJob.join()
 
-        // Verify it was NOT resolved or reset
-        val op = ledgerRepo.getPendingOperationByTransactionId("tx_c06")
-        assertNotNull(op)
-        assertEquals("DISPATCHING", op!!.status)
-        assertEquals(1, op.dispatchClaimCount)
+        // 6. Verify final state and exact Gateway invocation count == 1
+        val opFinal = ledgerRepo.getPendingOperationByTransactionId(businessTxId)
+        assertNotNull(opFinal)
+        assertEquals("COMPLETED", opFinal!!.status)
+        assertEquals(1, gatewayInvocationCount)
     }
 
     @Test
     fun test19_cancellationAfterClaimPreservesClaimCount() = runTest {
         // C12: Prove cancellation after successful claim preserves claim count
-        val op = PendingExternalOperation(
-            businessTransactionId = "tx_c12",
-            operationIntentId = "intent_c12",
-            accountId = "user_c12",
-            operationType = "ACTIVATION",
-            amountIqd = 35000L,
-            status = "PENDING",
-            dispatchClaimCount = 0
-        )
-        ledgerRepo.recordPendingOperation(op)
+        val app = context as com.example.EarthlinkApp
+        val opIntentId = "intent_c12"
+        val businessTxId = "tx_" + opIntentId
 
-        // 1. Claim authorization
-        val claimed = ledgerRepo.claimDispatchAuthorization("tx_c12")
-        assertTrue(claimed)
+        val gatewayStarted = CompletableDeferred<Unit>()
+        val releaseGateway = CompletableDeferred<Unit>()
+        var gatewayInvocationCount = 0
 
         val gateway = object : FakeGateway() {
-            override suspend fun createUserUsingDeposit(username: String, phone: String, fullName: String, accountIndex: Int, depositPassword: String): String? {
-                kotlinx.coroutines.delay(1000)
-                return "pass"
+            override suspend fun createUserUsingDeposit(
+                username: String,
+                phone: String,
+                fullName: String,
+                accountIndex: Int,
+                depositPassword: String
+            ): String? {
+                gatewayInvocationCount++
+                gatewayStarted.complete(Unit)
+                try {
+                    releaseGateway.await()
+                    return "pass_c12"
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                }
             }
         }
 
-        // 2. Launch production dispatch coroutine
-        val job = launch {
-            gateway.createUserUsingDeposit("user", "phone", "name", 1, "pass")
-        }
-        
-        kotlinx.coroutines.delay(100)
-        
-        // 3. Perform cancellation
-        job.cancel(kotlinx.coroutines.CancellationException("Production dispatch cancelled"))
-        
-        try {
-            job.join()
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            // Expected
-        }
+        val viewModel = com.example.ui.viewmodels.EarthlinkSearchViewModel(
+            gateway = gateway,
+            audit = app.auditRepository,
+            prefs = app.preferenceManager,
+            localAccountRepository = accountRepo,
+            localLedgerRepository = ledgerRepo
+        )
 
-        // 4. Verify state
-        val updatedOp = ledgerRepo.getPendingOperationByTransactionId("tx_c12")
-        assertNotNull(updatedOp)
-        assertEquals("DISPATCHING", updatedOp!!.status)
-        assertEquals(1, updatedOp.dispatchClaimCount)
+        // 1. Launch real production mutation workflow in actual coroutine
+        val dispatchJob = viewModel.createUserUsingDeposit(
+            username = "user_c12",
+            phone = "07700000000",
+            fullName = "C12 User",
+            pkgIndex = 1,
+            depositPass = "pass123",
+            intentId = opIntentId
+        )
+
+        // 2. Wait until actual production coroutine is waiting inside Gateway dispatch
+        gatewayStarted.await()
+        assertEquals(1, gatewayInvocationCount)
+
+        val opBeforeCancel = ledgerRepo.getPendingOperationByTransactionId(businessTxId)
+        assertNotNull(opBeforeCancel)
+        assertEquals("DISPATCHING", opBeforeCancel!!.status)
+        assertEquals(1, opBeforeCancel.dispatchClaimCount)
+
+        // 3. Cancel the actual production coroutine while Gateway dispatch is IN-FLIGHT
+        dispatchJob.cancel(kotlinx.coroutines.CancellationException("Production dispatch cancelled"))
+        dispatchJob.join()
+
+        // 4. Re-read the SAME persisted operation from Room
+        val opAfterCancel = ledgerRepo.getPendingOperationByTransactionId(businessTxId)
+        assertNotNull(opAfterCancel)
+        assertEquals("DISPATCHING", opAfterCancel!!.status)
+        assertEquals(1, opAfterCancel.dispatchClaimCount)
+
+        // 5. Verify cancellation did NOT cause PENDING(0), FAILED, or redispatch
+        assertNotEquals("PENDING", opAfterCancel.status)
+        assertNotEquals("FAILED", opAfterCancel.status)
+        assertEquals(1, gatewayInvocationCount)
     }
 
     @Test
