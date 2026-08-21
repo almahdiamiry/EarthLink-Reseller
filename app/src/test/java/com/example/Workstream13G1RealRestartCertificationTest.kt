@@ -68,7 +68,8 @@ class Workstream13G1RealRestartCertificationTest {
         override suspend fun createUserUsingDeposit(username: String, phone: String, fullName: String, accountIndex: Int, depositPassword: String): String? = "pass"
         override suspend fun refillUserDeposit(userId: String, depositPassword: String): Boolean = true
         override suspend fun extendUser(userIndex: Int): Boolean = true
-        override suspend fun getAccountStatement(startIndex: Int, rowCount: Int, query: String): List<AccountStatementItem> = emptyList()
+        var statements = mutableListOf<AccountStatementItem>()
+        override suspend fun getAccountStatement(startIndex: Int, rowCount: Int, query: String): List<AccountStatementItem> = statements
         override suspend fun showUserPassword(userIndex: Int, userId: String): String = "pass"
         override suspend fun showAccountPassword(userIndex: Int, userId: String): String = "pass"
         override suspend fun changeUserPassword(userIndex: Int, userId: String, newPass: String): Boolean = true
@@ -159,9 +160,19 @@ class Workstream13G1RealRestartCertificationTest {
         repo1.recordPendingOperation(opFailed)
 
         // Set ISP state:
-        // acc_g1_success is NOT available (activation succeeded on ISP)
+        // acc_g1_success is NOT available (activation succeeded on ISP) and has matching 4-tuple statement
         // acc_g1_failed IS available (activation failed on ISP)
         gateway.availableUsernames.add("acc_g1_failed")
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+        sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        gateway.statements.add(
+            AccountStatementItem(
+                occurredAt = sdf.format(java.util.Date(1000L)),
+                operation = "Withdraw",
+                withdrawalAmount = 35000.0,
+                userIDLower = "acc_g1_success"
+            )
+        )
 
         // -------------------------------------------------------------
         // PHASE 2: SIMULATE PROCESS KILL

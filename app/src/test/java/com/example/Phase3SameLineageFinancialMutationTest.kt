@@ -125,7 +125,8 @@ class Phase3SameLineageFinancialMutationTest {
             return true
         }
 
-        override suspend fun getAccountStatement(startIndex: Int, rowCount: Int, query: String): List<AccountStatementItem> = emptyList()
+        var statementsResult: List<AccountStatementItem> = emptyList()
+        override suspend fun getAccountStatement(startIndex: Int, rowCount: Int, query: String): List<AccountStatementItem> = statementsResult
         override suspend fun showUserPassword(userIndex: Int, userId: String): String = "pass"
         override suspend fun showAccountPassword(userIndex: Int, userId: String): String = "pass"
         override suspend fun changeUserPassword(userIndex: Int, userId: String, newPass: String): Boolean = true
@@ -407,17 +408,28 @@ class Phase3SameLineageFinancialMutationTest {
         val account = LocalAccount(id = "acc_g1_gw_01", displayName = "GW User", currentPriceIqd = 40000.0)
         accountRepo.saveAccount(account)
 
-        // Case A: Activation with username taken on ISP -> VERIFIED_SUCCESS
+        // Case A: Activation with username taken on ISP and verified via 4-tuple statement -> VERIFIED_SUCCESS
+        val actTime = System.currentTimeMillis()
         val opAct = PendingExternalOperation(
             operationIntentId = "intent_gw_act",
             businessTransactionId = "tx_gw_act_1",
             accountId = "acc_g1_gw_01",
             operationType = "ACTIVATION",
             amountIqd = 40000L,
-            createdAt = System.currentTimeMillis()
+            createdAt = actTime
         )
         ledgerRepo.recordPendingOperation(opAct)
         testGateway.usernameAvailable = false // user exists on ISP
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+        sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        testGateway.statementsResult = listOf(
+            AccountStatementItem(
+                occurredAt = sdf.format(java.util.Date(actTime)),
+                operation = "Withdraw",
+                withdrawalAmount = 40000.0,
+                userIDLower = "acc_g1_gw_01"
+            )
+        )
 
         val resAct = ledgerRepo.verifyAndResolvePendingOperation("tx_gw_act_1", testGateway, null)
         assertEquals(UnknownOutcomeResolutionResult.VERIFIED_SUCCESS, resAct.result)

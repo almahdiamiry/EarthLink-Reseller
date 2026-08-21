@@ -430,7 +430,7 @@ class Phase1DuplicateInitiationProtectionTest {
         val pendingOps = pendingDao.getAllOneShot().filter { it.accountId == username }
         assertEquals("Expected exactly 1 pending operation record", 1, pendingOps.size)
         assertEquals("COMPLETED", pendingOps.first().status)
-        assertEquals("ACTIVATION", pendingOps.first().operationType)
+        assertEquals("TEST_USER", pendingOps.first().operationType)
     }
 
     // 7. 10 concurrent coroutines attempting to create paid user collapse to exactly 1 external call and 1 pending record
@@ -481,7 +481,7 @@ class Phase1DuplicateInitiationProtectionTest {
         val pendingOps = pendingDao.getAllOneShot().filter { it.accountId == userId }
         assertEquals("Expected exactly 1 pending operation record", 1, pendingOps.size)
         assertEquals("COMPLETED", pendingOps.first().status)
-        assertEquals("RENEWAL", pendingOps.first().operationType)
+        assertEquals("EXTEND", pendingOps.first().operationType)
     }
 
     // 9. Repository-level concurrent recordPendingOperation is idempotent under Room transaction boundary

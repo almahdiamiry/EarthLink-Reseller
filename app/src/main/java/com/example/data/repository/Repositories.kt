@@ -1417,8 +1417,7 @@ class LocalLedgerRepositoryImpl(
             val isWithdrawal = opName.equals("Withdraw", ignoreCase = true) || opName.contains("Withdraw", ignoreCase = true) || (item.withdrawalAmount ?: 0.0) > 0.0
             val itemAmount = item.withdrawalAmount ?: 0.0
             val targetAmount = op.amountIqd.toDouble()
-            val matchesUser = item.userID.equals(op.accountId, ignoreCase = true) ||
-                    (item.note?.contains(op.accountId, ignoreCase = true) == true)
+            val matchesUser = item.userID.equals(op.accountId, ignoreCase = true)
             
             matchesUser &&
             isWithdrawal &&
@@ -1546,14 +1545,41 @@ class LocalLedgerRepositoryImpl(
                             diagnosticMessage = "Subscriber does not exist on ISP"
                         )
                     } else {
-                        val ledger = resolvePendingOperationVerifiedSuccess(businessTransactionId, "[VERIFIED ACTIVATION]")
-                        val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
-                        PendingOperationResolution(
-                            result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
-                            operation = updatedOp,
-                            ledgerEntry = ledger,
-                            diagnosticMessage = "Activation verified via subscriber existence on ISP"
-                        )
+                        // ACTIVE subscriber state alone is NEVER proof of historical execution; check 4-tuple statement
+                        val statementResolution = verifyRenewalViaStatement(op, gateway)
+                        when (statementResolution) {
+                            UnknownOutcomeResolutionResult.VERIFIED_SUCCESS -> {
+                                val ledger = resolvePendingOperationVerifiedSuccess(businessTransactionId, "[VERIFIED ACTIVATION]")
+                                val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                                PendingOperationResolution(
+                                    result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
+                                    operation = updatedOp,
+                                    ledgerEntry = ledger,
+                                    diagnosticMessage = "Activation verified via account statement correlation"
+                                )
+                            }
+                            UnknownOutcomeResolutionResult.VERIFIED_FAILURE -> {
+                                resolvePendingOperationVerifiedFailure(businessTransactionId, "Activation verified failure via statement correlation")
+                                val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                                PendingOperationResolution(
+                                    result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                                    operation = updatedOp,
+                                    ledgerEntry = null,
+                                    diagnosticMessage = "Activation verified failure via statement correlation"
+                                )
+                            }
+                            UnknownOutcomeResolutionResult.INCONCLUSIVE -> {
+                                val diag = "Subscriber exists but account statement correlation was inconclusive"
+                                resolvePendingOperationInconclusive(businessTransactionId, diag)
+                                val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                                PendingOperationResolution(
+                                    result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
+                                    operation = updatedOp,
+                                    ledgerEntry = null,
+                                    diagnosticMessage = diag
+                                )
+                            }
+                        }
                     }
                 } catch (e: Exception) {
                     if (e is kotlinx.coroutines.CancellationException) throw e

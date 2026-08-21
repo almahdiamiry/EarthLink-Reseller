@@ -238,6 +238,7 @@ class Step2OutcomeResolutionTest {
             occurredAt = statementDateStr,
             operation = "Withdraw",
             withdrawalAmount = 35000.0,
+            userIDLower = accountId,
             note = "Refill for $accountId"
         )
 
@@ -289,12 +290,14 @@ class Step2OutcomeResolutionTest {
         val match1 = AccountStatementItem(
             occurredAt = sdf.format(java.util.Date(createdAt + 10_000L)),
             operation = "Withdraw",
-            withdrawalAmount = 35000.0
+            withdrawalAmount = 35000.0,
+            userIDLower = accountId
         )
         val match2 = AccountStatementItem(
             occurredAt = sdf.format(java.util.Date(createdAt + 20_000L)),
             operation = "Withdraw",
-            withdrawalAmount = 35000.0
+            withdrawalAmount = 35000.0,
+            userIDLower = accountId
         )
 
         val fakeGateway = FakeGateway(
@@ -345,7 +348,8 @@ class Step2OutcomeResolutionTest {
         val outsideWindowMatch = AccountStatementItem(
             occurredAt = sdf.format(java.util.Date(createdAt + 600_000L)),
             operation = "Withdraw",
-            withdrawalAmount = 35000.0
+            withdrawalAmount = 35000.0,
+            userIDLower = accountId
         )
 
         val fakeGateway = FakeGateway(
