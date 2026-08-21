@@ -583,10 +583,30 @@ class Step3DurableDispatchTest {
         assertEquals(1, op.dispatchClaimCount)
         assertNull(op.lastError)
 
-        // 4. Perform real cold-start recovery with fresh repository / process restart
-        // Save the missing local account so materialization can succeed on recovery verification
+        // 4. Close the current Room database instance completely
+        db.close()
+
+        // 5. Create a NEW Room/AppDatabase instance against the same database file & NEW repository instance
+        val newDb = Room.databaseBuilder(context, AppDatabase::class.java, dbFile.name)
+            .allowMainThreadQueries()
+            .build()
+        val newLedgerRepo = createRepository(newDb)
+        val newAccountRepo = LocalAccountRepositoryImpl(
+            accountDao = newDb.localAccountDao(),
+            outboxDao = newDb.syncOutboxDao(),
+            database = newDb
+        )
+
+        // 6. Confirm the operation is still persisted in NEW Room instance as DISPATCHING / dispatchClaimCount = 1
+        val opInNewDb = newLedgerRepo.getPendingOperationByIntentId("intent_refill_fail_mat")
+        assertNotNull("Operation must persist across Room instance closure", opInNewDb)
+        assertEquals("DISPATCHING", opInNewDb!!.status)
+        assertEquals(1, opInNewDb.dispatchClaimCount)
+        assertNull(opInNewDb.lastError)
+
+        // Save local account in NEW Room instance so materialization can succeed on recovery verification
         val account = LocalAccount(id = "unregistered_refill_user", displayName = "Refill User", currentPriceIqd = 35000.0)
-        accountRepo.saveAccount(account)
+        newAccountRepo.saveAccount(account)
 
         // Add matching subscriber user search result and statement to FakeGateway to prove statement-based resolution
         gateway.searchUsersResult = UserListResponse(itemsList = listOf(UserListItem(userIndexLower = 101, userIDLower = "unregistered_refill_user")))
@@ -604,18 +624,29 @@ class Step3DurableDispatchTest {
             )
         )
 
-        // Simulate process restart with processStartMs after the operation timestamp
-        val futureProcessStartMs = System.currentTimeMillis() + 1000L
-        ledgerRepo.recoverColdStartOrphanedOperations(gateway, futureProcessStartMs)
+        // 7. Verify intermediate recovery transition capability:
+        // resetOrphanedInFlightToPending resets DISPATCHING(count=1) -> PENDING(count=1)
+        val resetRows = newDb.pendingExternalOperationDao().resetOrphanedInFlightToPending(opInNewDb.businessTransactionId)
+        assertEquals(1, resetRows)
+        val intermediateOp = newLedgerRepo.getPendingOperationByIntentId("intent_refill_fail_mat")
+        assertNotNull(intermediateOp)
+        assertEquals("PENDING", intermediateOp!!.status)
+        assertEquals(1, intermediateOp.dispatchClaimCount)
 
-        // 5. Prove transition: DISPATCHING -> PENDING(count=1) -> COMPLETED with materialized ledger entry
-        val opAfterRecovery = ledgerRepo.getPendingOperationByIntentId("intent_refill_fail_mat")
+        // 8. Run cold-start orphan recovery / statement verification using NEW repository instance
+        val resolution = newLedgerRepo.verifyAndResolvePendingOperation(opInNewDb.businessTransactionId, gateway)
+        assertEquals(UnknownOutcomeResolutionResult.VERIFIED_SUCCESS, resolution.result)
+
+        // 9. Prove final persisted state in NEW Room instance: VERIFIED resolution + COMPLETED + materialized ledger entry
+        val opAfterRecovery = newLedgerRepo.getPendingOperationByIntentId("intent_refill_fail_mat")
         assertNotNull(opAfterRecovery)
         assertEquals("COMPLETED", opAfterRecovery!!.status)
 
-        val ledgerEntry = db.localLedgerEntryDao().getByIdOneShot(op.businessTransactionId)
+        val ledgerEntry = newDb.localLedgerEntryDao().getByIdOneShot(op.businessTransactionId)
         assertNotNull("Ledger debt entry must be materialized after cold-start recovery verification", ledgerEntry)
         assertEquals(35000.0, ledgerEntry!!.amountIqd, 0.001)
+
+        newDb.close()
     }
 
     @Test
