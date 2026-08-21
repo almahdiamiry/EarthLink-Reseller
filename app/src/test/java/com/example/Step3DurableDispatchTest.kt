@@ -11,6 +11,8 @@ import com.example.data.repository.LocalLedgerRepositoryImpl
 import com.example.domain.repository.EarthlinkGateway
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -242,6 +244,101 @@ class Step3DurableDispatchTest {
         val resolvedOp = ledgerRepo.getPendingOperationByTransactionId("tx_orphan_04")
         assertNotNull(resolvedOp)
         assertEquals("FAILED", resolvedOp!!.status)
+    }
+
+    @Test
+    fun test18_sweepIgnoresInFlightProductionDispatch() = runTest {
+        // C06: Prove in-flight DISPATCHING operation is not touched by concurrent sweep
+        val processStartMs = 5000L
+        
+        // Operation dispatched very recently, effectively in-flight
+        val opInFlight = PendingExternalOperation(
+            businessTransactionId = "tx_c06",
+            operationIntentId = "intent_c06",
+            accountId = "user_c06",
+            operationType = "ACTIVATION",
+            amountIqd = 35000L,
+            status = "DISPATCHING",
+            dispatchClaimCount = 1,
+            createdAt = 4900L,
+            updatedAt = 6000L  // In-flight, updated after processStartMs
+        )
+        ledgerRepo.recordPendingOperation(opInFlight)
+
+        val gateway = object : FakeGateway() {
+            override suspend fun createUserUsingDeposit(username: String, phone: String, fullName: String, accountIndex: Int, depositPassword: String): String? {
+                kotlinx.coroutines.delay(1000)
+                return "pass"
+            }
+        }
+
+        // Run sweep concurrently
+        val sweepJob = launch {
+            ledgerRepo.recoverColdStartOrphanedOperations(gateway, processStartMs)
+        }
+        
+        val dispatchJob = launch {
+            gateway.createUserUsingDeposit("user", "phone", "name", 1, "pass")
+        }
+
+        kotlinx.coroutines.delay(500)
+        
+        sweepJob.join()
+        dispatchJob.join()
+
+        // Verify it was NOT resolved or reset
+        val op = ledgerRepo.getPendingOperationByTransactionId("tx_c06")
+        assertNotNull(op)
+        assertEquals("DISPATCHING", op!!.status)
+        assertEquals(1, op.dispatchClaimCount)
+    }
+
+    @Test
+    fun test19_cancellationAfterClaimPreservesClaimCount() = runTest {
+        // C12: Prove cancellation after successful claim preserves claim count
+        val op = PendingExternalOperation(
+            businessTransactionId = "tx_c12",
+            operationIntentId = "intent_c12",
+            accountId = "user_c12",
+            operationType = "ACTIVATION",
+            amountIqd = 35000L,
+            status = "PENDING",
+            dispatchClaimCount = 0
+        )
+        ledgerRepo.recordPendingOperation(op)
+
+        // 1. Claim authorization
+        val claimed = ledgerRepo.claimDispatchAuthorization("tx_c12")
+        assertTrue(claimed)
+
+        val gateway = object : FakeGateway() {
+            override suspend fun createUserUsingDeposit(username: String, phone: String, fullName: String, accountIndex: Int, depositPassword: String): String? {
+                kotlinx.coroutines.delay(1000)
+                return "pass"
+            }
+        }
+
+        // 2. Launch production dispatch coroutine
+        val job = launch {
+            gateway.createUserUsingDeposit("user", "phone", "name", 1, "pass")
+        }
+        
+        kotlinx.coroutines.delay(100)
+        
+        // 3. Perform cancellation
+        job.cancel(kotlinx.coroutines.CancellationException("Production dispatch cancelled"))
+        
+        try {
+            job.join()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Expected
+        }
+
+        // 4. Verify state
+        val updatedOp = ledgerRepo.getPendingOperationByTransactionId("tx_c12")
+        assertNotNull(updatedOp)
+        assertEquals("DISPATCHING", updatedOp!!.status)
+        assertEquals(1, updatedOp.dispatchClaimCount)
     }
 
     @Test
@@ -993,4 +1090,5 @@ class Step3DurableDispatchTest {
         org.junit.Assert.assertNotNull("Resolution for tx_boundary_plus_91 must not be null", resD)
         assertEquals(com.example.core.model.UnknownOutcomeResolutionResult.INCONCLUSIVE, resD!!.result)
     }
+
 }
