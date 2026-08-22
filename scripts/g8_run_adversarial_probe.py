@@ -1316,8 +1316,8 @@ def probe_G8_ADV_050() -> tuple[int, str]:
         os.makedirs(code_dir, exist_ok=True)
         with open(os.path.join(code_dir, "EarthlinkNetwork.kt"), "w", encoding="utf-8") as f:
             f.write("package com.example.core.network\nobject EarthlinkNetwork\n")
-        res = verify_release_environment(repo_root=tmp)
-        if res is True:
+        ok, _ = verify_release_environment(repo_root=tmp)
+        if ok:
             return 0, "[ALLOWED] Release environment verifier allowed unapproved cleartext domain in network security config!"
         return 2, "[BLOCKED] Check G8-ADV-050: Release environment verifier strictly rejected unapproved cleartext domain in network security config."
     finally:
@@ -1434,8 +1434,8 @@ def probe_G8_ADV_055() -> tuple[int, str]:
         os.makedirs(code_dir, exist_ok=True)
         with open(os.path.join(code_dir, "EarthlinkNetwork.kt"), "w", encoding="utf-8") as f:
             f.write("package com.example.core.network\nobject EarthlinkNetwork\n")
-        res = verify_release_environment(repo_root=tmp)
-        if res is True:
+        ok, _ = verify_release_environment(repo_root=tmp)
+        if ok:
             return 0, "[ALLOWED] Release environment validator permitted live production endpoint in cleartext domain config!"
         return 2, "[BLOCKED] Check G8-ADV-055: verify_g8_release_environment strictly blocked live production endpoint in cleartext config."
     finally:
@@ -1456,8 +1456,8 @@ def probe_G8_ADV_056() -> tuple[int, str]:
         bad_db = os.path.join(app_dir, "prior_debug_stale.db")
         with open(bad_db, "w", encoding="utf-8") as f:
             f.write("corrupted_debug_state")
-        res = verify_release_environment(repo_root=tmp)
-        if res is True:
+        ok, _ = verify_release_environment(repo_root=tmp)
+        if ok:
             return 0, "[ALLOWED] Release environment verifier allowed stale persistent database in release environment!"
         return 2, "[BLOCKED] Check G8-ADV-056: verify_release_environment strictly rejected stale persistent database contamination in release environment."
     finally:
@@ -1700,8 +1700,8 @@ def probe_G8_ADV_068() -> tuple[int, str]:
         os.makedirs(code_dir, exist_ok=True)
         with open(os.path.join(code_dir, "EarthlinkNetwork.kt"), "w", encoding="utf-8") as f:
             f.write("package com.example.core.network\nobject EarthlinkNetwork\n")
-        res = verify_release_environment(repo_root=tmp)
-        if res is True:
+        ok, _ = verify_release_environment(repo_root=tmp)
+        if ok:
             return 0, "[ALLOWED] Release environment verifier permitted unapproved network destination!"
         return 2, "[BLOCKED] Check G8-ADV-068: verify_g8_release_environment confirmed network destination allowlist compliance."
     finally:

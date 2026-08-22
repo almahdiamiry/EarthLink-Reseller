@@ -290,6 +290,29 @@ class TestSemanticProbes(unittest.TestCase):
             code_twin, _ = gap.probe_G8_ADV_043()
             self.assertEqual(code_twin, 0, "043 did not return ALLOWED when target succeeded")
 
+    def test_caller_compatibility_hotfix_3(self):
+        """Verify callers handle tuple returns without truthiness conversion or 'is True' comparison errors."""
+        from unittest.mock import patch
+        import collect_closure_evidence as cce
+        import g8_run_adversarial_probe as gap
+
+        # 1. verify_contract caller in collect_closure_evidence
+        with patch("verify_invariant_contract.verify_contract", return_value=(False, ["Simulated error"])):
+            res = cce.execute_invariant_contract_consistency()
+            self.assertEqual(res["status"], "FAIL", "Tuple (False, errors) must evaluate to FAIL in collect_closure_evidence")
+        with patch("verify_invariant_contract.verify_contract", return_value=(True, [])):
+            res = cce.execute_invariant_contract_consistency()
+            self.assertEqual(res["status"], "PASS", "Tuple (True, []) must evaluate to PASS in collect_closure_evidence")
+
+        # 2. verify_release_environment callers in probes 050, 055, 056, 068
+        for probe_func in [gap.probe_G8_ADV_050, gap.probe_G8_ADV_055, gap.probe_G8_ADV_056, gap.probe_G8_ADV_068]:
+            with patch("verify_g8_release_environment.verify_release_environment", return_value=(False, ["Rejected"])):
+                code, _ = probe_func()
+                self.assertEqual(code, 2, f"{probe_func.__name__} must return 2 (BLOCKED) when verifier returns (False, errors)")
+            with patch("verify_g8_release_environment.verify_release_environment", return_value=(True, [])):
+                code, _ = probe_func()
+                self.assertEqual(code, 0, f"{probe_func.__name__} must return 0 (ALLOWED) when verifier returns (True, [])")
+
 
 if __name__ == "__main__":
     unittest.main()

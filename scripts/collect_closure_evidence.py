@@ -231,10 +231,10 @@ def execute_forbidden_patterns_scan() -> dict:
 def execute_invariant_contract_consistency() -> dict:
     from verify_invariant_contract import verify_contract
     try:
-        passed = verify_contract()
+        ok, errors = verify_contract()
         return {
-            "status": "PASS" if passed else "FAIL",
-            "details": "Canonical invariant contract matches all requirements (INV-01..INV-16)." if passed else "Invariant contract validation failed."
+            "status": "PASS" if ok else "FAIL",
+            "details": "Canonical invariant contract matches all requirements (INV-01..INV-16)." if ok else f"Invariant contract validation failed: {errors}"
         }
     except Exception as e:
         return {
