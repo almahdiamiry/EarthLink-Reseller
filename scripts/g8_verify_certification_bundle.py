@@ -91,6 +91,9 @@ def verify_bundle(bundle_path: str) -> dict:
         except Exception as e:
             return {"status": "FAIL", "errors": [f"Invalid JSON in bundle: {e}"]}
 
+    if not isinstance(bundle, dict):
+        return {"status": "FAIL", "errors": ["Bundle root must be a JSON object"]}
+
     errors = []
     blockers = []
 

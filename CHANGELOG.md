@@ -6,7 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Phase 6 / G8 — Machine-Verifiable Release Gating & Zero-Trust Certification
 - **Phase 3 Post-Implementation Adversarial Reconciliation (CLOSED)**:
-  - **Blocker-01 Remediation**: Replaced synthetic exit-code generation with real proof-target probe execution (`scripts/g8_run_adversarial_probe.py`) resolved from canonical `g8_proof_execution_map.yaml` and `g8_adversarial_checks.yaml` across all 79 adversarial checks.
+  - **79 Real Proof Target Executions (`scripts/g8_run_adversarial_probe.py`)**: Replaced all synthetic exit codes and generic fallbacks with 79 discrete, executable handler implementations (`probe_G8_ADV_001` through `probe_G8_ADV_079`) mapped through `PROBE_HANDLERS` and registered with canonical proof targets.
+  - **Zero-Trust Dispatch Verification**: Verified each of the 79 checks executes against real manifests, JUnit outputs, AST pattern scans, phase compliance states, and security envelopes, returning exit code 2 (`BLOCKED`) on invariant holds or exit code 0 (`ALLOWED`) on bypasses.
+  - **Comprehensive Regression Suite (`tests/g8/test_execution_coverage.py`)**: Added executable unit tests proving exact 79/79 registration, real execution, and fail-closed termination on unregistered probe IDs.
   - **Blocker-02 Remediation**: Implemented dynamic `apksigner` resolution and independent cryptographic signature verification against canonical fingerprint in both `g8_certify.py` and `g8_verify_certification_bundle.py`.
   - **Blocker-03 Remediation**: Reconciled `P6-G8-REQ-03` narrative contract to explicitly classify Android instrumentation as `SUPPORTING` (device execution not required on JVM certification runner).
   - **Blocker-04 Remediation**: Eliminated JUnit file-count proxy logic in `g8_certify.py` and replaced with semantic JUnit XML parsing (`g8_junit_parser.py`) verifying 391 actual test executions across 61 product test suites.
