@@ -51,22 +51,24 @@ def compute_sha256(filepath: str) -> str:
     return h.hexdigest()
 
 
-def verify_matrix() -> bool:
+def verify_matrix(matrix_path=None, repo_root=None) -> bool:
+    target_matrix = matrix_path or MATRIX_PATH
+    target_root = repo_root or REPO_ROOT
     print("=================================================================")
     print("=== Earthlink Reseller App -- Test Environment Matrix Validator ===")
     print("=================================================================")
 
-    if not os.path.exists(MATRIX_PATH):
-        print(f"[FAIL] Test Environment Matrix file not found: {MATRIX_PATH}")
+    if not os.path.exists(target_matrix):
+        print(f"[FAIL] Test Environment Matrix file not found: {target_matrix}")
         return False
 
-    matrix_sha = compute_sha256(MATRIX_PATH)
-    print(f"Matrix File   : {os.path.relpath(MATRIX_PATH, REPO_ROOT)}")
+    matrix_sha = compute_sha256(target_matrix)
+    print(f"Matrix File   : {os.path.relpath(target_matrix, target_root)}")
     print(f"Matrix SHA256 : {matrix_sha}")
     print("-----------------------------------------------------------------")
 
     try:
-        with open(MATRIX_PATH, "r", encoding="utf-8") as f:
+        with open(target_matrix, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
     except Exception as e:
         print(f"[FAIL] Failed to parse YAML: {e}")
@@ -166,7 +168,7 @@ def verify_matrix() -> bool:
             errors.append(f"Test suite at index {idx} missing 'path'.")
             continue
 
-        full_path = os.path.join(REPO_ROOT, suite_path)
+        full_path = os.path.join(target_root, suite_path)
         if not os.path.exists(full_path):
             errors.append(f"[{suite_name}] Test suite path does not exist on disk: {suite_path}")
 
@@ -216,12 +218,12 @@ def verify_matrix() -> bool:
         "app/src/test/java/com/example/Phase2RemoteVersionAdversarialTest.kt",
     ]
     for p_file in phase1_2_required_files:
-        full_p = os.path.join(REPO_ROOT, p_file)
+        full_p = os.path.join(target_root, p_file)
         if not os.path.exists(full_p):
             errors.append(f"REGRESSION: Required Phase 1/2 physical test file missing from disk: {p_file}")
 
     # Load G8 certification suites if present
-    g8_scope_path = os.path.join(REPO_ROOT, "contract", "g8_certification_scope.yaml")
+    g8_scope_path = os.path.join(target_root, "contract", "g8_certification_scope.yaml")
     if os.path.exists(g8_scope_path):
         try:
             with open(g8_scope_path, "r", encoding="utf-8") as gf:
@@ -235,8 +237,8 @@ def verify_matrix() -> bool:
             pass
 
     # 6. Check for unmapped test files on disk
-    unit_test_dir = os.path.join(REPO_ROOT, "app", "src", "test", "java", "com", "example")
-    androidTest_dir = os.path.join(REPO_ROOT, "app", "src", "androidTest", "java", "com", "example")
+    unit_test_dir = os.path.join(target_root, "app", "src", "test", "java", "com", "example")
+    androidTest_dir = os.path.join(target_root, "app", "src", "androidTest", "java", "com", "example")
 
     if os.path.exists(unit_test_dir):
         for f in os.listdir(unit_test_dir):

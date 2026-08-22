@@ -25,6 +25,9 @@ def dump(data, stream=None, sort_keys=False, **kwargs):
         return None
     return text
 
+def safe_dump(data, stream=None, sort_keys=False, **kwargs):
+    return dump(data, stream=stream, sort_keys=sort_keys, **kwargs)
+
 def _dump_yaml(data, indent=0):
     spaces = "  " * indent
     if data is None:

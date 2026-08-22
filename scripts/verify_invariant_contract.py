@@ -42,22 +42,24 @@ def compute_sha256(filepath: str) -> str:
     return h.hexdigest()
 
 
-def verify_contract() -> bool:
+def verify_contract(contract_path=None, repo_root=None) -> bool:
+    target_contract = contract_path or CONTRACT_PATH
+    target_root = repo_root or REPO_ROOT
     print("=================================================================")
     print("=== Earthlink Reseller App -- Invariant Contract Validator ===")
     print("=================================================================")
 
-    if not os.path.exists(CONTRACT_PATH):
-        print(f"[FAIL] Contract file not found: {CONTRACT_PATH}")
+    if not os.path.exists(target_contract):
+        print(f"[FAIL] Contract file not found: {target_contract}")
         return False
 
-    contract_sha = compute_sha256(CONTRACT_PATH)
-    print(f"Contract File : {os.path.relpath(CONTRACT_PATH, REPO_ROOT)}")
+    contract_sha = compute_sha256(target_contract)
+    print(f"Contract File : {os.path.relpath(target_contract, target_root)}")
     print(f"Contract SHA256: {contract_sha}")
     print("-----------------------------------------------------------------")
 
     try:
-        with open(CONTRACT_PATH, "r", encoding="utf-8") as f:
+        with open(target_contract, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
     except Exception as e:
         print(f"[FAIL] Failed to parse YAML: {e}")
@@ -107,7 +109,7 @@ def verify_contract() -> bool:
             errors.append(f"[{inv_id}] Missing or empty 'affected_components'.")
         else:
             for src_path in affected:
-                full_path = os.path.join(REPO_ROOT, src_path)
+                full_path = os.path.join(target_root, src_path)
                 if not os.path.exists(full_path):
                     errors.append(f"[{inv_id}] Referenced affected component does not exist: {src_path}")
 
@@ -116,7 +118,7 @@ def verify_contract() -> bool:
             errors.append(f"[{inv_id}] Missing or empty 'required_behavior_tests'.")
         else:
             for test_path in tests:
-                full_path = os.path.join(REPO_ROOT, test_path)
+                full_path = os.path.join(target_root, test_path)
                 if not os.path.exists(full_path):
                     errors.append(f"[{inv_id}] Referenced test file does not exist: {test_path}")
 

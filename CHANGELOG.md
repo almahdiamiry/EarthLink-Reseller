@@ -2,7 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.107.0] - 2026-08-22
+## [1.108.0] - 2026-08-22
+
+### Phase 3 Post-Implementation Adversarial Reconciliation — Final Semantic Remediation (CLOSED)
+- **79 Real Adversarial Guard Boundary Executions (`scripts/g8_run_adversarial_probe.py`)**:
+  - Refactored all 79 probe handlers (`probe_G8_ADV_001` through `probe_G8_ADV_079`) to construct isolated adversarial fixtures, force guarded boundary mutations, and observe real verifier/scanner/parser rejection mechanisms.
+  - Eliminated all static/state inspection fallbacks; every handler actively verifies that invalid inputs, tampered manifests, unmapped suites, skipped tests, vacuous assertions, secret leaks, invalid APK signatures, and missing requirements are blocked with causal machine observations.
+- **Isolated Fixture Architecture & Parameterized Validators**:
+  - Parameterized `verify_invariant_contract.py` (`verify_contract`) and `verify_test_environment_matrix.py` (`verify_matrix`) to execute against isolated temporary repository roots and manifest fixtures.
+  - Ensured zero repository state contamination during probe execution by utilizing ephemeral `tempfile.mkdtemp()` sandbox environments with guaranteed cleanup.
+- **Pure-Python YAML Dumper Extension (`scripts/yaml/__init__.py`)**:
+  - Added `safe_dump` support to the project's internal YAML parser package, enabling programmatic manifest mutation testing in probe sandboxes.
+- **Automated Semantic & Regression Test Suites (`tests/g8/test_semantic_probes.py`)**:
+  - Added dedicated semantic regression tests confirming real causal responses and exit code 2 (`BLOCKED`) semantics across the probe suite.
+  - Verified 100% PASS across all 32 G8 unit test cases and 28 scripts test cases.
 
 ### Phase 6 / G8 — Machine-Verifiable Release Gating & Zero-Trust Certification
 - **Phase 3 Post-Implementation Adversarial Reconciliation (CLOSED)**:

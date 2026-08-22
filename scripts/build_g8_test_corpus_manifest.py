@@ -72,7 +72,7 @@ def build_test_corpus(repo_root=None):
     certification_only_corpus = []
 
     for rel_p in all_test_files:
-        full_p = os.path.join(REPO_ROOT, rel_p)
+        full_p = os.path.join(base, rel_p)
         sha = compute_file_sha256(full_p)
         entry = {"path": rel_p, "sha256": sha}
 
