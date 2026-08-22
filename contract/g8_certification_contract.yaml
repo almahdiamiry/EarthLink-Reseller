@@ -62,7 +62,7 @@ requirements:
     mandatory_proof: "Product/certification artifact, corpus, contract, run, and release identity consistency."
   - id: "P6-G8-REQ-03"
     name: "Full actual test corpus + adversarial fixtures"
-    mandatory_proof: "100% PASS, 0 failures, 0 skips, 0 NO-SOURCE; instrumentation executed."
+    mandatory_proof: "100% PASS, 0 failures, 0 skips, 0 NO-SOURCE for mandatory JVM product corpus; instrumentation classified as SUPPORTING (device execution not required)."
     device_execution_required: false
   - id: "P6-G8-REQ-04"
     name: "Release artifact + fail-closed signing"

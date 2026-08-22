@@ -79,10 +79,12 @@ domains:
       - "scripts/g8_production_gate.ps1"
       - "scripts/g8_generate_compliance_matrix.py"
       - "scripts/g8_render_certification_report.py"
+      - "scripts/g8_run_adversarial_probe.py"
       - "scripts/verify_g8_release_environment.py"
       - "scripts/test_g8_certifier.py"
       - "scripts/test_g8_certifier_fixtures.py"
-      - "EARTHLINK_G8_CERTIFICATION_IMPLEMENTATION_PLAN_FINAL_READY.md"
+      - "tests/g8/**"
+      - "G8*.md"
 
   - domain: "SHARED_CONTROL_INPUT"
     description: "Shared governance contracts and immutable upstream verification tools."

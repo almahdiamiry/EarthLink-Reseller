@@ -61,6 +61,26 @@ def evaluate_contract_predicates(contract: dict, facts: dict) -> dict:
     return calculated_states
 
 
+def find_apksigner() -> str | None:
+    import shutil
+    p = shutil.which("apksigner")
+    if p and os.path.exists(p):
+        return p
+    for env_var in ["ANDROID_HOME", "ANDROID_SDK_ROOT"]:
+        sdk = os.environ.get(env_var)
+        if sdk:
+            bt_dir = os.path.join(sdk, "build-tools")
+            if os.path.exists(bt_dir):
+                for version in sorted(os.listdir(bt_dir), reverse=True):
+                    candidate = os.path.join(bt_dir, version, "apksigner")
+                    if os.path.exists(candidate) and os.access(candidate, os.X_OK):
+                        return candidate
+    for loc in ["/opt/android/sdk/build-tools/36.0.0/apksigner", "/opt/android/sdk/build-tools/34.0.0/apksigner"]:
+        if os.path.exists(loc) and os.access(loc, os.X_OK):
+            return loc
+    return None
+
+
 def verify_bundle(bundle_path: str) -> dict:
     if not os.path.exists(bundle_path):
         return {"status": "FAIL", "errors": [f"Bundle file not found: {bundle_path}"]}
@@ -160,12 +180,40 @@ def verify_bundle(bundle_path: str) -> dict:
         elif reqs[req_key].get("status") != "PASS":
             errors.append(f"Requirement {req_key} did not PASS: {reqs[req_key].get('status')}")
 
-    # 5. Validate Release Artifact & Production Readiness (Fail-closed)
+    # 5. Validate Release Artifact & Independent Cryptographic Signature (Fail-closed)
     rel_art = bundle.get("release_artifact", {})
     rel_path = rel_art.get("path", "")
-    full_rel_path = os.path.join(REPO_ROOT, rel_path)
+    full_rel_path = os.path.join(REPO_ROOT, rel_path) if rel_path else ""
 
-    has_signed_release_apk = os.path.exists(full_rel_path) and rel_art.get("sha256") is not None
+    has_signed_release_apk = False
+    expected_cert_fp = "E8:F4:68:79:16:82:7D:53:73:27:C7:7B:AB:F6:9B:94:E3:10:B6:C8:22:30:E9:BA:36:37:DC:DA:EE:E0:A0:1C"
+
+    if full_rel_path and os.path.exists(full_rel_path) and rel_art.get("sha256") is not None:
+        # Independently recompute binary SHA-256
+        actual_apk_sha = compute_file_sha256(full_rel_path)
+        if actual_apk_sha != rel_art.get("sha256"):
+            errors.append(f"Release APK SHA-256 mismatch: computed {actual_apk_sha}, bundle claims {rel_art.get('sha256')}")
+        else:
+            apksigner_bin = find_apksigner()
+            if apksigner_bin:
+                import subprocess
+                sub_res = subprocess.run([apksigner_bin, "verify", "--print-certs", "--verbose", full_rel_path], capture_output=True, text=True)
+                if sub_res.returncode == 0:
+                    extracted_fp = None
+                    for line in sub_res.stdout.splitlines():
+                        if "SHA-256 digest:" in line:
+                            raw_fp = line.split(":", 1)[1].strip().replace(":", "").upper()
+                            if len(raw_fp) == 64:
+                                extracted_fp = ":".join(raw_fp[i:i+2] for i in range(0, 64, 2))
+                                break
+                    if extracted_fp == expected_cert_fp:
+                        has_signed_release_apk = True
+                    else:
+                        errors.append(f"Release APK certificate fingerprint mismatch: {extracted_fp} != {expected_cert_fp}")
+                else:
+                    errors.append(f"apksigner verification failed for release APK: {sub_res.stderr}")
+            else:
+                errors.append("apksigner executable not found in verification environment.")
 
     if not has_signed_release_apk:
         blockers.append("Release APK is missing or unsigned (Fail-closed: production keystore credentials not present).")

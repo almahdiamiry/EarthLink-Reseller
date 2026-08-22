@@ -94,7 +94,7 @@ def parse_junit_results(results_dir: str, required_suites: list = None) -> dict:
 
     if required_suites:
         for req in required_suites:
-            if req not in parsed_suites:
+            if not any(ps == req or ps.endswith("." + req) for ps in parsed_suites):
                 return {
                     "status": "MISSING_EXPECTED_SUITE",
                     "total_tests": total_tests,

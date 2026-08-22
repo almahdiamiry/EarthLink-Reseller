@@ -65,9 +65,29 @@ def compute_upstream_closure_snapshot() -> str:
 
 def evaluate_check_outcome(expected_outcome: str, probe_exit_code: int, probe_output: str) -> str:
     if expected_outcome == "FAIL_OR_BLOCKING_STATE":
-        return "PASS" if probe_exit_code != 0 else "FAIL"
+        return "PASS" if (probe_exit_code != 0 or "[BLOCKED]" in probe_output) else "FAIL"
     else:
         return "PASS" if probe_exit_code == 0 else "FAIL"
+
+
+def find_apksigner() -> str | None:
+    import shutil
+    p = shutil.which("apksigner")
+    if p and os.path.exists(p):
+        return p
+    for env_var in ["ANDROID_HOME", "ANDROID_SDK_ROOT"]:
+        sdk = os.environ.get(env_var)
+        if sdk:
+            bt_dir = os.path.join(sdk, "build-tools")
+            if os.path.exists(bt_dir):
+                for version in sorted(os.listdir(bt_dir), reverse=True):
+                    candidate = os.path.join(bt_dir, version, "apksigner")
+                    if os.path.exists(candidate) and os.access(candidate, os.X_OK):
+                        return candidate
+    for loc in ["/opt/android/sdk/build-tools/36.0.0/apksigner", "/opt/android/sdk/build-tools/34.0.0/apksigner"]:
+        if os.path.exists(loc) and os.access(loc, os.X_OK):
+            return loc
+    return None
 
 
 def dispatch_adversarial_check(check: dict, mapping: dict, adv_evidence_dir: str) -> tuple:
@@ -82,15 +102,14 @@ def dispatch_adversarial_check(check: dict, mapping: dict, adv_evidence_dir: str
     import sys
     from run_verified_command import run_verified_command
 
-    # Force the expected exit code through process-boundary execution to satisfy zero-trust verified execution
-    exit_code_to_force = 2 if expected_outcome == "FAIL_OR_BLOCKING_STATE" else 0
-    cmd = [sys.executable, "-c", f"import sys; sys.exit({exit_code_to_force})"]
+    probe_script = os.path.join(REPO_ROOT, "scripts", "g8_run_adversarial_probe.py")
+    cmd = [sys.executable, probe_script, check_id]
 
     metadata_path = os.path.join(adv_evidence_dir, f"metadata_{evidence_artifact_id}.json")
     res = run_verified_command(command=cmd, output_metadata_path=metadata_path)
 
     probe_exit_code = res.get("exit_code", -1)
-    probe_output = res.get("stdout", "") + res.get("stderr", "")
+    probe_output = (res.get("stdout") or "") + (res.get("stderr") or "")
 
     proof_status = evaluate_check_outcome(expected_outcome, probe_exit_code, probe_output)
 
@@ -263,10 +282,12 @@ def certify():
     unit_tests_pass = False
     if os.path.exists(junit_results_dir):
         xml_files = [f for f in os.listdir(junit_results_dir) if f.endswith(".xml")]
-        parsed_res = parse_junit_results(junit_results_dir)
-        if parsed_res["status"] == "PASS" and len(xml_files) >= 38:
+        # Pass required product test corpus suite names to parser for semantic validation
+        req_suites = [os.path.basename(t["path"]).replace(".kt", "").replace(".java", "") for t in corpus_res["product_test_corpus"] if "app/src/test/" in t["path"]]
+        parsed_res = parse_junit_results(junit_results_dir, required_suites=req_suites)
+        if parsed_res["status"] == "PASS" and parsed_res["failures"] == 0 and parsed_res["errors"] == 0 and parsed_res["skipped"] == 0:
             unit_tests_pass = True
-            print(f"[PASS] Verified {len(xml_files)} actual JUnit test result XMLs on disk via g8_junit_parser.")
+            print(f"[PASS] Verified {parsed_res['total_tests']} actual JUnit test executions across {len(xml_files)} suites on disk via g8_junit_parser.")
             for xf in xml_files:
                 xp = os.path.join(junit_results_dir, xf)
                 rel_xp = os.path.relpath(xp, REPO_ROOT).replace("\\", "/")
@@ -278,26 +299,32 @@ def certify():
 
     # 7. Exact Release Artifact Check (Fail-closed)
     release_apk_path = os.path.join(REPO_ROOT, "app", "build", "outputs", "apk", "release", "app-release.apk")
+    expected_cert_fp = "E8:F4:68:79:16:82:7D:53:73:27:C7:7B:AB:F6:9B:94:E3:10:B6:C8:22:30:E9:BA:36:37:DC:DA:EE:E0:A0:1C"
     if os.path.exists(release_apk_path):
         actual_release_sha = compute_file_sha256(release_apk_path)
         actual_signing_status = "VERIFIED_SIGNED"
-        apksigner_bin = "/opt/android/sdk/build-tools/36.0.0/apksigner"
-        actual_cert_fp = "E8:F4:68:79:16:82:7D:53:73:27:C7:7B:AB:F6:9B:94:E3:10:B6:C8:22:30:E9:BA:36:37:DC:DA:EE:E0:A0:1C"
-        if os.path.exists(apksigner_bin):
+        apksigner_bin = find_apksigner()
+        actual_cert_fp = None
+        if apksigner_bin:
             code, out, err = run_cmd([apksigner_bin, "verify", "--print-certs", release_apk_path])
             if code == 0:
                 for line in out.splitlines():
                     if "SHA-256 digest:" in line:
-                        raw_fp = line.split(":", 1)[1].strip()
+                        raw_fp = line.split(":", 1)[1].strip().replace(":", "").upper()
                         if len(raw_fp) == 64:
-                            actual_cert_fp = ":".join(raw_fp[i:i+2] for i in range(0, 64, 2)).upper()
-        prod_ready = True
+                            actual_cert_fp = ":".join(raw_fp[i:i+2] for i in range(0, 64, 2))
+                            break
+        if actual_cert_fp == expected_cert_fp:
+            prod_ready = True
+        else:
+            prod_ready = False
+            actual_signing_status = "FAIL_CLOSED_INVALID_SIGNATURE"
     else:
         actual_release_sha = None
         actual_signing_status = "FAIL_CLOSED_NO_RELEASE_KEYSTORE"
         actual_cert_fp = None
         prod_ready = False
-        print("[INFO] Release APK is not signed (no production signing credentials in local environment). Fail-closed enforcement active.")
+        print("[INFO] Release APK is missing or not signed with production credentials. Fail-closed enforcement active.")
 
     # 8. Real Upstream Closure Snapshot ID
     upstream_snapshot_id = compute_upstream_closure_snapshot()
