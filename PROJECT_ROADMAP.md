@@ -11,14 +11,10 @@ EarthLink Reseller is a local-first, offline-capable Android application designe
 **Last Updated:** 2026-08-22
 
 ### Completed
-- Step 1 — CLOSED
-- Step 2 — CLOSED
-- Step 3 — CLOSED
-- Step 3 Adversarial Certification — GO
-- G1 / Wave 1 Closure — CLOSED
-- C06 / C12 Evidence Closure — CLOSED
-- PHASE-03 / G8 Verification Infrastructure Remediation (5/5 Blockers Reconciled) — CLOSED
-- G8 Final Machine-Verifiable Production Certification — CLOSED
+- PHASE-00 — Authority & Architecture — CLOSED
+- PHASE-01 — Wave-1 / G1 Closure — CLOSED
+- PHASE-02 — Post-Wave-1 Scope Assessment — CLOSED
+- PHASE-03 — G8 Verification & Final Certification — CLOSED
   - HEAD: `6d91dbd7ff342feda9c92fcd42ab91ca1554f1f9`
   - Status: `PRODUCTION_READY`
   - G8 tooling: 36/36 PASS
@@ -27,10 +23,10 @@ EarthLink Reseller is a local-first, offline-capable Android application designe
   - Independent verifier: PASS
 
 ### Current Gate
-- Post-Wave-1 Scope Assessment — COMPLETE
+- PHASE-04 — Earthlink Reseller V1 Final Closure
 
 ### Next Authorized Gate
-- LAUNCH / Post-Launch Handover
+- PHASE-04 — Earthlink Reseller V1 Final Closure
 
 **Production architecture is FROZEN unless a concrete current contradiction is established.** Do not reopen completed work.
 

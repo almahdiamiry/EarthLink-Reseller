@@ -23,7 +23,7 @@
 | **`EarthLink-Reseller_Wave1_Report_v3.md`** | Wave 1 Rationale | Scope Authority | Current Ref | **KEEP** | Explains Owner Decisions and Simplifications made in Wave 1. |
 | **`EarthLink-Reseller_Wave1_Step1-3_Final.md`** | Wave 1 Scope | Scope Authority | Current Ref | **KEEP** | Detailed Step 1-3 final spec. |
 | **`G8_Plan.md`** | Implementation Plan | Plan | Closed | **KEEP** | G8 implementation plan (refer to PLAN_STATUS.md). |
-| **`G8 Release-Verification Infrastructure Remediation & Test Matrix Synchronization Implementation Plan.md`** | Duplicate Plan | Plan | Status-Unknown | **PRESERVE** | Duplicate plan file; status unclear (refer to PLAN_STATUS.md). |
+| **`G8 Release-Verification Infrastructure Remediation & Test Matrix Synchronization Implementation Plan.md`** | Duplicate Plan | Plan | Closed | **PRESERVE** | Duplicate plan file; identical workstream to G8_Plan.md. Status reconciled to CLOSED. (refer to PLAN_STATUS.md). |
 | **`EARTHLINK_RESELLER_STEP3_ADVERSARIAL_CERTIFICATION_FINAL.md`** | Certification Record | Evidence | Current Ref | **KEEP** | Final adversarial certification output. |
 | **`EarthLink_Reseller_Step3_Adversarial_Certification_Basis_v6.md`** | Cert Contract | Contract | Current Ref | **KEEP** | Definitions for the Step 3 certification bounds. |
 | **`docs/earthlink_reseller_app_api_documentation_v0_7_0.md`** | API Specs | Technical Reference | Current | **KEEP** | Primary API interaction contract. |
