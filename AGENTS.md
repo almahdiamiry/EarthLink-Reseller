@@ -1,16 +1,16 @@
-# AGENTS.md — EARTHLINK RESELLER V1 OPERATING GOVERNMENT
-## Single Operational Authority for EarthLink Reseller V1
+# AGENTS.md — EARTHLINK RESELLER V1 PROJECT OPERATING MODEL
+## Primary Operational Guide for EarthLink Reseller V1
 
 ---
 
-## 1. Sole Operational Authority Mandate
+## 1. Primary Operational Guide Mandate
 
-> ### ⚠️ SOLE OPERATIONAL AUTHORITY
-> **`AGENTS.md` IS THE ONLY OPERATIONAL GOVERNING DOCUMENT FOR EARTHLINK RESELLER V1.**
+> ### ⚠️ PRIMARY OPERATIONAL GUIDE
+> **`AGENTS.md` IS THE PRIMARY OPERATIONAL GUIDE FOR EARTHLINK RESELLER V1.**
 >
 > There is no second operating standard, no separate implementation governance authority, no separate simplification rulebook, and no plan governing another plan.
 >
-> Every AI agent and human maintainer working in this repository is governed exclusively by the operational rules, safety invariants, verification standards, and navigation procedures defined in this document.
+> Every AI agent and human maintainer working in this repository is guided by the operational rules, safety invariants, verification standards, and navigation procedures defined in this document.
 
 ---
 
@@ -33,7 +33,7 @@ The **"Owner ≠ Router"** principle is strictly enforced: `AGENTS.md` routes to
 
 ```text
                                 [AGENTS.md]
-                         (V1 Operating Government)
+                        (V1 Project Operating Model)
                                     │
            ┌────────────────────────┼────────────────────────┐
            ▼                        ▼                        ▼
@@ -45,7 +45,7 @@ The **"Owner ≠ Router"** principle is strictly enforced: `AGENTS.md` routes to
 
 | Authority Level | Document | Canonical Ownership | Router Role |
 |:---|:---|:---|:---|
-| **Operational Government** | [`AGENTS.md`](AGENTS.md) | **Operational Rules, Invariants & Router** | **OWNS DIRECTLY** |
+| **Project Operating Model** | [`AGENTS.md`](AGENTS.md) | **Operational Rules, Invariants & Router** | **OWNS DIRECTLY** |
 | **Dynamic State GPS** | [`PROJECT_ROADMAP.md`](PROJECT_ROADMAP.md) | **Current Operating Mode & Active Task** | Points to GPS state |
 | **Primary Strategic Authority** | [`Target Product Contract v0.6`](docs/authority/Target%20Product%20Contract%20v0.6.md) | **Business Truth, Product Rules & Contracts** | Points to product truth |
 | **Primary Strategic Authority** | [`Final Independent Adjudication Memo`](docs/authority/Final%20Independent%20Adjudication%20Memo.md) | **Architectural Boundaries & Concurrency** | Points to architecture |
@@ -54,7 +54,7 @@ The **"Owner ≠ Router"** principle is strictly enforced: `AGENTS.md` routes to
 | **Static Supporting Authority** | [`Ledger Identity Inventory`](docs/authority/ledger_identity_inventory.md) | **Canonical 10 Ledger Creation Paths** | Points to ID inventory |
 | **Technical API Reference** | [`docs/earthlink_reseller_app_api_documentation_v0_7_0.md`](docs/earthlink_reseller_app_api_documentation_v0_7_0.md) | **Gateway API Endpoints & Payload Specs** | Points to API reference |
 | **Machine Invariant Contracts** | [`contract/invariant_contract.yaml`](contract/invariant_contract.yaml) | **Executable Invariant Definitions** | Points to contracts |
-| **Sealed Verification Receipts**| [`evidence/`](evidence/) | **Sealed Certification Evidence & Test Runs** | Points to evidence |
+| **Historical Evidence** | [`evidence/`](evidence/) | **Historical Certification Evidence & Test Runs** | Points to evidence |
 | **Historical Audit Log** | [`CHANGELOG.md`](CHANGELOG.md) | **Commit & Milestone History** | Points to changelog |
 
 ---
@@ -104,10 +104,14 @@ The following items are **officially accepted V1 technical debt**. They are **NO
 
 1. **Small Single-Maintainer Product:** Build for the actual product and its actual scale. Do not turn a small reseller app into an enterprise platform.
 2. **Do NOT build generic infrastructure:** Staging databases, Web Admin scraping, and Identity Registries were permanently rejected by the Product Contract.
-3. **Do NOT reopen closed G-areas:** G1 through G8 are completed historical release boundaries. Reopening them without a failing test proof is strictly forbidden.
+3. **Do NOT reopen closed G-areas:** G1–G8 are settled historical work. Do not reopen them merely because a cleaner idea exists. Reopening requires direct new evidence such as:
+   - authoritative contradiction,
+   - demonstrable current repository defect,
+   - failed invariant/test,
+   - direct product, safety, architectural, or repository problem.
 4. **Do NOT perform "while-we're-here" expansions:** Implement ONLY the minimal required scope for the current authorized task.
 5. **Do NOT refactor working code solely for line count:** Large files that work reliably and pass tests are acceptable V1 debt.
-6. **Do NOT touch path-locked historical records:** Files `PRODUCTION_INVARIANTS.md`, `ARCHITECTURE.md`, `PRODUCTION_CONTRACT_MATRIX.md`, `ISSUE_LOG.md`, `G8_Plan.md`, and all files in `evidence/` are frozen for sealed certification evidence path and hash integrity.
+6. **Historical certification records:** Files `PRODUCTION_INVARIANTS.md`, `ARCHITECTURE.md`, `PRODUCTION_CONTRACT_MATRIX.md`, `ISSUE_LOG.md`, `G8_Plan.md`, and all files in `evidence/` are historical certification records. Do not modify them during routine maintenance unless the active task explicitly concerns those records.
 
 ---
 
@@ -145,9 +149,12 @@ Verification scales directly with the blast radius of the change:
 │    Room, Lineage, Recovery)  │ • Broader regression only if │                          │
 │                              │   blast radius requires it   │                          │
 ├──────────────────────────────┼──────────────────────────────┼──────────────────────────┤
-│ 5. Release Build             │ • Targeted release build test│ python scripts/tool.py   │
-│                              │ • Full G8 Gate ONLY if       │                          │
-│                              │   certification boundary changes                        │
+│ 5. Release Build             │ • Release-specific build,    │ Use repository's current │
+│                              │   packaging, and signing     │ release tooling          │
+│                              │   verification               │                          │
+│                              │ • Historical G8 certification│                          │
+│                              │   is not part of routine     │                          │
+│                              │   maintenance                │                          │
 └──────────────────────────────┴──────────────────────────────┴──────────────────────────┘
 ```
 
@@ -171,7 +178,7 @@ Verification scales directly with the blast radius of the change:
 │                                                                                        │
 │ • WORKING PLAN DISCIPLINE:                                                             │
 │   → Plan files are temporary working tools, NOT governance documents.                  │
-│   → PLAN_STATUS.md is a major-work registry, NOT daily operational government.         │
+│   → PLAN_STATUS.md is a major-work registry, NOT daily operational governance.         │
 │   → If new evidence contradicts a plan, update or discard it immediately.              │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
