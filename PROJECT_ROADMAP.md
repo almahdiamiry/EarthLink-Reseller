@@ -138,11 +138,13 @@ LAUNCH
 - **Current machine evidence:** `evidence/`
 - **Transition context:** `docs/authority/EARTHLINK_V1_HANDOVER.md`, `docs/authority/EARTHLINK_IMPLEMENTATION_HANDOVER_APPENDIX_v1.0.md`
 - **Current route:** `PROJECT_ROADMAP.md` (This document)
+- **Document Classification:** `DOCUMENT_INVENTORY.md` (Active vs historical status map)
 
 ## 11. Current vs Historical Documentation
 - **CURRENT AUTHORITY:** `Target Product Contract v0.6.md`, `Final Independent Adjudication Memo.md`, `G1-G8 Consolidated Architecture Summary.md`
 - **CURRENT SCOPE / NAVIGATION:** `PROJECT_ROADMAP.md`
   - *Current scope is derived from: current Owner Decisions, Target Product Contract, applicable authority, and current Wave 1 decisions.*
+- **DOCUMENT CLASSIFICATION:** `DOCUMENT_INVENTORY.md`
 - **CURRENT IMPLEMENTATION / EVIDENCE:** `contract/`, `evidence/`
 - **TRANSITION CONTEXT:** `EARTHLINK_V1_HANDOVER.md`, `EARTHLINK_IMPLEMENTATION_HANDOVER_APPENDIX_v1.0.md`
 - **HISTORICAL / REFERENCE:** P0/P1/P2 Matrices, older Lessons Learned, legacy roadmaps (READ FOR HISTORY ONLY, DO NOT USE AS CURRENT SCOPE).
