@@ -11,7 +11,7 @@ Project requirements and architecture are governed by the Implementation Referen
 2. `docs/authority/G1-G8 Consolidated Architecture Summary.md`
 3. `docs/authority/Final Independent Adjudication Memo.md`
 
-See `AGENTS.md` for AI contributor guidelines and `CONTRIBUTING.md` for developer standards.
+See `AGENTS.md` for operating guidelines, invariants, and navigation.
 
 ---
 

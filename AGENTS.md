@@ -1,154 +1,206 @@
-# AGENTS.md
-## The Canonical Front Door, Behavioral Authority, and Top-Level Navigation Router
-
----
-### 🧭 NAVIGATION & CONTEXT
-* **Why You Are Here:** This is the project's front door and operational rulebook. Every session must start here.
-* **What This Document Owns:** Mandatory behavioral rules, operational invariants, the canonical navigation router, and the scope shield.
-* **Where To Go Next:**
-  * For current project state $\rightarrow$ [PROJECT_ROADMAP.md](PROJECT_ROADMAP.md)
-  * For plan execution status $\rightarrow$ [PLAN_STATUS.md](docs/authority/PLAN_STATUS.md)
----
-
-## 1. Stable Orientation
-**EarthLink Reseller V1** is an offline-capable Android account book whose primary purpose is to protect subscriber financial history. 
-This document provides behavioral orientation, but **defers all business truth to the Product Contract**.
-
-## 2. Canonical Navigation Router (The "Owner ≠ Router" Rule)
-A router points to truth but does not become the owner of mutable state. Do not duplicate facts.
-
-| Fact / Question Type | Canonical Owner (Single Truth) |
-|:---|:---|
-| **Agent Operational Rules & Invariants** | [`AGENTS.md`](AGENTS.md) |
-| **Product Purpose & Business Rules** | [`docs/authority/Target Product Contract v0.6.md`](docs/authority/Target%20Product%20Contract%20v0.6.md) |
-| **Architectural Rulings & Boundaries** | [`docs/authority/Final Independent Adjudication Memo.md`](docs/authority/Final%20Independent%20Adjudication%20Memo.md) |
-| **Current Project Milestone & Active Gate** | [`PROJECT_ROADMAP.md`](PROJECT_ROADMAP.md) |
-| **Implementation Plan Execution Status** | [`docs/authority/PLAN_STATUS.md`](docs/authority/PLAN_STATUS.md) |
-| **Database Field Authority (Room vs Cloud)** | [`docs/authority/account_field_authority_classification.md`](docs/authority/account_field_authority_classification.md) |
-| **Ledger Creation Paths (10 Paths)** | [`docs/authority/ledger_identity_inventory.md`](docs/authority/ledger_identity_inventory.md) |
-| **Machine Invariant Contracts** | [`contract/invariant_contract.yaml`](contract/invariant_contract.yaml) |
-| **Certification Truth & Machine Proofs** | [`evidence/`](evidence/) |
-| **Historical Commit & Change Ledger** | [`CHANGELOG.md`](CHANGELOG.md) |
-
-## 3. Scope Shield & Quarantine Rules
-* **G1–G8 Work Areas:** G1–G8 are completed/frozen release-boundary work areas. G8 has independent machine certification. Do NOT treat closed G-areas as an active backlog.
-* **Plan File Existence ≠ Permission:** The existence of a historical plan file does NOT grant permission to execute it. Execution strictly requires an `ACTIVE` state in `PLAN_STATUS.md`.
-* **Quarantine Rule for Path-Locked Files:** Root historical files (such as `PRODUCTION_INVARIANTS.md`, `ARCHITECTURE.md`, `PRODUCTION_CONTRACT_MATRIX.md`) are frozen historical records preserved strictly for cryptographic evidence verification. They must **never** be edited and must not be used for current planning.
+# AGENTS.md — EARTHLINK RESELLER V1 OPERATING GOVERNMENT
+## Single Operational Authority for EarthLink Reseller V1
 
 ---
 
-## 4. Mandatory Non-Negotiable Invariants
+## 1. Sole Operational Authority Mandate
 
-### 1. No Deleting, Weakening, or Skipping Tests
-- NEVER delete or skip tests.
-- NEVER modify or weaken assertions/expected results in existing certification tests (`FinalTestMatrixCertificationTest`, `ProductionCertificationPipelineTest`, `ProductionExecutableInvariantsTest`, `DeepCrossLayerInvariantsTest`, and existing golden/regression tests).
-- A failing test is proof of a production defect until the production code is proven otherwise. Never make a test pass by changing the test.
-
-### 2. One State, One Authority
-Every synchronized business state must have:
-- one authoritative meaning;
-- one version domain;
-- one mutation policy;
-- one synchronization path.
-
-Do not introduce a second mechanism that independently writes the same state to Firebase.
-
-### 3. Remote Version Semantics
-Server version MUST be represented explicitly and compared only against the same semantic version domain.
-Do not use `createdAt`, `occurredAt`, device clock, or local business timestamps as substitutes for server version.
-
-### 4. Mutation Channel Rule
-Any code capable of mutating synchronized application state or performing destructive database operations MUST pass through the canonical synchronization / mutation architecture defined in the frozen architecture bundle.
-
-### 5. Snapshot & History Rule
-Historical data, Snapshot state, and Runtime state are different concepts:
-- Historical records (e.g., uTower import archives) must remain immutable.
-- Snapshot state is the authoritative starting baseline.
-- Runtime calculations must not re-apply historical snapshot records.
-
-### 6. Fail-Closed Security
-- **In Release Build:** missing or invalid production signing credentials => build failure. No fallback to debug signing, placeholder keys, or unsigned artifacts.
-- **Android Keystore Failure:** fail closed immediately.
-- **Existing Encrypted DB with Unrecoverable Key:** stop safely; never generate a replacement key over an existing database.
-
-### 7. Certification Freeze
-Existing certification tests are immutable during implementation and certification runs.
+> ### ⚠️ SOLE OPERATIONAL AUTHORITY
+> **`AGENTS.md` IS THE ONLY OPERATIONAL GOVERNING DOCUMENT FOR EARTHLINK RESELLER V1.**
+>
+> There is no second operating standard, no separate implementation governance authority, no separate simplification rulebook, and no plan governing another plan.
+>
+> Every AI agent and human maintainer working in this repository is governed exclusively by the operational rules, safety invariants, verification standards, and navigation procedures defined in this document.
 
 ---
 
-## API Documentation Reference
+## 2. System Identity & Business Purpose
 
-When working with network requests and API integrations, consult:
-1. `/docs/earthlink_reseller_app_api_documentation_v0_7_0.md`: Primary API specification.
-2. `/docs/earthlink_app_api_poc_v0_6_48.py`: Python reference implementation for payload unwrapping and edge cases.
-
----
-
-## Mandatory Workflow
-
-For every development session:
-
-1. Follow the **ACTIVE IMPLEMENTATION ENTRY POINT** above.
-2. Implement ONLY the minimal required scope as explicitly authorized through a dedicated candidate scope assessment mapped by `PROJECT_ROADMAP.md`.
-3. Do not modify unrelated files.
-4. Verify the implementation with tests and verified runners.
-5. Update `CHANGELOG.md` and active phase tracking/roadmap milestones.
-6. Stop and wait for user approval.
+* **What this project is:** A small, local-first, offline-capable Android application designed for authorized EarthLink resellers to manage subscriber accounts, record financial activity, and dispatch operational requests (Activation, Renewal, Refill) via EarthLink Gateway APIs.
+* **Core Business Mission:** Protect subscriber financial history. The application must prevent financial data loss, corruption, duplicate charges, and incorrect balance materialization under all network and crash conditions according to the product contract.
+* **Operating Pattern:**
+  ```text
+  UNDERSTAND → DECIDE → MINIMAL CHANGE → VERIFY WHAT MATTERS → STOP
+  ```
 
 ---
 
-## Permanent Verification & Compliance Rules
+## 3. Canonical Navigation Router (Where Truth Lives)
 
-1. **Requirement-by-Requirement Compliance Reviews:** Every phase or task closure MUST prove every single blocking requirement in `contract/phase_requirements.yaml` through explicit machine evidence.
-2. **No Phase Closure from Narrative Reports:** Narrative claims are strictly ignored. Only machine-verified compliance matrix status (`ALL BLOCKING ROWS PASS`) authorizes closure.
-3. **No NO-SOURCE Pass:** Any test task or compilation step returning `NO-SOURCE` MUST fail closed with exit code 2.
-4. **No Unbounded Verification Commands:** All verification commands MUST execute through `run_verified_command.py` enforcing strict timeouts, process-tree termination, and heartbeat emission.
-5. **No Deleting, Skipping, or Weakening Tests:** Tests MUST NEVER be deleted, skipped, or weakened.
+The **"Owner ≠ Router"** principle is strictly enforced: `AGENTS.md` routes to truth and operationalizes it, but does not duplicate mutable domain facts.
+
+```text
+                                [AGENTS.md]
+                         (V1 Operating Government)
+                                    │
+           ┌────────────────────────┼────────────────────────┐
+           ▼                        ▼                        ▼
+  [PROJECT_ROADMAP.md]     [docs/authority/*]          [contract/ & evidence/]
+   (Dynamic State GPS)     (Strategic Authorities)     (Machine Proofs & Tools)
+```
+
+### Authority Directory & Truth Ownership
+
+| Authority Level | Document | Canonical Ownership | Router Role |
+|:---|:---|:---|:---|
+| **Operational Government** | [`AGENTS.md`](AGENTS.md) | **Operational Rules, Invariants & Router** | **OWNS DIRECTLY** |
+| **Dynamic State GPS** | [`PROJECT_ROADMAP.md`](PROJECT_ROADMAP.md) | **Current Operating Mode & Active Task** | Points to GPS state |
+| **Primary Strategic Authority** | [`Target Product Contract v0.6`](docs/authority/Target%20Product%20Contract%20v0.6.md) | **Business Truth, Product Rules & Contracts** | Points to product truth |
+| **Primary Strategic Authority** | [`Final Independent Adjudication Memo`](docs/authority/Final%20Independent%20Adjudication%20Memo.md) | **Architectural Boundaries & Concurrency** | Points to architecture |
+| **Static Supporting Authority** | [`G1-G8 Architecture Summary`](docs/authority/G1-G8%20Consolidated%20Architecture%20Summary.md) | **Engineering Models & Bounded Recovery** | Points to summary |
+| **Static Supporting Authority** | [`Account Field Classification`](docs/authority/account_field_authority_classification.md) | **Room vs Firestore vs ISP Field Ownership** | Points to field authority |
+| **Static Supporting Authority** | [`Ledger Identity Inventory`](docs/authority/ledger_identity_inventory.md) | **Canonical 10 Ledger Creation Paths** | Points to ID inventory |
+| **Technical API Reference** | [`docs/earthlink_reseller_app_api_documentation_v0_7_0.md`](docs/earthlink_reseller_app_api_documentation_v0_7_0.md) | **Gateway API Endpoints & Payload Specs** | Points to API reference |
+| **Machine Invariant Contracts** | [`contract/invariant_contract.yaml`](contract/invariant_contract.yaml) | **Executable Invariant Definitions** | Points to contracts |
+| **Sealed Verification Receipts**| [`evidence/`](evidence/) | **Sealed Certification Evidence & Test Runs** | Points to evidence |
+| **Historical Audit Log** | [`CHANGELOG.md`](CHANGELOG.md) | **Commit & Milestone History** | Points to changelog |
 
 ---
 
-## Implementation Plan Lifecycle
+## 4. Operational RED Invariants (Must Never Break)
 
-Before executing any implementation plan:
+Strategic domain authorities ([`Target Product Contract v0.6`](docs/authority/Target%20Product%20Contract%20v0.6.md) and [`Final Adjudication Memo`](docs/authority/Final%20Independent%20Adjudication%20Memo.md)) define the underlying business and architectural truth. `AGENTS.md` operationalizes and protects those guarantees through these ten mandatory RED invariants:
 
-1. Read `docs/authority/PLAN_STATUS.md`.
-2. Locate the exact plan path.
-3. Execute the plan only if its status is `ACTIVE`.
-4. Do not execute plans marked `CLOSED`, `SUPERSEDED`, `NOT-YET-EXECUTED`, or `STATUS-UNKNOWN`.
+1. **Financial Correctness:** Additive ledger math from baseline (`derivedCurrentPosition`); whole-IQD and 250-IQD multiple validation; zero fractional currency drift.
+2. **History Preservation:** No physical row deletion on `local_ledger_entries`; `ON DELETE CASCADE` eliminated in migration 14; ISP-side subscriber deletion transitions accounts to `isHistoryOnlySubscriber` without erasing historical debt or payments.
+3. **Atomic & Idempotent Dispatch:** Single-writer SQLite hardware claim (`WHERE status = 'PENDING' AND dispatchClaimCount = 0`) before gateway call; zero duplicate charges.
+4. **Canonical Financial Materialization:** Exactly one verified-success materializer (`resolvePendingOperationVerifiedSuccess`); non-financial API calls (`TEST_USER`, `EXTEND`) create zero debt.
+5. **Uncertain-Operation Recovery:** 4-tuple correlation `(userID, operation, amount, timestamp ±90s)` against gateway statement upon app restart; no blind redispatch.
+6. **Restore / Import Atomicity & Lineage:** Direct Atomic Room write transaction; pre-restore safety backup in `BackupManager.kt`; complete-lineage conflict resolution.
+7. **Stale-Sync Protection:** Local generation counter `g4_local_generation` checked and updated in Room write transaction on dataset clear/restore to reject delayed cloud sync writes.
+8. **Durable Outbox Safety:** Per-item outbox processing; poison-pill isolation; lost-ACK retry; zero terminal `DEAD_LETTER` state.
+9. **Identity & Provenance Integrity:** Deterministic source-row coordinate identity for uTower imports; immutable runtime UUIDs for local entries.
+10. **Release & Signing Integrity:** Fail-closed production release signing in Gradle; no fallback to placeholder or debug keys in release builds.
 
-### On Plan Completion
+---
 
-When the implementation plan's authorized Definition of Done / closure criteria are actually satisfied:
+## 5. Accepted YELLOW Technical Debt (Engineering Judgment)
 
-1. Update the exact plan row in `docs/authority/PLAN_STATUS.md`: `ACTIVE` → `CLOSED`.
-2. Add concise evidence to the plan-status note, such as the completion commit, verification result, or certification identifier.
-3. Update `CHANGELOG.md` only when the completed work represents a meaningful repository milestone and is not already recorded.
-4. Do not change the status of any other plan.
-5. Do not resolve `STATUS-UNKNOWN` plans as part of completing another plan.
-6. Do not rename, move, delete, or rewrite historical plans merely because the plan has closed.
+The following items are **officially accepted V1 technical debt**. They are **NOT a backlog** and must not be refactored without an explicit user-facing requirement:
+* **Double Currency Representation:** Legacy `REAL` columns in SQLite are safely guarded by runtime validation.
+* **16 Sequential Room Migrations:** Fully tested against kill-points; SQLite executes the full chain in <15ms.
+* **Large Source Files:** `Repositories.kt` (~3,200 lines) and `UserDetailScreenV2.kt` (~2,600 lines) function reliably and compile cleanly.
+* **Gated Demo Mode:** Historical demo code is safely isolated behind `BuildConfig.DEBUG`.
+* **Legacy Semantic Fields:** `loanIqd` and `isLegacy` are retained as read-only historical context.
 
-### Completion Rule
+> **RULE:** *Do not create a major refactor merely because the code could look nicer. Touch YELLOW debt only if the current task directly benefits from it.*
 
-A plan is CLOSED only when its actual authorized closure criteria are satisfied by repository evidence.
+---
 
-Do not mark a plan CLOSED because:
-- only part of the plan was implemented;
-- some tests passed;
-- a subtask appears complete;
-- the agent believes the work is finished.
+## 6. GREEN Optional Conveniences (Not an Obligation)
 
-### Failure / Blocked Rule
+* Cosmetic refactoring, private helper renaming, or formatting.
+* Extra Markdown styling, diagram polish, or badge updates.
+* Minor Jetpack Compose transition animations.
+* Consolidating duplicated test assertion helpers.
 
-If the plan cannot be completed:
+> **RULE:** *GREEN is not an obligation. Address it only if naturally touched during related work; otherwise ignore it.*
 
-- keep the plan `ACTIVE` unless repository authority explicitly requires another status;
-- record the blocking condition in the final report;
-- do not silently mark the plan `CLOSED`.
+---
 
-### Status Integrity
+## 7. The Scope Shield (Anti-Overengineering)
 
-`PLAN_STATUS.md` is the tracking authority for implementation-plan execution status only. It does not override stronger product, architecture, contract, or historical authority.
+1. **Small Single-Maintainer Product:** Build for the actual product and its actual scale. Do not turn a small reseller app into an enterprise platform.
+2. **Do NOT build generic infrastructure:** Staging databases, Web Admin scraping, and Identity Registries were permanently rejected by the Product Contract.
+3. **Do NOT reopen closed G-areas:** G1 through G8 are completed historical release boundaries. Reopening them without a failing test proof is strictly forbidden.
+4. **Do NOT perform "while-we're-here" expansions:** Implement ONLY the minimal required scope for the current authorized task.
+5. **Do NOT refactor working code solely for line count:** Large files that work reliably and pass tests are acceptable V1 debt.
+6. **Do NOT touch path-locked historical records:** Files `PRODUCTION_INVARIANTS.md`, `ARCHITECTURE.md`, `PRODUCTION_CONTRACT_MATRIX.md`, `ISSUE_LOG.md`, `G8_Plan.md`, and all files in `evidence/` are frozen for sealed certification evidence path and hash integrity.
 
-If the plan, `PLAN_STATUS.md`, and repository evidence disagree:
+---
 
-STOP and report the conflict. Do not guess.
+## 8. Minimum-Change Rule
+
+1. Inspect what already exists.
+2. Determine whether the needed capability already exists.
+3. Reuse it if practical.
+4. Change only what the active task strictly needs.
+5. Add infrastructure only when a demonstrated capability gap remains.
+
+---
+
+## 9. Proportional Verification Model (Verification Follows Risk)
+
+Verification scales directly with the blast radius of the change:
+
+```text
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                        PROPORTIONAL VERIFICATION MATRIX                                │
+├──────────────────────────────┬──────────────────────────────┬──────────────────────────┤
+│ CHANGE CATEGORY              │ REQUIRED VALIDATION          │ RUNNER / COMMAND         │
+├──────────────────────────────┼──────────────────────────────┼──────────────────────────┤
+│ 1. Documentation / Notes     │ • Git diff review (0 code)   │ git diff --stat          │
+│                              │ • Link & scope validation    │                          │
+│                              │ • (No test execution needed) │                          │
+├──────────────────────────────┼──────────────────────────────┼──────────────────────────┤
+│ 2. UI Layout / Formatting    │ • Targeted component test    │ ./gradlew testDebugUnitTest│
+│                              │                              │ --tests "*SpecificTest*" │
+├──────────────────────────────┼──────────────────────────────┼──────────────────────────┤
+│ 3. Business Logic / Sync     │ • Relevant feature tests     │ ./gradlew test           │
+│                              │ • Outbox & sync test suites  │                          │
+├──────────────────────────────┼──────────────────────────────┼──────────────────────────┤
+│ 4. RED Domain (Ledger,       │ • Strong targeted test proof │ ./gradlew test           │
+│    Room, Lineage, Recovery)  │ • Broader regression only if │                          │
+│                              │   blast radius requires it   │                          │
+├──────────────────────────────┼──────────────────────────────┼──────────────────────────┤
+│ 5. Release Build             │ • Targeted release build test│ python scripts/tool.py   │
+│                              │ • Full G8 Gate ONLY if       │                          │
+│                              │   certification boundary changes                        │
+└──────────────────────────────┴──────────────────────────────┴──────────────────────────┘
+```
+
+---
+
+## 10. Lean Planning Model (Planning Follows Complexity)
+
+```text
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                                LEAN PLANNING RULES                                     │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ • TRIVIAL / DOC / TYPO (< 15 mins):                                                    │
+│   → No formal plan. Execute directly; validate with git diff.                          │
+│                                                                                        │
+│ • STANDARD BUG FIX / UI TWEAK (< 2 hours):                                             │
+│   → No formal plan file. Define task in prompt; execute; verify with targeted test.    │
+│                                                                                        │
+│ • MAJOR ARCHITECTURAL / RELEASE MILESTONE:                                             │
+│   → Concise working plan. Register in PLAN_STATUS.md (ACTIVE → CLOSED).                │
+│   → Verify against relevant regression tests.                                          │
+│                                                                                        │
+│ • WORKING PLAN DISCIPLINE:                                                             │
+│   → Plan files are temporary working tools, NOT governance documents.                  │
+│   → PLAN_STATUS.md is a major-work registry, NOT daily operational government.         │
+│   → If new evidence contradicts a plan, update or discard it immediately.              │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 11. Curated Lessons Learned (Knowledge to Prevent Mistakes)
+
+1. **File existence is NOT execution authorization:** The mere presence of a plan or script in the repository does not authorize running it.
+2. **Never confuse producer claims with independent verification:** A test or report claiming "PASS" is meaningless unless evaluated by independent assertions in a clean environment.
+3. **One State, One Authority:** Bugs emerge when multiple modules treat different fields (`remoteVersion`, `updatedAt`, local flags) as competing sources of truth.
+4. **Business data and transport state must never mix:** The Room ledger is business meaning; outbox queues and sync cursors are technical transport. Never promote transport state to business history.
+5. **A ledger is additive history:** Immutable ledgers do not use Last-Write-Wins (LWW) conflict resolution; they accumulate additions (T1 + T2 + T3).
+6. **Valid fixture before adversarial mutation:** Never run an adversarial probe against an already-broken baseline; prove the fixture passes first.
+7. **"While we're here" is NOT scope justification:** Never attach unrelated refactorings or cleanups to an active task.
+8. **Simpler architecture wins:** When a simple mechanism (e.g., Direct Room) provides the exact same safety guarantee as a complex mechanism (e.g., Staging DB), always choose the simpler mechanism.
+
+---
+
+## 12. Fast Agent Startup Loop & Stop Rule
+
+When starting any new task, follow this exact loop:
+
+1. **Read `AGENTS.md`:** Review system purpose, RED invariants, Scope Shield, and Navigation Router.
+2. **Check `PROJECT_ROADMAP.md`:** Check current operating milestone (`POST-V1 / STABLE MAINTENANCE`) and active task.
+3. **Consult Relevant Truth:**
+   * Business rules $\rightarrow$ [`Target Product Contract v0.6`](docs/authority/Target%20Product%20Contract%20v0.6.md)
+   * Architecture $\rightarrow$ [`Final Independent Adjudication Memo`](docs/authority/Final%20Independent%20Adjudication%20Memo.md)
+   * UI / Routine $\rightarrow$ Directly to code.
+4. **Execute Minimal Change:** Apply smallest reasonable change.
+5. **Proportionally Verify:** Run targeted verification.
+6. **STOP:** When the task is complete and verified, stop. Do not expand scope.
+
+

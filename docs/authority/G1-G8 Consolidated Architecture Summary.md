@@ -1,15 +1,5 @@
 # EARTHLINK G1–G8 CONSOLIDATED ARCHITECTURE SUMMARY
 
----
-### 🧭 NAVIGATION & CONTEXT
-* **Why You Are Here:** This document provides the engineering interpretation of the accepted product contract and the consolidated architecture summary.
-* **What This Document Owns:** Frozen Engineering Architecture.
-* **Where To Go Next:**
-  * For current project state $\rightarrow$ [PROJECT_ROADMAP.md](../../PROJECT_ROADMAP.md)
-  * For plan execution status $\rightarrow$ [PLAN_STATUS.md](PLAN_STATUS.md)
-  * For behavioral rules & router $\rightarrow$ [AGENTS.md](../../AGENTS.md)
----
-
 > **Artifact under review:** `earthlink-reseller-v1 (71).zip`  
 > **Artifact sequence vs application version:** `71` is the ZIP/artifact sequence; it is **not** the Android application version. The application reports `VersionCode 68 / VersionName 1.68.0`.
 >

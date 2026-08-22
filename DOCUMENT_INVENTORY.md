@@ -1,63 +1,55 @@
-# EARTHLINK RESELLER V1 — MASTER DOCUMENT INVENTORY
+# DOCUMENT_INVENTORY.md — REPOSITORY DOCUMENT CLASSIFICATION
+## Master Classification Map for EarthLink Reseller V1
 
 ---
+
 ### 🧭 NAVIGATION & CONTEXT
-* **Why You Are Here:** This document classifies all files according to the 4-tier Information Architecture model.
-* **What This Document Owns:** File classification mapping.
+* **Why You Are Here:** This document provides the definitive 4-tier classification of all repository files to prevent agent scope confusion.
+* **What This Document Owns:** File Status & Classification Map.
 * **Where To Go Next:**
-  * For current project state $\rightarrow$ [PROJECT_ROADMAP.md](PROJECT_ROADMAP.md)
-  * For behavioral rules & router $\rightarrow$ [AGENTS.md](AGENTS.md)
+  * For operational rules & safety invariants $\rightarrow$ [AGENTS.md](AGENTS.md)
+  * For current state & milestone GPS $\rightarrow$ [PROJECT_ROADMAP.md](PROJECT_ROADMAP.md)
+
 ---
 
-## 1. Static / Frozen Authorities
-*Immutable domain truth — Never edited during normal development.*
+## 1. The 4-Tier Document Classification
 
-| File Path | Description |
-|:---|:---|
-| `docs/authority/Target Product Contract v0.6.md` | The ultimate source of business/product truth. |
-| `docs/authority/Final Independent Adjudication Memo.md` | Final ruling on technical conflicts and boundaries. |
-| `docs/authority/G1-G8 Consolidated Architecture Summary.md` | Architectural constraints and dependency map. |
-| `docs/authority/account_field_authority_classification.md` | Database field authority definition. |
-| `docs/authority/ledger_identity_inventory.md` | Ledger creation paths (10 Paths). |
-| `AI_DEVELOPMENT_GUIDE.md` | Static engineering patterns and UI guidance. |
-| `docs/earthlink_reseller_app_api_documentation_v0_7_0.md` | Primary API interaction contract. |
-| `docs/earthlink_app_api_poc_v0_6_48.py` | API POC script / reference. |
+```text
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                              THE 4-TIER DOCUMENT TOPOLOGY                              │
+├─────────────────────────┬──────────────────────────────────────────────────────────────┤
+│ TIER                    │ OPERATIONAL MEANING                                          │
+├─────────────────────────┼──────────────────────────────────────────────────────────────┤
+│ **1. OPERATIONAL & GPS**│ Active governing documents for daily development.            │
+│ **2. STATIC STRATEGIC** │ Frozen business truth and technical boundaries.              │
+│ **3. EVIDENCE & PROOFS**│ Machine contracts, sealed test receipts, and G8 tooling.     │
+│ **4. HISTORICAL**       │ Path-locked forensic records (Immutable hash preservation).  │
+└─────────────────────────┴──────────────────────────────────────────────────────────────┘
+```
 
-## 2. Dynamic / Managed Documents
-*Mutable operational state — Updated strictly upon milestone or plan transitions.*
+---
 
-| File Path | Description |
-|:---|:---|
-| `AGENTS.md` | Front Door Router. Updated only when operational rules change. |
-| `PROJECT_ROADMAP.md` | Dynamic GPS. Updated only when gates open/close. |
-| `docs/authority/PLAN_STATUS.md` | Execution tracker. Updated only for plan transitions. |
-| `DOCUMENT_INVENTORY.md` | This file. Updated when documents are added/reclassified. |
-| `CHANGELOG.md` | Append-only record of completed release milestones. |
+## 2. Master Document Inventory
 
-## 3. Certification & Machine Evidence
-*Sealed, hash-bound, source/artifact-bound receipts — Machine evaluated.*
+| File / Directory | Tier | Authority Level | Lifecycle | Action / Rule |
+|:---|:---|:---|:---|:---|
+| **[`AGENTS.md`](AGENTS.md)** | Tier 1 (Operational) | **Sole Operational Authority** | Controlled | **V1 Operating Government:** Primary entry point for all rules and navigation. |
+| **[`PROJECT_ROADMAP.md`](PROJECT_ROADMAP.md)** | Tier 1 (GPS) | **Dynamic Milestone GPS** | Dynamic | **Current State GPS:** Tracks active operating mode and authorized next step. |
+| **[`docs/authority/PLAN_STATUS.md`](docs/authority/PLAN_STATUS.md)** | Tier 1 (Plans) | **Plan Status Registry** | Dynamic | **Plan Registry:** Tracks formal multi-session implementation plan lifecycles. |
+| **[`docs/authority/Target Product Contract v0.6.md`](docs/authority/Target%20Product%20Contract%20v0.6.md)** | Tier 2 (Strategic) | **Frozen Business Authority** | Frozen | **Highest Product Truth:** Defines domain rules and data integrity mandates. |
+| **[`docs/authority/Final Independent Adjudication Memo.md`](docs/authority/Final%20Independent%20Adjudication%20Memo.md)** | Tier 2 (Strategic) | **Frozen Technical Authority** | Frozen | **Highest Architecture Truth:** Defines Direct Room and concurrency boundaries. |
+| **[`docs/authority/G1-G8 Consolidated Architecture Summary.md`](docs/authority/G1-G8%20Consolidated%20Architecture%20Summary.md)** | Tier 2 (Strategic) | **Engineering Interpretation** | Frozen | **Architecture Models:** Cross-gate dependency and bounded recovery references. |
+| **[`docs/authority/account_field_authority_classification.md`](docs/authority/account_field_authority_classification.md)** | Tier 2 (Strategic) | **Field Authority** | Controlled | **Entity Authority Map:** Room vs. Firestore vs. ISP field ownership. |
+| **[`docs/authority/ledger_identity_inventory.md`](docs/authority/ledger_identity_inventory.md)** | Tier 2 (Strategic) | **ID Provenance Authority** | Controlled | **ID Inventory:** Canonical mapping of all 10 ledger creation paths. |
+| **[`AI_DEVELOPMENT_GUIDE.md`](AI_DEVELOPMENT_GUIDE.md)** | Tier 2 (Supporting) | **Development Guidelines** | Controlled | **Engineering Patterns:** Kotlin, Jetpack Compose, and Room patterns. |
+| **[`contract/`](contract/)** | Tier 3 (Evidence) | **Machine Contracts** | Managed | **Machine Contracts:** YAML invariant rules and test matrix coverage maps. |
+| **[`evidence/`](evidence/)** | Tier 3 (Evidence) | **Sealed Machine Proofs** | Immutable | **Verification Receipts:** Sealed JSON bundles, probe outputs, APK hashes. |
+| **[`scripts/`](scripts/)** | Tier 3 (Tooling) | **Verification Harness** | Managed | **G8 Verification Tools:** Independent verification runners. |
+| **[`CHANGELOG.md`](CHANGELOG.md)** | Tier 4 (Historical) | **Audit Log** | Append-Only | **Historical Commit Ledger:** Chronological release history (Audit only). |
+| **`PRODUCTION_INVARIANTS.md`** | Tier 4 (Historical) | **Path-Locked Record** | Immutable | **LEAVE UNTOUCHED:** Retained in root for cryptographic hash integrity. |
+| **`ARCHITECTURE.md`** | Tier 4 (Historical) | **Path-Locked Record** | Immutable | **LEAVE UNTOUCHED:** Retained in root for historical evidence integrity. |
+| **`PRODUCTION_CONTRACT_MATRIX.md`** | Tier 4 (Historical) | **Path-Locked Record** | Immutable | **LEAVE UNTOUCHED:** Retained in root for historical evidence integrity. |
+| **`EarthLink-Reseller_Wave1_*.md`** | Tier 4 (Historical) | **Forensic Spec / Report** | Immutable | **LEAVE UNTOUCHED:** Read-only forensic records of Wave 1 decisions. |
+| **`docs/authority/EARTHLINK_V1_HANDOVER.md`** | Tier 4 (Historical) | **Forensic Handover** | Immutable | **LEAVE UNTOUCHED:** Read-only transition context from ZIP 71 audit. |
+| **`docs/LESSONS_LEARNED/*`** | Tier 4 (Historical) | **Lessons Learned Archive** | Immutable | **Historical Guardrails:** Deep analysis of past failure modes. |
 
-| Directory / File Path | Description |
-|:---|:---|
-| `contract/` (YAML/JSON) | Machine invariant and coverage contracts. |
-| `evidence/` | Sealed test execution bundles and verification receipts. |
-| `scripts/` | Zero-trust certification and verification harness. |
-
-## 4. Historical & Forensic Records
-*Path-locked artifacts — Preserved for evidence integrity; Not current backlog.*
-
-| File Path | Description |
-|:---|:---|
-| `ARCHITECTURE.md` | Path-locked historical architecture record. |
-| `PRODUCTION_INVARIANTS.md` | Path-locked verification dependency. |
-| `PRODUCTION_CONTRACT_MATRIX.md` | Path-locked legacy matrix. |
-| `ISSUE_LOG.md` | Path-locked historical issue tracker. |
-| `EarthLink-Reseller_Wave1_Report_v3.md` | Historical Wave 1 rationale. |
-| `EarthLink-Reseller_Wave1_Step1-3_Final.md` | Historical Wave 1 scope. |
-| `docs/authority/EARTHLINK_V1_HANDOVER.md` | Historical transition context. |
-| `docs/authority/EARTHLINK_IMPLEMENTATION_HANDOVER_APPENDIX_v1.0.md` | Historical implementation context. |
-| `docs/LESSONS_LEARNED/*` | Historical governance context. |
-| `docs/authority/EARTHLINK_RESELLER_V1_FINAL_APPROVED_FINDINGS_MATRIX.md` | Historical findings matrix. |
-| `EARTHLINK_RESELLER_STEP3_ADVERSARIAL_CERTIFICATION_FINAL.md` | Historical certification record. |
-| `EarthLink_Reseller_Step3_Adversarial_Certification_Basis_v6.md` | Historical certification basis. |
-| `G8_Plan.md`, `G8 Release-Verification...md` | Historical plans (closed). |

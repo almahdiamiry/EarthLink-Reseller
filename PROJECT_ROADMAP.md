@@ -1,49 +1,66 @@
-# EARTHLINK RESELLER V1 — DYNAMIC PROJECT GPS & ROADMAP
+# PROJECT_ROADMAP.md — DYNAMIC PROJECT GPS
+## Current Milestone & Active Workstream Router
 
 ---
+
 ### 🧭 NAVIGATION & CONTEXT
-* **Why You Are Here:** This document provides the current dynamic project state, active milestone, and authorized next step.
-* **What This Document Owns:** Current Milestone, Active Gate, and Authorized Next Step.
+* **Why You Are Here:** This document is the dynamic project GPS summarizing the current operating state and authorized active tasks.
+* **What This Document Owns:** Current Operating Mode, Active Workstream, and Milestone Completion Records.
 * **Where To Go Next:**
-  * For plan execution status $\rightarrow$ [PLAN_STATUS.md](docs/authority/PLAN_STATUS.md)
-  * For behavioral rules & router $\rightarrow$ [AGENTS.md](AGENTS.md)
+  * For operational rules & safety invariants $\rightarrow$ [AGENTS.md](AGENTS.md)
+  * For product requirements & business truth $\rightarrow$ [Target Product Contract v0.6](docs/authority/Target%20Product%20Contract%20v0.6.md)
+  * For architectural rulings $\rightarrow$ [Final Adjudication Memo](docs/authority/Final%20Independent%20Adjudication%20Memo.md)
+
 ---
 
-## 1. Current State & Active Gate
+## 1. Current Operating Mode
 
-**Last Updated:** 2026-08-22
+```text
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                               CURRENT OPERATING STATE                                  │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ OPERATING MODE:        POST-V1 / STABLE MAINTENANCE                                    │
+│ ACTIVE WORKSTREAM:     NONE — SYSTEM IDLE (READY FOR MAINTENANCE TASKS)                │
+│ V1 CERTIFIED BASELINE: FROZEN FOR V1 RELEASE                                           │
+│                        (Last independently certified production code baseline: 6d91dbd)│
+│ POST-V1 EVOLUTION:     CONTROLLED VIA PROPORTIONAL VERIFICATION MODEL                  │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
 
-### Current Active Gate
-- **ALL AUTHORIZED V1 PHASES CLOSED**
+---
 
-### Authorized Next Step
-- None. Earthlink Reseller V1 is formally completed.
+## 2. Completed Milestone Record
 
-> **Production architecture is FROZEN.** Do not reopen completed work.
+All foundational remediation and verification phases are **formally complete and closed**:
 
-## 2. Historical Traceability (Completed Milestones)
+| Phase / Gate | Scope | Status | Reference / Evidence |
+|:---|:---|:---|:---|
+| **PHASE-00** | Authority & Architecture Freeze | **CLOSED** | [Target Product Contract v0.6](docs/authority/Target%20Product%20Contract%20v0.6.md), [Final Adjudication Memo](docs/authority/Final%20Independent%20Adjudication%20Memo.md) |
+| **PHASE-01** | G1 Durable Intent & Restart Durability | **CLOSED** | [Wave 1 Final Spec](EarthLink-Reseller_Wave1_Step1-3_Final.md), `Workstream13ProcessRestartDurabilityRealDbTest` |
+| **PHASE-02** | Candidate Scope & Wave-1 Reconciliation | **CLOSED** | [Wave 1 Report v3](EarthLink-Reseller_Wave1_Report_v3.md), `accountStatement` 4-tuple correlation |
+| **PHASE-03** | G4 Lineage, G5 Identity & G8 Certification | **CLOSED** | [Evidence Directory](evidence/), 391 unit tests, 79 G8 adversarial probes, sealed release APK |
+| **PHASE-04** | V1 Closure & Governance Consolidation | **CLOSED** | [AGENTS.md](AGENTS.md) (V1 Operating Government Established) |
 
-The following phases are formally CLOSED. Their architectural records and certification evidence are sealed.
 
-- **PHASE-00** — Authority & Architecture — CLOSED
-- **PHASE-01** — Wave-1 / G1 Closure — CLOSED
-- **PHASE-02** — Post-Wave-1 Scope Assessment — CLOSED
-- **PHASE-03** — G8 Verification & Final Certification — CLOSED
-  - HEAD: `6d91dbd7ff342feda9c92fcd42ab91ca1554f1f9`
-  - Status: `PRODUCTION_READY`
-  - G8 tooling: 36/36 PASS
-  - Current-HEAD product tests: 61 suites, 391 tests, 0 failures, 0 errors, 0 skipped
-  - G8 adversarial checks: 79/79 PASS
-  - Independent verifier: PASS
-- **PHASE-04** — Information Architecture Implementation — CLOSED
+---
 
-*For historical context on these phases, consult:*
-- [G1-G8 Consolidated Architecture Summary](docs/authority/G1-G8%20Consolidated%20Architecture%20Summary.md)
-- [EarthLink-Reseller Wave 1 Report](EarthLink-Reseller_Wave1_Report_v3.md)
+## 3. Scope Rules for Future Work
 
-## 3. Post-Launch & Deferred Work (Out of Scope for V1)
-- General Settings Synchronization: Deferred. Local settings only.
-- Web Admin Audit Log API POC: Deferred. ASP.NET integration is post-launch.
-- Generic distributed synchronization state machine: Deferred.
-- Autonomous Earthlink reconciliation engine: Deferred.
-- Extensive G6/G7 semantic modernization: Deferred.
+1. **No Backlog in Completed Gates:** G1 through G8 and Wave 1 are completed historical milestones. Do not treat historical summaries as an open implementation backlog.
+2. **Proportional Verification:** Verify changes according to risk as defined in [AGENTS.md](AGENTS.md) (Level 1 doc diff to Level 5 release build).
+3. **Lean Planning:** Minor bug fixes and UI adjustments do not require formal implementation plans; major architectural changes require a concise working plan.
+
+---
+
+## 4. Strategic Authority Directory
+
+### Primary Strategic Authority (Highest Domain & Architectural Truth)
+* **Product & Business Truth:** [`Target Product Contract v0.6`](docs/authority/Target%20Product%20Contract%20v0.6.md)
+* **Architectural Boundaries:** [`Final Independent Adjudication Memo`](docs/authority/Final%20Independent%20Adjudication%20Memo.md)
+
+### Static Supporting Authority (Domain Models & Inventories)
+* **Engineering Architecture Models:** [`G1-G8 Architecture Summary`](docs/authority/G1-G8%20Consolidated%20Architecture%20Summary.md)
+* **Field Authority Classification:** [`Account Field Authority`](docs/authority/account_field_authority_classification.md)
+* **Ledger Identity Inventory:** [`Ledger Identity Inventory`](docs/authority/ledger_identity_inventory.md)
+
+
