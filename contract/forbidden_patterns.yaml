@@ -221,5 +221,15 @@ patterns:
       - "(object|class)\\s+GovernanceRegistry"
     explanation: "G8 governance registry objects must not be compiled into production source binaries."
 
+  - id: "INV-16-g8-mutating-db-call"
+    invariant: "INV-16"
+    description: "Forbidden direct database mutation or Firestore write calls inside certification scripts"
+    check_type: "regex"
+    file_glob: "scripts/**/*.py"
+    forbidden_regexes:
+      - "firestore\\.collection\\([^)]*\\)\\.(add|set|update|delete)"
+      - "AppDatabase\\.(insert|update|delete)"
+    explanation: "G8 certification scripts must never write directly to Room or Firestore business state."
+
 
 
