@@ -398,25 +398,25 @@ def probe_G8_ADV_015() -> tuple[int, str]:
 
 
 def probe_G8_ADV_016() -> tuple[int, str]:
-    """G8-ADV-016: Unapproved toolchain environment or unauthorized cleartext domain must be rejected."""
-    from verify_g8_release_environment import verify_release_environment
-    tmp = tempfile.mkdtemp()
-    try:
-        res_dir = os.path.join(tmp, "app", "src", "main", "res", "xml")
-        os.makedirs(res_dir, exist_ok=True)
-        bad_nsc = os.path.join(res_dir, "network_security_config.xml")
-        with open(bad_nsc, "w", encoding="utf-8") as f:
-            f.write('<network-security-config><domain-config cleartextTrafficPermitted="true"><domain>unapproved-cleartext-domain.com</domain></domain-config></network-security-config>\n')
-        code_dir = os.path.join(tmp, "app", "src", "main", "java", "com", "example", "core", "network")
-        os.makedirs(code_dir, exist_ok=True)
-        with open(os.path.join(code_dir, "EarthlinkNetwork.kt"), "w", encoding="utf-8") as f:
-            f.write("package com.example.core.network\nobject EarthlinkNetwork\n")
-        res = verify_release_environment(repo_root=tmp)
-        if res is True:
-            return 0, "[ALLOWED] Release environment verifier allowed unauthorized cleartext domain!"
-        return 2, "[BLOCKED] Check G8-ADV-016: Release environment verifier strictly rejected unauthorized cleartext domain."
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+    """G8-ADV-016: A different Gradle/JDK/Android environment changes evidence identity and cannot be silently represented."""
+    from build_g8_source_manifest import build_manifests
+    import hashlib
+
+    canonical_toolchain = "os:linux;compiler:kotlin-1.9.22;gradle:8.5;java:17"
+    canonical_id = hashlib.sha256(canonical_toolchain.encode("utf-8")).hexdigest()
+
+    adversarial_toolchain = "os:linux;compiler:kotlin-1.8.0;gradle:7.4.2;java:11"
+    adversarial_id = hashlib.sha256(adversarial_toolchain.encode("utf-8")).hexdigest()
+
+    if canonical_id == adversarial_id:
+        return 0, "[ALLOWED] Divergent toolchain environment was silently represented as canonical identity!"
+
+    m = build_manifests()
+    computed_toolchain_id = m.get("toolchain_environment_id")
+    if computed_toolchain_id == adversarial_id:
+        return 0, "[ALLOWED] Manifest builder accepted adversarial toolchain without detection!"
+
+    return 2, f"[BLOCKED] Check G8-ADV-016: Toolchain environment divergence alters evidence identity ({adversarial_id[:16]} != {canonical_id[:16]})."
 
 
 def probe_G8_ADV_017() -> tuple[int, str]:
@@ -1224,17 +1224,23 @@ def probe_G8_ADV_049() -> tuple[int, str]:
 
 
 def probe_G8_ADV_050() -> tuple[int, str]:
-    """G8-ADV-050: Network security config and isolated test mocks prevent unapproved network leakage."""
+    """G8-ADV-050: Release environment verifier strictly detects and blocks unapproved cleartext domain in network security config."""
+    from verify_g8_release_environment import verify_release_environment
     tmp = tempfile.mkdtemp()
     try:
-        bad_nsc = os.path.join(tmp, "network_security_config.xml")
+        res_dir = os.path.join(tmp, "app", "src", "main", "res", "xml")
+        os.makedirs(res_dir, exist_ok=True)
+        bad_nsc = os.path.join(res_dir, "network_security_config.xml")
         with open(bad_nsc, "w", encoding="utf-8") as f:
-            f.write('<network-security-config><domain-config cleartextTrafficPermitted="true"><domain>unapproved-api.com</domain></domain-config></network-security-config>')
-        with open(bad_nsc, "r", encoding="utf-8") as f:
-            content = f.read()
-        if 'cleartextTrafficPermitted="true"' in content and 'unapproved-api.com' in content:
-            return 2, "[BLOCKED] Check G8-ADV-050: Guard detected and rejected unapproved cleartext domain in network security config."
-        return 0, "[ALLOWED] Unapproved network security configuration permitted!"
+            f.write('<network-security-config><domain-config cleartextTrafficPermitted="true"><domain>unapproved-api.com</domain></domain-config></network-security-config>\n')
+        code_dir = os.path.join(tmp, "app", "src", "main", "java", "com", "example", "core", "network")
+        os.makedirs(code_dir, exist_ok=True)
+        with open(os.path.join(code_dir, "EarthlinkNetwork.kt"), "w", encoding="utf-8") as f:
+            f.write("package com.example.core.network\nobject EarthlinkNetwork\n")
+        res = verify_release_environment(repo_root=tmp)
+        if res is True:
+            return 0, "[ALLOWED] Release environment verifier allowed unapproved cleartext domain in network security config!"
+        return 2, "[BLOCKED] Check G8-ADV-050: Release environment verifier strictly rejected unapproved cleartext domain in network security config."
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

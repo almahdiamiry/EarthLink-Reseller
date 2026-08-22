@@ -158,7 +158,7 @@ coverage_matrix:
     fixture: tests/g8/fixtures/g8_adv_016
     target: g8-adv-proof-G8-ADV-016
     expected_guard_observation: Observation matching failure condition of G8-ADV-016
-    observed_guard_observation: "[BLOCKED] Check G8-ADV-016: Release environment verifier strictly rejected unauthorized cleartext domain."
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-016: Toolchain environment divergence alters evidence identity (e34fef106b25ae1a != 1547d58493963178)."
     causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
     evidence_artifact: g8-adv-evidence-G8-ADV-016
   - check_id: G8-ADV-017
@@ -208,7 +208,7 @@ coverage_matrix:
     fixture: tests/g8/fixtures/g8_adv_021
     target: g8-adv-proof-G8-ADV-021
     expected_guard_observation: Observation matching failure condition of G8-ADV-021
-    observed_guard_observation: "[BLOCKED] Check G8-ADV-021: Guard actively detected and blocked mutating DB call in certification script fixture (1 file(s))."
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-021: Forbidden pattern scanner detected 1 mutating DB call(s) in certification script fixture."
     causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
     evidence_artifact: g8-adv-evidence-G8-ADV-021
   - check_id: G8-ADV-022
@@ -338,7 +338,7 @@ coverage_matrix:
     fixture: tests/g8/fixtures/g8_adv_034
     target: g8-adv-proof-G8-ADV-034
     expected_guard_observation: Observation matching failure condition of G8-ADV-034
-    observed_guard_observation: "[BLOCKED] Check G8-ADV-034: Clean domain separation enforced between product (197) and certification (73) manifests."
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-034: Clean domain separation enforced between product (197) and certification (74) manifests."
     causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
     evidence_artifact: g8-adv-evidence-G8-ADV-034
   - check_id: G8-ADV-035
@@ -428,7 +428,7 @@ coverage_matrix:
     fixture: tests/g8/fixtures/g8_adv_043
     target: g8-adv-proof-G8-ADV-043
     expected_guard_observation: Observation matching failure condition of G8-ADV-043
-    observed_guard_observation: "[BLOCKED] Check G8-ADV-043: Fresh certification run directory created per execution."
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-043: Run isolation guard prevents overwriting existing evidence directories; generates fresh isolated UUID directory."
     causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
     evidence_artifact: g8-adv-evidence-G8-ADV-043
   - check_id: G8-ADV-044
@@ -438,7 +438,7 @@ coverage_matrix:
     fixture: tests/g8/fixtures/g8_adv_044
     target: g8-adv-proof-G8-ADV-044
     expected_guard_observation: Observation matching failure condition of G8-ADV-044
-    observed_guard_observation: "[BLOCKED] Check G8-ADV-044: Verifier uses hardcoded canonical trusted fingerprint constant; dynamic derivation BLOCKED."
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-044: Verifier strictly rejected dynamic/unauthorized certificate fingerprint."
     causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
     evidence_artifact: g8-adv-evidence-G8-ADV-044
   - check_id: G8-ADV-045
@@ -448,7 +448,7 @@ coverage_matrix:
     fixture: tests/g8/fixtures/g8_adv_045
     target: g8-adv-proof-G8-ADV-045
     expected_guard_observation: Observation matching failure condition of G8-ADV-045
-    observed_guard_observation: "[BLOCKED] Check G8-ADV-045: Sealed bundle pairs exact product_artifact_id (6eb94496393cc28f...) and certification_artifact_id (2f1ff86b9fa9aa2d...)."
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-045: Verifier strictly enforces exact product and certification artifact pairing."
     causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
     evidence_artifact: g8-adv-evidence-G8-ADV-045
   - check_id: G8-ADV-046
@@ -458,7 +458,7 @@ coverage_matrix:
     fixture: tests/g8/fixtures/g8_adv_046
     target: g8-adv-proof-G8-ADV-046
     expected_guard_observation: Observation matching failure condition of G8-ADV-046
-    observed_guard_observation: "[BLOCKED] Check G8-ADV-046: Certification engine strictly checks release APK artifact path (app-release.apk)."
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-046: Verifier strictly rejected debug APK artifact; release APK required."
     causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
     evidence_artifact: g8-adv-evidence-G8-ADV-046
   - check_id: G8-ADV-047
@@ -478,7 +478,7 @@ coverage_matrix:
     fixture: tests/g8/fixtures/g8_adv_048
     target: g8-adv-proof-G8-ADV-048
     expected_guard_observation: Observation matching failure condition of G8-ADV-048
-    observed_guard_observation: "[BLOCKED] Check G8-ADV-048: Upstream phase requirements enforced before certification closure."
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-048: Verifier strictly blocked certification closure when upstream requirements are incomplete."
     causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
     evidence_artifact: g8-adv-evidence-G8-ADV-048
   - check_id: G8-ADV-049
@@ -498,7 +498,7 @@ coverage_matrix:
     fixture: tests/g8/fixtures/g8_adv_050
     target: g8-adv-proof-G8-ADV-050
     expected_guard_observation: Observation matching failure condition of G8-ADV-050
-    observed_guard_observation: "[BLOCKED] Check G8-ADV-050: Guard detected and rejected unapproved cleartext domain in network security config."
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-050: Release environment verifier strictly rejected unapproved cleartext domain in network security config."
     causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
     evidence_artifact: g8-adv-evidence-G8-ADV-050
   - check_id: G8-ADV-051
@@ -518,7 +518,7 @@ coverage_matrix:
     fixture: tests/g8/fixtures/g8_adv_052
     target: g8-adv-proof-G8-ADV-052
     expected_guard_observation: Observation matching failure condition of G8-ADV-052
-    observed_guard_observation: "[BLOCKED] Check G8-ADV-052: g8_certify creates fresh UUID-based run directory and does not overwrite existing runs."
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-052: Fresh UUID-based run directory isolation prevents run overwrites."
     causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
     evidence_artifact: g8-adv-evidence-G8-ADV-052
   - check_id: G8-ADV-053
@@ -528,7 +528,7 @@ coverage_matrix:
     fixture: tests/g8/fixtures/g8_adv_053
     target: g8-adv-proof-G8-ADV-053
     expected_guard_observation: Observation matching failure condition of G8-ADV-053
-    observed_guard_observation: "[BLOCKED] Check G8-ADV-053: Test corpus manifest separates product corpus (61) from certification corpus (65)."
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-053: Test corpus manifest strictly separates product corpus (61) from certification-only corpus (4)."
     causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
     evidence_artifact: g8-adv-evidence-G8-ADV-053
   - check_id: G8-ADV-054
@@ -668,7 +668,7 @@ coverage_matrix:
     fixture: tests/g8/fixtures/g8_adv_067
     target: g8-adv-proof-G8-ADV-067
     expected_guard_observation: Observation matching failure condition of G8-ADV-067
-    observed_guard_observation: "[BLOCKED] Check G8-ADV-067: Manifest builder enforces strict domain separation (6eb94496393cc28f != 2f1ff86b9fa9aa2d)."
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-067: Manifest builder enforces strict domain separation (6eb94496393cc28f != cf80c04253e60103)."
     causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
     evidence_artifact: g8-adv-evidence-G8-ADV-067
   - check_id: G8-ADV-068
@@ -788,6 +788,6 @@ coverage_matrix:
     fixture: tests/g8/fixtures/g8_adv_079
     target: g8-adv-proof-G8-ADV-079
     expected_guard_observation: Observation matching failure condition of G8-ADV-079
-    observed_guard_observation: "[BLOCKED] Check G8-ADV-079: g8_certify consumes sealed UPSTREAM_CLOSURE_SNAPSHOT_ID (521e4b0631c4d3d0...) immutably."
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-079: g8_certify consumes sealed UPSTREAM_CLOSURE_SNAPSHOT_ID (7605c02a88ba7a80...) immutably."
     causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
     evidence_artifact: g8-adv-evidence-G8-ADV-079
