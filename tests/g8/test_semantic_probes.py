@@ -236,44 +236,59 @@ class TestSemanticProbes(unittest.TestCase):
         self.assertEqual(canonical_ids, matrix_ids, "Matrix IDs do not match canonical check IDs exactly")
 
     def test_causal_hotfix_probes_030_038_041_042_043(self):
-        """Verify causal target sensitivity and negative twin enforcement for the 5 hotfixed probes."""
+        """Verify baseline admissibility, target-specific rejection, negative twin, and unrelated-failure isolation for 030, 038, 041, 042, 043."""
         from unittest.mock import patch
         import g8_run_adversarial_probe as gap
 
         # G8-ADV-030
         code, msg = gap.probe_G8_ADV_030()
         self.assertEqual(code, 2, f"030 expected 2, got {code} ({msg})")
-        with patch("verify_g8_release_environment.verify_release_environment", return_value=True):
-            code_bypassed, _ = gap.probe_G8_ADV_030()
-            self.assertEqual(code_bypassed, 0, "030 did not fail causal test when target enforcement was bypassed")
+        with patch("verify_g8_release_environment.verify_release_environment", return_value=(False, ["Unrelated error"])):
+            code_unrelated, _ = gap.probe_G8_ADV_030()
+            self.assertEqual(code_unrelated, 0, "030 falsely returned BLOCKED on unrelated target failure")
+        with patch("verify_g8_release_environment.verify_release_environment", return_value=(True, [])):
+            code_twin, _ = gap.probe_G8_ADV_030()
+            self.assertEqual(code_twin, 0, "030 did not return ALLOWED when target accepted clean fixture")
 
         # G8-ADV-038
         code, msg = gap.probe_G8_ADV_038()
         self.assertEqual(code, 2, f"038 expected 2, got {code} ({msg})")
-        with patch("verify_phase_compliance.verify_phase", return_value=True):
-            code_bypassed, _ = gap.probe_G8_ADV_038()
-            self.assertEqual(code_bypassed, 0, "038 did not fail causal test when target enforcement was bypassed")
+        with patch("verify_phase_compliance.verify_phase", return_value=(False, {"P1-REQ-01": ["Unrelated phase error"]})):
+            code_unrelated, _ = gap.probe_G8_ADV_038()
+            self.assertEqual(code_unrelated, 0, "038 falsely returned BLOCKED on unrelated target failure")
+        with patch("verify_phase_compliance.verify_phase", return_value=(True, {})):
+            code_twin, _ = gap.probe_G8_ADV_038()
+            self.assertEqual(code_twin, 0, "038 did not return ALLOWED when target accepted clean fixture")
 
         # G8-ADV-041
         code, msg = gap.probe_G8_ADV_041()
         self.assertEqual(code, 2, f"041 expected 2, got {code} ({msg})")
-        with patch("verify_invariant_contract.verify_contract", return_value=True):
-            code_bypassed, _ = gap.probe_G8_ADV_041()
-            self.assertEqual(code_bypassed, 0, "041 did not fail causal test when target enforcement was bypassed")
+        with patch("verify_invariant_contract.verify_contract", return_value=(False, ["Unrelated contract error"])):
+            code_unrelated, _ = gap.probe_G8_ADV_041()
+            self.assertEqual(code_unrelated, 0, "041 falsely returned BLOCKED on unrelated target failure")
+        with patch("verify_invariant_contract.verify_contract", return_value=(True, [])):
+            code_twin, _ = gap.probe_G8_ADV_041()
+            self.assertEqual(code_twin, 0, "041 did not return ALLOWED when target accepted clean fixture")
 
         # G8-ADV-042
         code, msg = gap.probe_G8_ADV_042()
         self.assertEqual(code, 2, f"042 expected 2, got {code} ({msg})")
-        with patch("verify_invariant_contract.verify_contract", return_value=True):
-            code_bypassed, _ = gap.probe_G8_ADV_042()
-            self.assertEqual(code_bypassed, 0, "042 did not fail causal test when target enforcement was bypassed")
+        with patch("verify_invariant_contract.verify_contract", return_value=(False, ["Unrelated contract error"])):
+            code_unrelated, _ = gap.probe_G8_ADV_042()
+            self.assertEqual(code_unrelated, 0, "042 falsely returned BLOCKED on unrelated target failure")
+        with patch("verify_invariant_contract.verify_contract", return_value=(True, [])):
+            code_twin, _ = gap.probe_G8_ADV_042()
+            self.assertEqual(code_twin, 0, "042 did not return ALLOWED when target accepted clean fixture")
 
         # G8-ADV-043
         code, msg = gap.probe_G8_ADV_043()
         self.assertEqual(code, 2, f"043 expected 2, got {code} ({msg})")
+        with patch("g8_certify.init_certification_run_dir", side_effect=RuntimeError("Unrelated error")):
+            with self.assertRaises(RuntimeError):
+                gap.probe_G8_ADV_043()
         with patch("g8_certify.init_certification_run_dir", return_value=("dir", "adv")):
-            code_bypassed, _ = gap.probe_G8_ADV_043()
-            self.assertEqual(code_bypassed, 0, "043 did not fail causal test when target enforcement was bypassed")
+            code_twin, _ = gap.probe_G8_ADV_043()
+            self.assertEqual(code_twin, 0, "043 did not return ALLOWED when target succeeded")
 
 
 if __name__ == "__main__":

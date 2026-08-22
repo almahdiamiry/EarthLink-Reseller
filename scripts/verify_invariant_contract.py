@@ -42,7 +42,7 @@ def compute_sha256(filepath: str) -> str:
     return h.hexdigest()
 
 
-def verify_contract(contract_path=None, repo_root=None) -> bool:
+def verify_contract(contract_path=None, repo_root=None) -> tuple[bool, list[str]]:
     target_contract = contract_path or CONTRACT_PATH
     target_root = repo_root or REPO_ROOT
     print("=================================================================")
@@ -51,7 +51,7 @@ def verify_contract(contract_path=None, repo_root=None) -> bool:
 
     if not os.path.exists(target_contract):
         print(f"[FAIL] Contract file not found: {target_contract}")
-        return False
+        return False, [f"Contract file not found: {target_contract}"]
 
     contract_sha = compute_sha256(target_contract)
     print(f"Contract File : {os.path.relpath(target_contract, target_root)}")
@@ -63,16 +63,16 @@ def verify_contract(contract_path=None, repo_root=None) -> bool:
             data = yaml.safe_load(f)
     except Exception as e:
         print(f"[FAIL] Failed to parse YAML: {e}")
-        return False
+        return False, [f"Failed to parse YAML: {e}"]
 
     if not isinstance(data, dict):
         print("[FAIL] Root of contract must be a YAML mapping.")
-        return False
+        return False, ["Root of contract must be a YAML mapping."]
 
     invariants = data.get("invariants")
     if not isinstance(invariants, list):
         print("[FAIL] 'invariants' key missing or not a list.")
-        return False
+        return False, ["'invariants' key missing or not a list."]
 
     found_ids = []
     errors = []
@@ -147,7 +147,7 @@ def verify_contract(contract_path=None, repo_root=None) -> bool:
         print(f"[FAIL] VALIDATION FAILED with {len(errors)} error(s):")
         for err in errors:
             print(f"   * {err}")
-        return False
+        return False, errors
 
     print(f"[PASS] Verified all {len(EXPECTED_INVARIANTS)} canonical invariants (INV-01 through INV-16).")
     print(f"[PASS] All referenced production source files exist.")
@@ -156,9 +156,9 @@ def verify_contract(contract_path=None, repo_root=None) -> bool:
     print("=================================================================")
     print("=== INVARIANT CONTRACT VALIDATION PASSED (Exit Code: 0) ===")
     print("=================================================================")
-    return True
+    return True, []
 
 
 if __name__ == "__main__":
-    success = verify_contract()
+    success, _ = verify_contract()
     sys.exit(0 if success else 1)

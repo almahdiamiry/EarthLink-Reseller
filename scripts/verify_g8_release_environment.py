@@ -29,7 +29,7 @@ APPROVED_DESTINATIONS = [
 ]
 
 
-def verify_release_environment(repo_root: str = REPO_ROOT) -> bool:
+def verify_release_environment(repo_root: str = REPO_ROOT) -> tuple[bool, list[str]]:
     print("=================================================================")
     print("=== G8 Release Certification Environment Validator (G8-08A) ===")
     print("=================================================================")
@@ -108,15 +108,16 @@ def verify_release_environment(repo_root: str = REPO_ROOT) -> bool:
         print(f"[FAIL] Environment validation failed with {len(errors)} error(s):")
         for err in errors:
             print(f"   * {err}")
-        return False
+        return False, errors
 
     print("=================================================================")
     print("=== RELEASE CERTIFICATION ENVIRONMENT VALIDATION: PASSED ===")
     print("=================================================================")
-    return True
+    return True, []
 
 
 if __name__ == "__main__":
-    if not verify_release_environment():
+    ok, _ = verify_release_environment()
+    if not ok:
         sys.exit(1)
     sys.exit(0)

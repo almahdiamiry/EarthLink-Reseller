@@ -753,15 +753,23 @@ def probe_G8_ADV_030() -> tuple[int, str]:
     from verify_g8_release_environment import verify_release_environment
     tmp = tempfile.mkdtemp()
     try:
+        # Build admissible repo structure in tmp
+        net_dir = os.path.join(tmp, "app", "src", "main", "java", "com", "example", "core", "network")
+        os.makedirs(net_dir, exist_ok=True)
+        with open(os.path.join(net_dir, "EarthlinkNetwork.kt"), "w", encoding="utf-8") as f:
+            f.write("class EarthlinkNetwork")
+
         w_dir = os.path.join(tmp, "gradle", "wrapper")
         os.makedirs(w_dir, exist_ok=True)
         bad_props = os.path.join(w_dir, "gradle-wrapper.properties")
         with open(bad_props, "w", encoding="utf-8") as f:
             f.write("distributionUrl=https\\://services.gradle.org/distributions/gradle-7.0-all.zip\n")
-        res = verify_release_environment(repo_root=tmp)
-        if res is True:
-            return 0, "[ALLOWED] Unapproved Gradle wrapper distribution was accepted by verify_release_environment!"
-        return 2, "[BLOCKED] Check G8-ADV-030: verify_release_environment strictly rejected unapproved Gradle wrapper distribution."
+
+        ok, errors = verify_release_environment(repo_root=tmp)
+        target_rejected = any("Unapproved Gradle wrapper distribution" in err for err in errors)
+        if target_rejected:
+            return 2, "[BLOCKED] Check G8-ADV-030: verify_release_environment strictly rejected unapproved Gradle wrapper distribution."
+        return 0, "[ALLOWED] Unapproved Gradle wrapper distribution was accepted by verify_release_environment!"
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -769,7 +777,7 @@ def probe_G8_ADV_030() -> tuple[int, str]:
 def probe_G8_ADV_031() -> tuple[int, str]:
     """G8-ADV-031: Incomplete phases must strictly return FAIL from verify_phase."""
     from verify_phase_compliance import verify_phase
-    p6_pass = verify_phase(6)
+    p6_pass, _ = verify_phase(6)
     if p6_pass:
         return 0, "[ALLOWED] Incomplete Phase 6 was falsely reported as PASS!"
     return 2, "[BLOCKED] Check G8-ADV-031: verify_phase_compliance strictly returns FAIL on incomplete phases."
@@ -947,6 +955,13 @@ def probe_G8_ADV_038() -> tuple[int, str]:
     from verify_phase_compliance import verify_phase
     tmp = tempfile.mkdtemp()
     try:
+        # Build admissible evidence file on disk
+        ev_dir = os.path.join(tmp, "reports")
+        os.makedirs(ev_dir, exist_ok=True)
+        ev_file = os.path.join(ev_dir, "TEST-proof.xml")
+        with open(ev_file, "w", encoding="utf-8") as f:
+            f.write('<testsuite name="p1" tests="1" failures="0" errors="0" skipped="0"><testcase name="c1"/></testsuite>')
+
         bad_req_yaml = os.path.join(tmp, "phase_requirements.yaml")
         bad_data = {
             "requirements": [
@@ -955,10 +970,13 @@ def probe_G8_ADV_038() -> tuple[int, str]:
         }
         with open(bad_req_yaml, "w", encoding="utf-8") as f:
             yaml.safe_dump(bad_data, f)
-        res = verify_phase(target_phase=1, manifest_path=bad_req_yaml, repo_root=tmp)
-        if res is True:
-            return 0, "[ALLOWED] PASS requirement with missing evidence binding was permitted by verify_phase!"
-        return 2, "[BLOCKED] Check G8-ADV-038: verify_phase_compliance strictly rejected PASS requirement with missing evidence binding."
+
+        ok, failures_map = verify_phase(target_phase=1, manifest_path=bad_req_yaml, repo_root=tmp)
+        p1_errors = failures_map.get("P1-REQ-01", [])
+        target_rejected = any("PASS requirement missing executable evidence reference" in err for err in p1_errors)
+        if target_rejected:
+            return 2, "[BLOCKED] Check G8-ADV-038: verify_phase_compliance strictly rejected PASS requirement with missing evidence binding."
+        return 0, "[ALLOWED] PASS requirement with missing evidence binding was permitted by verify_phase!"
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -996,7 +1014,7 @@ def probe_G8_ADV_040() -> tuple[int, str]:
         }
         with open(cpath, "w", encoding="utf-8") as f:
             yaml.safe_dump(bad_contract, f)
-        res = verify_contract(contract_path=cpath, repo_root=REPO_ROOT)
+        res, _ = verify_contract(contract_path=cpath, repo_root=REPO_ROOT)
         if res is True:
             return 0, "[ALLOWED] Mismatched invariant test file accepted by validator!"
         return 2, "[BLOCKED] Check G8-ADV-040: verify_invariant_contract rejected mismatched test suite."
@@ -1025,10 +1043,11 @@ def probe_G8_ADV_041() -> tuple[int, str]:
         }
         with open(cpath, "w", encoding="utf-8") as f:
             yaml.safe_dump(bad_contract, f)
-        res = verify_contract(contract_path=cpath, repo_root=REPO_ROOT)
-        if res is True:
-            return 0, "[ALLOWED] Invariant missing required behavior test was accepted by verify_invariant_contract!"
-        return 2, "[BLOCKED] Check G8-ADV-041: verify_invariant_contract strictly rejected invariant with missing certification test."
+        ok, errors = verify_contract(contract_path=cpath, repo_root=REPO_ROOT)
+        target_rejected = any("[INV-01] Missing or empty 'required_behavior_tests'" in err for err in errors)
+        if target_rejected:
+            return 2, "[BLOCKED] Check G8-ADV-041: verify_invariant_contract strictly rejected invariant with missing certification test."
+        return 0, "[ALLOWED] Invariant missing required behavior test was accepted by verify_invariant_contract!"
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1063,10 +1082,11 @@ def probe_G8_ADV_042() -> tuple[int, str]:
         }
         with open(cpath, "w", encoding="utf-8") as f:
             yaml.safe_dump(bad_contract, f)
-        res = verify_contract(contract_path=cpath, repo_root=REPO_ROOT)
-        if res is True:
-            return 0, "[ALLOWED] Duplicate governance identifiers permitted by verify_invariant_contract!"
-        return 2, "[BLOCKED] Check G8-ADV-042: verify_invariant_contract strictly rejected duplicate governance identifier."
+        ok, errors = verify_contract(contract_path=cpath, repo_root=REPO_ROOT)
+        target_rejected = any("Duplicate invariant definitions found" in err for err in errors)
+        if target_rejected:
+            return 2, "[BLOCKED] Check G8-ADV-042: verify_invariant_contract strictly rejected duplicate governance identifier."
+        return 0, "[ALLOWED] Duplicate governance identifiers permitted by verify_invariant_contract!"
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

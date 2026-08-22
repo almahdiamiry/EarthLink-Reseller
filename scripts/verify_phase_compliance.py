@@ -84,7 +84,7 @@ def check_xml_evidence(evidence_str: str) -> tuple[bool, str, dict]:
     return True, "Valid evidence", aggregated_stats
 
 
-def verify_phase(target_phase: int = 1, manifest_path: str = None, repo_root: str = None) -> bool:
+def verify_phase(target_phase: int = 1, manifest_path: str = None, repo_root: str = None) -> tuple[bool, dict[str, list[str]]]:
     target_manifest = manifest_path or MANIFEST_PATH
     target_root = repo_root or REPO_ROOT
     print("=================================================================")
@@ -93,7 +93,7 @@ def verify_phase(target_phase: int = 1, manifest_path: str = None, repo_root: st
 
     if not os.path.exists(target_manifest):
         print(f"[FAIL] Manifest file not found: {target_manifest}")
-        return False
+        return False, {"MANIFEST": [f"Manifest file not found: {target_manifest}"]}
 
     with open(target_manifest, "r", encoding="utf-8") as f:
         manifest = yaml.safe_load(f)
@@ -108,7 +108,7 @@ def verify_phase(target_phase: int = 1, manifest_path: str = None, repo_root: st
 
     if not phase_reqs:
         print(f"[FAIL] No requirements found for Phase {target_phase} in {target_manifest}")
-        return False
+        return False, {"REQUIREMENTS": [f"No requirements found for Phase {target_phase} in {target_manifest}"]}
 
     print(f"Found {len(phase_reqs)} requirements for Phase {target_phase}.")
     print("-----------------------------------------------------------------")
@@ -116,6 +116,7 @@ def verify_phase(target_phase: int = 1, manifest_path: str = None, repo_root: st
     all_passed = True
     total_blocking = 0
     passed_blocking = 0
+    failures_map = {}
 
     for r in phase_reqs:
         rid = r.get("id")
@@ -164,6 +165,7 @@ def verify_phase(target_phase: int = 1, manifest_path: str = None, repo_root: st
             print(f"  [PASS] {rid:16s} : {anchor[:45]}...{test_info}")
         else:
             all_passed = False
+            failures_map[rid] = req_errors
             print(f"  [FAIL] {rid:16s} : {anchor[:45]}...")
             for err in req_errors:
                 print(f"         * {err}")
@@ -174,11 +176,11 @@ def verify_phase(target_phase: int = 1, manifest_path: str = None, repo_root: st
     if all_passed and passed_blocking == total_blocking:
         print(f"=== PHASE {target_phase} COMPLIANCE VERIFICATION PASSED (Exit Code: 0) ===")
         print("=================================================================")
-        return True
+        return True, failures_map
     else:
         print(f"=== PHASE {target_phase} COMPLIANCE VERIFICATION FAILED (Exit Code: 1) ===")
         print("=================================================================")
-        return False
+        return False, failures_map
 
 
 def main():
@@ -186,7 +188,7 @@ def main():
     parser.add_argument("--phase", type=int, default=1, help="Phase number to verify (default: 1)")
     args = parser.parse_args()
 
-    success = verify_phase(args.phase)
+    success, _ = verify_phase(args.phase)
     sys.exit(0 if success else 1)
 
 
