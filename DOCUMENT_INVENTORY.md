@@ -81,7 +81,7 @@ When an Agent enters the repository, they MUST navigate using this strict Inform
 ```text
 1. BEHAVIOR & RULES
    AGENTS.md
-   (Mandatory rules of behavior and non-negotiable invariants - HOW TO ACT)
+   (Mandatory operational rules, guardrails, and forbidden actions - HOW TO ACT)
 
 2. POSITION & NAVIGATION (The GPS)
    PROJECT_ROADMAP.md
