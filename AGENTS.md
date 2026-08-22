@@ -2,37 +2,41 @@
 
 ## Purpose
 
-This file is the single active operational entry point for any AI coding agent working on this project.
+This file establishes the **mandatory operational rules and invariant behaviors** for any AI coding agent working on this project.
+
+*Note: This file contains Rules of Behavior. For project navigation, current state, and next authorized gates, consult `PROJECT_ROADMAP.md`.*
 
 ---
 
 ## ACTIVE IMPLEMENTATION ENTRY POINT
 
-1. **Read AGENTS.md first.**
-2. **Read only the explicitly named current-phase plan for task execution.**
-3. **Use `docs/authority/Target Product Contract v0.6.md` as product/business authority.**
-4. **Use `docs/authority/G1-G8 Consolidated Architecture Summary.md` as engineering interpretation.**
-5. **Use `docs/authority/Final Independent Adjudication Memo.md` as final architectural judgment / implementation boundary.**
+1. **Read `AGENTS.md` first for operational rules.**
+2. **Read `PROJECT_ROADMAP.md` to determine the project's current state and navigation.**
+3. **Use `docs/authority/Target Product Contract v0.6.md` as the ultimate product/business authority.**
+4. **Use `docs/authority/Final Independent Adjudication Memo.md` as final architectural judgment / implementation boundary.**
+5. **Use `docs/authority/G1-G8 Consolidated Architecture Summary.md` as engineering interpretation.**
 6. **Inspect the current source/artifact for implementation state.**
 7. **Use executable tests/evidence as verification proof.**
-8. **Do not select tasks from Git history, historical plans, ADRs, reports, SDD artifacts, or lessons learned.**
+8. **Do not select tasks from Git history, historical plans, P0/P1/P2 matrices, ADRs, reports, SDD artifacts, or lessons learned.**
 9. **Use historical material only when the current task explicitly requests forensic archaeology or historical rationale.**
 
-> **CRITICAL RULE**: Only `AGENTS.md` and the explicitly named current-phase plan are active implementation instructions. Other repository documents are context, evidence, or history unless explicitly designated current by the frozen authority chain.
-> `DESIGN_DECISIONS.md` is a technical ADR and historical context layer subordinate to the frozen authority bundle.
+> **CRITICAL RULE**: Do not infer implementation scope from historical documents. The only valid implementation scope is the minimum gap derived through a dedicated candidate scope assessment routed through `PROJECT_ROADMAP.md` and explicitly authorized by the frozen authority bundle. `DESIGN_DECISIONS.md` is a technical ADR and historical context layer subordinate to the frozen authority bundle.
 
 ---
 
-## Implementation Authority Hierarchy
+## Information Architecture & Authority Hierarchy
 
-1. **Product / Business Authority**: `docs/authority/Target Product Contract v0.6.md`
-2. **Engineering Interpretation**: `docs/authority/G1-G8 Consolidated Architecture Summary.md`
-3. **Final Architectural Judgment / Implementation Boundary**: `docs/authority/Final Independent Adjudication Memo.md`
-4. **Implementation Transition Guidance (Subordinate)**:
+1. **Rules of Behavior**: `AGENTS.md` (How to act)
+2. **Current Scope & Navigation**: `PROJECT_ROADMAP.md` (Where the project is + where it is going)
+3. **Frozen Product / Business Authority**: `docs/authority/Target Product Contract v0.6.md` (What is actually allowed/required)
+4. **Frozen Architectural Authority**:
+   - `docs/authority/Final Independent Adjudication Memo.md`
+   - `docs/authority/G1-G8 Consolidated Architecture Summary.md`
+5. **Implementation Transition Guidance (Subordinate)**:
    - `docs/authority/EARTHLINK_V1_HANDOVER.md`
    - `docs/authority/EARTHLINK_IMPLEMENTATION_HANDOVER_APPENDIX_v1.0.md`
-5. **Implementation State Evidence**: Exact current source tree and build configuration.
-6. **Verification Proof**: Executable automated tests, test matrix, and verification commands.
+6. **Implementation State Evidence**: Exact current source tree and build configuration.
+7. **Verification Proof**: Executable automated tests, test matrix, and verification commands.
 
 ---
 
@@ -88,10 +92,10 @@ When working with network requests and API integrations, consult:
 For every development session:
 
 1. Follow the **ACTIVE IMPLEMENTATION ENTRY POINT** above.
-2. Implement ONLY the single assigned task in the current approved phase plan.
+2. Implement ONLY the minimal required scope as explicitly authorized through a dedicated candidate scope assessment mapped by `PROJECT_ROADMAP.md`.
 3. Do not modify unrelated files.
 4. Verify the implementation with tests and verified runners.
-5. Update `CHANGELOG.md` and active phase tracking.
+5. Update `CHANGELOG.md` and active phase tracking/roadmap milestones.
 6. Stop and wait for user approval.
 
 ---

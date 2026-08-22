@@ -13,7 +13,7 @@ authority → current artifact → implementation plan → executable evidence
 
 1. **Authority**: Derive requirements and constraints strictly from `docs/authority/` (Target Product Contract v0.6, G1-G8 Consolidated Architecture Summary, Final Independent Adjudication Memo).
 2. **Current Artifact**: Inspect current production Kotlin source and resources to understand real implementation state.
-3. **Implementation Plan**: Execute the active phase plan approved for the current session without improvising unsolicited features or picking tasks from historical roadmaps.
+3. **Implementation Plan**: Execute the minimal required scope derived from a dedicated candidate scope assessment routed through `PROJECT_ROADMAP.md`, without improvising unsolicited features or reopening historical roadmaps.
 4. **Executable Evidence**: Validate all changes with real Gradle test tasks, verified command runners, and deterministic compliance matrices.
 
 ---
