@@ -23,6 +23,8 @@
   UNDERSTAND → DECIDE → MINIMAL CHANGE → VERIFY WHAT MATTERS → STOP
   ```
 
+> **Lessons Learned:** [`docs/LESSONS_LEARNED/`](docs/LESSONS_LEARNED/) — practical historical engineering knowledge; consult only when relevant to the current task.
+
 ---
 
 ## 3. Canonical Navigation Router (Where Truth Lives)
