@@ -12,6 +12,7 @@
 | --- | --- | --- | --- | --- | --- |
 | **`PROJECT_ROADMAP.md`** | Master Navigation / GPS | Navigation Synthesis | Current | **KEEP** | Single source of truth for repository position and authorized next steps. |
 | **`AGENTS.md`** | Operational Rules | Behavioral Guardrails | Current | **KEEP** | Mandatory operational rules, behavior guidelines, and process guardrails for AI Agents. |
+| **`docs/authority/PLAN_STATUS.md`** | Plan Tracking | Navigation / Governance | Current | **KEEP** | Authoritative tracking file for all implementation plan statuses. |
 | **`DOCUMENT_INVENTORY.md`** | Document Classification | Navigation / Governance | Current | **KEEP** | Classification map indicating which documents matter and their active status. |
 | **`AI_DEVELOPMENT_GUIDE.md`** | Dev Guidelines | Governance / Reference | Current | **KEEP** | Engineering patterns (Kotlin, Jetpack, Clean Architecture). |
 | **`docs/authority/Target Product Contract v0.6.md`** | Product Constraints | Frozen Authority | Current | **KEEP** | The ultimate source of business/product truth. |
@@ -21,6 +22,8 @@
 | **`docs/authority/EARTHLINK_IMPLEMENTATION_HANDOVER_APPENDIX_v1.0.md`** | Implementation Context | Subordinate Authority | Current | **KEEP** | Granular transition context. |
 | **`EarthLink-Reseller_Wave1_Report_v3.md`** | Wave 1 Rationale | Scope Authority | Current Ref | **KEEP** | Explains Owner Decisions and Simplifications made in Wave 1. |
 | **`EarthLink-Reseller_Wave1_Step1-3_Final.md`** | Wave 1 Scope | Scope Authority | Current Ref | **KEEP** | Detailed Step 1-3 final spec. |
+| **`G8_Plan.md`** | Implementation Plan | Plan | Closed | **KEEP** | G8 implementation plan (refer to PLAN_STATUS.md). |
+| **`G8 Release-Verification Infrastructure Remediation & Test Matrix Synchronization Implementation Plan.md`** | Duplicate Plan | Plan | Status-Unknown | **PRESERVE** | Duplicate plan file; status unclear (refer to PLAN_STATUS.md). |
 | **`EARTHLINK_RESELLER_STEP3_ADVERSARIAL_CERTIFICATION_FINAL.md`** | Certification Record | Evidence | Current Ref | **KEEP** | Final adversarial certification output. |
 | **`EarthLink_Reseller_Step3_Adversarial_Certification_Basis_v6.md`** | Cert Contract | Contract | Current Ref | **KEEP** | Definitions for the Step 3 certification bounds. |
 | **`docs/earthlink_reseller_app_api_documentation_v0_7_0.md`** | API Specs | Technical Reference | Current | **KEEP** | Primary API interaction contract. |
@@ -34,8 +37,8 @@
 | **`PRODUCTION_CONTRACT_MATRIX.md`** | Old Matrix | Superseded | Historical | **KEEP HISTORICAL** | Path-locked: referenced in historical evidence and closure bundles. Must remain in place. |
 | **`PRODUCTION_INVARIANTS.md`** | Invariant Source | Verification Dependency | Current / Hist | **KEEP (VERIFICATION DEPENDENCY)** | **BLOCKED FROM ARCHIVING:** Actively verified and hashed by `scripts/verify_closure_evidence.py` and referenced across immutable evidence bundles. |
 | **`ISSUE_LOG.md`** | Old Issue Tracker | Superseded | Historical | **KEEP HISTORICAL** | Path-locked: referenced in historical changelogs and provenance. |
-| **`g8_adversarial_checks_FINAL.yaml`** (root) | Duplicate Contract | Duplicate | Obsolete | **SAFE TO DELETE** | Verified zero repo references outside inventory. Root duplicate of `contract/g8_adversarial_checks_FINAL.yaml`. |
-| **`fix_braces.py`, `fix_repo.py`, `patch_mock.py`, etc.** (root python scripts) | Forensic Utilities | Ad-hoc Tooling | Obsolete | **SAFE TO DELETE** | Verified zero repo references in code, scripts, or workflows. One-off ad-hoc repair scripts. |
+| **`g8_adversarial_checks_FINAL.yaml`** (root) | Duplicate Contract | Duplicate | Obsolete | **DELETED** | Deleted. Verified zero repo references outside inventory. Root duplicate of `contract/g8_adversarial_checks_FINAL.yaml`. |
+| **`fix_braces.py`, `fix_repo.py`, `patch_mock.py`, etc.** (root python scripts) | Forensic Utilities | Ad-hoc Tooling | Obsolete | **DELETED** | Deleted. Verified zero repo references in code, scripts, or workflows. One-off ad-hoc repair scripts. |
 
 ---
 
@@ -51,8 +54,8 @@
 > - historical/reference record.
 
 ### A. DELETE CANDIDATES SAFETY AUDIT RESULTS
-- `g8_adversarial_checks_FINAL.yaml` *(Root duplicate)* -> **SAFE TO DELETE (Zero references found)**
-- `fix_braces.py`, `fix_manual_test.py`, `fix_mocks.py`, `fix_repo.py`, `fix_repo_again.py`, `fix_test.py`, `patch_mock.py`, `revert_repo.py` -> **SAFE TO DELETE (Zero references in scripts, workflows, or code)**
+- `g8_adversarial_checks_FINAL.yaml` *(Root duplicate)* -> **DELETED** (Zero references found)
+- `fix_braces.py`, `fix_manual_test.py`, `fix_mocks.py`, `fix_repo.py`, `fix_repo_again.py`, `fix_test.py`, `patch_mock.py`, `revert_repo.py` -> **DELETED** (Zero references in scripts, workflows, or code)
 
 ### B. ARCHIVE CANDIDATES SAFETY AUDIT RESULTS (RECLASSIFIED)
 - `PRODUCTION_INVARIANTS.md` -> **BLOCKED — REFERENCE FOUND / VERIFICATION DEPENDENCY**. It is actively hashed and checked by Python verification scripts (`verify_closure_evidence.py`, `execute_phase2_closure_gate.py`) and referenced in sealed evidence bundles (`closure_bundle.json`). **Must be kept in root.**
@@ -98,6 +101,7 @@ When an Agent enters the repository, they MUST navigate using this strict Inform
    (Defines business/product rules and technical boundaries - WHAT IS ALLOWED/REQUIRED)
 
 5. CURRENT SCOPE & RATIONALE
+   docs/authority/PLAN_STATUS.md
    EarthLink-Reseller_Wave1_Report_v3.md (and current Candidate Scope Assessments)
    (Explains why choices were made and defines task scope - WHAT TO DO NOW)
 

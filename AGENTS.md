@@ -107,3 +107,51 @@ For every development session:
 3. **No NO-SOURCE Pass:** Any test task or compilation step returning `NO-SOURCE` MUST fail closed with exit code 2.
 4. **No Unbounded Verification Commands:** All verification commands MUST execute through `run_verified_command.py` enforcing strict timeouts, process-tree termination, and heartbeat emission.
 5. **No Deleting, Skipping, or Weakening Tests:** Tests MUST NEVER be deleted, skipped, or weakened.
+
+---
+
+## Implementation Plan Lifecycle
+
+Before executing any implementation plan:
+
+1. Read `docs/authority/PLAN_STATUS.md`.
+2. Locate the exact plan path.
+3. Execute the plan only if its status is `ACTIVE`.
+4. Do not execute plans marked `CLOSED`, `SUPERSEDED`, `NOT-YET-EXECUTED`, or `STATUS-UNKNOWN`.
+
+### On Plan Completion
+
+When the implementation plan's authorized Definition of Done / closure criteria are actually satisfied:
+
+1. Update the exact plan row in `docs/authority/PLAN_STATUS.md`: `ACTIVE` → `CLOSED`.
+2. Add concise evidence to the plan-status note, such as the completion commit, verification result, or certification identifier.
+3. Update `CHANGELOG.md` only when the completed work represents a meaningful repository milestone and is not already recorded.
+4. Do not change the status of any other plan.
+5. Do not resolve `STATUS-UNKNOWN` plans as part of completing another plan.
+6. Do not rename, move, delete, or rewrite historical plans merely because the plan has closed.
+
+### Completion Rule
+
+A plan is CLOSED only when its actual authorized closure criteria are satisfied by repository evidence.
+
+Do not mark a plan CLOSED because:
+- only part of the plan was implemented;
+- some tests passed;
+- a subtask appears complete;
+- the agent believes the work is finished.
+
+### Failure / Blocked Rule
+
+If the plan cannot be completed:
+
+- keep the plan `ACTIVE` unless repository authority explicitly requires another status;
+- record the blocking condition in the final report;
+- do not silently mark the plan `CLOSED`.
+
+### Status Integrity
+
+`PLAN_STATUS.md` is the tracking authority for implementation-plan execution status only. It does not override stronger product, architecture, contract, or historical authority.
+
+If the plan, `PLAN_STATUS.md`, and repository evidence disagree:
+
+STOP and report the conflict. Do not guess.

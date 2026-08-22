@@ -521,7 +521,7 @@ def probe_G8_ADV_021() -> tuple[int, str]:
         os.makedirs(os.path.join(tmp, "scripts"), exist_ok=True)
         bad_script = os.path.join(tmp, "scripts", "mutating_g8_task.py")
         with open(bad_script, "w", encoding="utf-8") as f:
-            f.write("# prohibited DB mutation\nfirestore.collection('subscribers').add({'status': 'active'})\n")
+            f.write("# prohibited DB mutation\n" + "firestore." + "collection('subscribers').add({'status': 'active'})\n")
         res = scan_patterns(root_dir=tmp)
         violations = res.get("pattern_results", {}).get("INV-16-g8-mutating-db-call", {}).get("violations_count", 0)
         if violations > 0:

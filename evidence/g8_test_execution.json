@@ -1,0 +1,15 @@
+{
+  "status": "PASS",
+  "exit_code": 0,
+  "command": [
+    "gradle",
+    ":app:testDebugUnitTest"
+  ],
+  "start_time": "2026-08-22T15:56:12Z",
+  "end_time": "2026-08-22T15:56:14Z",
+  "duration_seconds": 2.35,
+  "stdout": "Reusing configuration cache.\n> Task :app:preBuild UP-TO-DATE\n> Task :app:preDebugBuild UP-TO-DATE\n> Task :app:generateDebugAssets UP-TO-DATE\n> Task :app:generateDebugResValues UP-TO-DATE\n> Task :app:processDebugGoogleServices UP-TO-DATE\n> Task :app:injectCrashlyticsMappingFileIdDebug UP-TO-DATE\n> Task :app:generateDebugResources UP-TO-DATE\n> Task :app:javaPreCompileDebug UP-TO-DATE\n> Task :app:packageDebugResources UP-TO-DATE\n> Task :app:mapDebugSourceSetPaths UP-TO-DATE\n> Task :app:generateDebugBuildConfig FROM-CACHE\n> Task :app:kspDebugKotlin FROM-CACHE\n> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE\n> Task :app:extractDeepLinksDebug FROM-CACHE\n> Task :app:mergeDebugResources UP-TO-DATE\n> Task :app:preDebugUnitTestBuild UP-TO-DATE\n> Task :app:checkDebugAarMetadata UP-TO-DATE\n> Task :app:javaPreCompileDebugUnitTest UP-TO-DATE\n> Task :app:mergeDebugAssets UP-TO-DATE\n> Task :app:processDebugMainManifest FROM-CACHE\n> Task :app:processDebugManifest UP-TO-DATE\n> Task :app:processDebugManifestForPackage UP-TO-DATE\n> Task :app:processDebugNavigationResources FROM-CACHE\n> Task :app:parseDebugLocalResources UP-TO-DATE\n> Task :app:generateDebugRFile UP-TO-DATE\n> Task :app:compileDebugNavigationResources UP-TO-DATE\n> Task :app:processDebugUnitTestManifest UP-TO-DATE\n> Task :app:processDebugResources UP-TO-DATE\n> Task :app:packageDebugUnitTestForUnitTest UP-TO-DATE\n> Task :app:generateDebugUnitTestConfig UP-TO-DATE\n> Task :app:compileDebugKotlin FROM-CACHE\n> Task :app:processDebugJavaRes UP-TO-DATE\n> Task :app:compileDebugJavaWithJavac FROM-CACHE\n> Task :app:bundleDebugClassesToCompileJar UP-TO-DATE\n> Task :app:bundleDebugClassesToRuntimeJar UP-TO-DATE\n> Task :app:kspDebugUnitTestKotlin UP-TO-DATE\n> Task :app:compileDebugUnitTestKotlin UP-TO-DATE\n> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE\n> Task :app:processDebugUnitTestJavaRes UP-TO-DATE\n> Task :app:testDebugUnitTest UP-TO-DATE\n> Task :app:finalizeTestRoborazziDebug SKIPPED\n\nBUILD SUCCESSFUL in 2s\n35 actionable tasks: 7 from cache, 28 up-to-date\nConfiguration cache entry reused.\n",
+  "stderr": "",
+  "timed_out": false,
+  "no_source_detected": false
+}

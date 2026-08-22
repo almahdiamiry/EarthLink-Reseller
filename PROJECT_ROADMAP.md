@@ -19,6 +19,12 @@ EarthLink Reseller is a local-first, offline-capable Android application designe
 - C06 / C12 Evidence Closure — CLOSED
 - PHASE-03 / G8 Verification Infrastructure Remediation (5/5 Blockers Reconciled) — CLOSED
 - G8 Final Machine-Verifiable Production Certification — CLOSED
+  - HEAD: `6d91dbd7ff342feda9c92fcd42ab91ca1554f1f9`
+  - Status: `PRODUCTION_READY`
+  - G8 tooling: 36/36 PASS
+  - Current-HEAD product tests: 61 suites, 391 tests, 0 failures, 0 errors, 0 skipped
+  - G8 adversarial checks: 79/79 PASS
+  - Independent verifier: PASS
 
 ### Current Gate
 - Post-Wave-1 Scope Assessment — COMPLETE
@@ -135,15 +141,16 @@ LAUNCH
 - **Final architectural judgment:** `docs/authority/Final Independent Adjudication Memo.md`
 - **Frozen architecture:** `docs/authority/G1-G8 Consolidated Architecture Summary.md`
 - **Current Wave 1 scope:** `Earthlink-Reseller_Wave1_Report_v3.md`, `EarthLink-Reseller_Wave1_Step1-3_Final.md`
-- **Certification:** `EarthLink_Reseller_Step3_Adversarial_Certification_Basis_v6.md`, `EARTHLINK_RESELLER_STEP3_ADVERSARIAL_CERTIFICATION_FINAL.md`
+- **Certification:** `EarthLink_Reseller_Step3_Adversarial_Certification_Basis_v6.md`, `EARTHLINK_RESELLER_STEP3_ADVERSARIAL_CERTIFICATION_FINAL.md`, G8 result detailed in `PROJECT_ROADMAP.md` (Current State)
 - **Current machine contracts:** `contract/`
 - **Current machine evidence:** `evidence/`
+- **Plan Status:** `docs/authority/PLAN_STATUS.md`
 - **Transition context:** `docs/authority/EARTHLINK_V1_HANDOVER.md`, `docs/authority/EARTHLINK_IMPLEMENTATION_HANDOVER_APPENDIX_v1.0.md`
 - **Current route:** `PROJECT_ROADMAP.md` (This document)
 - **Document Classification:** `DOCUMENT_INVENTORY.md` (Active vs historical status map)
 
 ## 11. Current vs Historical Documentation
-- **CURRENT AUTHORITY:** `Target Product Contract v0.6.md`, `Final Independent Adjudication Memo.md`, `G1-G8 Consolidated Architecture Summary.md`
+- **CURRENT AUTHORITY:** `Target Product Contract v0.6.md`, `Final Independent Adjudication Memo.md`, `G1-G8 Consolidated Architecture Summary.md`, `PLAN_STATUS.md`
 - **CURRENT SCOPE / NAVIGATION:** `PROJECT_ROADMAP.md`
   - *Current scope is derived from: current Owner Decisions, Target Product Contract, applicable authority, and current Wave 1 decisions.*
 - **DOCUMENT CLASSIFICATION:** `DOCUMENT_INVENTORY.md`
