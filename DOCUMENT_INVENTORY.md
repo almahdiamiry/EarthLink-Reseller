@@ -19,10 +19,11 @@
 | **`docs/authority/G1-G8 Consolidated Architecture Summary.md`** | Eng Interpretation | Frozen Authority | Current | **KEEP** | Architectural constraints and dependency map (Not a backlog or scope generator). |
 | **`docs/authority/EARTHLINK_V1_HANDOVER.md`** | Transition Context | Subordinate Authority | Current | **KEEP** | Required for understanding the transition to the new baseline. |
 | **`docs/authority/EARTHLINK_IMPLEMENTATION_HANDOVER_APPENDIX_v1.0.md`** | Implementation Context | Subordinate Authority | Current | **KEEP** | Granular transition context. |
-| **`EarthLink-Reseller_Wave1_Report_v3.md`** | Wave 1 Rationale | Scope Authority | Current Ref | **KEEP** | Explains Owner Decisions and Simplifications made in Wave 1. |
-| **`EarthLink-Reseller_Wave1_Step1-3_Final.md`** | Wave 1 Scope | Scope Authority | Current Ref | **KEEP** | Detailed Step 1-3 final spec. |
-| **`EARTHLINK_RESELLER_STEP3_ADVERSARIAL_CERTIFICATION_FINAL.md`** | Certification Record | Evidence | Current Ref | **KEEP** | Final adversarial certification output. |
-| **`EarthLink_Reseller_Step3_Adversarial_Certification_Basis_v6.md`** | Cert Contract | Contract | Current Ref | **KEEP** | Definitions for the Step 3 certification bounds. |
+| **`FUTURE_WORK.md`** | Future Improvements | Technical Reference | Current | **KEEP** | Tracks valid post-V1 improvements and conditional items. |
+| **`EarthLink-Reseller_Wave1_Report_v3.md`** | Wave 1 Rationale | Historical | Deleted | **DISTILLED** | Distilled into `FUTURE_WORK.md` and `docs/LESSONS_LEARNED/`. |
+| **`EarthLink-Reseller_Wave1_Step1-3_Final.md`** | Wave 1 Scope | Historical | Deleted | **DISTILLED** | Distilled into `docs/authority/` and `docs/LESSONS_LEARNED/`. |
+| **`EARTHLINK_RESELLER_STEP3_ADVERSARIAL_CERTIFICATION_FINAL.md`** | Certification Record | Historical | Deleted | **DISTILLED** | Distilled into permanent test suite and `docs/LESSONS_LEARNED/`. |
+| **`EarthLink_Reseller_Step3_Adversarial_Certification_Basis_v6.md`** | Cert Contract | Historical | Deleted | **DISTILLED** | Distilled into contract definitions and `docs/LESSONS_LEARNED/`. |
 | **`docs/earthlink_reseller_app_api_documentation_v0_7_0.md`** | API Specs | Technical Reference | Current | **KEEP** | Primary API interaction contract. |
 | **`docs/earthlink_app_api_poc_v0_6_48.py`** | API POC | Technical Reference | Current | **KEEP** | Edge cases and payload unwrapping reference. |
 | **`docs/LESSONS_LEARNED/*`** | Governance History | Governance Context | Historical | **KEEP HISTORICAL** | Crucial guardrails preventing repeated mistakes. |
@@ -70,7 +71,7 @@
 - `AGENTS.md`
 - `DOCUMENT_INVENTORY.md`
 - `AI_DEVELOPMENT_GUIDE.md`
-- All Wave 1 Final Reports & Certification Records in root
+- `FUTURE_WORK.md`
 
 ---
 
@@ -97,9 +98,9 @@ When an Agent enters the repository, they MUST navigate using this strict Inform
    docs/authority/G1-G8 Consolidated Architecture Summary.md
    (Defines business/product rules and technical boundaries - WHAT IS ALLOWED/REQUIRED)
 
-5. CURRENT SCOPE & RATIONALE
-   EarthLink-Reseller_Wave1_Report_v3.md (and current Candidate Scope Assessments)
-   (Explains why choices were made and defines task scope - WHAT TO DO NOW)
+5. FUTURE WORK & UNFINISHED IMPROVEMENTS
+   FUTURE_WORK.md
+   (Tracks legitimate non-blocking improvements and conditional work)
 
 6. EVIDENCE & VERIFICATION
    contract/ & evidence/

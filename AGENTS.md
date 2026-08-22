@@ -38,6 +38,8 @@ This file establishes the **mandatory operational rules and invariant behaviors*
 6. **Implementation State Evidence**: Exact current source tree and build configuration.
 7. **Verification Proof**: Executable automated tests, test matrix, and verification commands.
 
+> **Lessons Learned:** [`docs/LESSONS_LEARNED/`](docs/LESSONS_LEARNED/) — practical historical engineering knowledge; consult only when relevant to the current task.
+
 ---
 
 ## Mandatory Non-Negotiable Invariants

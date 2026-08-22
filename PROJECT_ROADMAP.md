@@ -134,8 +134,7 @@ LAUNCH
 - **Business/Product truth:** `docs/authority/Target Product Contract v0.6.md`
 - **Final architectural judgment:** `docs/authority/Final Independent Adjudication Memo.md`
 - **Frozen architecture:** `docs/authority/G1-G8 Consolidated Architecture Summary.md`
-- **Current Wave 1 scope:** `Earthlink-Reseller_Wave1_Report_v3.md`, `EarthLink-Reseller_Wave1_Step1-3_Final.md`
-- **Certification:** `EarthLink_Reseller_Step3_Adversarial_Certification_Basis_v6.md`, `EARTHLINK_RESELLER_STEP3_ADVERSARIAL_CERTIFICATION_FINAL.md`
+- **Wave 1 & Step 3 Baseline (Closed):** Distilled into `docs/authority/`, `docs/LESSONS_LEARNED/`, and `FUTURE_WORK.md`
 - **Current machine contracts:** `contract/`
 - **Current machine evidence:** `evidence/`
 - **Transition context:** `docs/authority/EARTHLINK_V1_HANDOVER.md`, `docs/authority/EARTHLINK_IMPLEMENTATION_HANDOVER_APPENDIX_v1.0.md`
