@@ -84,23 +84,30 @@ def check_xml_evidence(evidence_str: str) -> tuple[bool, str, dict]:
     return True, "Valid evidence", aggregated_stats
 
 
-def verify_phase(target_phase: int = 1) -> bool:
+def verify_phase(target_phase: int = 1, manifest_path: str = None, repo_root: str = None) -> bool:
+    target_manifest = manifest_path or MANIFEST_PATH
+    target_root = repo_root or REPO_ROOT
     print("=================================================================")
     print(f"=== Earthlink Reseller App -- Phase {target_phase} Compliance Verifier ===")
     print("=================================================================")
 
-    if not os.path.exists(MANIFEST_PATH):
-        print(f"[FAIL] Manifest file not found: {MANIFEST_PATH}")
+    if not os.path.exists(target_manifest):
+        print(f"[FAIL] Manifest file not found: {target_manifest}")
         return False
 
-    with open(MANIFEST_PATH, "r", encoding="utf-8") as f:
+    with open(target_manifest, "r", encoding="utf-8") as f:
         manifest = yaml.safe_load(f)
 
     requirements = manifest.get("requirements", [])
-    phase_reqs = [r for r in requirements if r.get("phase") == target_phase]
+    if isinstance(manifest.get("phases"), dict):
+        p_data = manifest.get("phases", {}).get(f"phase_{target_phase}", {})
+        if isinstance(p_data, dict) and "requirements" in p_data:
+            requirements = p_data.get("requirements", [])
+
+    phase_reqs = [r for r in requirements if r.get("phase") == target_phase] if any("phase" in r for r in requirements) else requirements
 
     if not phase_reqs:
-        print(f"[FAIL] No requirements found for Phase {target_phase} in {MANIFEST_PATH}")
+        print(f"[FAIL] No requirements found for Phase {target_phase} in {target_manifest}")
         return False
 
     print(f"Found {len(phase_reqs)} requirements for Phase {target_phase}.")
@@ -112,15 +119,15 @@ def verify_phase(target_phase: int = 1) -> bool:
 
     for r in phase_reqs:
         rid = r.get("id")
-        anchor = r.get("source_anchor")
+        anchor = r.get("source_anchor", rid)
         req_text = r.get("requirement")
         blocking = r.get("blocking", True)
         status = r.get("status")
         prod_loc = r.get("production_code_location")
-        test_loc = r.get("behavioral_test_location")
+        test_loc = r.get("behavioral_test_location", r.get("test_suite"))
         adv_loc = r.get("adversarial_fixture_location")
         reg_loc = r.get("registry_location")
-        ev_ref = r.get("evidence_reference")
+        ev_ref = r.get("evidence_reference", r.get("evidence_source"))
 
         if blocking:
             total_blocking += 1
@@ -129,6 +136,9 @@ def verify_phase(target_phase: int = 1) -> bool:
 
         if status != "PASS":
             req_errors.append(f"Status is '{status}' (expected 'PASS')")
+
+        if status == "PASS" and (not ev_ref or str(ev_ref).strip() in ("-", "null", "")):
+            req_errors.append("PASS requirement missing executable evidence reference")
 
         # Verify production files
         if prod_loc:

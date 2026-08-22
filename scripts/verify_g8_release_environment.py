@@ -91,6 +91,19 @@ def verify_release_environment(repo_root: str = REPO_ROOT) -> bool:
             if f.endswith(".db") or f.endswith(".sqlite") or f == "stale_auth_state.json":
                 errors.append(f"Stale state / persistent database detected in release certification environment: {f}")
 
+    # 6. Verify Gradle Wrapper Distribution Version
+    wrapper_props = os.path.join(repo_root, "gradle", "wrapper", "gradle-wrapper.properties")
+    if os.path.exists(wrapper_props):
+        try:
+            with open(wrapper_props, "r", encoding="utf-8") as f:
+                w_content = f.read()
+            if "gradle-9.3.1-bin.zip" not in w_content and "gradle-8.13-bin.zip" not in w_content:
+                errors.append(f"Unapproved Gradle wrapper distribution URL in {wrapper_props}")
+            else:
+                print(f"[PASS] Approved Gradle wrapper distribution verified in {os.path.relpath(wrapper_props, repo_root)}")
+        except Exception as e:
+            errors.append(f"Failed to read {wrapper_props}: {e}")
+
     if errors:
         print(f"[FAIL] Environment validation failed with {len(errors)} error(s):")
         for err in errors:

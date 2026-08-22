@@ -750,6 +750,7 @@ def probe_G8_ADV_029() -> tuple[int, str]:
 
 def probe_G8_ADV_030() -> tuple[int, str]:
     """G8-ADV-030: Gradle wrapper distribution must be pinned to canonical version."""
+    from verify_g8_release_environment import verify_release_environment
     tmp = tempfile.mkdtemp()
     try:
         w_dir = os.path.join(tmp, "gradle", "wrapper")
@@ -757,11 +758,10 @@ def probe_G8_ADV_030() -> tuple[int, str]:
         bad_props = os.path.join(w_dir, "gradle-wrapper.properties")
         with open(bad_props, "w", encoding="utf-8") as f:
             f.write("distributionUrl=https\\://services.gradle.org/distributions/gradle-7.0-all.zip\n")
-        with open(bad_props, "r", encoding="utf-8") as f:
-            content = f.read()
-        if "gradle-9.3.1-bin.zip" not in content and "gradle-8.13-bin.zip" not in content:
-            return 2, "[BLOCKED] Check G8-ADV-030: Guard rejected unapproved Gradle wrapper distribution (gradle-7.0-all.zip)."
-        return 0, "[ALLOWED] Unapproved Gradle wrapper distribution was accepted!"
+        res = verify_release_environment(repo_root=tmp)
+        if res is True:
+            return 0, "[ALLOWED] Unapproved Gradle wrapper distribution was accepted by verify_release_environment!"
+        return 2, "[BLOCKED] Check G8-ADV-030: verify_release_environment strictly rejected unapproved Gradle wrapper distribution."
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -944,30 +944,21 @@ def probe_G8_ADV_037() -> tuple[int, str]:
 
 def probe_G8_ADV_038() -> tuple[int, str]:
     """G8-ADV-038: All PASS requirements in phase_requirements.yaml bind to exact evidence sources."""
+    from verify_phase_compliance import verify_phase
     tmp = tempfile.mkdtemp()
     try:
         bad_req_yaml = os.path.join(tmp, "phase_requirements.yaml")
         bad_data = {
-            "phases": {
-                "phase_1": {
-                    "requirements": [
-                        {"id": "P1-REQ-01", "status": "PASS", "evidence_source": ""}
-                    ]
-                }
-            }
+            "requirements": [
+                {"id": "P1-REQ-01", "phase": 1, "status": "PASS", "evidence_reference": ""}
+            ]
         }
         with open(bad_req_yaml, "w", encoding="utf-8") as f:
             yaml.safe_dump(bad_data, f)
-        violations = []
-        with open(bad_req_yaml, "r", encoding="utf-8") as f:
-            loaded = yaml.safe_load(f)
-        for p_name, p_data in loaded.get("phases", {}).items():
-            for req in p_data.get("requirements", []):
-                if req.get("status") == "PASS" and not req.get("evidence_source") and not req.get("test_suite"):
-                    violations.append(req.get("id"))
-        if len(violations) > 0:
-            return 2, f"[BLOCKED] Check G8-ADV-038: Guard rejected PASS requirement with missing evidence binding ({violations[0]})."
-        return 0, "[ALLOWED] PASS requirement with missing evidence binding was permitted!"
+        res = verify_phase(target_phase=1, manifest_path=bad_req_yaml, repo_root=tmp)
+        if res is True:
+            return 0, "[ALLOWED] PASS requirement with missing evidence binding was permitted by verify_phase!"
+        return 2, "[BLOCKED] Check G8-ADV-038: verify_phase_compliance strictly rejected PASS requirement with missing evidence binding."
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1015,77 +1006,85 @@ def probe_G8_ADV_040() -> tuple[int, str]:
 
 def probe_G8_ADV_041() -> tuple[int, str]:
     """G8-ADV-041: All invariants require explicit canonical certification tests."""
+    from verify_invariant_contract import verify_contract
     tmp = tempfile.mkdtemp()
     try:
-        bad_map = os.path.join(tmp, "invariant_test_map.yaml")
-        bad_data = {
+        cpath = os.path.join(tmp, "invariant_contract.yaml")
+        bad_contract = {
             "invariants": [
-                {"id": "INV-01", "tests": [], "behavior_tests": ["SomeBehaviorTest.kt"]}
+                {
+                    "id": f"INV-{i:02d}",
+                    "name": f"Name {i}",
+                    "canonical_definition": "Def",
+                    "affected_components": ["app/src/main/java/com/example/EarthlinkApp.kt"],
+                    "required_behavior_tests": ["app/src/test/java/com/example/FinalTestMatrixCertificationTest.kt"] if i > 1 else [],
+                    "structural_checks": ["chk"],
+                    "evidence_requirements": ["ev"]
+                } for i in range(1, 17)
             ]
         }
-        with open(bad_map, "w", encoding="utf-8") as f:
-            yaml.safe_dump(bad_data, f)
-        violations = []
-        with open(bad_map, "r", encoding="utf-8") as f:
-            m = yaml.safe_load(f)
-        for inv in m.get("invariants", []):
-            if not inv.get("tests"):
-                violations.append(inv.get("id"))
-        if len(violations) > 0:
-            return 2, f"[BLOCKED] Check G8-ADV-041: Guard rejected invariant map where canonical certification tests were substituted by behavior tests ({violations[0]})."
-        return 0, "[ALLOWED] Behavior tests substituted for canonical certification tests without detection!"
+        with open(cpath, "w", encoding="utf-8") as f:
+            yaml.safe_dump(bad_contract, f)
+        res = verify_contract(contract_path=cpath, repo_root=REPO_ROOT)
+        if res is True:
+            return 0, "[ALLOWED] Invariant missing required behavior test was accepted by verify_invariant_contract!"
+        return 2, "[BLOCKED] Check G8-ADV-041: verify_invariant_contract strictly rejected invariant with missing certification test."
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
 def probe_G8_ADV_042() -> tuple[int, str]:
     """G8-ADV-042: Governance identifiers verified unique across contracts."""
+    from verify_invariant_contract import verify_contract
     tmp = tempfile.mkdtemp()
     try:
-        c1 = os.path.join(tmp, "contract_with_dup.yaml")
-        with open(c1, "w", encoding="utf-8") as f:
-            f.write("invariants:\n  - id: INV-01\n  - id: INV-01\n")
-        seen_ids = set()
-        duplicates = set()
-        with open(c1, "r", encoding="utf-8") as f:
-            for line in f:
-                if "INV-" in line:
-                    for token in line.split():
-                        if token.startswith("INV-"):
-                            t = token.rstrip(":")
-                            if t in seen_ids:
-                                duplicates.add(t)
-                            seen_ids.add(t)
-        if len(duplicates) > 0:
-            return 2, f"[BLOCKED] Check G8-ADV-042: Guard detected and rejected duplicate governance identifier ({list(duplicates)[0]})."
-        return 0, "[ALLOWED] Duplicate governance identifiers permitted!"
+        cpath = os.path.join(tmp, "invariant_contract.yaml")
+        bad_contract = {
+            "invariants": [
+                {
+                    "id": "INV-01",
+                    "name": "Single Active Token",
+                    "canonical_definition": "Def",
+                    "affected_components": ["app/src/main/java/com/example/EarthlinkApp.kt"],
+                    "required_behavior_tests": ["app/src/test/java/com/example/FinalTestMatrixCertificationTest.kt"],
+                    "structural_checks": ["chk"],
+                    "evidence_requirements": ["ev"]
+                },
+                {
+                    "id": "INV-01",
+                    "name": "Duplicate ID Token",
+                    "canonical_definition": "Def",
+                    "affected_components": ["app/src/main/java/com/example/EarthlinkApp.kt"],
+                    "required_behavior_tests": ["app/src/test/java/com/example/FinalTestMatrixCertificationTest.kt"],
+                    "structural_checks": ["chk"],
+                    "evidence_requirements": ["ev"]
+                }
+            ]
+        }
+        with open(cpath, "w", encoding="utf-8") as f:
+            yaml.safe_dump(bad_contract, f)
+        res = verify_contract(contract_path=cpath, repo_root=REPO_ROOT)
+        if res is True:
+            return 0, "[ALLOWED] Duplicate governance identifiers permitted by verify_invariant_contract!"
+        return 2, "[BLOCKED] Check G8-ADV-042: verify_invariant_contract strictly rejected duplicate governance identifier."
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
 def probe_G8_ADV_043() -> tuple[int, str]:
     """G8-ADV-043: Fresh certification run directory created per execution."""
+    from g8_certify import init_certification_run_dir
     tmp = tempfile.mkdtemp()
     try:
-        run_id = f"cert-{os.urandom(6).hex()}"
-        existing_run_dir = os.path.join(tmp, run_id)
-        os.makedirs(existing_run_dir, exist_ok=True)
-        flag_file = os.path.join(existing_run_dir, "sentinel.txt")
-        with open(flag_file, "w", encoding="utf-8") as f:
-            f.write("original_run_data")
-
-        collision_detected = False
-        if os.path.exists(existing_run_dir):
-            new_run_id = f"cert-{os.urandom(6).hex()}"
-            new_run_dir = os.path.join(tmp, new_run_id)
-            collision_detected = (new_run_dir != existing_run_dir)
-
-        with open(flag_file, "r", encoding="utf-8") as f:
-            sentinel = f.read()
-
-        if collision_detected and sentinel == "original_run_data":
-            return 2, "[BLOCKED] Check G8-ADV-043: Run isolation guard prevents overwriting existing evidence directories; generates fresh isolated UUID directory."
-        return 0, "[ALLOWED] Run directory overwrite allowed!"
+        run_dir = os.path.join(tmp, "existing_sealed_run")
+        os.makedirs(run_dir, exist_ok=True)
+        with open(os.path.join(run_dir, "closure_bundle.json"), "w", encoding="utf-8") as f:
+            f.write('{"status": "CLOSED"}')
+        try:
+            init_certification_run_dir(run_dir)
+            return 0, "[ALLOWED] Run directory overwrite allowed on existing sealed certification run!"
+        except FileExistsError as e:
+            return 2, f"[BLOCKED] Check G8-ADV-043: init_certification_run_dir strictly blocked overwriting existing run directory ({e})."
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

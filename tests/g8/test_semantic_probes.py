@@ -235,6 +235,46 @@ class TestSemanticProbes(unittest.TestCase):
         matrix_ids = {m["check_id"] for m in mdata}
         self.assertEqual(canonical_ids, matrix_ids, "Matrix IDs do not match canonical check IDs exactly")
 
+    def test_causal_hotfix_probes_030_038_041_042_043(self):
+        """Verify causal target sensitivity and negative twin enforcement for the 5 hotfixed probes."""
+        from unittest.mock import patch
+        import g8_run_adversarial_probe as gap
+
+        # G8-ADV-030
+        code, msg = gap.probe_G8_ADV_030()
+        self.assertEqual(code, 2, f"030 expected 2, got {code} ({msg})")
+        with patch("verify_g8_release_environment.verify_release_environment", return_value=True):
+            code_bypassed, _ = gap.probe_G8_ADV_030()
+            self.assertEqual(code_bypassed, 0, "030 did not fail causal test when target enforcement was bypassed")
+
+        # G8-ADV-038
+        code, msg = gap.probe_G8_ADV_038()
+        self.assertEqual(code, 2, f"038 expected 2, got {code} ({msg})")
+        with patch("verify_phase_compliance.verify_phase", return_value=True):
+            code_bypassed, _ = gap.probe_G8_ADV_038()
+            self.assertEqual(code_bypassed, 0, "038 did not fail causal test when target enforcement was bypassed")
+
+        # G8-ADV-041
+        code, msg = gap.probe_G8_ADV_041()
+        self.assertEqual(code, 2, f"041 expected 2, got {code} ({msg})")
+        with patch("verify_invariant_contract.verify_contract", return_value=True):
+            code_bypassed, _ = gap.probe_G8_ADV_041()
+            self.assertEqual(code_bypassed, 0, "041 did not fail causal test when target enforcement was bypassed")
+
+        # G8-ADV-042
+        code, msg = gap.probe_G8_ADV_042()
+        self.assertEqual(code, 2, f"042 expected 2, got {code} ({msg})")
+        with patch("verify_invariant_contract.verify_contract", return_value=True):
+            code_bypassed, _ = gap.probe_G8_ADV_042()
+            self.assertEqual(code_bypassed, 0, "042 did not fail causal test when target enforcement was bypassed")
+
+        # G8-ADV-043
+        code, msg = gap.probe_G8_ADV_043()
+        self.assertEqual(code, 2, f"043 expected 2, got {code} ({msg})")
+        with patch("g8_certify.init_certification_run_dir", return_value=("dir", "adv")):
+            code_bypassed, _ = gap.probe_G8_ADV_043()
+            self.assertEqual(code_bypassed, 0, "043 did not fail causal test when target enforcement was bypassed")
+
 
 if __name__ == "__main__":
     unittest.main()
