@@ -181,4 +181,45 @@ patterns:
       - "\\.clearLocalData\\("
     explanation: "INV-15 / RC-07 mandates that destructive clearLocalData must never be reachable in release builds and must only exist inside debug-gated SettingsScreen."
 
+  - id: "INV-16-vacuous-assertions"
+    invariant: "INV-16"
+    description: "Forbidden vacuous assertTrue(true) or empty assertions in test suites"
+    check_type: "regex"
+    file_glob: "app/src/test/**/*.kt"
+    forbidden_regexes:
+      - "assertTrue\\(\\s*true\\s*\\)"
+      - "assertEquals\\(\\s*true\\s*,\\s*true\\s*\\)"
+    explanation: "INV-16 mandates that tests must execute real assertions and never pass vacuously."
+
+  - id: "INV-15-hardcoded-api-secrets"
+    invariant: "INV-15"
+    description: "Forbidden hardcoded API keys, private keys, or credentials in source code"
+    check_type: "regex"
+    file_glob: "app/src/main/java/**/*.kt"
+    forbidden_regexes:
+      - "AIzaSy[A-Za-z0-9_\\-]{33}"
+      - "AKIA[0-9A-Z]{16}"
+      - "-----BEGIN (RSA )?PRIVATE KEY-----"
+    explanation: "INV-15 mandates that API keys and secrets must never be hardcoded in source files."
+
+  - id: "INV-16-g8-runtime-import-in-prod"
+    invariant: "INV-16"
+    description: "Forbidden G8 certification runtime imports in production source code"
+    check_type: "regex"
+    file_glob: "app/src/main/java/**/*.kt"
+    forbidden_regexes:
+      - "import\\s+com\\.example\\.g8"
+      - "import\\s+com\\.g8"
+    explanation: "G8 certification runtime code must remain strictly separated from production application sources."
+
+  - id: "INV-16-runtime-governance-registry"
+    invariant: "INV-16"
+    description: "Forbidden runtime governance registry singleton objects in production source"
+    check_type: "regex"
+    file_glob: "app/src/main/java/**/*.kt"
+    forbidden_regexes:
+      - "(object|class)\\s+GovernanceRegistry"
+    explanation: "G8 governance registry objects must not be compiled into production source binaries."
+
+
 

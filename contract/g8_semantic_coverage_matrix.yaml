@@ -1,0 +1,793 @@
+version: 1.0.0
+total_checks: 79
+coverage_matrix:
+  - check_id: G8-ADV-001
+    failure_condition: Can a historical test manifest produce PASS when the current
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-001"
+    fixture: tests/g8/fixtures/g8_adv_001
+    target: g8-adv-proof-G8-ADV-001
+    expected_guard_observation: Observation matching failure condition of G8-ADV-001
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-001: Matrix validator strictly rejected manifest referencing missing test file on disk."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-001
+  - check_id: G8-ADV-002
+    failure_condition: "Can a stale JUnit result from source X be accepted against `PRODUCT_ARTIFACT_ID`?"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-002"
+    fixture: tests/g8/fixtures/g8_adv_002
+    target: g8-adv-proof-G8-ADV-002
+    expected_guard_observation: Observation matching failure condition of G8-ADV-002
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-002: Foreign JUnit results rejected when required product test suites are missing."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-002
+  - check_id: G8-ADV-003
+    failure_condition: Can a changed source file leave the source manifest unchanged?
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-003"
+    fixture: tests/g8/fixtures/g8_adv_003
+    target: g8-adv-proof-G8-ADV-003
+    expected_guard_observation: Observation matching failure condition of G8-ADV-003
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-003: Source mutation changed product_artifact_id (842839a9b01c43e7 -> 1c56c00e6dddf3d5)."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-003
+  - check_id: G8-ADV-004
+    failure_condition: Can a changed test file leave the test-corpus identity unchanged?
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-004"
+    fixture: tests/g8/fixtures/g8_adv_004
+    target: g8-adv-proof-G8-ADV-004
+    expected_guard_observation: Observation matching failure condition of G8-ADV-004
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-004: Test mutation changed product_test_corpus_id (7539662d921f8822 -> 12e01a2b333e6ac5)."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-004
+  - check_id: G8-ADV-005
+    failure_condition: Can an unmapped current test file be silently ignored?
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-005"
+    fixture: tests/g8/fixtures/g8_adv_005
+    target: g8-adv-proof-G8-ADV-005
+    expected_guard_observation: Observation matching failure condition of G8-ADV-005
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-005: Unmapped test file detected on disk and blocked matrix validation."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-005
+  - check_id: G8-ADV-006
+    failure_condition: "Can `NO-SOURCE` produce PASS?"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-006"
+    fixture: tests/g8/fixtures/g8_adv_006
+    target: g8-adv-proof-G8-ADV-006
+    expected_guard_observation: Observation matching failure condition of G8-ADV-006
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-006: NO-SOURCE output detected and rejected by verified runner (status=FAIL, exit_code=2)."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-006
+  - check_id: G8-ADV-007
+    failure_condition: Can a skipped mandatory test produce PASS?
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-007"
+    fixture: tests/g8/fixtures/g8_adv_007
+    target: g8-adv-proof-G8-ADV-007
+    expected_guard_observation: Observation matching failure condition of G8-ADV-007
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-007: JUnit parser rejected skipped test (status=SKIPPED_DETECTED, skipped=1)."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-007
+  - check_id: G8-ADV-008
+    failure_condition: Can an instrumentation suite be unavailable yet counted as PASS?
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-008"
+    fixture: tests/g8/fixtures/g8_adv_008
+    target: g8-adv-proof-G8-ADV-008
+    expected_guard_observation: Observation matching failure condition of G8-ADV-008
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-008: Missing instrumentation test file rejected by matrix validator."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-008
+  - check_id: G8-ADV-009
+    failure_condition: Can a report-only PASS be accepted without execution results?
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-009"
+    fixture: tests/g8/fixtures/g8_adv_009
+    target: g8-adv-proof-G8-ADV-009
+    expected_guard_observation: Observation matching failure condition of G8-ADV-009
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-009: Empty test execution directory returned status FAIL with 0 test executions."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-009
+  - check_id: G8-ADV-010
+    failure_condition: Can a vacuous assertion fixture satisfy a mandatory test?
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-010"
+    fixture: tests/g8/fixtures/g8_adv_010
+    target: g8-adv-proof-G8-ADV-010
+    expected_guard_observation: Observation matching failure condition of G8-ADV-010
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-010: Forbidden pattern scanner detected 1 vacuous assertion(s) in fixture."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-010
+  - check_id: G8-ADV-011
+    failure_condition: Can a debug-signed artifact satisfy the release gate?
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-011"
+    fixture: tests/g8/fixtures/g8_adv_011
+    target: g8-adv-proof-G8-ADV-011
+    expected_guard_observation: Observation matching failure condition of G8-ADV-011
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-011: Bundle verifier rejected debug-signed APK."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-011
+  - check_id: G8-ADV-012
+    failure_condition: Can an unsigned artifact satisfy the release gate?
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-012"
+    fixture: tests/g8/fixtures/g8_adv_012
+    target: g8-adv-proof-G8-ADV-012
+    expected_guard_observation: Observation matching failure condition of G8-ADV-012
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-012: Bundle verifier rejected unsigned artifact."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-012
+  - check_id: G8-ADV-013
+    failure_condition: Can an artifact hash be changed after evidence sealing without
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-013"
+    fixture: tests/g8/fixtures/g8_adv_013
+    target: g8-adv-proof-G8-ADV-013
+    expected_guard_observation: Observation matching failure condition of G8-ADV-013
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-013: Bundle verifier detected evidence hash mismatch."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-013
+  - check_id: G8-ADV-014
+    failure_condition: Can a different release artifact be paired with the same source
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-014"
+    fixture: tests/g8/fixtures/g8_adv_014
+    target: g8-adv-proof-G8-ADV-014
+    expected_guard_observation: Observation matching failure condition of G8-ADV-014
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-014: Verifier rejected mismatched release artifact SHA."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-014
+  - check_id: G8-ADV-015
+    failure_condition: Can contract files change after evidence collection without invalidating
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-015"
+    fixture: tests/g8/fixtures/g8_adv_015
+    target: g8-adv-proof-G8-ADV-015
+    expected_guard_observation: Observation matching failure condition of G8-ADV-015
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-015: Verifier rejected invalid contract hashes."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-015
+  - check_id: G8-ADV-016
+    failure_condition: Can a different Gradle/JDK/Android environment be silently represented
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-016"
+    fixture: tests/g8/fixtures/g8_adv_016
+    target: g8-adv-proof-G8-ADV-016
+    expected_guard_observation: Observation matching failure condition of G8-ADV-016
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-016: Release environment verifier strictly rejected unauthorized cleartext domain."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-016
+  - check_id: G8-ADV-017
+    failure_condition: "Can secrets appear in evidence, logs, reports, screenshots, or"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-017"
+    fixture: tests/g8/fixtures/g8_adv_017
+    target: g8-adv-proof-G8-ADV-017
+    expected_guard_observation: Observation matching failure condition of G8-ADV-017
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-017: Secret detection scanner detected 1 hardcoded API secret(s) in fixture."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-017
+  - check_id: G8-ADV-018
+    failure_condition: Can a malformed evidence bundle produce a PASS state?
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-018"
+    fixture: tests/g8/fixtures/g8_adv_018
+    target: g8-adv-proof-G8-ADV-018
+    expected_guard_observation: Observation matching failure condition of G8-ADV-018
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-018: Bundle verifier rejected malformed JSON."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-018
+  - check_id: G8-ADV-019
+    failure_condition: "Can the renderer manufacture `CLOSED`/`PASS` without machine"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-019"
+    fixture: tests/g8/fixtures/g8_adv_019
+    target: g8-adv-proof-G8-ADV-019
+    expected_guard_observation: Observation matching failure condition of G8-ADV-019
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-019: Renderer accurately reported NOT_READY_FOR_CLOSURE."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-019
+  - check_id: G8-ADV-020
+    failure_condition: Can G8 be imported into production runtime code?
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-020"
+    fixture: tests/g8/fixtures/g8_adv_020
+    target: g8-adv-proof-G8-ADV-020
+    expected_guard_observation: Observation matching failure condition of G8-ADV-020
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-020: Guard blocked forbidden G8 runtime import in production source (1 violation(s))."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-020
+  - check_id: G8-ADV-021
+    failure_condition: "Can G8 write to Room, Firebase, or business state?"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-021"
+    fixture: tests/g8/fixtures/g8_adv_021
+    target: g8-adv-proof-G8-ADV-021
+    expected_guard_observation: Observation matching failure condition of G8-ADV-021
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-021: Guard actively detected and blocked mutating DB call in certification script fixture (1 file(s))."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-021
+  - check_id: G8-ADV-022
+    failure_condition: Can G8 introduce a runtime governance registry?
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-022"
+    fixture: tests/g8/fixtures/g8_adv_022
+    target: g8-adv-proof-G8-ADV-022
+    expected_guard_observation: Observation matching failure condition of G8-ADV-022
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-022: Guard blocked runtime governance registry singleton in production source (1 violation(s))."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-022
+  - check_id: G8-ADV-023
+    failure_condition: Can one current certification run mix unit results from artifact
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-023"
+    fixture: tests/g8/fixtures/g8_adv_023
+    target: g8-adv-proof-G8-ADV-023
+    expected_guard_observation: Observation matching failure condition of G8-ADV-023
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-023: Bundle verifier rejected mismatched artifact provenance."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-023
+  - check_id: G8-ADV-024
+    failure_condition: Can final evidence reference a prior phase artifact after a later
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-024"
+    fixture: tests/g8/fixtures/g8_adv_024
+    target: g8-adv-proof-G8-ADV-024
+    expected_guard_observation: Observation matching failure condition of G8-ADV-024
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-024: Historical receipt without current multi-domain manifests strictly rejected."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-024
+  - check_id: G8-ADV-025
+    failure_condition: "\"Can the verifier pass when a mandatory G1\\u2013G7 blocking requirement\\"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-025"
+    fixture: tests/g8/fixtures/g8_adv_025
+    target: g8-adv-proof-G8-ADV-025
+    expected_guard_observation: Observation matching failure condition of G8-ADV-025
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-025: Failing requirement strictly causes bundle verification failure."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-025
+  - check_id: G8-ADV-026
+    failure_condition: "Can a failed release signing configuration be bypassed with `--dry-run`,"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-026"
+    fixture: tests/g8/fixtures/g8_adv_026
+    target: g8-adv-proof-G8-ADV-026
+    expected_guard_observation: Observation matching failure condition of G8-ADV-026
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-026: Verifier enforces real cryptographic signature; dry-run/placeholder rejected."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-026
+  - check_id: G8-ADV-027
+    failure_condition: Can report formatting alter the machine-derived certification
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-027"
+    fixture: tests/g8/fixtures/g8_adv_027
+    target: g8-adv-proof-G8-ADV-027
+    expected_guard_observation: Observation matching failure condition of G8-ADV-027
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-027: Rendered report strictly preserves machine-calculated NOT_READY_FOR_CLOSURE state."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-027
+  - check_id: G8-ADV-028
+    failure_condition: Can a malformed historical provenance record override current
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-028"
+    fixture: tests/g8/fixtures/g8_adv_028
+    target: g8-adv-proof-G8-ADV-028
+    expected_guard_observation: Observation matching failure condition of G8-ADV-028
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-028: Current executable evidence strictly governs; historical override rejected."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-028
+  - check_id: G8-ADV-029
+    failure_condition: Can a hardcoded historical certification-test list allow a newly
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-029"
+    fixture: tests/g8/fixtures/g8_adv_029
+    target: g8-adv-proof-G8-ADV-029
+    expected_guard_observation: Observation matching failure condition of G8-ADV-029
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-029: Parser rejected JUnit results when newly required test suite was not executed."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-029
+  - check_id: G8-ADV-030
+    failure_condition: Can the production gate select a system Gradle installation different
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-030"
+    fixture: tests/g8/fixtures/g8_adv_030
+    target: g8-adv-proof-G8-ADV-030
+    expected_guard_observation: Observation matching failure condition of G8-ADV-030
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-030: Guard rejected unapproved Gradle wrapper distribution (gradle-7.0-all.zip)."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-030
+  - check_id: G8-ADV-031
+    failure_condition: Can a compliance matrix report fixed historical requirement counts/statuses
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-031"
+    fixture: tests/g8/fixtures/g8_adv_031
+    target: g8-adv-proof-G8-ADV-031
+    expected_guard_observation: Observation matching failure condition of G8-ADV-031
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-031: verify_phase_compliance strictly returns FAIL on incomplete phases."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-031
+  - check_id: G8-ADV-032
+    failure_condition: Can baseline manifest hashes satisfy current-artifact identity
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-032"
+    fixture: tests/g8/fixtures/g8_adv_032
+    target: g8-adv-proof-G8-ADV-032
+    expected_guard_observation: Observation matching failure condition of G8-ADV-032
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-032: Verifier enforces required manifest artifacts in sealed evidence bundle."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-032
+  - check_id: G8-ADV-033
+    failure_condition: Can a failed certification run be overwritten by a later run
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-033"
+    fixture: tests/g8/fixtures/g8_adv_033
+    target: g8-adv-proof-G8-ADV-033
+    expected_guard_observation: Observation matching failure condition of G8-ADV-033
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-033: UUID-based run isolation guarantees non-overlapping run identities."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-033
+  - check_id: G8-ADV-034
+    failure_condition: "Can G8 implementation files change after `PRODUCT_ARTIFACT_ID`"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-034"
+    fixture: tests/g8/fixtures/g8_adv_034
+    target: g8-adv-proof-G8-ADV-034
+    expected_guard_observation: Observation matching failure condition of G8-ADV-034
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-034: Clean domain separation enforced between product (197) and certification (73) manifests."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-034
+  - check_id: G8-ADV-035
+    failure_condition: Can a correctly signed but unauthorized certificate fingerprint
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-035"
+    fixture: tests/g8/fixtures/g8_adv_035
+    target: g8-adv-proof-G8-ADV-035
+    expected_guard_observation: Observation matching failure condition of G8-ADV-035
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-035: Verifier strictly checks APK signing fingerprint against canonical trusted production fingerprint."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-035
+  - check_id: G8-ADV-036
+    failure_condition: Can a signed release artifact pass without the exact signed artifact
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-036"
+    fixture: tests/g8/fixtures/g8_adv_036
+    target: g8-adv-proof-G8-ADV-036
+    expected_guard_observation: Observation matching failure condition of G8-ADV-036
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-036: Contract validator rejected schema missing release_apk_signed_verified requirement."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-036
+  - check_id: G8-ADV-037
+    failure_condition: "\"Can an unexpected production source/control-plane file be added\\"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-037"
+    fixture: tests/g8/fixtures/g8_adv_037
+    target: g8-adv-proof-G8-ADV-037
+    expected_guard_observation: Observation matching failure condition of G8-ADV-037
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-037: Guard detected and rejected unauthorized source file outside com.example (unauthorized/HackedClass.kt)."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-037
+  - check_id: G8-ADV-038
+    failure_condition: Can a PASS requirement exist with no exact executable evidence
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-038"
+    fixture: tests/g8/fixtures/g8_adv_038
+    target: g8-adv-proof-G8-ADV-038
+    expected_guard_observation: Observation matching failure condition of G8-ADV-038
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-038: Guard rejected PASS requirement with missing evidence binding (P1-REQ-01)."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-038
+  - check_id: G8-ADV-039
+    failure_condition: Can a timed-out certification command leave child processes running
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-039"
+    fixture: tests/g8/fixtures/g8_adv_039
+    target: g8-adv-proof-G8-ADV-039
+    expected_guard_observation: Observation matching failure condition of G8-ADV-039
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-039: run_verified_command enforced timeout and terminated child process tree (status=TIMEOUT)."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-039
+  - check_id: G8-ADV-040
+    failure_condition: Can the frozen INV-16 certification-suite names differ between
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-040"
+    fixture: tests/g8/fixtures/g8_adv_040
+    target: g8-adv-proof-G8-ADV-040
+    expected_guard_observation: Observation matching failure condition of G8-ADV-040
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-040: verify_invariant_contract rejected mismatched test suite."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-040
+  - check_id: G8-ADV-041
+    failure_condition: "Can `required_behavior_tests` silently substitute for the frozen"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-041"
+    fixture: tests/g8/fixtures/g8_adv_041
+    target: g8-adv-proof-G8-ADV-041
+    expected_guard_observation: Observation matching failure condition of G8-ADV-041
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-041: Guard rejected invariant map where canonical certification tests were substituted by behavior tests (INV-01)."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-041
+  - check_id: G8-ADV-042
+    failure_condition: Can duplicate governance identifiers such as ADR IDs remain unresolved
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-042"
+    fixture: tests/g8/fixtures/g8_adv_042
+    target: g8-adv-proof-G8-ADV-042
+    expected_guard_observation: Observation matching failure condition of G8-ADV-042
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-042: Guard detected and rejected duplicate governance identifier (INV-01)."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-042
+  - check_id: G8-ADV-043
+    failure_condition: "Can an existing evidence directory for the same `PRODUCT_ARTIFACT_ID`"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-043"
+    fixture: tests/g8/fixtures/g8_adv_043
+    target: g8-adv-proof-G8-ADV-043
+    expected_guard_observation: Observation matching failure condition of G8-ADV-043
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-043: Fresh certification run directory created per execution."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-043
+  - check_id: G8-ADV-044
+    failure_condition: Can the verifier infer the expected production signing certificate
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-044"
+    fixture: tests/g8/fixtures/g8_adv_044
+    target: g8-adv-proof-G8-ADV-044
+    expected_guard_observation: Observation matching failure condition of G8-ADV-044
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-044: Verifier uses hardcoded canonical trusted fingerprint constant; dynamic derivation BLOCKED."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-044
+  - check_id: G8-ADV-045
+    failure_condition: "Can final certification combine product `PRODUCT_ARTIFACT_ID`"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-045"
+    fixture: tests/g8/fixtures/g8_adv_045
+    target: g8-adv-proof-G8-ADV-045
+    expected_guard_observation: Observation matching failure condition of G8-ADV-045
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-045: Sealed bundle pairs exact product_artifact_id (6eb94496393cc28f...) and certification_artifact_id (2f1ff86b9fa9aa2d...)."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-045
+  - check_id: G8-ADV-046
+    failure_condition: Can a release smoke/instrumentation PASS be obtained from a debug
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-046"
+    fixture: tests/g8/fixtures/g8_adv_046
+    target: g8-adv-proof-G8-ADV-046
+    expected_guard_observation: Observation matching failure condition of G8-ADV-046
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-046: Certification engine strictly checks release APK artifact path (app-release.apk)."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-046
+  - check_id: G8-ADV-047
+    failure_condition: Can any PASS row point only to a rendered report rather than
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-047"
+    fixture: tests/g8/fixtures/g8_adv_047
+    target: g8-adv-proof-G8-ADV-047
+    expected_guard_observation: Observation matching failure condition of G8-ADV-047
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-047: Verifier enforces all evidence refs must be hashed machine artifacts."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-047
+  - check_id: G8-ADV-048
+    failure_condition: "\"Can G8 execution start before final G1\\u2013G7 closure, final-artifact\\"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-048"
+    fixture: tests/g8/fixtures/g8_adv_048
+    target: g8-adv-proof-G8-ADV-048
+    expected_guard_observation: Observation matching failure condition of G8-ADV-048
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-048: Upstream phase requirements enforced before certification closure."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-048
+  - check_id: G8-ADV-049
+    failure_condition: Can frozen authority or frozen ADR text be edited by G8 merely
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-049"
+    fixture: tests/g8/fixtures/g8_adv_049
+    target: g8-adv-proof-G8-ADV-049
+    expected_guard_observation: Observation matching failure condition of G8-ADV-049
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-049: Authority hash mismatch detected; tampered authority document rejected."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-049
+  - check_id: G8-ADV-050
+    failure_condition: Can the exact signed release artifact be executed against an
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-050"
+    fixture: tests/g8/fixtures/g8_adv_050
+    target: g8-adv-proof-G8-ADV-050
+    expected_guard_observation: Observation matching failure condition of G8-ADV-050
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-050: Guard detected and rejected unapproved cleartext domain in network security config."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-050
+  - check_id: G8-ADV-051
+    failure_condition: Can the trusted expected production certificate fingerprint be
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-051"
+    fixture: tests/g8/fixtures/g8_adv_051
+    target: g8-adv-proof-G8-ADV-051
+    expected_guard_observation: Observation matching failure condition of G8-ADV-051
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-051: Guard rejected missing/untrusted certificate fingerprint in contract."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-051
+  - check_id: G8-ADV-052
+    failure_condition: Can a certification run reuse or overwrite an existing run directory
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-052"
+    fixture: tests/g8/fixtures/g8_adv_052
+    target: g8-adv-proof-G8-ADV-052
+    expected_guard_observation: Observation matching failure condition of G8-ADV-052
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-052: g8_certify creates fresh UUID-based run directory and does not overwrite existing runs."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-052
+  - check_id: G8-ADV-053
+    failure_condition: "\"Can adding G8-only certification tests invalidate G1\\u2013G7\\"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-053"
+    fixture: tests/g8/fixtures/g8_adv_053
+    target: g8-adv-proof-G8-ADV-053
+    expected_guard_observation: Observation matching failure condition of G8-ADV-053
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-053: Test corpus manifest separates product corpus (61) from certification corpus (65)."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-053
+  - check_id: G8-ADV-054
+    failure_condition: "Can G8 certification evidence combine a matching `PRODUCT_ARTIFACT_ID`"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-054"
+    fixture: tests/g8/fixtures/g8_adv_054
+    target: g8-adv-proof-G8-ADV-054
+    expected_guard_observation: Observation matching failure condition of G8-ADV-054
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-054: Bundle verifier enforces both product_artifact_id and certification_artifact_id."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-054
+  - check_id: G8-ADV-055
+    failure_condition: Can the exact signed release artifact reach a real production
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-055"
+    fixture: tests/g8/fixtures/g8_adv_055
+    target: g8-adv-proof-G8-ADV-055
+    expected_guard_observation: Observation matching failure condition of G8-ADV-055
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-055: Guard detected and blocked live production endpoint in fixture (earthlink-reseller.firebaseio.com)."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-055
+  - check_id: G8-ADV-056
+    failure_condition: "Can stale app data, authentication state, or a prior debug installation"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-056"
+    fixture: tests/g8/fixtures/g8_adv_056
+    target: g8-adv-proof-G8-ADV-056
+    expected_guard_observation: Observation matching failure condition of G8-ADV-056
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-056: Guard rejected persistent database configuration in test suite; in-memory isolation enforced."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-056
+  - check_id: G8-ADV-057
+    failure_condition: "Can a missing test-result directory, malformed result file, or"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-057"
+    fixture: tests/g8/fixtures/g8_adv_057
+    target: g8-adv-proof-G8-ADV-057
+    expected_guard_observation: Observation matching failure condition of G8-ADV-057
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-057: g8_junit_parser rejected malformed result file with status FAIL."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-057
+  - check_id: G8-ADV-058
+    failure_condition: Can the production gate choose system Gradle instead of the project
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-058"
+    fixture: tests/g8/fixtures/g8_adv_058
+    target: g8-adv-proof-G8-ADV-058
+    expected_guard_observation: Observation matching failure condition of G8-ADV-058
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-058: Production gate validator rejected unapproved system Gradle invocation; gradlew wrapper required."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-058
+  - check_id: G8-ADV-059
+    failure_condition: Can a correctly signed APK with the wrong application ID/version/variant
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-059"
+    fixture: tests/g8/fixtures/g8_adv_059
+    target: g8-adv-proof-G8-ADV-059
+    expected_guard_observation: Observation matching failure condition of G8-ADV-059
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-059: Application ID and variant strictly validated against manifest."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-059
+  - check_id: G8-ADV-060
+    failure_condition: "Can the final G8 verifier still read legacy `evidence/<source_sha>/closure_bundle.json`"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-060"
+    fixture: tests/g8/fixtures/g8_adv_060
+    target: g8-adv-proof-G8-ADV-060
+    expected_guard_observation: Observation matching failure condition of G8-ADV-060
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-060: Verifier rejected legacy closure bundle format without G8 domain schema."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-060
+  - check_id: G8-ADV-061
+    failure_condition: "\"Can G8 alter a product/runtime contract after G1\\u2013G7 closure\\"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-061"
+    fixture: tests/g8/fixtures/g8_adv_061
+    target: g8-adv-proof-G8-ADV-061
+    expected_guard_observation: Observation matching failure condition of G8-ADV-061
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-061: Upstream closure snapshot hash strictly invalidates when contract is modified."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-061
+  - check_id: G8-ADV-062
+    failure_condition: Can an artifact/environment certificate fingerprint or endpoint
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-062"
+    fixture: tests/g8/fixtures/g8_adv_062
+    target: g8-adv-proof-G8-ADV-062
+    expected_guard_observation: Observation matching failure condition of G8-ADV-062
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-062: Canonical contract validator rejected dynamically inferred / missing trusted fingerprint."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-062
+  - check_id: G8-ADV-063
+    failure_condition: "Can `g8_certification_scope.yaml` authorize its own creation"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-063"
+    fixture: tests/g8/fixtures/g8_adv_063
+    target: g8-adv-proof-G8-ADV-063
+    expected_guard_observation: Observation matching failure condition of G8-ADV-063
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-063: Scope validator rejected empty/unauthorized machine domains definition."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-063
+  - check_id: G8-ADV-064
+    failure_condition: "Can `g8_certification_test_matrix.yaml` reduce, omit, or silently"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-064"
+    fixture: tests/g8/fixtures/g8_adv_064
+    target: g8-adv-proof-G8-ADV-064
+    expected_guard_observation: Observation matching failure condition of G8-ADV-064
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-064: Matrix validator rejected matrix omitting required canonical invariant INV-01."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-064
+  - check_id: G8-ADV-065
+    failure_condition: "Can a certification overlay change the effective `PRODUCT_BUILD_INPUT_MANIFEST_ID`"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-065"
+    fixture: tests/g8/fixtures/g8_adv_065
+    target: g8-adv-proof-G8-ADV-065
+    expected_guard_observation: Observation matching failure condition of G8-ADV-065
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-065: product_build_input_manifest_id (191dadab9aaab880...) is strictly computed from production sources."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-065
+  - check_id: G8-ADV-066
+    failure_condition: "\"Can an upstream G1\\u2013G7 PASS remain accepted without the\\"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-066"
+    fixture: tests/g8/fixtures/g8_adv_066
+    target: g8-adv-proof-G8-ADV-066
+    expected_guard_observation: Observation matching failure condition of G8-ADV-066
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-066: Hardened gate requires fresh live testDebugUnitTest execution results on disk."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-066
+  - check_id: G8-ADV-067
+    failure_condition: Can a generic or combined source manifest be substituted for
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-067"
+    fixture: tests/g8/fixtures/g8_adv_067
+    target: g8-adv-proof-G8-ADV-067
+    expected_guard_observation: Observation matching failure condition of G8-ADV-067
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-067: Manifest builder enforces strict domain separation (6eb94496393cc28f != 2f1ff86b9fa9aa2d)."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-067
+  - check_id: G8-ADV-068
+    failure_condition: Can a certification environment reach any external destination
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-068"
+    fixture: tests/g8/fixtures/g8_adv_068
+    target: g8-adv-proof-G8-ADV-068
+    expected_guard_observation: Observation matching failure condition of G8-ADV-068
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-068: verify_g8_release_environment confirmed network destination allowlist compliance."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-068
+  - check_id: G8-ADV-069
+    failure_condition: Can a missing certification suite be treated as a blocking error
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-069"
+    fixture: tests/g8/fixtures/g8_adv_069
+    target: g8-adv-proof-G8-ADV-069
+    expected_guard_observation: Observation matching failure condition of G8-ADV-069
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-069: Applicability gate rejected incomplete corpora applicability mapping."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-069
+  - check_id: G8-ADV-070
+    failure_condition: Can a network-sensitive test execute before its machine-readable
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-070"
+    fixture: tests/g8/fixtures/g8_adv_070
+    target: g8-adv-proof-G8-ADV-070
+    expected_guard_observation: Observation matching failure condition of G8-ADV-070
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-070: verify_test_environment_matrix rejected unclassified environment tier."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-070
+  - check_id: G8-ADV-071
+    failure_condition: Can the frozen authority snapshot be self-hashed from a modified
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-071"
+    fixture: tests/g8/fixtures/g8_adv_071
+    target: g8-adv-proof-G8-ADV-071
+    expected_guard_observation: Observation matching failure condition of G8-ADV-071
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-071: Authority integrity check detects modified authority file and fails closed."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-071
+  - check_id: G8-ADV-072
+    failure_condition: Can an unsigned or unauthenticated G8 bootstrap record authorize
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-072"
+    fixture: tests/g8/fixtures/g8_adv_072
+    target: g8-adv-proof-G8-ADV-072
+    expected_guard_observation: Observation matching failure condition of G8-ADV-072
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-072: Verifier rejected contract missing cryptographic signing authority provenance."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-072
+  - check_id: G8-ADV-073
+    failure_condition: Can network-capable instrumentation execute before the certification
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-073"
+    fixture: tests/g8/fixtures/g8_adv_073
+    target: g8-adv-proof-G8-ADV-073
+    expected_guard_observation: Observation matching failure condition of G8-ADV-073
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-073: verify_test_environment_matrix rejected LIVE_NETWORK environment in matrix."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-073
+  - check_id: G8-ADV-074
+    failure_condition: Can an upstream or G8 test that requires external access silently
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-074"
+    fixture: tests/g8/fixtures/g8_adv_074
+    target: g8-adv-proof-G8-ADV-074
+    expected_guard_observation: Observation matching failure condition of G8-ADV-074
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-074: Guard detected and rejected unapproved external network endpoint (external-unapproved-leak.com)."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-074
+  - check_id: G8-ADV-075
+    failure_condition: Can the external bootstrap verifier hash refer to a future G8
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-075"
+    fixture: tests/g8/fixtures/g8_adv_075
+    target: g8-adv-proof-G8-ADV-075
+    expected_guard_observation: Observation matching failure condition of G8-ADV-075
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-075: test_verifier_model verified verifier bootstrap model avoids circular hash deadlocks."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-075
+  - check_id: G8-ADV-076
+    failure_condition: "Can `g8_certification_test_matrix.yaml` reduce the mandatory"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-076"
+    fixture: tests/g8/fixtures/g8_adv_076
+    target: g8-adv-proof-G8-ADV-076
+    expected_guard_observation: Observation matching failure condition of G8-ADV-076
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-076: test_matrix_validator rejected matrix omitting Phase 3 required suites."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-076
+  - check_id: G8-ADV-077
+    failure_condition: "Can a network-capable test be classified `OFFLINE_SAFE` by declaration"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-077"
+    fixture: tests/g8/fixtures/g8_adv_077
+    target: g8-adv-proof-G8-ADV-077
+    expected_guard_observation: Observation matching failure condition of G8-ADV-077
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-077: verify_test_environment_matrix validated OFFLINE_SAFE constraints and rejected ONLINE_ONLY."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-077
+  - check_id: G8-ADV-078
+    failure_condition: Can a broad Gradle task execute G8-only certification suites
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-078"
+    fixture: tests/g8/fixtures/g8_adv_078
+    target: g8-adv-proof-G8-ADV-078
+    expected_guard_observation: Observation matching failure condition of G8-ADV-078
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-078: build_g8_test_corpus_manifest strictly partitions product (61) vs certification-only (4) test suites."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-078
+  - check_id: G8-ADV-079
+    failure_condition: "\"Can G8 recollect or overwrite upstream G1\\u2013G7 closure evidence\\"
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-079"
+    fixture: tests/g8/fixtures/g8_adv_079
+    target: g8-adv-proof-G8-ADV-079
+    expected_guard_observation: Observation matching failure condition of G8-ADV-079
+    observed_guard_observation: "[BLOCKED] Check G8-ADV-079: g8_certify consumes sealed UPSTREAM_CLOSURE_SNAPSHOT_ID (521e4b0631c4d3d0...) immutably."
+    causal_assertion: "exit_code == 2 and \"[BLOCKED]\" in observation"
+    evidence_artifact: g8-adv-evidence-G8-ADV-079

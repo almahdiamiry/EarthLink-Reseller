@@ -25,55 +25,42 @@ class TestSemanticProbes(unittest.TestCase):
             cid = f"G8-ADV-{i:03d}"
             self.assertIn(cid, PROBE_HANDLERS, f"Handler missing for {cid}")
 
-    def test_probe_g8_adv_001_semantics(self):
-        code, msg = PROBE_HANDLERS["G8-ADV-001"]()
-        self.assertEqual(code, 2)
-        self.assertIn("[BLOCKED]", msg)
+    def test_all_79_probes_execute_and_block(self):
+        """Verify that every single probe handler executes and returns (2, [BLOCKED])."""
+        for i in range(1, 80):
+            cid = f"G8-ADV-{i:03d}"
+            handler = PROBE_HANDLERS.get(cid)
+            self.assertIsNotNone(handler, f"No handler found for {cid}")
+            code, msg = handler()
+            self.assertEqual(
+                code, 2,
+                f"Probe {cid} failed causality test: expected exit code 2 ([BLOCKED]), got {code} ({msg})"
+            )
+            self.assertIn(
+                "[BLOCKED]", msg,
+                f"Probe {cid} output does not contain [BLOCKED]: {msg}"
+            )
 
-    def test_probe_g8_adv_002_semantics(self):
-        code, msg = PROBE_HANDLERS["G8-ADV-002"]()
-        self.assertEqual(code, 2)
-        self.assertIn("[BLOCKED]", msg)
-
-    def test_probe_g8_adv_003_semantics(self):
-        code, msg = PROBE_HANDLERS["G8-ADV-003"]()
-        self.assertEqual(code, 2)
-        self.assertIn("[BLOCKED]", msg)
-
-    def test_probe_g8_adv_004_semantics(self):
-        code, msg = PROBE_HANDLERS["G8-ADV-004"]()
-        self.assertEqual(code, 2)
-        self.assertIn("[BLOCKED]", msg)
-
-    def test_probe_g8_adv_005_semantics(self):
-        code, msg = PROBE_HANDLERS["G8-ADV-005"]()
-        self.assertEqual(code, 2)
-        self.assertIn("[BLOCKED]", msg)
-
-    def test_probe_g8_adv_006_semantics(self):
-        code, msg = PROBE_HANDLERS["G8-ADV-006"]()
-        self.assertEqual(code, 2)
-        self.assertIn("[BLOCKED]", msg)
-
-    def test_probe_g8_adv_007_semantics(self):
-        code, msg = PROBE_HANDLERS["G8-ADV-007"]()
-        self.assertEqual(code, 2)
-        self.assertIn("[BLOCKED]", msg)
-
-    def test_probe_g8_adv_013_semantics(self):
-        code, msg = PROBE_HANDLERS["G8-ADV-013"]()
-        self.assertEqual(code, 2)
-        self.assertIn("[BLOCKED]", msg)
-
-    def test_probe_g8_adv_021_semantics(self):
-        code, msg = PROBE_HANDLERS["G8-ADV-021"]()
-        self.assertEqual(code, 2)
-        self.assertIn("[BLOCKED]", msg)
-
-    def test_probe_g8_adv_039_semantics(self):
-        code, msg = PROBE_HANDLERS["G8-ADV-039"]()
-        self.assertEqual(code, 2)
-        self.assertIn("[BLOCKED]", msg)
+    def test_semantic_coverage_matrix_integrity(self):
+        """Verify the semantic coverage matrix exists, is valid YAML, and contains all 79 checks."""
+        matrix_path = os.path.join(REPO_ROOT, "contract", "g8_semantic_coverage_matrix.yaml")
+        self.assertTrue(os.path.exists(matrix_path), "g8_semantic_coverage_matrix.yaml missing")
+        with open(matrix_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        self.assertEqual(data.get("total_checks"), 79)
+        entries = data.get("coverage_matrix", [])
+        self.assertEqual(len(entries), 79)
+        for entry in entries:
+            self.assertTrue(entry.get("check_id").startswith("G8-ADV-"))
+            self.assertTrue(entry.get("failure_condition"))
+            self.assertTrue(entry.get("executor_type"))
+            self.assertTrue(entry.get("execution_selector"))
+            self.assertTrue(entry.get("fixture"))
+            self.assertTrue(entry.get("target"))
+            self.assertTrue(entry.get("expected_guard_observation"))
+            self.assertIn("[BLOCKED]", entry.get("observed_guard_observation", ""))
+            self.assertTrue(entry.get("causal_assertion"))
+            self.assertTrue(entry.get("evidence_artifact"))
 
 
 if __name__ == "__main__":

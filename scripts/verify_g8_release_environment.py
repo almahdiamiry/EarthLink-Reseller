@@ -29,7 +29,7 @@ APPROVED_DESTINATIONS = [
 ]
 
 
-def verify_release_environment() -> bool:
+def verify_release_environment(repo_root: str = REPO_ROOT) -> bool:
     print("=================================================================")
     print("=== G8 Release Certification Environment Validator (G8-08A) ===")
     print("=================================================================")
@@ -37,7 +37,7 @@ def verify_release_environment() -> bool:
     errors = []
 
     # 1. Verify Network Security Configuration
-    net_sec_path = os.path.join(REPO_ROOT, "app", "src", "main", "res", "xml", "network_security_config.xml")
+    net_sec_path = os.path.join(repo_root, "app", "src", "main", "res", "xml", "network_security_config.xml")
     if os.path.exists(net_sec_path):
         try:
             tree = ET.parse(net_sec_path)
@@ -50,25 +50,25 @@ def verify_release_environment() -> bool:
                         d_text = (d.text or "").strip()
                         if d_text not in APPROVED_DESTINATIONS:
                             errors.append(f"Unauthorized cleartext domain in network_security_config.xml: {d_text}")
-            print(f"[PASS] Network Security Configuration inspected: {os.path.relpath(net_sec_path, REPO_ROOT)}")
+            print(f"[PASS] Network Security Configuration inspected: {os.path.relpath(net_sec_path, repo_root)}")
         except Exception as e:
             errors.append(f"Failed to parse network_security_config.xml: {e}")
     else:
         print("[INFO] Default Android network security configuration in effect.")
 
     # 2. Inspect EarthlinkNetwork.kt for endpoint governance
-    net_file = os.path.join(REPO_ROOT, "app", "src", "main", "java", "com", "example", "core", "network", "EarthlinkNetwork.kt")
+    net_file = os.path.join(repo_root, "app", "src", "main", "java", "com", "example", "core", "network", "EarthlinkNetwork.kt")
     if os.path.exists(net_file):
         with open(net_file, "r", encoding="utf-8") as f:
             net_code = f.read()
         if "rapi.earthlink.iq" in net_code:
             print("[INFO] Production endpoint string present in EarthlinkNetwork.kt; verifying certification isolation mode.")
-        print(f"[PASS] Inspected {os.path.relpath(net_file, REPO_ROOT)}")
+        print(f"[PASS] Inspected {os.path.relpath(net_file, repo_root)}")
     else:
         errors.append(f"EarthlinkNetwork.kt not found at: {net_file}")
 
     # 3. Inspect google-services.json if present
-    gs_path = os.path.join(REPO_ROOT, "app", "google-services.json")
+    gs_path = os.path.join(repo_root, "app", "google-services.json")
     if os.path.exists(gs_path):
         try:
             with open(gs_path, "r", encoding="utf-8") as f:
