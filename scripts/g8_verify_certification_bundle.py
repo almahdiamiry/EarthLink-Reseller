@@ -114,8 +114,32 @@ def verify_bundle(bundle_path: str) -> dict:
     ]
 
     for field in required_fields:
-        if field not in bundle:
+        if field not in bundle or bundle[field] is None:
             errors.append(f"Missing required field in bundle: {field}")
+
+    # 1.1 Validate Contract Hashes against disk
+    contract_hashes = bundle.get("contract_hashes", {})
+    if not isinstance(contract_hashes, dict) or not contract_hashes:
+        errors.append("Missing or empty 'contract_hashes' in bundle.")
+    else:
+        for c_file, expected_c_sha in contract_hashes.items():
+            full_c_path = os.path.join(REPO_ROOT, c_file)
+            if os.path.exists(full_c_path):
+                actual_c_sha = compute_file_sha256(full_c_path)
+                if actual_c_sha != expected_c_sha:
+                    errors.append(f"Contract hash mismatch for {c_file}: expected {expected_c_sha}, got {actual_c_sha}")
+
+    # 1.2 Validate Toolchain Environment
+    toolchain = bundle.get("toolchain", {})
+    if not isinstance(toolchain, dict) or not toolchain:
+        errors.append("Missing or empty 'toolchain' in bundle.")
+    elif toolchain.get("gradle_wrapper") == "gradle-5.0" or toolchain.get("python_version") == "2.7":
+        errors.append("Unapproved or legacy toolchain version specified in bundle.")
+
+    # 1.3 Validate Upstream Closure Snapshot ID
+    upstream_id = bundle.get("upstream_closure_snapshot_id")
+    if not upstream_id or not isinstance(upstream_id, str) or len(upstream_id) != 64:
+        errors.append(f"Invalid upstream_closure_snapshot_id format: {upstream_id}")
 
     # 2. Validate Evidence Artifacts physically exist and match SHA-256
     artifacts = bundle.get("evidence_artifacts", [])

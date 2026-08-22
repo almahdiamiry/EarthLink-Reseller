@@ -67,7 +67,11 @@ def load_scope(repo_root=None):
 def build_manifests(repo_root=None):
     base = repo_root or REPO_ROOT
     scope = load_scope(base)
+    if not scope or not isinstance(scope, dict) or not scope.get("domains"):
+        raise ValueError("g8_certification_scope.yaml must define explicit machine domains.")
     domains = {d["domain"]: d.get("patterns", []) for d in scope.get("domains", [])}
+    if "PRODUCT" not in domains or "CERTIFICATION" not in domains:
+        raise ValueError("g8_certification_scope.yaml must define both PRODUCT and CERTIFICATION domains.")
 
     all_files = []
     for root, dirs, files in os.walk(base):
@@ -94,6 +98,9 @@ def build_manifests(repo_root=None):
         is_shared = matches_any(rel_p, domains.get("SHARED_CONTROL_INPUT", []))
         is_prod = matches_any(rel_p, domains.get("PRODUCT", []))
         is_prod_test = matches_any(rel_p, domains.get("PRODUCT_TEST", []))
+
+        if is_cert and is_prod and not is_shared:
+            raise ValueError(f"Domain separation violation: File '{rel_p}' matches both PRODUCT and CERTIFICATION domains without SHARED_CONTROL_INPUT classification.")
 
         if is_cert:
             cert_files.append(entry)

@@ -44,7 +44,8 @@ def run_cmd(cmd: list) -> tuple:
     return p.returncode, p.stdout, p.stderr
 
 
-def compute_upstream_closure_snapshot() -> str:
+def compute_upstream_closure_snapshot(repo_root=None) -> str:
+    base = repo_root or REPO_ROOT
     upstream_contracts = [
         "contract/invariant_contract.yaml",
         "contract/invariant_test_map.yaml",
@@ -56,11 +57,20 @@ def compute_upstream_closure_snapshot() -> str:
     ]
     h = hashlib.sha256()
     for uc in sorted(upstream_contracts):
-        full_p = os.path.join(REPO_ROOT, uc)
+        full_p = os.path.join(base, uc)
         if os.path.exists(full_p):
             file_sha = compute_file_sha256(full_p)
             h.update(f"{uc}:{file_sha}".encode("utf-8"))
     return h.hexdigest()
+
+
+def init_certification_run_dir(out_dir: str) -> tuple[str, str]:
+    if os.path.exists(os.path.join(out_dir, "closure_bundle.json")):
+        raise FileExistsError(f"Refusing to overwrite existing certification run directory: {out_dir}")
+    os.makedirs(out_dir, exist_ok=True)
+    adv_evidence_dir = os.path.join(out_dir, "adversarial_proofs")
+    os.makedirs(adv_evidence_dir, exist_ok=True)
+    return out_dir, adv_evidence_dir
 
 
 def evaluate_check_outcome(expected_outcome: str, probe_exit_code: int, probe_output: str) -> str:
@@ -193,8 +203,7 @@ def certify():
 
     # 3. Create run evidence directory
     out_dir = os.path.join(REPO_ROOT, "evidence", "g8", product_artifact_id, run_id)
-    adv_evidence_dir = os.path.join(out_dir, "adversarial_proofs")
-    os.makedirs(adv_evidence_dir, exist_ok=True)
+    out_dir, adv_evidence_dir = init_certification_run_dir(out_dir)
 
     evidence_artifacts = []
 

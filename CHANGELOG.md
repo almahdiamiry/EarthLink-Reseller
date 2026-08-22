@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.109.0] - 2026-08-22
+
+### Phase 3 Adversarial Guard Verification & Real Semantic Targets (CLOSED)
+- **79 Real System Target Executions (`scripts/g8_run_adversarial_probe.py`)**:
+  - Re-architected all 79 adversarial probe handlers to directly execute real system guards (`verify_bundle`, `verify_matrix`, `verify_release_environment`, `verify_contract`, `scan_patterns`, `build_manifests`, `init_certification_run_dir`, `compute_upstream_closure_snapshot`, `run_verified_command`) against mutated sandboxes.
+  - Eliminated any synthetic or static re-implementations; each probe dynamically sets up a sandboxed temporary environment, injects the precise adversarial mutation or structural anomaly, calls the actual production verification entry point, and asserts real fail-closed rejection.
+- **Negative Twin Test Suite Hardening (`tests/g8/test_semantic_probes.py`)**:
+  - Validated all 10 Negative Twin scenarios (fake returns, allowed guards, exceptions, broken selectors, clean fixtures, hash tampering, historical evidence substitution, forged derived states, forged receipts, matrix reconciliation).
+  - Ensured all 34 tests across the entire `tests/g8/` suite pass cleanly with 100% green status.
+- **Matrix & Contract Synchronization**:
+  - Synchronized `contract/g8_semantic_coverage_matrix.yaml` and `contract/g8_adversarial_checks.yaml` with exact target mappings, expected/observed guard observations, and causal proof assertions.
+
 ## [1.108.0] - 2026-08-22
 
 ### Phase 3 Post-Implementation Adversarial Reconciliation — Final Semantic Remediation (CLOSED)

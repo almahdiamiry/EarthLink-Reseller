@@ -85,6 +85,12 @@ def verify_release_environment(repo_root: str = REPO_ROOT) -> bool:
     print(f"[PASS] Destination allowlist enforced: {APPROVED_DESTINATIONS}")
     print("[PASS] Environment mode: OFFLINE_SAFE / SANDBOX_ISOLATED")
 
+    # 5. Stale app data and persistent fixture contamination check
+    for root, _, files in os.walk(os.path.join(repo_root, "app")):
+        for f in files:
+            if f.endswith(".db") or f.endswith(".sqlite") or f == "stale_auth_state.json":
+                errors.append(f"Stale state / persistent database detected in release certification environment: {f}")
+
     if errors:
         print(f"[FAIL] Environment validation failed with {len(errors)} error(s):")
         for err in errors:

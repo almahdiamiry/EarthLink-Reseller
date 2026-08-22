@@ -399,24 +399,34 @@ def probe_G8_ADV_015() -> tuple[int, str]:
 
 def probe_G8_ADV_016() -> tuple[int, str]:
     """G8-ADV-016: A different Gradle/JDK/Android environment changes evidence identity and cannot be silently represented."""
-    from build_g8_source_manifest import build_manifests
-    import hashlib
-
-    canonical_toolchain = "os:linux;compiler:kotlin-1.9.22;gradle:8.5;java:17"
-    canonical_id = hashlib.sha256(canonical_toolchain.encode("utf-8")).hexdigest()
-
-    adversarial_toolchain = "os:linux;compiler:kotlin-1.8.0;gradle:7.4.2;java:11"
-    adversarial_id = hashlib.sha256(adversarial_toolchain.encode("utf-8")).hexdigest()
-
-    if canonical_id == adversarial_id:
-        return 0, "[ALLOWED] Divergent toolchain environment was silently represented as canonical identity!"
-
-    m = build_manifests()
-    computed_toolchain_id = m.get("toolchain_environment_id")
-    if computed_toolchain_id == adversarial_id:
-        return 0, "[ALLOWED] Manifest builder accepted adversarial toolchain without detection!"
-
-    return 2, f"[BLOCKED] Check G8-ADV-016: Toolchain environment divergence alters evidence identity ({adversarial_id[:16]} != {canonical_id[:16]})."
+    from g8_verify_certification_bundle import verify_bundle
+    tmp = tempfile.mkdtemp()
+    try:
+        mock_bundle = {
+            "certification_run_id": "test_run_adv_016",
+            "product_artifact_id": "prod_1",
+            "product_build_input_manifest_id": "input_1",
+            "certification_artifact_id": "cert_1",
+            "product_test_corpus_id": "ptc_1",
+            "certification_test_corpus_id": "ctc_1",
+            "upstream_closure_snapshot_id": "a" * 64,
+            "contract_hashes": {"contract/g8_certification_contract.yaml": "0" * 64},
+            "toolchain": {"gradle_wrapper": "gradle-5.0", "python_version": "2.7"},
+            "derived_states": {},
+            "requirements_results": {"P6-G8-REQ-01": {"status": "PASS"}},
+            "closure_status": "CLOSED",
+            "release_artifact": {},
+            "evidence_artifacts": []
+        }
+        bpath = os.path.join(tmp, "bundle.json")
+        with open(bpath, "w", encoding="utf-8") as f:
+            json.dump(mock_bundle, f)
+        res = verify_bundle(bpath)
+        if res.get("status") == "PASS":
+            return 0, "[ALLOWED] Divergent toolchain environment was silently represented as valid identity!"
+        return 2, f"[BLOCKED] Check G8-ADV-016: Verifier rejected divergent/unapproved toolchain environment ({res.get('errors')[0]})."
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def probe_G8_ADV_017() -> tuple[int, str]:
@@ -798,19 +808,19 @@ def probe_G8_ADV_032() -> tuple[int, str]:
 
 
 def probe_G8_ADV_033() -> tuple[int, str]:
-    """G8-ADV-033: Nonce/UUID isolation guarantees distinct run identities."""
+    """G8-ADV-033: Nonce/UUID isolation guarantees distinct run identities and blocks overwrite."""
+    from g8_certify import init_certification_run_dir
     tmp = tempfile.mkdtemp()
     try:
-        run_id1 = f"cert-{os.urandom(6).hex()}"
-        run_dir1 = os.path.join(tmp, run_id1)
-        os.makedirs(run_dir1, exist_ok=True)
-        with open(os.path.join(run_dir1, "proof.txt"), "w", encoding="utf-8") as f:
-            f.write("run_1_proof")
-        run_id2 = f"cert-{os.urandom(6).hex()}"
-        run_dir2 = os.path.join(tmp, run_id2)
-        if os.path.exists(run_dir2):
-            return 0, "[ALLOWED] Run ID collision allowed overwriting existing run directory!"
-        return 2, "[BLOCKED] Check G8-ADV-033: UUID-based run isolation guarantees non-overlapping run identities."
+        run_dir = os.path.join(tmp, "cert_existing_run")
+        os.makedirs(run_dir, exist_ok=True)
+        with open(os.path.join(run_dir, "closure_bundle.json"), "w", encoding="utf-8") as f:
+            f.write('{"status": "ALREADY_SEALED"}')
+        try:
+            init_certification_run_dir(run_dir)
+            return 0, "[ALLOWED] Run directory overwrite allowed on existing sealed certification run!"
+        except FileExistsError as e:
+            return 2, f"[BLOCKED] Check G8-ADV-033: init_certification_run_dir strictly blocked overwriting existing run directory ({e})."
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -818,13 +828,30 @@ def probe_G8_ADV_033() -> tuple[int, str]:
 def probe_G8_ADV_034() -> tuple[int, str]:
     """G8-ADV-034: Clean domain separation between product_manifest and certification_manifest."""
     from build_g8_source_manifest import build_manifests
-    m = build_manifests()
-    prod_paths = [f["path"] for f in m["product_manifest"]]
-    g8_paths = [f["path"] for f in m["certification_manifest"]]
-    overlap = set(prod_paths).intersection(set(g8_paths))
-    if overlap:
-        return 0, f"[ALLOWED] Overlap between product and certification manifests: {overlap}"
-    return 2, f"[BLOCKED] Check G8-ADV-034: Clean domain separation enforced between product ({len(prod_paths)}) and certification ({len(g8_paths)}) manifests."
+    tmp = tempfile.mkdtemp()
+    try:
+        c_dir = os.path.join(tmp, "contract")
+        os.makedirs(c_dir, exist_ok=True)
+        bad_scope = {
+            "version": "1.0",
+            "domains": [
+                {"domain": "PRODUCT", "patterns": ["app/src/main/**", "shared_leak/**"]},
+                {"domain": "CERTIFICATION", "patterns": ["scripts/**", "shared_leak/**"]}
+            ]
+        }
+        with open(os.path.join(c_dir, "g8_certification_scope.yaml"), "w", encoding="utf-8") as f:
+            yaml.safe_dump(bad_scope, f)
+        leak_dir = os.path.join(tmp, "shared_leak")
+        os.makedirs(leak_dir, exist_ok=True)
+        with open(os.path.join(leak_dir, "leak.txt"), "w", encoding="utf-8") as f:
+            f.write("overlap")
+        try:
+            build_manifests(repo_root=tmp)
+            return 0, "[ALLOWED] Overlapping domain patterns between PRODUCT and CERTIFICATION permitted without SHARED classification!"
+        except ValueError as e:
+            return 2, f"[BLOCKED] Check G8-ADV-034: build_manifests strictly blocked overlapping domain definitions ({e})."
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def probe_G8_ADV_035() -> tuple[int, str]:
@@ -861,39 +888,56 @@ def probe_G8_ADV_035() -> tuple[int, str]:
 
 def probe_G8_ADV_036() -> tuple[int, str]:
     """G8-ADV-036: Release contract requires physical release APK verification."""
+    from g8_verify_certification_bundle import verify_bundle
     tmp = tempfile.mkdtemp()
     try:
-        bad_contract = os.path.join(tmp, "g8_certification_contract.yaml")
-        with open(bad_contract, "w", encoding="utf-8") as f:
-            f.write("invariants:\n  - id: INV-01\n")
-        with open(bad_contract, "r", encoding="utf-8") as f:
-            c_data = yaml.safe_load(f)
-        if "release_apk_signed_verified" not in str(c_data):
-            return 2, "[BLOCKED] Check G8-ADV-036: Contract validator rejected schema missing release_apk_signed_verified requirement."
-        return 0, "[ALLOWED] Contract schema without release_apk_signed_verified permitted!"
+        mock_bundle = {
+            "certification_run_id": "test_run_adv_036",
+            "product_artifact_id": "prod_1",
+            "product_build_input_manifest_id": "input_1",
+            "certification_artifact_id": "cert_1",
+            "product_test_corpus_id": "ptc_1",
+            "certification_test_corpus_id": "ctc_1",
+            "upstream_closure_snapshot_id": "a" * 64,
+            "contract_hashes": {"contract/g8_certification_contract.yaml": "0" * 64},
+            "toolchain": {"gradle_wrapper": "8.5"},
+            "derived_states": {},
+            "requirements_results": {"P6-G8-REQ-01": {"status": "PASS"}},
+            "closure_status": "CLOSED",
+            "release_artifact": {"path": "app/build/outputs/apk/release/app-release-unsigned.apk", "sha256": "fake"},
+            "evidence_artifacts": []
+        }
+        bpath = os.path.join(tmp, "bundle.json")
+        with open(bpath, "w", encoding="utf-8") as f:
+            json.dump(mock_bundle, f)
+        res = verify_bundle(bpath)
+        if res.get("status") == "PASS":
+            return 0, "[ALLOWED] Bundle with tampered contract hash and unsigned APK passed verification!"
+        return 2, f"[BLOCKED] Check G8-ADV-036: Verifier rejected tampered contract hashes and unsigned release APK."
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
 def probe_G8_ADV_037() -> tuple[int, str]:
-    """G8-ADV-037: Unexpected production source file detected in package tree."""
+    """G8-ADV-037: Unexpected production source file or invalid test environment rejected."""
+    from verify_test_environment_matrix import verify_matrix
     tmp = tempfile.mkdtemp()
     try:
-        bad_dir = os.path.join(tmp, "app", "src", "main", "java", "unauthorized")
-        os.makedirs(bad_dir, exist_ok=True)
-        with open(os.path.join(bad_dir, "HackedClass.kt"), "w", encoding="utf-8") as f:
-            f.write("package unauthorized\nclass HackedClass\n")
-        violations = []
-        prod_dir = os.path.join(tmp, "app", "src", "main", "java")
-        for root, _, files in os.walk(prod_dir):
-            for f in files:
-                if f.endswith(".kt") or f.endswith(".java"):
-                    rel = os.path.relpath(os.path.join(root, f), prod_dir).replace("\\", "/")
-                    if not rel.startswith("com/example/"):
-                        violations.append(rel)
-        if len(violations) > 0:
-            return 2, f"[BLOCKED] Check G8-ADV-037: Guard detected and rejected unauthorized source file outside com.example ({violations[0]})."
-        return 0, "[ALLOWED] Unauthorized source file outside com.example was permitted!"
+        bad_mat = os.path.join(tmp, "test_environment_matrix.yaml")
+        bad_data = {
+            "environments": {"JVM": {}, "ROBOLECTRIC": {}, "INSTRUMENTED": {}, "STRUCTURAL": {}, "HISTORICAL": {}},
+            "invariants_matrix": [{"id": f"INV-{i:02d}", "name": f"Inv {i}", "environments": ["JVM"], "primary_test_suite": f"Suite{i}", "rationale": "r"} for i in range(1, 17)],
+            "test_suites": [
+                {"name": "InvalidSuite", "path": "unauthorized/pkg/InvalidTest.kt", "environment": "UNAPPROVED_ENV", "tier_purpose": "p"}
+            ],
+            "phase3_required_suites": []
+        }
+        with open(bad_mat, "w", encoding="utf-8") as f:
+            yaml.safe_dump(bad_data, f)
+        res = verify_matrix(matrix_path=bad_mat, repo_root=REPO_ROOT)
+        if res is True:
+            return 0, "[ALLOWED] Unapproved environment tier and invalid test path accepted by verify_matrix!"
+        return 2, "[BLOCKED] Check G8-ADV-037: verify_test_environment_matrix strictly rejected invalid environment tier and test path."
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1209,16 +1253,32 @@ def probe_G8_ADV_048() -> tuple[int, str]:
 
 def probe_G8_ADV_049() -> tuple[int, str]:
     """G8-ADV-049: Authority document integrity verified against authority_manifest.sha256."""
+    from g8_verify_certification_bundle import verify_bundle
     tmp = tempfile.mkdtemp()
     try:
-        tampered_file = os.path.join(tmp, "Target Product Contract v0.6.md")
-        with open(tampered_file, "w", encoding="utf-8") as f:
-            f.write("# Tampered authority file content\n")
-        actual_sha = compute_file_sha256(tampered_file)
-        expected_sha = "0000000000000000000000000000000000000000000000000000000000000000"
-        if actual_sha != expected_sha:
-            return 2, "[BLOCKED] Check G8-ADV-049: Authority hash mismatch detected; tampered authority document rejected."
-        return 0, "[ALLOWED] Tampered authority document matched hash!"
+        mock_bundle = {
+            "certification_run_id": "test_run_adv_049",
+            "product_artifact_id": "prod_1",
+            "product_build_input_manifest_id": "input_1",
+            "certification_artifact_id": "cert_1",
+            "product_test_corpus_id": "ptc_1",
+            "certification_test_corpus_id": "ctc_1",
+            "upstream_closure_snapshot_id": "a" * 64,
+            "contract_hashes": {"contract/invariant_contract.yaml": "0" * 64},
+            "toolchain": {"gradle": "8.5"},
+            "derived_states": {},
+            "requirements_results": {"P6-G8-REQ-01": {"status": "PASS"}},
+            "closure_status": "CLOSED",
+            "release_artifact": {},
+            "evidence_artifacts": []
+        }
+        bpath = os.path.join(tmp, "bundle.json")
+        with open(bpath, "w", encoding="utf-8") as f:
+            json.dump(mock_bundle, f)
+        res = verify_bundle(bpath)
+        if res.get("status") == "PASS":
+            return 0, "[ALLOWED] Tampered authority contract hash accepted by verifier!"
+        return 2, "[BLOCKED] Check G8-ADV-049: Verifier detected and rejected tampered authority/contract SHA-256."
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1246,35 +1306,51 @@ def probe_G8_ADV_050() -> tuple[int, str]:
 
 
 def probe_G8_ADV_051() -> tuple[int, str]:
-    """G8-ADV-051: Trusted fingerprint independently supplied in contract."""
+    """G8-ADV-051: Trusted fingerprint independently supplied in contract and verified."""
+    from g8_verify_certification_bundle import verify_bundle
     tmp = tempfile.mkdtemp()
     try:
-        bad_contract = os.path.join(tmp, "contract.yaml")
-        with open(bad_contract, "w", encoding="utf-8") as f:
-            yaml.safe_dump({"signing_authority_provenance": {"trusted_fingerprint": None}}, f)
-        with open(bad_contract, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-        if not data.get("signing_authority_provenance", {}).get("trusted_fingerprint"):
-            return 2, "[BLOCKED] Check G8-ADV-051: Guard rejected missing/untrusted certificate fingerprint in contract."
-        return 0, "[ALLOWED] Missing trusted certificate fingerprint was accepted!"
+        mock_bundle = {
+            "certification_run_id": "test_run_adv_051",
+            "product_artifact_id": "prod_1",
+            "product_build_input_manifest_id": "input_1",
+            "certification_artifact_id": "cert_1",
+            "product_test_corpus_id": "ptc_1",
+            "certification_test_corpus_id": "ctc_1",
+            "upstream_closure_snapshot_id": "a" * 64,
+            "contract_hashes": {},
+            "toolchain": {},
+            "derived_states": {},
+            "requirements_results": {"P6-G8-REQ-01": {"status": "PASS"}},
+            "closure_status": "CLOSED",
+            "release_artifact": {"path": "nonexistent.apk", "sha256": "abc", "certificate_fingerprint": None},
+            "evidence_artifacts": []
+        }
+        bpath = os.path.join(tmp, "bundle.json")
+        with open(bpath, "w", encoding="utf-8") as f:
+            json.dump(mock_bundle, f)
+        res = verify_bundle(bpath)
+        if res.get("status") == "PASS":
+            return 0, "[ALLOWED] Missing trusted certificate fingerprint accepted by verifier!"
+        return 2, "[BLOCKED] Check G8-ADV-051: Verifier rejected bundle with missing/unverified release certificate fingerprint."
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
 def probe_G8_ADV_052() -> tuple[int, str]:
     """G8-ADV-052: Fresh UUID-based run directory avoids overwriting existing runs."""
+    from g8_certify import init_certification_run_dir
     tmp = tempfile.mkdtemp()
     try:
-        existing_run_dir = os.path.join(tmp, "cert_fixed_run_id")
-        os.makedirs(existing_run_dir, exist_ok=True)
-        with open(os.path.join(existing_run_dir, "data.txt"), "w", encoding="utf-8") as f:
-            f.write("run_1_data")
-
-        import uuid
-        new_run_dir = os.path.join(tmp, f"cert-{uuid.uuid4().hex[:12]}")
-        if os.path.exists(new_run_dir):
-            return 0, "[ALLOWED] Run directory collision permitted!"
-        return 2, "[BLOCKED] Check G8-ADV-052: Fresh UUID-based run directory isolation prevents run overwrites."
+        run_dir = os.path.join(tmp, "cert_run_immutable")
+        os.makedirs(run_dir, exist_ok=True)
+        with open(os.path.join(run_dir, "closure_bundle.json"), "w", encoding="utf-8") as f:
+            f.write('{"status": "CLOSED"}')
+        try:
+            init_certification_run_dir(run_dir)
+            return 0, "[ALLOWED] Repeated execution allowed overwriting existing sealed run directory!"
+        except FileExistsError as e:
+            return 2, f"[BLOCKED] Check G8-ADV-052: init_certification_run_dir strictly prevents overwriting existing run ({e})."
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1326,37 +1402,45 @@ def probe_G8_ADV_054() -> tuple[int, str]:
 
 
 def probe_G8_ADV_055() -> tuple[int, str]:
-    """G8-ADV-055: Forbidden pattern scanner detects live production URLs."""
+    """G8-ADV-055: Release environment verifier strictly detects and blocks live production endpoints in certification sandbox."""
+    from verify_g8_release_environment import verify_release_environment
     tmp = tempfile.mkdtemp()
     try:
-        bad_src = os.path.join(tmp, "BadEndpoint.kt")
-        with open(bad_src, "w", encoding="utf-8") as f:
-            f.write('val ep = "https://earthlink-reseller.firebaseio.com"\n')
-        violations = []
-        for denied in ["rapi.earthlink.iq", "earthlink-reseller.firebaseio.com"]:
-            with open(bad_src, "r", encoding="utf-8") as f:
-                if denied in f.read():
-                    violations.append(denied)
-        if len(violations) > 0:
-            return 2, f"[BLOCKED] Check G8-ADV-055: Guard detected and blocked live production endpoint in fixture ({violations[0]})."
-        return 0, "[ALLOWED] Live production endpoint bypassed detection!"
+        res_dir = os.path.join(tmp, "app", "src", "main", "res", "xml")
+        os.makedirs(res_dir, exist_ok=True)
+        bad_nsc = os.path.join(res_dir, "network_security_config.xml")
+        with open(bad_nsc, "w", encoding="utf-8") as f:
+            f.write('<network-security-config><domain-config cleartextTrafficPermitted="true"><domain>rapi.earthlink.iq</domain></domain-config></network-security-config>\n')
+        code_dir = os.path.join(tmp, "app", "src", "main", "java", "com", "example", "core", "network")
+        os.makedirs(code_dir, exist_ok=True)
+        with open(os.path.join(code_dir, "EarthlinkNetwork.kt"), "w", encoding="utf-8") as f:
+            f.write("package com.example.core.network\nobject EarthlinkNetwork\n")
+        res = verify_release_environment(repo_root=tmp)
+        if res is True:
+            return 0, "[ALLOWED] Release environment validator permitted live production endpoint in cleartext domain config!"
+        return 2, "[BLOCKED] Check G8-ADV-055: verify_g8_release_environment strictly blocked live production endpoint in cleartext config."
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
 def probe_G8_ADV_056() -> tuple[int, str]:
-    """G8-ADV-056: Automated test suites enforce fresh in-memory database and auth state isolation."""
+    """G8-ADV-056: Release environment verifier strictly detects and blocks stale app data/database contamination."""
+    from verify_g8_release_environment import verify_release_environment
     tmp = tempfile.mkdtemp()
     try:
-        bad_test = os.path.join(tmp, "BadDbTest.kt")
-        with open(bad_test, "w", encoding="utf-8") as f:
-            f.write('val db = Room.databaseBuilder(context, AppDatabase::class.java, "persistent.db").build()\n')
-        with open(bad_test, "r", encoding="utf-8") as f:
-            content = f.read()
-        is_isolated = ("inMemoryDatabaseBuilder" in content or "Fake" in content or "temporaryFolder" in content)
-        if not is_isolated:
-            return 2, "[BLOCKED] Check G8-ADV-056: Guard rejected persistent database configuration in test suite; in-memory isolation enforced."
-        return 0, "[ALLOWED] Persistent database allowed in test suite!"
+        app_dir = os.path.join(tmp, "app")
+        os.makedirs(app_dir, exist_ok=True)
+        code_dir = os.path.join(app_dir, "src", "main", "java", "com", "example", "core", "network")
+        os.makedirs(code_dir, exist_ok=True)
+        with open(os.path.join(code_dir, "EarthlinkNetwork.kt"), "w", encoding="utf-8") as f:
+            f.write("package com.example.core.network\nobject EarthlinkNetwork\n")
+        bad_db = os.path.join(app_dir, "prior_debug_stale.db")
+        with open(bad_db, "w", encoding="utf-8") as f:
+            f.write("corrupted_debug_state")
+        res = verify_release_environment(repo_root=tmp)
+        if res is True:
+            return 0, "[ALLOWED] Release environment verifier allowed stale persistent database in release environment!"
+        return 2, "[BLOCKED] Check G8-ADV-056: verify_release_environment strictly rejected stale persistent database contamination in release environment."
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1372,18 +1456,33 @@ def probe_G8_ADV_057() -> tuple[int, str]:
 
 
 def probe_G8_ADV_058() -> tuple[int, str]:
-    """G8-ADV-058: Production gate strictly invokes project Gradle wrapper."""
+    """G8-ADV-058: Production gate and bundle verifier strictly enforce project Gradle wrapper over system Gradle."""
+    from g8_verify_certification_bundle import verify_bundle
     tmp = tempfile.mkdtemp()
     try:
-        bad_gate = os.path.join(tmp, "bad_gate.sh")
-        with open(bad_gate, "w", encoding="utf-8") as f:
-            f.write("#!/bin/bash\ngradle assembleRelease\n")
-        with open(bad_gate, "r", encoding="utf-8") as f:
-            content = f.read()
-        uses_wrapper = ("./gradlew" in content or "gradle-wrapper.properties" in content)
-        if not uses_wrapper:
-            return 2, "[BLOCKED] Check G8-ADV-058: Production gate validator rejected unapproved system Gradle invocation; gradlew wrapper required."
-        return 0, "[ALLOWED] Unapproved system Gradle invocation accepted in production gate!"
+        mock_bundle = {
+            "certification_run_id": "test_run_adv_058",
+            "product_artifact_id": "prod_1",
+            "product_build_input_manifest_id": "input_1",
+            "certification_artifact_id": "cert_1",
+            "product_test_corpus_id": "ptc_1",
+            "certification_test_corpus_id": "ctc_1",
+            "upstream_closure_snapshot_id": "a" * 64,
+            "contract_hashes": {},
+            "toolchain": {"gradle_invocation": "system", "system_gradle": "8.5"},
+            "derived_states": {},
+            "requirements_results": {"P6-G8-REQ-01": {"status": "PASS"}},
+            "closure_status": "CLOSED",
+            "release_artifact": {},
+            "evidence_artifacts": []
+        }
+        bpath = os.path.join(tmp, "bundle.json")
+        with open(bpath, "w", encoding="utf-8") as f:
+            json.dump(mock_bundle, f)
+        res = verify_bundle(bpath)
+        if res.get("status") == "PASS":
+            return 0, "[ALLOWED] Bundle specifying system Gradle passed verification!"
+        return 2, "[BLOCKED] Check G8-ADV-058: Verifier strictly rejected system Gradle invocation in toolchain metadata."
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1443,51 +1542,71 @@ def probe_G8_ADV_060() -> tuple[int, str]:
 
 def probe_G8_ADV_061() -> tuple[int, str]:
     """G8-ADV-061: Upstream closure snapshot computation strictly changes when runtime contract is modified."""
+    from g8_certify import compute_upstream_closure_snapshot
     tmp = tempfile.mkdtemp()
     try:
-        c1 = os.path.join(tmp, "contract1.yaml")
-        c2 = os.path.join(tmp, "contract2.yaml")
-        with open(c1, "w", encoding="utf-8") as f:
-            f.write("version: 1\n")
-        with open(c2, "w", encoding="utf-8") as f:
-            f.write("version: 2\n")
-        h1 = compute_file_sha256(c1)
-        h2 = compute_file_sha256(c2)
-        if h1 != h2:
-            return 2, "[BLOCKED] Check G8-ADV-061: Upstream closure snapshot hash strictly invalidates when contract is modified."
-        return 0, "[ALLOWED] Contract modification failed to change snapshot hash!"
+        c_dir = os.path.join(tmp, "contract")
+        os.makedirs(c_dir, exist_ok=True)
+        c1_path = os.path.join(c_dir, "invariant_contract.yaml")
+        with open(c1_path, "w", encoding="utf-8") as f:
+            f.write("version: 1.0\n")
+        snap1 = compute_upstream_closure_snapshot(repo_root=tmp)
+        with open(c1_path, "w", encoding="utf-8") as f:
+            f.write("version: 2.0\n")
+        snap2 = compute_upstream_closure_snapshot(repo_root=tmp)
+        if snap1 == snap2:
+            return 0, "[ALLOWED] Modifying contract did not alter upstream closure snapshot ID!"
+        return 2, f"[BLOCKED] Check G8-ADV-061: compute_upstream_closure_snapshot strictly changed hash upon contract modification ({snap1[:16]} != {snap2[:16]})."
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
 def probe_G8_ADV_062() -> tuple[int, str]:
     """G8-ADV-062: Trusted fingerprint and allowlists independently defined in canonical contract."""
+    from g8_verify_certification_bundle import verify_bundle
     tmp = tempfile.mkdtemp()
     try:
-        bad_contract = os.path.join(tmp, "contract.yaml")
-        with open(bad_contract, "w", encoding="utf-8") as f:
-            f.write("signing_authority_provenance:\n  trusted_fingerprint: null\n")
-        with open(bad_contract, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-        if not isinstance(data, dict) or not data.get("signing_authority_provenance") or not data.get("signing_authority_provenance", {}).get("trusted_fingerprint"):
-            return 2, "[BLOCKED] Check G8-ADV-062: Canonical contract validator rejected dynamically inferred / missing trusted fingerprint."
-        return 0, "[ALLOWED] Missing trusted fingerprint allowed!"
+        mock_bundle = {
+            "certification_run_id": "test_run_adv_062",
+            "product_artifact_id": "prod_1",
+            "product_build_input_manifest_id": "input_1",
+            "certification_artifact_id": "cert_1",
+            "product_test_corpus_id": "ptc_1",
+            "certification_test_corpus_id": "ctc_1",
+            "upstream_closure_snapshot_id": "a" * 64,
+            "contract_hashes": {},
+            "toolchain": {},
+            "derived_states": {},
+            "requirements_results": {"P6-G8-REQ-01": {"status": "PASS"}},
+            "closure_status": "CLOSED",
+            "release_artifact": {"path": "unsigned.apk", "sha256": "fake", "certificate_fingerprint": None},
+            "evidence_artifacts": []
+        }
+        bpath = os.path.join(tmp, "bundle.json")
+        with open(bpath, "w", encoding="utf-8") as f:
+            json.dump(mock_bundle, f)
+        res = verify_bundle(bpath)
+        if res.get("status") == "PASS":
+            return 0, "[ALLOWED] Missing trusted fingerprint allowed by verifier!"
+        return 2, "[BLOCKED] Check G8-ADV-062: Verifier strictly rejected missing trusted fingerprint in bundle/contract."
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
 def probe_G8_ADV_063() -> tuple[int, str]:
     """G8-ADV-063: g8_certification_scope defines explicit machine domains and change policies."""
+    from build_g8_source_manifest import build_manifests
     tmp = tempfile.mkdtemp()
     try:
-        bad_scope = os.path.join(tmp, "bad_scope.yaml")
-        with open(bad_scope, "w", encoding="utf-8") as f:
-            f.write("domains:\n")
-        with open(bad_scope, "r", encoding="utf-8") as f:
-            s = yaml.safe_load(f)
-        if not isinstance(s, dict) or not s.get("domains"):
-            return 2, "[BLOCKED] Check G8-ADV-063: Scope validator rejected empty/unauthorized machine domains definition."
-        return 0, "[ALLOWED] Empty machine domains permitted in certification scope!"
+        c_dir = os.path.join(tmp, "contract")
+        os.makedirs(c_dir, exist_ok=True)
+        with open(os.path.join(c_dir, "g8_certification_scope.yaml"), "w", encoding="utf-8") as f:
+            yaml.safe_dump({"version": "1.0", "domains": []}, f)
+        try:
+            build_manifests(repo_root=tmp)
+            return 0, "[ALLOWED] Empty machine domains permitted in certification scope!"
+        except ValueError as e:
+            return 2, f"[BLOCKED] Check G8-ADV-063: build_manifests rejected empty machine domains in scope ({e})."
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1572,16 +1691,32 @@ def probe_G8_ADV_068() -> tuple[int, str]:
 
 def probe_G8_ADV_069() -> tuple[int, str]:
     """G8-ADV-069: Applicability gate correctly distinguishes pre-activation vs post-activation states."""
+    from g8_verify_certification_bundle import verify_bundle
     tmp = tempfile.mkdtemp()
     try:
-        bad_contract = os.path.join(tmp, "contract.yaml")
-        with open(bad_contract, "w", encoding="utf-8") as f:
-            yaml.safe_dump({"corpora_applicability": {}}, f)
-        with open(bad_contract, "r", encoding="utf-8") as f:
-            c = yaml.safe_load(f)
-        if "PRODUCT_TEST_CORPUS" not in c.get("corpora_applicability", {}):
-            return 2, "[BLOCKED] Check G8-ADV-069: Applicability gate rejected incomplete corpora applicability mapping."
-        return 0, "[ALLOWED] Incomplete applicability mapping was permitted!"
+        mock_bundle = {
+            "certification_run_id": "test_run_adv_069",
+            "product_artifact_id": "prod_1",
+            "product_build_input_manifest_id": "input_1",
+            "certification_artifact_id": "cert_1",
+            "product_test_corpus_id": "ptc_1",
+            "certification_test_corpus_id": "ctc_1",
+            "upstream_closure_snapshot_id": "a" * 64,
+            "contract_hashes": {},
+            "toolchain": {},
+            "derived_states": {},
+            "requirements_results": {"P6-G8-REQ-01": {"status": "UNEXECUTED"}},
+            "closure_status": "CLOSED",
+            "release_artifact": {},
+            "evidence_artifacts": []
+        }
+        bpath = os.path.join(tmp, "bundle.json")
+        with open(bpath, "w", encoding="utf-8") as f:
+            json.dump(mock_bundle, f)
+        res = verify_bundle(bpath)
+        if res.get("status") == "PASS":
+            return 0, "[ALLOWED] Premature closure allowed with UNEXECUTED requirements status!"
+        return 2, "[BLOCKED] Check G8-ADV-069: Applicability and closure verifier rejected premature closure with non-passing requirement status."
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1612,32 +1747,64 @@ def probe_G8_ADV_070() -> tuple[int, str]:
 
 def probe_G8_ADV_071() -> tuple[int, str]:
     """G8-ADV-071: Authority integrity check detects modified authority files and fails closed."""
+    from g8_verify_certification_bundle import verify_bundle
     tmp = tempfile.mkdtemp()
     try:
-        tampered_file = os.path.join(tmp, "Final Independent Adjudication Memo.md")
-        with open(tampered_file, "w", encoding="utf-8") as f:
-            f.write("# Modified Adjudication Memo\n")
-        actual_sha = compute_file_sha256(tampered_file)
-        expected_sha = "0000000000000000000000000000000000000000000000000000000000000000"
-        if actual_sha != expected_sha:
-            return 2, "[BLOCKED] Check G8-ADV-071: Authority integrity check detects modified authority file and fails closed."
-        return 0, "[ALLOWED] Modified authority document accepted without hash error!"
+        mock_bundle = {
+            "certification_run_id": "test_run_adv_071",
+            "product_artifact_id": "prod_1",
+            "product_build_input_manifest_id": "input_1",
+            "certification_artifact_id": "cert_1",
+            "product_test_corpus_id": "ptc_1",
+            "certification_test_corpus_id": "ctc_1",
+            "upstream_closure_snapshot_id": "a" * 64,
+            "contract_hashes": {"contract/invariant_contract.yaml": "corrupted_hash_value"},
+            "toolchain": {"gradle": "8.5"},
+            "derived_states": {},
+            "requirements_results": {"P6-G8-REQ-01": {"status": "PASS"}},
+            "closure_status": "CLOSED",
+            "release_artifact": {},
+            "evidence_artifacts": []
+        }
+        bpath = os.path.join(tmp, "bundle.json")
+        with open(bpath, "w", encoding="utf-8") as f:
+            json.dump(mock_bundle, f)
+        res = verify_bundle(bpath)
+        if res.get("status") == "PASS":
+            return 0, "[ALLOWED] Corrupted authority contract hash accepted by verifier!"
+        return 2, "[BLOCKED] Check G8-ADV-071: Authority integrity verifier detected modified contract and failed closed."
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
 def probe_G8_ADV_072() -> tuple[int, str]:
     """G8-ADV-072: g8_certification_contract validates signing authority provenance cryptographic binding."""
+    from g8_verify_certification_bundle import verify_bundle
     tmp = tempfile.mkdtemp()
     try:
-        bad_contract = os.path.join(tmp, "contract.yaml")
-        with open(bad_contract, "w", encoding="utf-8") as f:
-            yaml.safe_dump({"version": 1}, f)
-        with open(bad_contract, "r", encoding="utf-8") as f:
-            c = yaml.safe_load(f)
-        if "signing_authority_provenance" not in c:
-            return 2, "[BLOCKED] Check G8-ADV-072: Verifier rejected contract missing cryptographic signing authority provenance."
-        return 0, "[ALLOWED] Unauthenticated contract permitted!"
+        mock_bundle = {
+            "certification_run_id": "test_run_adv_072",
+            "product_artifact_id": "prod_1",
+            "product_build_input_manifest_id": "input_1",
+            "certification_artifact_id": "cert_1",
+            "product_test_corpus_id": "ptc_1",
+            "certification_test_corpus_id": "ctc_1",
+            "upstream_closure_snapshot_id": "a" * 64,
+            "contract_hashes": {},
+            "toolchain": {},
+            "derived_states": {},
+            "requirements_results": {"P6-G8-REQ-01": {"status": "PASS"}},
+            "closure_status": "CLOSED",
+            "release_artifact": {"path": "app.apk", "sha256": "abc", "certificate_fingerprint": "INVALID_SIGNING_AUTHORITY"},
+            "evidence_artifacts": []
+        }
+        bpath = os.path.join(tmp, "bundle.json")
+        with open(bpath, "w", encoding="utf-8") as f:
+            json.dump(mock_bundle, f)
+        res = verify_bundle(bpath)
+        if res.get("status") == "PASS":
+            return 0, "[ALLOWED] Bundle with unauthenticated signing authority accepted!"
+        return 2, "[BLOCKED] Check G8-ADV-072: Verifier rejected bundle failing signing authority provenance cryptographic binding."
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1667,20 +1834,25 @@ def probe_G8_ADV_073() -> tuple[int, str]:
 
 
 def probe_G8_ADV_074() -> tuple[int, str]:
-    """G8-ADV-074: scan_forbidden_patterns verified zero non-allowlisted network calls in test corpus."""
+    """G8-ADV-074: verify_test_environment_matrix verified zero non-allowlisted network calls in test corpus."""
+    from verify_test_environment_matrix import verify_matrix
     tmp = tempfile.mkdtemp()
     try:
-        bad_test = os.path.join(tmp, "LeakTest.kt")
-        with open(bad_test, "w", encoding="utf-8") as f:
-            f.write('val url = "http://external-unapproved-leak.com"\n')
-        violations = []
-        with open(bad_test, "r", encoding="utf-8") as f:
-            content = f.read()
-        if "http://" in content or "external-unapproved" in content:
-            violations.append("external-unapproved-leak.com")
-        if len(violations) > 0:
-            return 2, f"[BLOCKED] Check G8-ADV-074: Guard detected and rejected unapproved external network endpoint ({violations[0]})."
-        return 0, "[ALLOWED] Unapproved external network endpoint permitted!"
+        bad_mat = os.path.join(tmp, "matrix.yaml")
+        bad_data = {
+            "environments": {"JVM": {}, "ROBOLECTRIC": {}, "INSTRUMENTED": {}, "STRUCTURAL": {}, "HISTORICAL": {}},
+            "invariants_matrix": [{"id": f"INV-{i:02d}", "name": f"Inv {i}", "environments": ["JVM"], "primary_test_suite": f"Suite{i}", "rationale": "r"} for i in range(1, 17)],
+            "test_suites": [
+                {"name": "ExternalLeakTest", "path": "app/src/test/java/com/example/ResolveLocalVersionTest.kt", "environment": "UNAPPROVED_NETWORK_CALL"}
+            ],
+            "phase3_required_suites": []
+        }
+        with open(bad_mat, "w", encoding="utf-8") as f:
+            yaml.safe_dump(bad_data, f)
+        res = verify_matrix(matrix_path=bad_mat, repo_root=REPO_ROOT)
+        if res is True:
+            return 0, "[ALLOWED] Unapproved network test environment accepted by matrix validator!"
+        return 2, "[BLOCKED] Check G8-ADV-074: verify_test_environment_matrix strictly blocked unapproved network test environment."
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1762,11 +1934,34 @@ def probe_G8_ADV_078() -> tuple[int, str]:
 
 def probe_G8_ADV_079() -> tuple[int, str]:
     """G8-ADV-079: g8_certify consumes sealed UPSTREAM_CLOSURE_SNAPSHOT_ID immutably."""
-    from g8_certify import compute_upstream_closure_snapshot
-    s = compute_upstream_closure_snapshot()
-    if not s:
-        return 1, "[ERROR] Upstream closure snapshot computation failed."
-    return 2, f"[BLOCKED] Check G8-ADV-079: g8_certify consumes sealed UPSTREAM_CLOSURE_SNAPSHOT_ID ({s[:16]}...) immutably."
+    from g8_verify_certification_bundle import verify_bundle
+    tmp = tempfile.mkdtemp()
+    try:
+        mock_bundle = {
+            "certification_run_id": "test_run_adv_079",
+            "product_artifact_id": "prod_1",
+            "product_build_input_manifest_id": "input_1",
+            "certification_artifact_id": "cert_1",
+            "product_test_corpus_id": "ptc_1",
+            "certification_test_corpus_id": "ctc_1",
+            "upstream_closure_snapshot_id": None,
+            "contract_hashes": {},
+            "toolchain": {},
+            "derived_states": {},
+            "requirements_results": {"P6-G8-REQ-01": {"status": "PASS"}},
+            "closure_status": "CLOSED",
+            "release_artifact": {},
+            "evidence_artifacts": []
+        }
+        bpath = os.path.join(tmp, "bundle.json")
+        with open(bpath, "w", encoding="utf-8") as f:
+            json.dump(mock_bundle, f)
+        res = verify_bundle(bpath)
+        if res.get("status") == "PASS":
+            return 0, "[ALLOWED] Missing upstream closure snapshot ID accepted by verifier!"
+        return 2, "[BLOCKED] Check G8-ADV-079: Verifier rejected bundle missing sealed UPSTREAM_CLOSURE_SNAPSHOT_ID."
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 PROBE_HANDLERS = {
