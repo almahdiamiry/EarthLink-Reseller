@@ -21,7 +21,8 @@
 ├────────────────────────────────────────────────────────────────────────────────────────┤
 │ OPERATING MODE:        POST-V1 / STABLE MAINTENANCE                                    │
 │ ACTIVE WORKSTREAM:     NONE — SYSTEM IDLE (READY FOR MAINTENANCE TASKS)                │
-│ V1 RELEASE BASELINE:   FROZEN FOR V1 RELEASE (Certified commit: 6d91dbd)               │
+│ V1 CERTIFIED BASELINE: FROZEN FOR V1 RELEASE                                           │
+│                        (Last independently certified production code baseline: 6d91dbd)│
 │ POST-V1 EVOLUTION:     CONTROLLED VIA PROPORTIONAL VERIFICATION MODEL                  │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -38,7 +39,8 @@ All foundational remediation and verification phases are **formally complete and
 | **PHASE-01** | G1 Durable Intent & Restart Durability | **CLOSED** | [Wave 1 Final Spec](EarthLink-Reseller_Wave1_Step1-3_Final.md), `Workstream13ProcessRestartDurabilityRealDbTest` |
 | **PHASE-02** | Candidate Scope & Wave-1 Reconciliation | **CLOSED** | [Wave 1 Report v3](EarthLink-Reseller_Wave1_Report_v3.md), `accountStatement` 4-tuple correlation |
 | **PHASE-03** | G4 Lineage, G5 Identity & G8 Certification | **CLOSED** | [Evidence Directory](evidence/), 391 unit tests, 79 G8 adversarial probes, sealed release APK |
-| **PHASE-04** | V1 Closure & Governance Consolidation | **CLOSED** | [AGENTS.md](AGENTS.md) (V1 Operating Government), Master Design v1.2, Simplification Baseline v1.2 |
+| **PHASE-04** | V1 Closure & Governance Consolidation | **CLOSED** | [AGENTS.md](AGENTS.md) (V1 Operating Government Established) |
+
 
 ---
 
@@ -50,11 +52,15 @@ All foundational remediation and verification phases are **formally complete and
 
 ---
 
-## 4. Static Strategic Authority Directory
+## 4. Strategic Authority Directory
 
-* **Business & Product Authority:** [Target Product Contract v0.6](docs/authority/Target%20Product%20Contract%20v0.6.md)
-* **Architectural Boundaries:** [Final Independent Adjudication Memo](docs/authority/Final%20Independent%20Adjudication%20Memo.md)
-* **Engineering Architecture Models:** [G1-G8 Architecture Summary](docs/authority/G1-G8%20Consolidated%20Architecture%20Summary.md)
-* **Field Authority Classification:** [Account Field Authority](docs/authority/account_field_authority_classification.md)
-* **Ledger Identity Inventory:** [Ledger Identity Inventory](docs/authority/ledger_identity_inventory.md)
+### Primary Strategic Authority (Highest Domain & Architectural Truth)
+* **Product & Business Truth:** [`Target Product Contract v0.6`](docs/authority/Target%20Product%20Contract%20v0.6.md)
+* **Architectural Boundaries:** [`Final Independent Adjudication Memo`](docs/authority/Final%20Independent%20Adjudication%20Memo.md)
+
+### Static Supporting Authority (Domain Models & Inventories)
+* **Engineering Architecture Models:** [`G1-G8 Architecture Summary`](docs/authority/G1-G8%20Consolidated%20Architecture%20Summary.md)
+* **Field Authority Classification:** [`Account Field Authority`](docs/authority/account_field_authority_classification.md)
+* **Ledger Identity Inventory:** [`Ledger Identity Inventory`](docs/authority/ledger_identity_inventory.md)
+
 

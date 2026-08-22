@@ -10,7 +10,7 @@
 >
 > There is no second operating standard, no separate implementation governance authority, no separate simplification rulebook, and no plan governing another plan.
 >
-> Every AI agent and human maintainer working in this repository is governed exclusively by the rules, safety invariants, verification standards, and navigation procedures defined in this document.
+> Every AI agent and human maintainer working in this repository is governed exclusively by the operational rules, safety invariants, verification standards, and navigation procedures defined in this document.
 
 ---
 
@@ -23,42 +23,39 @@
 
 ## 3. Canonical Navigation Router (Where Truth Lives)
 
-The **"Owner ≠ Router"** principle is strictly enforced: `AGENTS.md` routes to truth but does not duplicate mutable domain facts.
+The **"Owner ≠ Router"** principle is strictly enforced: `AGENTS.md` routes to truth and operationalizes it, but does not duplicate mutable domain facts.
 
 ```text
-                                [AGENTS.md](AGENTS.md)
-                                          │
-                                          ▼
-                               "Start Here & Rules"
-                                          │
-                    ┌─────────────────────┴─────────────────────┐
-                    ▼                                           ▼
-      [PROJECT_ROADMAP.md](PROJECT_ROADMAP.md)      [Target Product Contract](docs/authority/Target%20Product%20Contract%20v0.6.md)
-                    │                                           │
-                    ▼                                           ▼
-          "Where is the project                       "What is the frozen
-           and what is current?"                       product truth?"
+                                [AGENTS.md]
+                         (V1 Operating Government)
+                                    │
+           ┌────────────────────────┼────────────────────────┐
+           ▼                        ▼                        ▼
+  [PROJECT_ROADMAP.md]     [docs/authority/*]          [contract/ & evidence/]
+   (Dynamic State GPS)     (Strategic Authorities)     (Machine Proofs & Tools)
 ```
 
-| Fact / Question Type | Canonical Owner | Link | Router Role |
+### Authority Directory & Truth Ownership
+
+| Authority Level | Document | Canonical Ownership | Router Role |
 |:---|:---|:---|:---|
-| **Operational Rules & Invariants** | `AGENTS.md` | [AGENTS.md](AGENTS.md) | **OWNS DIRECTLY** |
-| **Product & Business Requirements**| `Target Product Contract v0.6` | [Target Product Contract](docs/authority/Target%20Product%20Contract%20v0.6.md) | Points to contract |
-| **Architectural Rulings & Boundaries**| `Final Adjudication Memo` | [Final Adjudication Memo](docs/authority/Final%20Independent%20Adjudication%20Memo.md) | Points to memo |
-| **Engineering Models & Gate Summaries**| `G1-G8 Architecture Summary`| [G1-G8 Summary](docs/authority/G1-G8%20Consolidated%20Architecture%20Summary.md) | Points to summary |
-| **Database Field Authority (Room vs Cloud)**| `Account Field Classification`| [Field Authority](docs/authority/account_field_authority_classification.md) | Points to classification |
-| **Ledger Creation Provenance (10 Paths)**| `Ledger Identity Inventory` | [Ledger Inventory](docs/authority/ledger_identity_inventory.md) | Points to inventory |
-| **Current Milestone & Operating Mode**| `PROJECT_ROADMAP.md` | [PROJECT_ROADMAP.md](PROJECT_ROADMAP.md) | Points to roadmap |
-| **Plan Status & Execution Records**| `docs/authority/PLAN_STATUS.md` | [PLAN_STATUS.md](docs/authority/PLAN_STATUS.md) | Points to plan status |
-| **Machine Invariant Contracts**| `contract/invariant_contract.yaml` | [Invariant Contract](contract/invariant_contract.yaml) | Points to contract/ |
-| **Certification Truth & Machine Proofs**| `evidence/` | [Evidence Directory](evidence/) | Points to evidence/ |
-| **Audit History & Commit Ledger**| `CHANGELOG.md` | [CHANGELOG.md](CHANGELOG.md) | Points to changelog |
+| **Operational Government** | [`AGENTS.md`](AGENTS.md) | **Operational Rules, Invariants & Router** | **OWNS DIRECTLY** |
+| **Dynamic State GPS** | [`PROJECT_ROADMAP.md`](PROJECT_ROADMAP.md) | **Current Operating Mode & Active Task** | Points to GPS state |
+| **Primary Strategic Authority** | [`Target Product Contract v0.6`](docs/authority/Target%20Product%20Contract%20v0.6.md) | **Business Truth, Product Rules & Contracts** | Points to product truth |
+| **Primary Strategic Authority** | [`Final Independent Adjudication Memo`](docs/authority/Final%20Independent%20Adjudication%20Memo.md) | **Architectural Boundaries & Concurrency** | Points to architecture |
+| **Static Supporting Authority** | [`G1-G8 Architecture Summary`](docs/authority/G1-G8%20Consolidated%20Architecture%20Summary.md) | **Engineering Models & Bounded Recovery** | Points to summary |
+| **Static Supporting Authority** | [`Account Field Classification`](docs/authority/account_field_authority_classification.md) | **Room vs Firestore vs ISP Field Ownership** | Points to field authority |
+| **Static Supporting Authority** | [`Ledger Identity Inventory`](docs/authority/ledger_identity_inventory.md) | **Canonical 10 Ledger Creation Paths** | Points to ID inventory |
+| **Major Work Plan Registry** | [`docs/authority/PLAN_STATUS.md`](docs/authority/PLAN_STATUS.md) | **Major Multi-Session Plan Tracking** | Points to plan registry |
+| **Machine Invariant Contracts** | [`contract/invariant_contract.yaml`](contract/invariant_contract.yaml) | **Executable Invariant Definitions** | Points to contracts |
+| **Sealed Verification Receipts**| [`evidence/`](evidence/) | **Sealed Certification Evidence & Test Runs** | Points to evidence |
+| **Historical Audit Log** | [`CHANGELOG.md`](CHANGELOG.md) | **Commit & Milestone History** | Points to changelog |
 
 ---
 
-## 4. The 10 Permanent RED Invariants (Must Never Break)
+## 4. Operational RED Invariants (Must Never Break)
 
-These ten core guarantees represent the permanent, non-negotiable safety foundation of the application:
+Strategic domain authorities ([`Target Product Contract v0.6`](docs/authority/Target%20Product%20Contract%20v0.6.md) and [`Final Adjudication Memo`](docs/authority/Final%20Independent%20Adjudication%20Memo.md)) define the underlying business and architectural truth. `AGENTS.md` operationalizes and protects those guarantees through these ten mandatory RED invariants:
 
 1. **Financial Correctness:** Additive ledger math from baseline (`derivedCurrentPosition`); whole-IQD and 250-IQD multiple validation; zero fractional currency drift.
 2. **History Preservation:** No physical row deletion on `local_ledger_entries`; `ON DELETE CASCADE` eliminated in migration 14; ISP-side subscriber deletion transitions accounts to `isHistoryOnlySubscriber` without erasing historical debt or payments.
@@ -100,7 +97,7 @@ The following items are **officially accepted V1 technical debt**. They are **NO
 2. **Do NOT revive rejected concepts:** Staging databases, Web Admin scraping, and Identity Registries were permanently rejected by the Product Contract.
 3. **Do NOT perform "while-we're-here" expansions:** Implement ONLY the minimal required scope for the current authorized task.
 4. **Do NOT refactor working code solely for line count:** Large files that work reliably and pass tests are acceptable V1 debt.
-5. **Do NOT touch path-locked historical records:** Files `PRODUCTION_INVARIANTS.md`, `ARCHITECTURE.md`, `PRODUCTION_CONTRACT_MATRIX.md`, and all files in `evidence/` are frozen for cryptographic hash integrity.
+5. **Do NOT touch path-locked historical records:** Files `PRODUCTION_INVARIANTS.md`, `ARCHITECTURE.md`, `PRODUCTION_CONTRACT_MATRIX.md`, and all files in `evidence/` are frozen for sealed certification evidence path and hash integrity.
 
 ---
 
@@ -153,8 +150,9 @@ Verification scales directly with the blast radius of the change:
 │   → Verify against relevant regression tests.                                          │
 │                                                                                        │
 │ • WORKING PLAN DISCIPLINE:                                                             │
-│   → Plans are disposable working tools. If new evidence contradicts a plan, update or  │
-│     discard it immediately without ceremonial resistance.                              │
+│   → Plan files are temporary working tools, NOT governance documents.                  │
+│   → PLAN_STATUS.md is a major-work registry, NOT daily operational government.         │
+│   → If new evidence contradicts a plan, update or discard it immediately.              │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -180,3 +178,4 @@ When starting any new task, follow this exact 3-step loop:
 1. **Read `AGENTS.md`:** Review system purpose, RED invariants, Scope Shield, and Navigation Router.
 2. **Check `PROJECT_ROADMAP.md`:** Check current operating milestone (`POST-V1 / STABLE MAINTENANCE`) and active task.
 3. **Work & Proportionally Verify:** Execute task, run proportional verification, and stop.
+
