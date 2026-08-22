@@ -1,0 +1,7 @@
+<testsuite name="com.example.SuiteC" tests="5" failures="0" errors="1" skipped="0">
+    <testcase name="case1" classname="com.example.SuiteC"/>
+    <testcase name="case2" classname="com.example.SuiteC">
+        <error message="NullPointerException" type="java.lang.NullPointerException">err</error>
+    </testcase>
+    <testcase name="case3" classname="com.example.SuiteC"/>
+</testsuite>

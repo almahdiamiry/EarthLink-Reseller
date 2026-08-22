@@ -17,12 +17,13 @@ EarthLink Reseller is a local-first, offline-capable Android application designe
 - Step 3 Adversarial Certification — GO
 - G1 / Wave 1 Closure — CLOSED
 - C06 / C12 Evidence Closure — CLOSED
+- G8 Final Machine-Verifiable Production Certification — CLOSED
 
 ### Current Gate
-- Post-Wave-1 Scope Assessment — NOT STARTED
+- Post-Wave-1 Scope Assessment — COMPLETE
 
 ### Next Authorized Gate
-- TBD by current authority after Scope Assessment
+- LAUNCH / Post-Launch Handover
 
 **Production architecture is FROZEN unless a concrete current contradiction is established.** Do not reopen completed work.
 

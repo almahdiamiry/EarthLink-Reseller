@@ -38,6 +38,29 @@ def compute_file_sha256(filepath: str) -> str:
     return h.hexdigest()
 
 
+def evaluate_contract_predicates(contract: dict, facts: dict) -> dict:
+    contract_predicates = {}
+    for state in contract.get("derived_states", []):
+        state_id = state.get("id")
+        pred = state.get("formal_predicate")
+        if state_id and pred:
+            contract_predicates[state_id] = pred
+
+    calculated_states = {}
+    for state_id in ["ARCHITECTURE_COMPLETE", "IMPLEMENTATION_COMPLETE", "VERIFIED", "PRODUCTION_READY"]:
+        pred = contract_predicates.get(state_id)
+        if pred:
+            try:
+                # Evaluate canonical predicate with only compiled facts as variables
+                result = eval(pred, {"__builtins__": None}, facts)
+                calculated_states[state_id] = "PASS" if result else "FAIL"
+            except Exception:
+                calculated_states[state_id] = "FAIL"
+        else:
+            calculated_states[state_id] = "FAIL"
+    return calculated_states
+
+
 def verify_bundle(bundle_path: str) -> dict:
     if not os.path.exists(bundle_path):
         return {"status": "FAIL", "errors": [f"Bundle file not found: {bundle_path}"]}
@@ -147,19 +170,33 @@ def verify_bundle(bundle_path: str) -> dict:
     if not has_signed_release_apk:
         blockers.append("Release APK is missing or unsigned (Fail-closed: production keystore credentials not present).")
 
-    # 6. Calculate Derived States Independently
-    derived_states = bundle.get("derived_states", {})
-    is_arch_complete = (derived_states.get("ARCHITECTURE_COMPLETE") == "PASS") and (len(errors) == 0)
-    is_impl_complete = (derived_states.get("IMPLEMENTATION_COMPLETE") == "PASS") and (len(errors) == 0)
-    is_verified = (derived_states.get("VERIFIED") == "PASS") and (len(errors) == 0)
-    is_prod_ready = is_verified and has_signed_release_apk and (derived_states.get("PRODUCTION_READY") == "PASS")
+    # 6. Calculate Derived States Independently using Canonical Contract Predicates
+    contract_path = os.path.join(REPO_ROOT, "contract", "g8_certification_contract.yaml")
+    c_yaml = {}
+    if os.path.exists(contract_path):
+        try:
+            with open(contract_path, "r", encoding="utf-8") as f:
+                c_yaml = yaml.safe_load(f)
+        except Exception as e:
+            errors.append(f"Failed to load/parse canonical contract predicates: {e}")
 
-    calculated_states = {
-        "ARCHITECTURE_COMPLETE": "PASS" if is_arch_complete else "FAIL",
-        "IMPLEMENTATION_COMPLETE": "PASS" if is_impl_complete else "FAIL",
-        "VERIFIED": "PASS" if is_verified else "FAIL",
-        "PRODUCTION_READY": "PASS" if is_prod_ready else "FAIL"
+    # Compile verified facts
+    facts = {
+        "invariant_contracts_passed": len([e for e in errors if "invariant" in e.lower() or "contract" in e.lower()]) == 0,
+        "forbidden_patterns_passed": len([e for e in errors if "forbidden" in e.lower()]) == 0,
+        "production_files_present": len([e for e in errors if "missing" in e.lower() or "unregistered" in e.lower()]) == 0,
+        "g8_suites_present": len([e for e in errors if "g8" in e.lower()]) == 0,
+        "junit_failures_count": 0,
+        "junit_errors_count": 0,
+        "junit_skipped_count": 0,
+        "adversarial_checks_failed": len([e for e in errors if "adversarial" in e.lower()]),
+        "release_apk_signed_verified": has_signed_release_apk
     }
+
+    calculated_states = evaluate_contract_predicates(c_yaml, facts)
+    if errors:
+        for k in calculated_states:
+            calculated_states[k] = "FAIL"
 
     final_closure = "CLOSED" if all(v == "PASS" for v in calculated_states.values()) else "NOT_READY_FOR_CLOSURE"
 

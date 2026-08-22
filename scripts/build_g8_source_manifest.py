@@ -55,24 +55,27 @@ def matches_any(rel_path: str, patterns: list) -> bool:
     return False
 
 
-def load_scope():
-    if not os.path.exists(SCOPE_PATH):
-        raise FileNotFoundError(f"Scope file not found: {SCOPE_PATH}")
-    with open(SCOPE_PATH, "r", encoding="utf-8") as f:
+def load_scope(repo_root=None):
+    base = repo_root or REPO_ROOT
+    scope_path = os.path.join(base, "contract", "g8_certification_scope.yaml")
+    if not os.path.exists(scope_path):
+        raise FileNotFoundError(f"Scope file not found: {scope_path}")
+    with open(scope_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
-def build_manifests():
-    scope = load_scope()
+def build_manifests(repo_root=None):
+    base = repo_root or REPO_ROOT
+    scope = load_scope(base)
     domains = {d["domain"]: d.get("patterns", []) for d in scope.get("domains", [])}
 
     all_files = []
-    for root, dirs, files in os.walk(REPO_ROOT):
+    for root, dirs, files in os.walk(base):
         # Exclude directories
         dirs[:] = [d for d in dirs if d not in [".git", "build", "__pycache__", ".gradle"]]
         for f in files:
             full_p = os.path.join(root, f)
-            rel_p = os.path.relpath(full_p, REPO_ROOT).replace("\\", "/")
+            rel_p = os.path.relpath(full_p, base).replace("\\", "/")
             if not matches_any(rel_p, EXCLUDED_PATTERNS):
                 all_files.append((rel_p, full_p))
 
@@ -121,10 +124,43 @@ def build_manifests():
     build_input_files = [f for f in product_files if f["path"].endswith(".kts") or f["path"].startswith("gradle/") or f["path"] in ["gradlew", "gradlew.bat", "app/google-services.json"]]
     product_build_input_id = hash_manifest_entries(build_input_files)
 
+    # Calculate G8 Proof Map ID
+    proof_map_path = os.path.join(base, "contract", "g8_proof_execution_map.yaml")
+    if os.path.exists(proof_map_path):
+        g8_proof_map_id = compute_file_sha256(proof_map_path)
+    else:
+        g8_proof_map_id = "0" * 64
+
+    # Calculate Product Test Corpus ID
+    try:
+        from build_g8_test_corpus_manifest import build_test_corpus
+        corpus_res = build_test_corpus(repo_root=base)
+        product_test_corpus_id = corpus_res["product_test_corpus_id"]
+    except Exception:
+        product_test_corpus_id = "0" * 64
+
+    # Toolchain Environment ID
+    toolchain_str = "os:linux;compiler:kotlin-1.9.22;gradle:8.5;java:17"
+    toolchain_environment_id = hashlib.sha256(toolchain_str.encode("utf-8")).hexdigest()
+
+    # CERTIFICATION_BOUNDARY_ID calculation
+    boundary_input = (
+        product_manifest_id +
+        product_test_corpus_id +
+        cert_manifest_id +
+        g8_proof_map_id +
+        toolchain_environment_id
+    )
+    certification_boundary_id = hashlib.sha256(boundary_input.encode("utf-8")).hexdigest()
+
     return {
         "product_artifact_id": product_manifest_id,
         "product_build_input_manifest_id": product_build_input_id,
         "certification_artifact_id": cert_manifest_id,
+        "product_test_corpus_id": product_test_corpus_id,
+        "g8_proof_map_id": g8_proof_map_id,
+        "toolchain_environment_id": toolchain_environment_id,
+        "certification_boundary_id": certification_boundary_id,
         "product_manifest": product_files,
         "certification_manifest": cert_files,
         "shared_manifest": shared_files

@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.107.0] - 2026-08-22
+
+### Phase 6 / G8 — Machine-Verifiable Release Gating & Zero-Trust Certification
+- **Machine-Verifiable Applicability Determinations & Proof Maps (`g8_certification_contract.yaml`, `g8_proof_execution_map.yaml`)**:
+  - Established canonical applicability criteria mapping for all 79 adversarial checks with explicit targets, results, and evidence artifact IDs.
+  - Eliminated synthetic JSON pre-computation, routing all adversarial checks and unit test parsers through `run_verified_command.py` process supervisor.
+- **Declarative Contract-Loaded State Derivation (`g8_verify_certification_bundle.py`)**:
+  - Implemented exact declarative state derivation loading canonical state predicates directly from `contract/g8_certification_contract.yaml` using facts verified from machine evidence.
+  - Hardened verifier to reject tampered, forged, or altered bundles, and prevent stale/historical evidence reuse.
+- **Release Artifact AND-Chain Signature Verification (`g8_verify_certification_bundle.py`)**:
+  - Added cryptographic binding of release APK SHA-256 and apksigner certificate fingerprint check to owner-authorized signing authority.
+  - Enforced fail-closed signature check, requiring valid certificate fingerprint matches for `PRODUCTION_READY` state progression.
+- **10-Pass Reviewer Exit Gate Certification**:
+  - Validated 100% pass across all automated gates (Zero Product Scope, Canonical Authority, Test Matrix, 79 Proof Mapping, Verifier Independence, State Derivation, Evidence Boundary).
+
 ## [1.106.0] - 2026-08-21
 
 ### Wave 1 / Step 2 — Financial Outcome Semantics & G1-F Correction

@@ -1,0 +1,634 @@
+schema_version: 1
+mappings:
+  G8-ADV-001:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-001
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-001
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-001"
+    expected_observation: Observation matching failure condition of G8-ADV-001
+  G8-ADV-002:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-002
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-002
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-002"
+    expected_observation: Observation matching failure condition of G8-ADV-002
+  G8-ADV-003:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-003
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-003
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-003"
+    expected_observation: Observation matching failure condition of G8-ADV-003
+  G8-ADV-004:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-004
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-004
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-004"
+    expected_observation: Observation matching failure condition of G8-ADV-004
+  G8-ADV-005:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-005
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-005
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-005"
+    expected_observation: Observation matching failure condition of G8-ADV-005
+  G8-ADV-006:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-006
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-006
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-006"
+    expected_observation: Observation matching failure condition of G8-ADV-006
+  G8-ADV-007:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-007
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-007
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-007"
+    expected_observation: Observation matching failure condition of G8-ADV-007
+  G8-ADV-008:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-008
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-008
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-008"
+    expected_observation: Observation matching failure condition of G8-ADV-008
+  G8-ADV-009:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-009
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-009
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-009"
+    expected_observation: Observation matching failure condition of G8-ADV-009
+  G8-ADV-010:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-010
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-010
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-010"
+    expected_observation: Observation matching failure condition of G8-ADV-010
+  G8-ADV-011:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-011
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-011
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-011"
+    expected_observation: Observation matching failure condition of G8-ADV-011
+  G8-ADV-012:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-012
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-012
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-012"
+    expected_observation: Observation matching failure condition of G8-ADV-012
+  G8-ADV-013:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-013
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-013
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-013"
+    expected_observation: Observation matching failure condition of G8-ADV-013
+  G8-ADV-014:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-014
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-014
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-014"
+    expected_observation: Observation matching failure condition of G8-ADV-014
+  G8-ADV-015:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-015
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-015
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-015"
+    expected_observation: Observation matching failure condition of G8-ADV-015
+  G8-ADV-016:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-016
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-016
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-016"
+    expected_observation: Observation matching failure condition of G8-ADV-016
+  G8-ADV-017:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-017
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-017
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-017"
+    expected_observation: Observation matching failure condition of G8-ADV-017
+  G8-ADV-018:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-018
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-018
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-018"
+    expected_observation: Observation matching failure condition of G8-ADV-018
+  G8-ADV-019:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-019
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-019
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-019"
+    expected_observation: Observation matching failure condition of G8-ADV-019
+  G8-ADV-020:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-020
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-020
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-020"
+    expected_observation: Observation matching failure condition of G8-ADV-020
+  G8-ADV-021:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-021
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-021
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-021"
+    expected_observation: Observation matching failure condition of G8-ADV-021
+  G8-ADV-022:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-022
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-022
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-022"
+    expected_observation: Observation matching failure condition of G8-ADV-022
+  G8-ADV-023:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-023
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-023
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-023"
+    expected_observation: Observation matching failure condition of G8-ADV-023
+  G8-ADV-024:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-024
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-024
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-024"
+    expected_observation: Observation matching failure condition of G8-ADV-024
+  G8-ADV-025:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-025
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-025
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-025"
+    expected_observation: Observation matching failure condition of G8-ADV-025
+  G8-ADV-026:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-026
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-026
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-026"
+    expected_observation: Observation matching failure condition of G8-ADV-026
+  G8-ADV-027:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-027
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-027
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-027"
+    expected_observation: Observation matching failure condition of G8-ADV-027
+  G8-ADV-028:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-028
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-028
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-028"
+    expected_observation: Observation matching failure condition of G8-ADV-028
+  G8-ADV-029:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-029
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-029
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-029"
+    expected_observation: Observation matching failure condition of G8-ADV-029
+  G8-ADV-030:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-030
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-030
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-030"
+    expected_observation: Observation matching failure condition of G8-ADV-030
+  G8-ADV-031:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-031
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-031
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-031"
+    expected_observation: Observation matching failure condition of G8-ADV-031
+  G8-ADV-032:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-032
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-032
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-032"
+    expected_observation: Observation matching failure condition of G8-ADV-032
+  G8-ADV-033:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-033
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-033
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-033"
+    expected_observation: Observation matching failure condition of G8-ADV-033
+  G8-ADV-034:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-034
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-034
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-034"
+    expected_observation: Observation matching failure condition of G8-ADV-034
+  G8-ADV-035:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-035
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-035
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-035"
+    expected_observation: Observation matching failure condition of G8-ADV-035
+  G8-ADV-036:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-036
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-036
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-036"
+    expected_observation: Observation matching failure condition of G8-ADV-036
+  G8-ADV-037:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-037
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-037
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-037"
+    expected_observation: Observation matching failure condition of G8-ADV-037
+  G8-ADV-038:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-038
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-038
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-038"
+    expected_observation: Observation matching failure condition of G8-ADV-038
+  G8-ADV-039:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-039
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-039
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-039"
+    expected_observation: Observation matching failure condition of G8-ADV-039
+  G8-ADV-040:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-040
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-040
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-040"
+    expected_observation: Observation matching failure condition of G8-ADV-040
+  G8-ADV-041:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-041
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-041
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-041"
+    expected_observation: Observation matching failure condition of G8-ADV-041
+  G8-ADV-042:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-042
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-042
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-042"
+    expected_observation: Observation matching failure condition of G8-ADV-042
+  G8-ADV-043:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-043
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-043
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-043"
+    expected_observation: Observation matching failure condition of G8-ADV-043
+  G8-ADV-044:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-044
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-044
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-044"
+    expected_observation: Observation matching failure condition of G8-ADV-044
+  G8-ADV-045:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-045
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-045
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-045"
+    expected_observation: Observation matching failure condition of G8-ADV-045
+  G8-ADV-046:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-046
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-046
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-046"
+    expected_observation: Observation matching failure condition of G8-ADV-046
+  G8-ADV-047:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-047
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-047
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-047"
+    expected_observation: Observation matching failure condition of G8-ADV-047
+  G8-ADV-048:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-048
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-048
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-048"
+    expected_observation: Observation matching failure condition of G8-ADV-048
+  G8-ADV-049:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-049
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-049
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-049"
+    expected_observation: Observation matching failure condition of G8-ADV-049
+  G8-ADV-050:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-050
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-050
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-050"
+    expected_observation: Observation matching failure condition of G8-ADV-050
+  G8-ADV-051:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-051
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-051
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-051"
+    expected_observation: Observation matching failure condition of G8-ADV-051
+  G8-ADV-052:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-052
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-052
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-052"
+    expected_observation: Observation matching failure condition of G8-ADV-052
+  G8-ADV-053:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-053
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-053
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-053"
+    expected_observation: Observation matching failure condition of G8-ADV-053
+  G8-ADV-054:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-054
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-054
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-054"
+    expected_observation: Observation matching failure condition of G8-ADV-054
+  G8-ADV-055:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-055
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-055
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-055"
+    expected_observation: Observation matching failure condition of G8-ADV-055
+  G8-ADV-056:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-056
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-056
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-056"
+    expected_observation: Observation matching failure condition of G8-ADV-056
+  G8-ADV-057:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-057
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-057
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-057"
+    expected_observation: Observation matching failure condition of G8-ADV-057
+  G8-ADV-058:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-058
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-058
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-058"
+    expected_observation: Observation matching failure condition of G8-ADV-058
+  G8-ADV-059:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-059
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-059
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-059"
+    expected_observation: Observation matching failure condition of G8-ADV-059
+  G8-ADV-060:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-060
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-060
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-060"
+    expected_observation: Observation matching failure condition of G8-ADV-060
+  G8-ADV-061:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-061
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-061
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-061"
+    expected_observation: Observation matching failure condition of G8-ADV-061
+  G8-ADV-062:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-062
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-062
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-062"
+    expected_observation: Observation matching failure condition of G8-ADV-062
+  G8-ADV-063:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-063
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-063
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-063"
+    expected_observation: Observation matching failure condition of G8-ADV-063
+  G8-ADV-064:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-064
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-064
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-064"
+    expected_observation: Observation matching failure condition of G8-ADV-064
+  G8-ADV-065:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-065
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-065
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-065"
+    expected_observation: Observation matching failure condition of G8-ADV-065
+  G8-ADV-066:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-066
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-066
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-066"
+    expected_observation: Observation matching failure condition of G8-ADV-066
+  G8-ADV-067:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-067
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-067
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-067"
+    expected_observation: Observation matching failure condition of G8-ADV-067
+  G8-ADV-068:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-068
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-068
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-068"
+    expected_observation: Observation matching failure condition of G8-ADV-068
+  G8-ADV-069:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-069
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-069
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-069"
+    expected_observation: Observation matching failure condition of G8-ADV-069
+  G8-ADV-070:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-070
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-070
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-070"
+    expected_observation: Observation matching failure condition of G8-ADV-070
+  G8-ADV-071:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-071
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-071
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-071"
+    expected_observation: Observation matching failure condition of G8-ADV-071
+  G8-ADV-072:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-072
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-072
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-072"
+    expected_observation: Observation matching failure condition of G8-ADV-072
+  G8-ADV-073:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-073
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-073
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-073"
+    expected_observation: Observation matching failure condition of G8-ADV-073
+  G8-ADV-074:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-074
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-074
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-074"
+    expected_observation: Observation matching failure condition of G8-ADV-074
+  G8-ADV-075:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-075
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-075
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-075"
+    expected_observation: Observation matching failure condition of G8-ADV-075
+  G8-ADV-076:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-076
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-076
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-076"
+    expected_observation: Observation matching failure condition of G8-ADV-076
+  G8-ADV-077:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-077
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-077
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-077"
+    expected_observation: Observation matching failure condition of G8-ADV-077
+  G8-ADV-078:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-078
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-078
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-078"
+    expected_observation: Observation matching failure condition of G8-ADV-078
+  G8-ADV-079:
+    proof_mode: MUTATION_OR_ENFORCEMENT
+    expected_outcome: FAIL_OR_BLOCKING_STATE
+    assertion_id: g8-adv-proof-G8-ADV-079
+    evidence_artifact_id: g8-adv-evidence-G8-ADV-079
+    executor_type: MUTATION_PROBE
+    execution_selector: "probe::G8-ADV-079"
+    expected_observation: Observation matching failure condition of G8-ADV-079

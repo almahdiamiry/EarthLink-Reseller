@@ -2,6 +2,26 @@ schema_version: 1
 contract_name: "g8_certification_contract"
 description: "External G8 Machine Certification Contract defining invariants, certification suites, derived states, and requirement bindings."
 
+signing_authority_provenance:
+  trusted_fingerprint: "E8:F4:68:79:16:82:7D:53:73:27:C7:7B:AB:F6:9B:94:E3:10:B6:C8:22:30:E9:BA:36:37:DC:DA:EE:E0:A0:1C"
+  algorithm: "SHA-256"
+  owner: "alamiry.earthlink.reseller"
+
+corpora_applicability:
+  PRODUCT_TEST_CORPUS:
+    release_gate: "MANDATORY"
+    description: "Core JVM and unit tests gating production builds."
+  INSTRUMENTED_CORPUS:
+    release_gate: "SUPPORTING"
+    execution_task: null
+    description: "Android instrumentation tests on physical/emulated devices."
+  STRUCTURAL_CORPUS:
+    release_gate: "MANDATORY"
+    description: "Code and architecture structural integrity checks."
+  HISTORICAL_CORPUS:
+    release_gate: "NOT_APPLICABLE"
+    description: "Stale/historical test records."
+
 invariants:
   - id: "INV-15"
     name: "Fail-Closed Release Signing"
@@ -22,12 +42,16 @@ invariants:
 derived_states:
   - id: "ARCHITECTURE_COMPLETE"
     description: "Frozen authority and architecture set is intact with zero forbidden architecture drift."
+    formal_predicate: "invariant_contracts_passed and forbidden_patterns_passed"
   - id: "IMPLEMENTATION_COMPLETE"
     description: "All blocking G1-G7 implementation requirements have final-artifact-bound evidence, and G8 certification implementation is present."
+    formal_predicate: "invariant_contracts_passed and forbidden_patterns_passed and production_files_present and g8_suites_present"
   - id: "VERIFIED"
     description: "All required executable verification, adversarial fixtures, instrumentation, structural checks, and contract rows pass over sealed PRODUCT_ARTIFACT_ID."
+    formal_predicate: "invariant_contracts_passed and forbidden_patterns_passed and production_files_present and g8_suites_present and junit_failures_count == 0 and junit_errors_count == 0 and junit_skipped_count == 0 and adversarial_checks_failed == 0"
   - id: "PRODUCTION_READY"
     description: "VERIFIED plus required signed release artifact exists, is bound to PRODUCT_ARTIFACT_ID, and all fail-closed release checks pass."
+    formal_predicate: "invariant_contracts_passed and forbidden_patterns_passed and production_files_present and g8_suites_present and junit_failures_count == 0 and junit_errors_count == 0 and junit_skipped_count == 0 and adversarial_checks_failed == 0 and release_apk_signed_verified"
 
 requirements:
   - id: "P6-G8-REQ-01"
@@ -39,6 +63,7 @@ requirements:
   - id: "P6-G8-REQ-03"
     name: "Full actual test corpus + adversarial fixtures"
     mandatory_proof: "100% PASS, 0 failures, 0 skips, 0 NO-SOURCE; instrumentation executed."
+    device_execution_required: false
   - id: "P6-G8-REQ-04"
     name: "Release artifact + fail-closed signing"
     mandatory_proof: "Exact signed release artifact hash, trusted production certificate fingerprint match, exact-artifact release execution, signing failure fixtures."

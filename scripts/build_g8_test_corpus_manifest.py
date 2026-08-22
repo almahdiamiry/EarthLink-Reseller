@@ -32,11 +32,13 @@ def compute_file_sha256(filepath: str) -> str:
     return h.hexdigest()
 
 
-def build_test_corpus():
-    if not os.path.exists(SCOPE_PATH):
-        raise FileNotFoundError(f"Scope file not found: {SCOPE_PATH}")
+def build_test_corpus(repo_root=None):
+    base = repo_root or REPO_ROOT
+    scope_path = os.path.join(base, "contract", "g8_certification_scope.yaml")
+    if not os.path.exists(scope_path):
+        raise FileNotFoundError(f"Scope file not found: {scope_path}")
 
-    with open(SCOPE_PATH, "r", encoding="utf-8") as f:
+    with open(scope_path, "r", encoding="utf-8") as f:
         scope_data = yaml.safe_load(f)
 
     cert_patterns = []
@@ -48,8 +50,8 @@ def build_test_corpus():
             prod_test_patterns = d.get("patterns", [])
 
     # Find all test files on disk
-    unit_dir = os.path.join(REPO_ROOT, "app", "src", "test", "java", "com", "example")
-    androidTest_dir = os.path.join(REPO_ROOT, "app", "src", "androidTest", "java", "com", "example")
+    unit_dir = os.path.join(base, "app", "src", "test", "java", "com", "example")
+    androidTest_dir = os.path.join(base, "app", "src", "androidTest", "java", "com", "example")
 
     all_test_files = []
     if os.path.exists(unit_dir):

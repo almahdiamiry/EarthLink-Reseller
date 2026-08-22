@@ -1,0 +1,7 @@
+<testsuite name="com.example.SuiteB" tests="5" failures="1" errors="0" skipped="0">
+    <testcase name="case1" classname="com.example.SuiteB"/>
+    <testcase name="case2" classname="com.example.SuiteB">
+        <failure message="Assertion failed" type="java.lang.AssertionError">fail</failure>
+    </testcase>
+    <testcase name="case3" classname="com.example.SuiteB"/>
+</testsuite>

@@ -1,0 +1,7 @@
+<testsuite name="com.example.SuiteA" tests="5" failures="0" errors="0" skipped="0">
+    <testcase name="case1" classname="com.example.SuiteA"/>
+    <testcase name="case2" classname="com.example.SuiteA"/>
+    <testcase name="case3" classname="com.example.SuiteA"/>
+    <testcase name="case4" classname="com.example.SuiteA"/>
+    <testcase name="case5" classname="com.example.SuiteA"/>
+</testsuite>

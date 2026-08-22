@@ -716,6 +716,188 @@ test_suites:
     associated_invariants:
       - "INV-11"
 
+  - name: "Workstream9AFinancialCorrectionTest"
+    path: "app/src/test/java/com/example/Workstream9AFinancialCorrectionTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Workstream 9A Financial Correction validation test suite"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+
+  - name: "Workstream9DLineagePipelineTest"
+    path: "app/src/test/java/com/example/Workstream9DLineagePipelineTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Workstream 9D Lineage Pipeline validation test suite"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+      - "INV-11"
+
+  - name: "Workstream11UnknownTypeObservabilityTest"
+    path: "app/src/test/java/com/example/Workstream11UnknownTypeObservabilityTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Workstream 11 Unknown Type Observability test suite"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+
+  - name: "Phase1G1ProcessKillRecoveryTest"
+    path: "app/src/test/java/com/example/Phase1G1ProcessKillRecoveryTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Phase 1 Process Kill Recovery test suite"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+
+  - name: "Workstream7And8SafetyNetTest"
+    path: "app/src/test/java/com/example/Workstream7And8SafetyNetTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Workstream 7 and 8 Safety Net test suite"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+
+  - name: "PendingOperationFinancialIntentTest"
+    path: "app/src/test/java/com/example/PendingOperationFinancialIntentTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Pending Operation Financial Intent test suite"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+
+  - name: "TrustBoundaryHygieneTest"
+    path: "app/src/test/java/com/example/TrustBoundaryHygieneTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Trust Boundary Hygiene test suite"
+    associated_invariants:
+      - "INV-05"
+
+  - name: "Workstream14BuildConfigConsistencyTest"
+    path: "app/src/test/java/com/example/Workstream14BuildConfigConsistencyTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Workstream 14 Build Config Consistency test suite"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+
+  - name: "Step3DurableDispatchTest"
+    path: "app/src/test/java/com/example/Step3DurableDispatchTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Step 3 Durable Dispatch validation test suite"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+      - "INV-11"
+
+  - name: "Phase5IspLifecycleAndHistoryOnlyTest"
+    path: "app/src/test/java/com/example/Phase5IspLifecycleAndHistoryOnlyTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Phase 5 ISP Lifecycle and History Only test suite"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+
+  - name: "Workstream9CDatasetReplacementTest"
+    path: "app/src/test/java/com/example/Workstream9CDatasetReplacementTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Workstream 9C Dataset Replacement test suite"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+
+  - name: "ManualVerificationResolutionTest"
+    path: "app/src/test/java/com/example/ManualVerificationResolutionTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Manual Verification Resolution test suite"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+
+  - name: "Workstream15CoordinatorTransportConcurrencyTest"
+    path: "app/src/test/java/com/example/Workstream15CoordinatorTransportConcurrencyTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Workstream 15 Coordinator Transport Concurrency test suite"
+    associated_invariants:
+      - "INV-11"
+
+  - name: "Workstream10_5MonotonicRemoteVersionTest"
+    path: "app/src/test/java/com/example/Workstream10_5MonotonicRemoteVersionTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Workstream 10.5 Monotonic Remote Version test suite"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+
+  - name: "Step2OutcomeResolutionTest"
+    path: "app/src/test/java/com/example/Step2OutcomeResolutionTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Step 2 Outcome Resolution test suite"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+
+  - name: "CompletedStateMaterializationInvariantTest"
+    path: "app/src/test/java/com/example/CompletedStateMaterializationInvariantTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Completed State Materialization Invariant test suite"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+
+  - name: "EarthlinkMutationResponseContractTest"
+    path: "app/src/test/java/com/example/EarthlinkMutationResponseContractTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Earthlink Mutation Response Contract test suite"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+
+  - name: "Phase5DestructiveActionReleaseGateTest"
+    path: "app/src/test/java/com/example/Phase5DestructiveActionReleaseGateTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Phase 5 Destructive Action Release Gate test suite"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+
+  - name: "Workstream10LockUnificationTest"
+    path: "app/src/test/java/com/example/Workstream10LockUnificationTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Workstream 10 Lock Unification test suite"
+    associated_invariants:
+      - "INV-11"
+
+  - name: "DatabaseMigrationTest"
+    path: "app/src/test/java/com/example/DatabaseMigrationTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Database Migration test suite"
+    associated_invariants:
+      - "INV-01"
+      - "INV-14"
+
+  - name: "Workstream9BRollbackTest"
+    path: "app/src/test/java/com/example/Workstream9BRollbackTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Workstream 9B Rollback test suite"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+
+  - name: "CoordinatorTransportSplitTest"
+    path: "app/src/test/java/com/example/CoordinatorTransportSplitTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Coordinator Transport Split test suite"
+    associated_invariants:
+      - "INV-11"
+
+  - name: "Workstream13G1RealRestartCertificationTest"
+    path: "app/src/test/java/com/example/Workstream13G1RealRestartCertificationTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Workstream 13 G1 Real Restart Certification test suite"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+
 # Required Phase 3 Pending Test Suites (Preserved for Phase 3 Execution)
 phase3_required_suites:
   - name: "Phase3CoordinatorMutexTokenTest"
