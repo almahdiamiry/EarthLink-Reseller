@@ -1,5 +1,15 @@
 # Final Independent Adjudication Memo
 
+---
+### 🧭 NAVIGATION & CONTEXT
+* **Why You Are Here:** This document provides the final architectural judgment and implementation authorization boundary.
+* **What This Document Owns:** Architectural Rulings & Boundaries.
+* **Where To Go Next:**
+  * For current project state $\rightarrow$ [PROJECT_ROADMAP.md](../../PROJECT_ROADMAP.md)
+  * For plan execution status $\rightarrow$ [PLAN_STATUS.md](PLAN_STATUS.md)
+  * For behavioral rules & router $\rightarrow$ [AGENTS.md](../../AGENTS.md)
+---
+
 ## Earthlink Reseller App
 
 **Document:** Final Independent Architecture Adjudication

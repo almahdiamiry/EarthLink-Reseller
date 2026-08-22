@@ -1,5 +1,15 @@
 # EARTHLINK RESELLER APP — TARGET PRODUCT CONTRACT & ARCHITECTURAL REASSESSMENT QUESTIONS
 
+---
+### 🧭 NAVIGATION & CONTEXT
+* **Why You Are Here:** This document defines the fixed Target Product behavior and business rules.
+* **What This Document Owns:** Product Purpose & Business Rules.
+* **Where To Go Next:**
+  * For current project state $\rightarrow$ [PROJECT_ROADMAP.md](../../PROJECT_ROADMAP.md)
+  * For plan execution status $\rightarrow$ [PLAN_STATUS.md](PLAN_STATUS.md)
+  * For behavioral rules & router $\rightarrow$ [AGENTS.md](../../AGENTS.md)
+---
+
 **Version:** v0.6 — Final Product Contract Clarification Revision
 **Date:** 2026-08-17
 **Status:** Product Contract Clarification Revision — Final for Architecture Adjudication

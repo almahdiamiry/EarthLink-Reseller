@@ -1,46 +1,43 @@
 # AGENTS.md
+## The Canonical Front Door, Behavioral Authority, and Top-Level Navigation Router
 
-## Purpose
+---
+### 🧭 NAVIGATION & CONTEXT
+* **Why You Are Here:** This is the project's front door and operational rulebook. Every session must start here.
+* **What This Document Owns:** Mandatory behavioral rules, operational invariants, the canonical navigation router, and the scope shield.
+* **Where To Go Next:**
+  * For current project state $\rightarrow$ [PROJECT_ROADMAP.md](PROJECT_ROADMAP.md)
+  * For plan execution status $\rightarrow$ [PLAN_STATUS.md](docs/authority/PLAN_STATUS.md)
+---
 
-This file establishes the **mandatory operational rules and invariant behaviors** for any AI coding agent working on this project.
+## 1. Stable Orientation
+**EarthLink Reseller V1** is an offline-capable Android account book whose primary purpose is to protect subscriber financial history. 
+This document provides behavioral orientation, but **defers all business truth to the Product Contract**.
 
-*Note: This file contains Rules of Behavior. For project navigation, current state, and next authorized gates, consult `PROJECT_ROADMAP.md`.*
+## 2. Canonical Navigation Router (The "Owner ≠ Router" Rule)
+A router points to truth but does not become the owner of mutable state. Do not duplicate facts.
+
+| Fact / Question Type | Canonical Owner (Single Truth) |
+|:---|:---|
+| **Agent Operational Rules & Invariants** | [`AGENTS.md`](AGENTS.md) |
+| **Product Purpose & Business Rules** | [`docs/authority/Target Product Contract v0.6.md`](docs/authority/Target%20Product%20Contract%20v0.6.md) |
+| **Architectural Rulings & Boundaries** | [`docs/authority/Final Independent Adjudication Memo.md`](docs/authority/Final%20Independent%20Adjudication%20Memo.md) |
+| **Current Project Milestone & Active Gate** | [`PROJECT_ROADMAP.md`](PROJECT_ROADMAP.md) |
+| **Implementation Plan Execution Status** | [`docs/authority/PLAN_STATUS.md`](docs/authority/PLAN_STATUS.md) |
+| **Database Field Authority (Room vs Cloud)** | [`docs/authority/account_field_authority_classification.md`](docs/authority/account_field_authority_classification.md) |
+| **Ledger Creation Paths (10 Paths)** | [`docs/authority/ledger_identity_inventory.md`](docs/authority/ledger_identity_inventory.md) |
+| **Machine Invariant Contracts** | [`contract/invariant_contract.yaml`](contract/invariant_contract.yaml) |
+| **Certification Truth & Machine Proofs** | [`evidence/`](evidence/) |
+| **Historical Commit & Change Ledger** | [`CHANGELOG.md`](CHANGELOG.md) |
+
+## 3. Scope Shield & Quarantine Rules
+* **G1–G8 Work Areas:** G1–G8 are completed/frozen release-boundary work areas. G8 has independent machine certification. Do NOT treat closed G-areas as an active backlog.
+* **Plan File Existence ≠ Permission:** The existence of a historical plan file does NOT grant permission to execute it. Execution strictly requires an `ACTIVE` state in `PLAN_STATUS.md`.
+* **Quarantine Rule for Path-Locked Files:** Root historical files (such as `PRODUCTION_INVARIANTS.md`, `ARCHITECTURE.md`, `PRODUCTION_CONTRACT_MATRIX.md`) are frozen historical records preserved strictly for cryptographic evidence verification. They must **never** be edited and must not be used for current planning.
 
 ---
 
-## ACTIVE IMPLEMENTATION ENTRY POINT
-
-1. **Read `AGENTS.md` first for operational rules.**
-2. **Read `PROJECT_ROADMAP.md` to determine the project's current state and navigation.**
-3. **Use `docs/authority/Target Product Contract v0.6.md` as the ultimate product/business authority.**
-4. **Use `docs/authority/Final Independent Adjudication Memo.md` as final architectural judgment / implementation boundary.**
-5. **Use `docs/authority/G1-G8 Consolidated Architecture Summary.md` as engineering interpretation.**
-6. **Inspect the current source/artifact for implementation state.**
-7. **Use executable tests/evidence as verification proof.**
-8. **Do not select tasks from Git history, historical plans, P0/P1/P2 matrices, ADRs, reports, SDD artifacts, or lessons learned.**
-9. **Use historical material only when the current task explicitly requests forensic archaeology or historical rationale.**
-
-> **CRITICAL RULE**: Do not infer implementation scope from historical documents. The only valid implementation scope is the minimum gap derived through a dedicated candidate scope assessment routed through `PROJECT_ROADMAP.md` and explicitly authorized by the frozen authority bundle. `DESIGN_DECISIONS.md` is a technical ADR and historical context layer subordinate to the frozen authority bundle.
-
----
-
-## Information Architecture & Authority Hierarchy
-
-1. **Rules of Behavior**: `AGENTS.md` (How to act)
-2. **Current Scope & Navigation**: `PROJECT_ROADMAP.md` (Where the project is + where it is going)
-3. **Frozen Product / Business Authority**: `docs/authority/Target Product Contract v0.6.md` (What is actually allowed/required)
-4. **Frozen Architectural Authority**:
-   - `docs/authority/Final Independent Adjudication Memo.md`
-   - `docs/authority/G1-G8 Consolidated Architecture Summary.md`
-5. **Implementation Transition Guidance (Subordinate)**:
-   - `docs/authority/EARTHLINK_V1_HANDOVER.md`
-   - `docs/authority/EARTHLINK_IMPLEMENTATION_HANDOVER_APPENDIX_v1.0.md`
-6. **Implementation State Evidence**: Exact current source tree and build configuration.
-7. **Verification Proof**: Executable automated tests, test matrix, and verification commands.
-
----
-
-## Mandatory Non-Negotiable Invariants
+## 4. Mandatory Non-Negotiable Invariants
 
 ### 1. No Deleting, Weakening, or Skipping Tests
 - NEVER delete or skip tests.
