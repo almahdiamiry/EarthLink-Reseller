@@ -130,7 +130,10 @@ The following items are **officially accepted V1 technical debt**. They are **NO
 The **Testing Playbook** is the single operational testing method for all maintenance and feature work. Risk determines **depth of verification**, not a separate methodology.
 
 ### 9.1 Core Reasoning (The 8 Questions)
-Before and during verification, every agent must answer:
+Use these questions to guide verification. Apply and record only the questions relevant to the material risk and scope of the actual change:
+* **Low-risk work:** Does not require explicit written answers to all eight questions.
+* **Higher-risk work:** Should record the questions that materially affect the verification decision.
+
 1. **What is the claim?** (Exact behavioral guarantee being asserted)
 2. **What is the correct business meaning?** (Domain truth per Target Product Contract v0.6)
 3. **What is the real production path?** (Actual runtime code executed in production)
@@ -163,23 +166,25 @@ Risk depth is determined by the **material impact of the actual change**, not by
 Maintainers must uphold these domain testing truths:
 1. `dispatchClaimCount = 0` signifies the local operation was **not authorized** for external dispatch.
 2. `dispatchClaimCount = 1` signifies dispatch authorization was acquired and external execution may have occurred.
-3. Positive external observation does not prove execution of a specific local operation without 4-tuple correlation `(userID, operation, amount, timestamp ±90s)`.
+3. For statement-based financial verification, use the applicable authoritative correlation contract. The defined 4-tuple `(userID, operation, amount, timestamp ±90s)` applies where that verification contract governs the operation. Other operation types must use their own authoritative verification contract. A positive external observation does not prove execution without satisfying the applicable correlation contract.
 4. Transport tombstone $\neq$ user-level financial deletion (ledger history is immutable).
 5. uTower snapshot baseline $\neq$ complete imported ledger history.
 6. History-only subscriber state $\neq$ financial debt deletion.
 
 ### 9.5 Standardized Verification Reporting Contract
-For all test-oriented tasks, report verification results using this exact schema:
+For all verification tasks, report results using this exact schema:
 ```text
 Claim:                 [Exact behavior or invariant asserted]
-Evidence:              [Executed test tasks or verification commands]
-Verification scope:    [Focused (targeted tests) / Broader (subsystem regression)]
+Evidence:              [Executed test tasks, verification commands, or inspected diffs]
+Verification scope:    [Focused (targeted tests) / Broader (subsystem regression) / Documentation / routing inspection]
 Result:                [PASS / FAIL]
-What this proves:      [Explicit verified invariant]
-What this does NOT prove: [Explicit unverified paths / boundaries]
+What this proves:      [Explicit verified invariant or inspection outcome]
+What this does NOT prove: [Explicit unverified paths / boundaries / unexecuted layers]
 Confidence:            [HIGH / MEDIUM / LOW]
 ```
-> **Prohibition:** Never state "all tests passed" unless the full repository test suite was executed. A targeted run must be reported as *"Focused verification passed."*
+> **Prohibition & Accuracy Rules:**
+> - Never state "all tests passed" unless the full repository test suite was executed. A targeted run must be reported as *"Focused verification passed."*
+> - For documentation or routing inspection, explicitly state that no application runtime behavior or test suites were executed. Do not report inspection as runtime verification.
 
 ### 9.6 G8 Operational Status: Historical Reference Only
 * **G8 is permanently CLOSED.** All G8 certification contracts, evidence, scripts, and reports in `contract/`, `evidence/`, `scripts/`, and `G8_Plan.md` are frozen historical certification artifacts.
