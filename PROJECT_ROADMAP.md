@@ -24,7 +24,7 @@
 │ ACTIVE WORKSTREAM:     NONE — SYSTEM IDLE (READY FOR MAINTENANCE TASKS)                │
 │ V1 CERTIFIED BASELINE: FROZEN FOR V1 RELEASE                                           │
 │                        (Last independently certified production code baseline: 6d91dbd)│
-│ POST-V1 EVOLUTION:     CONTROLLED VIA PROPORTIONAL VERIFICATION MODEL                  │
+│ POST-V1 EVOLUTION:     CONTROLLED VIA OPERATIONAL TESTING PLAYBOOK                     │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -49,7 +49,7 @@ All foundational remediation and verification phases are **formally complete and
 
 1. **No Backlog in Completed Gates:** G1 through G8 and Wave 1 are completed historical milestones. Do not treat historical summaries as an open implementation backlog.
 2. **Valid Future Work:** Consult [FUTURE_WORK.md](FUTURE_WORK.md) for authorized non-blocking post-V1 improvements.
-3. **Proportional Verification:** Verify changes according to risk as defined in [AGENTS.md](AGENTS.md) (Level 1 doc diff to Level 5 release build).
+3. **Operational Testing Playbook:** Verify all changes using the Testing Playbook in [AGENTS.md](AGENTS.md) (depth follows material risk: LOW / MEDIUM / HIGH). G8 is permanently closed historical certification.
 4. **Lean Planning:** Minor bug fixes and UI adjustments do not require formal implementation plans; major architectural changes require a concise working plan.
 
 ---

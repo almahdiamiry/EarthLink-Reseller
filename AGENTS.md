@@ -125,38 +125,65 @@ The following items are **officially accepted V1 technical debt**. They are **NO
 
 ---
 
-## 9. Proportional Verification Model (Verification Follows Risk)
+## 9. Operational Testing Playbook (Universal Risk-Proportional Verification)
 
-Verification scales directly with the blast radius of the change:
+The **Testing Playbook** is the single operational testing method for all maintenance and feature work. Risk determines **depth of verification**, not a separate methodology.
 
+### 9.1 Core Reasoning (The 8 Questions)
+Before and during verification, every agent must answer:
+1. **What is the claim?** (Exact behavioral guarantee being asserted)
+2. **What is the correct business meaning?** (Domain truth per Target Product Contract v0.6)
+3. **What is the real production path?** (Actual runtime code executed in production)
+4. **What assumption am I relying on, and where is it proven?** (No unproven implicit assumptions)
+5. **What could falsify the claim?** (Adversarial conditions, edge cases, failure paths)
+6. **Is the expected behavior independently defined?** (Never derive expected values from code under test)
+7. **What exactly did I prove?** (Boundaries of the executed test)
+8. **What does this NOT prove?** (Explicit non-coverage and unexecuted layers)
+
+### 9.2 Material Risk Depths
+Risk depth is determined by the **material impact of the actual change**, not by class name, file size, or historical labels:
+
+| Risk Level | Typical Change Scope | Required Verification Depth | Example Scenarios |
+|:---|:---|:---|:---|
+| **LOW** | Documentation, comments, UI logging, visual layout tweaks, pure ViewModel thinning with preserved semantics | • Basic verification<br>• Git diff review (0 code for docs)<br>• Targeted component / unit test | • Logging in `Repositories.kt`<br>• Search bar padding adjustment<br>• Refactoring ViewModel without changing state flow |
+| **MEDIUM** | Standard business logic, presentation orchestration, non-financial API call typing, retry policies | • Business semantics validation<br>• Real production-path tracing<br>• Targeted adversarial probe when useful | • Outbox queue prioritization<br>• Non-financial network DTO parsing<br>• UI error banner display logic |
+| **HIGH** | RED domain: Ledger math, balance calculation, Room schema/migrations, atomic dispatch claim, sync lineage/generation, restore merge | • Business semantics validation<br>• Real production-path tracing<br>• Adversarial verification<br>• Broader relevant regression suite<br>• Independent review when data integrity is impacted | • `BalanceCalculator.kt` changes<br>• Room migration 16→17<br>• Single-writer dispatch claim query<br>• `g4_local_generation` counter logic<br>• Restore merge lineage reconciliation |
+
+### 9.3 Semantic Safety & Failure Classification
+* **No Circular Assertions:** Expected test outcomes must be derived independently from product rules, never by mirroring implementation code.
+* **No Assertion Weakening:** Never relax an assertion or mock away invariants to force a green test.
+* **Semantic Failure Taxonomy:** When a test fails, classify the root cause explicitly before acting:
+  - `PRODUCT DEFECT`: Production code violates domain contract $\rightarrow$ fix production code.
+  - `TEST DEFECT`: Test assertion or scenario incorrectly specified $\rightarrow$ fix test.
+  - `FIXTURE / SETUP DEFECT`: Test fixture or precondition broken $\rightarrow$ fix fixture.
+  - `SEMANTIC-ASSUMPTION ERROR`: Mismatch on domain meaning $\rightarrow$ consult Product Contract.
+  - `ENVIRONMENT / TOOLING FAILURE`: Gradle/JVM runtime failure $\rightarrow$ fix environment.
+
+### 9.4 EarthLink Domain Semantic Lessons
+Maintainers must uphold these domain testing truths:
+1. `dispatchClaimCount = 0` signifies the local operation was **not authorized** for external dispatch.
+2. `dispatchClaimCount = 1` signifies dispatch authorization was acquired and external execution may have occurred.
+3. Positive external observation does not prove execution of a specific local operation without 4-tuple correlation `(userID, operation, amount, timestamp ±90s)`.
+4. Transport tombstone $\neq$ user-level financial deletion (ledger history is immutable).
+5. uTower snapshot baseline $\neq$ complete imported ledger history.
+6. History-only subscriber state $\neq$ financial debt deletion.
+
+### 9.5 Standardized Verification Reporting Contract
+For all test-oriented tasks, report verification results using this exact schema:
 ```text
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                        PROPORTIONAL VERIFICATION MATRIX                                │
-├──────────────────────────────┬──────────────────────────────┬──────────────────────────┤
-│ CHANGE CATEGORY              │ REQUIRED VALIDATION          │ RUNNER / COMMAND         │
-├──────────────────────────────┼──────────────────────────────┼──────────────────────────┤
-│ 1. Documentation / Notes     │ • Git diff review (0 code)   │ git diff --stat          │
-│                              │ • Link & scope validation    │                          │
-│                              │ • (No test execution needed) │                          │
-├──────────────────────────────┼──────────────────────────────┼──────────────────────────┤
-│ 2. UI Layout / Formatting    │ • Targeted component test    │ ./gradlew testDebugUnitTest│
-│                              │                              │ --tests "*SpecificTest*" │
-├──────────────────────────────┼──────────────────────────────┼──────────────────────────┤
-│ 3. Business Logic / Sync     │ • Relevant feature tests     │ ./gradlew test           │
-│                              │ • Outbox & sync test suites  │                          │
-├──────────────────────────────┼──────────────────────────────┼──────────────────────────┤
-│ 4. RED Domain (Ledger,       │ • Strong targeted test proof │ ./gradlew test           │
-│    Room, Lineage, Recovery)  │ • Broader regression only if │                          │
-│                              │   blast radius requires it   │                          │
-├──────────────────────────────┼──────────────────────────────┼──────────────────────────┤
-│ 5. Release Build             │ • Release-specific build,    │ Use repository's current │
-│                              │   packaging, and signing     │ release tooling          │
-│                              │   verification               │                          │
-│                              │ • Historical G8 certification│                          │
-│                              │   is not part of routine     │                          │
-│                              │   maintenance                │                          │
-└──────────────────────────────┴──────────────────────────────┴──────────────────────────┘
+Claim:                 [Exact behavior or invariant asserted]
+Evidence:              [Executed test tasks or verification commands]
+Verification scope:    [Focused (targeted tests) / Broader (subsystem regression)]
+Result:                [PASS / FAIL]
+What this proves:      [Explicit verified invariant]
+What this does NOT prove: [Explicit unverified paths / boundaries]
+Confidence:            [HIGH / MEDIUM / LOW]
 ```
+> **Prohibition:** Never state "all tests passed" unless the full repository test suite was executed. A targeted run must be reported as *"Focused verification passed."*
+
+### 9.6 G8 Operational Status: Historical Reference Only
+* **G8 is permanently CLOSED.** All G8 certification contracts, evidence, scripts, and reports in `contract/`, `evidence/`, `scripts/`, and `G8_Plan.md` are frozen historical certification artifacts.
+* Future agents and maintainers **must NOT** run G8 certification, require G8 artifacts for routine changes, recreate G8, or reopen G8 scope. The Testing Playbook above governs all ongoing development.
 
 ---
 
