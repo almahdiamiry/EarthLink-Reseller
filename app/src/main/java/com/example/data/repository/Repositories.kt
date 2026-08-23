@@ -1213,13 +1213,16 @@ class LocalLedgerRepositoryImpl(
 
         for (op in orphaned) {
             try {
-                // Previous-process in-flight state is reset to recovery-blocked PENDING(count=1).
+                // Previous-process in-flight state is reset to recovery-blocked PENDING.
+                // Operations already in PENDING require no status reset.
                 // The external mutation is NEVER redispatched.
-                val reset = pendingDao.resetOrphanedInFlightToPending(
-                    op.businessTransactionId,
-                    System.currentTimeMillis()
-                )
-                if (reset != 1) continue
+                if (op.status in listOf("DISPATCHING", "RESOLVING")) {
+                    val reset = pendingDao.resetOrphanedInFlightToPending(
+                        op.businessTransactionId,
+                        System.currentTimeMillis()
+                    )
+                    if (reset != 1) continue
+                }
 
                 val resolution = verifyAndResolvePendingOperation(
                     businessTransactionId = op.businessTransactionId,
@@ -1558,29 +1561,53 @@ class LocalLedgerRepositoryImpl(
                                 )
                             }
                             UnknownOutcomeResolutionResult.INCONCLUSIVE -> {
-                                val diag = "Subscriber exists but account statement correlation was inconclusive"
-                                resolvePendingOperationInconclusive(businessTransactionId, diag)
-                                val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
-                                PendingOperationResolution(
-                                    result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
-                                    operation = updatedOp,
-                                    ledgerEntry = null,
-                                    diagnosticMessage = diag
-                                )
+                                if (op.dispatchClaimCount == 0) {
+                                    val diag = "Activation was not dispatched prior to process termination; no gateway charge found"
+                                    resolvePendingOperationVerifiedFailure(businessTransactionId, diag)
+                                    val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                                    PendingOperationResolution(
+                                        result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                                        operation = updatedOp,
+                                        ledgerEntry = null,
+                                        diagnosticMessage = diag
+                                    )
+                                } else {
+                                    val diag = "Subscriber exists but account statement correlation was inconclusive"
+                                    resolvePendingOperationInconclusive(businessTransactionId, diag)
+                                    val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                                    PendingOperationResolution(
+                                        result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
+                                        operation = updatedOp,
+                                        ledgerEntry = null,
+                                        diagnosticMessage = diag
+                                    )
+                                }
                             }
                         }
                     }
                 } catch (e: Exception) {
                     if (e is kotlinx.coroutines.CancellationException) throw e
-                    val diag = "Activation inspection inconclusive: ${e.message}"
-                    resolvePendingOperationInconclusive(businessTransactionId, diag)
-                    val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
-                    PendingOperationResolution(
-                        result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
-                        operation = updatedOp,
-                        ledgerEntry = null,
-                        diagnosticMessage = diag
-                    )
+                    if (op.dispatchClaimCount == 0) {
+                        val diag = "Activation was not dispatched prior to process termination (${e.message})"
+                        resolvePendingOperationVerifiedFailure(businessTransactionId, diag)
+                        val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                        PendingOperationResolution(
+                            result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                            operation = updatedOp,
+                            ledgerEntry = null,
+                            diagnosticMessage = diag
+                        )
+                    } else {
+                        val diag = "Activation inspection inconclusive: ${e.message}"
+                        resolvePendingOperationInconclusive(businessTransactionId, diag)
+                        val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                        PendingOperationResolution(
+                            result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
+                            operation = updatedOp,
+                            ledgerEntry = null,
+                            diagnosticMessage = diag
+                        )
+                    }
                 }
             }
             "REFILL", "RENEWAL" -> {
@@ -1640,20 +1667,67 @@ class LocalLedgerRepositoryImpl(
                                     )
                                 }
                                 UnknownOutcomeResolutionResult.INCONCLUSIVE -> {
-                                    val diag = "Renewal statement correlation inconclusive: no single matching ledger transaction"
-                                    resolvePendingOperationInconclusive(businessTransactionId, diag)
-                                    val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
-                                    PendingOperationResolution(
-                                        result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
-                                        operation = updatedOp,
-                                        ledgerEntry = null,
-                                        diagnosticMessage = diag
-                                    )
+                                    if (op.dispatchClaimCount == 0) {
+                                        val diag = "Renewal was not dispatched prior to process termination; no gateway charge found"
+                                        resolvePendingOperationVerifiedFailure(businessTransactionId, diag)
+                                        val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                                        PendingOperationResolution(
+                                            result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                                            operation = updatedOp,
+                                            ledgerEntry = null,
+                                            diagnosticMessage = diag
+                                        )
+                                    } else {
+                                        val diag = "Renewal statement correlation inconclusive: no single matching ledger transaction"
+                                        resolvePendingOperationInconclusive(businessTransactionId, diag)
+                                        val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                                        PendingOperationResolution(
+                                            result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
+                                            operation = updatedOp,
+                                            ledgerEntry = null,
+                                            diagnosticMessage = diag
+                                        )
+                                    }
                                 }
                             }
                         }
                     } else {
-                        val diag = "Subscriber details could not be retrieved from ISP"
+                        if (op.dispatchClaimCount == 0) {
+                            val diag = "Subscriber details not found on ISP; operation was not dispatched"
+                            resolvePendingOperationVerifiedFailure(businessTransactionId, diag)
+                            val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                            PendingOperationResolution(
+                                result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                                operation = updatedOp,
+                                ledgerEntry = null,
+                                diagnosticMessage = diag
+                            )
+                        } else {
+                            val diag = "Subscriber details could not be retrieved from ISP"
+                            resolvePendingOperationInconclusive(businessTransactionId, diag)
+                            val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                            PendingOperationResolution(
+                                result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
+                                operation = updatedOp,
+                                ledgerEntry = null,
+                                diagnosticMessage = diag
+                            )
+                        }
+                    }
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    if (op.dispatchClaimCount == 0) {
+                        val diag = "Renewal was not dispatched prior to process termination (${e.message})"
+                        resolvePendingOperationVerifiedFailure(businessTransactionId, diag)
+                        val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                        PendingOperationResolution(
+                            result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                            operation = updatedOp,
+                            ledgerEntry = null,
+                            diagnosticMessage = diag
+                        )
+                    } else {
+                        val diag = "Renewal inspection inconclusive: ${e.message}"
                         resolvePendingOperationInconclusive(businessTransactionId, diag)
                         val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
                         PendingOperationResolution(
@@ -1663,17 +1737,6 @@ class LocalLedgerRepositoryImpl(
                             diagnosticMessage = diag
                         )
                     }
-                } catch (e: Exception) {
-                    if (e is kotlinx.coroutines.CancellationException) throw e
-                    val diag = "Renewal inspection inconclusive: ${e.message}"
-                    resolvePendingOperationInconclusive(businessTransactionId, diag)
-                    val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
-                    PendingOperationResolution(
-                        result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
-                        operation = updatedOp,
-                        ledgerEntry = null,
-                        diagnosticMessage = diag
-                    )
                 }
             }
             "TEST_USER", "EXTEND" -> {
@@ -1700,28 +1763,52 @@ class LocalLedgerRepositoryImpl(
                         )
                     }
                     UnknownOutcomeResolutionResult.INCONCLUSIVE -> {
-                        val diag = "${op.operationType} lifecycle recovery inconclusive: requires operation-specific evidence"
-                        resolvePendingOperationInconclusive(businessTransactionId, diag)
-                        val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
-                        PendingOperationResolution(
-                            result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
-                            operation = updatedOp,
-                            ledgerEntry = null,
-                            diagnosticMessage = diag
-                        )
+                        if (op.dispatchClaimCount == 0) {
+                            val diag = "${op.operationType} was not dispatched prior to process termination"
+                            resolvePendingOperationVerifiedFailure(businessTransactionId, diag)
+                            val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                            PendingOperationResolution(
+                                result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                                operation = updatedOp,
+                                ledgerEntry = null,
+                                diagnosticMessage = diag
+                            )
+                        } else {
+                            val diag = "${op.operationType} lifecycle recovery inconclusive: requires operation-specific evidence"
+                            resolvePendingOperationInconclusive(businessTransactionId, diag)
+                            val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                            PendingOperationResolution(
+                                result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
+                                operation = updatedOp,
+                                ledgerEntry = null,
+                                diagnosticMessage = diag
+                            )
+                        }
                     }
                 }
             }
             else -> {
-                val diag = "Unsupported operation type: ${op.operationType}"
-                resolvePendingOperationInconclusive(businessTransactionId, diag)
-                val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
-                PendingOperationResolution(
-                    result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
-                    operation = updatedOp,
-                    ledgerEntry = null,
-                    diagnosticMessage = diag
-                )
+                if (op.dispatchClaimCount == 0) {
+                    val diag = "Unsupported operation type was not dispatched: ${op.operationType}"
+                    resolvePendingOperationVerifiedFailure(businessTransactionId, diag)
+                    val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                    PendingOperationResolution(
+                        result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                        operation = updatedOp,
+                        ledgerEntry = null,
+                        diagnosticMessage = diag
+                    )
+                } else {
+                    val diag = "Unsupported operation type: ${op.operationType}"
+                    resolvePendingOperationInconclusive(businessTransactionId, diag)
+                    val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                    PendingOperationResolution(
+                        result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
+                        operation = updatedOp,
+                        ledgerEntry = null,
+                        diagnosticMessage = diag
+                    )
+                }
             }
         }
     }
@@ -1843,7 +1930,7 @@ class LocalLedgerRepositoryImpl(
         gateway: EarthlinkGateway,
         graceWindowMs: Long
     ): List<PendingOperationResolution> {
-        val unresolved = getUnresolvedClaimedOperations()
+        val unresolved = getUnresolvedPendingOperations()
         if (unresolved.isEmpty()) return emptyList()
 
         val now = System.currentTimeMillis()

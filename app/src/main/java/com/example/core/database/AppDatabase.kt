@@ -437,14 +437,12 @@ interface PendingExternalOperationDao {
             updatedAt = :now
         WHERE businessTransactionId = :businessTransactionId
           AND status = 'PENDING'
-          AND dispatchClaimCount = 1
     """)
     suspend fun transitionToResolving(businessTransactionId: String, now: Long = System.currentTimeMillis()): Int
 
     @Query("""
         SELECT * FROM pending_external_operations
-        WHERE status IN ('DISPATCHING', 'RESOLVING')
-          AND dispatchClaimCount = 1
+        WHERE status IN ('DISPATCHING', 'RESOLVING', 'PENDING')
           AND updatedAt < :processStartMs
         ORDER BY createdAt ASC
     """)

@@ -523,8 +523,9 @@ class Step3DurableDispatchTest {
     }
 
     @Test
-    fun test15_runtimeSweepIgnoresUnclaimedCountZeroOperations() = runTest {
-        // Op A: fresh op with count=0 (in the middle of pre-dispatch)
+    fun test15_runtimeSweepWithGracePeriodIgnoresFreshCountZeroOperations() = runTest {
+        val now = System.currentTimeMillis()
+        // Op A: fresh op with count=0 (currently in the middle of pre-dispatch)
         val opA = PendingExternalOperation(
             businessTransactionId = "tx_sweep_count0",
             operationIntentId = "intent_sweep_count0",
@@ -533,11 +534,11 @@ class Step3DurableDispatchTest {
             amountIqd = 35000L,
             status = "PENDING",
             dispatchClaimCount = 0,
-            createdAt = 1000L
+            createdAt = now
         )
         ledgerRepo.recordPendingOperation(opA)
 
-        // Op B: claimed op with count=1 that suffered uncertainty
+        // Op B: claimed op with count=1 that suffered uncertainty and is older than grace window
         val opB = PendingExternalOperation(
             businessTransactionId = "tx_sweep_count1",
             operationIntentId = "intent_sweep_count1",
@@ -546,7 +547,7 @@ class Step3DurableDispatchTest {
             amountIqd = 0L,
             status = "PENDING",
             dispatchClaimCount = 1,
-            createdAt = 1000L
+            createdAt = now - 120_000L
         )
         ledgerRepo.recordPendingOperation(opB)
 
@@ -556,12 +557,12 @@ class Step3DurableDispatchTest {
             }
         }
 
-        val resolutions = ledgerRepo.sweepAndResolvePendingOperations(fakeGateway, graceWindowMs = 0L)
+        val resolutions = ledgerRepo.sweepAndResolvePendingOperations(fakeGateway, graceWindowMs = 60_000L)
         
-        assertEquals("Sweep must only pick up count=1 operations", 1, resolutions.size)
+        assertEquals("Sweep must only pick up operations past the grace window", 1, resolutions.size)
         assertEquals("tx_sweep_count1", resolutions.first().operation.businessTransactionId)
 
-        // Verify Op A remains completely untouched in PENDING count=0
+        // Verify fresh Op A remains completely untouched in PENDING count=0
         val savedA = ledgerRepo.getPendingOperationByTransactionId("tx_sweep_count0")
         assertNotNull(savedA)
         assertEquals("PENDING", savedA!!.status)
@@ -1145,6 +1146,257 @@ class Step3DurableDispatchTest {
         val resD = resolutionsD.firstOrNull { it.operation.businessTransactionId == "tx_boundary_plus_91" }
         org.junit.Assert.assertNotNull("Resolution for tx_boundary_plus_91 must not be null", resD)
         assertEquals(com.example.core.model.UnknownOutcomeResolutionResult.INCONCLUSIVE, resD!!.result)
+    }
+
+    @Test
+    fun test19_crashEquivalentPendingCountZero_coldStartRecovery() = runTest {
+        val beforeProcessStart = 1000L
+        val processStartMs = 5000L
+
+        val orphanTxId = "tx_orphan_count0_19"
+        val orphanIntentId = "intent_orphan_count0_19"
+
+        val opOrphaned = PendingExternalOperation(
+            businessTransactionId = orphanTxId,
+            operationIntentId = orphanIntentId,
+            accountId = "user19_orphan",
+            operationType = "ACTIVATION",
+            amountIqd = 45000L,
+            status = "PENDING",
+            dispatchClaimCount = 0,
+            createdAt = beforeProcessStart,
+            updatedAt = beforeProcessStart
+        )
+        ledgerRepo.recordPendingOperation(opOrphaned)
+
+        // Prior to recovery, it is visible in unresolved pending operations
+        val unresolvedBefore = ledgerRepo.getUnresolvedPendingOperations()
+        assertTrue(unresolvedBefore.any { it.businessTransactionId == orphanTxId })
+
+        var isUsernameChecked = false
+        val mockGateway = object : FakeGateway() {
+            override suspend fun checkUsernameAvailable(userId: String): Boolean {
+                if (userId == "user19_orphan") {
+                    isUsernameChecked = true
+                    return true // User is available => activation never executed on ISP
+                }
+                return false
+            }
+        }
+
+        // Run cold start recovery
+        ledgerRepo.recoverColdStartOrphanedOperations(mockGateway, processStartMs)
+
+        assertTrue("Orphaned count=0 operation must be inspected via gateway", isUsernameChecked)
+        val resolvedOp = ledgerRepo.getPendingOperationByTransactionId(orphanTxId)
+        assertNotNull(resolvedOp)
+        assertEquals("FAILED", resolvedOp!!.status)
+        assertEquals(orphanTxId, resolvedOp.businessTransactionId)
+        assertEquals(orphanIntentId, resolvedOp.operationIntentId)
+
+        // After recovery, it is no longer exposed to Statement UI / synthetic history
+        val unresolvedAfter = ledgerRepo.getUnresolvedPendingOperations()
+        assertFalse("Resolved orphan must not appear in unresolved operations", unresolvedAfter.any { it.businessTransactionId == orphanTxId })
+        val syntheticHistory = ledgerRepo.getPendingSyntheticHistory()
+        assertFalse("Resolved orphan must not appear in synthetic history", syntheticHistory.any { it.sourceExternalId == orphanTxId })
+    }
+
+    @Test
+    fun test20_crashEquivalentPendingCountZero_sweepRecovery() = runTest {
+        val opTime = 1000L
+        val orphanTxId = "tx_orphan_sweep_20"
+        val orphanIntentId = "intent_orphan_sweep_20"
+
+        db.localAccountDao().insert(
+            LocalAccount(
+                id = "user20_sweep",
+                earthlinkUsername = "user20_sweep",
+                displayName = "User Twenty",
+                currentPriceIqd = 35000.0,
+                debtIqd = 0.0
+            )
+        )
+
+        val opOrphaned = PendingExternalOperation(
+            businessTransactionId = orphanTxId,
+            operationIntentId = orphanIntentId,
+            accountId = "user20_sweep",
+            operationType = "REFILL",
+            amountIqd = 35000L,
+            status = "PENDING",
+            dispatchClaimCount = 0,
+            createdAt = opTime,
+            updatedAt = opTime
+        )
+        ledgerRepo.recordPendingOperation(opOrphaned)
+
+        val searchResponse = UserListResponse(
+            itemsList = listOf(
+                UserListItem(
+                    userIndexLower = 200,
+                    userIDLower = "user20_sweep"
+                )
+            )
+        )
+        val mockGateway = FakeGateway(
+            checkUsernameAvailableResult = false,
+            searchUsersResult = searchResponse,
+            statementsResult = emptyList() // No statement charge found
+        )
+
+        val resolutions = ledgerRepo.sweepAndResolvePendingOperations(mockGateway, graceWindowMs = 0L)
+        val res = resolutions.firstOrNull { it.operation.businessTransactionId == orphanTxId }
+        assertNotNull("Resolution for orphan must exist", res)
+        assertEquals(com.example.core.model.UnknownOutcomeResolutionResult.VERIFIED_FAILURE, res!!.result)
+
+        val opAfter = ledgerRepo.getPendingOperationByTransactionId(orphanTxId)
+        assertNotNull(opAfter)
+        assertEquals("FAILED", opAfter!!.status)
+        assertEquals(orphanTxId, opAfter.businessTransactionId)
+        assertEquals(orphanIntentId, opAfter.operationIntentId)
+
+        // Ensure not in unresolved list
+        val unresolved = ledgerRepo.getUnresolvedPendingOperations()
+        assertFalse(unresolved.any { it.businessTransactionId == orphanTxId })
+    }
+
+    @Test
+    fun test21_crashEquivalentPendingCountZero_verifiedSuccessOnGateway_materializesLedger() = runTest {
+        val opTime = 1700000000000L
+        val txId = "tx_orphan_success_21"
+        val intentId = "intent_orphan_success_21"
+        val formatter = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }
+        val matchTime = formatter.format(java.util.Date(opTime))
+
+        db.localAccountDao().insert(
+            LocalAccount(
+                id = "user21_success",
+                earthlinkUsername = "user21_success",
+                displayName = "User Twenty One",
+                currentPriceIqd = 35000.0,
+                debtIqd = 0.0
+            )
+        )
+
+        val op = PendingExternalOperation(
+            businessTransactionId = txId,
+            operationIntentId = intentId,
+            accountId = "user21_success",
+            operationType = "REFILL",
+            amountIqd = 35000L,
+            status = "PENDING",
+            dispatchClaimCount = 0,
+            createdAt = opTime,
+            updatedAt = opTime
+        )
+        ledgerRepo.recordPendingOperation(op)
+
+        val searchResponse = UserListResponse(
+            itemsList = listOf(
+                UserListItem(
+                    userIndexLower = 210,
+                    userIDLower = "user21_success"
+                )
+            )
+        )
+        val mockGateway = FakeGateway(
+            checkUsernameAvailableResult = false,
+            searchUsersResult = searchResponse,
+            statementsResult = listOf(
+                AccountStatementItem(
+                    occurredAt = matchTime,
+                    userIDLower = "user21_success",
+                    operation = "Withdraw",
+                    withdrawalAmount = 35000.0
+                )
+            )
+        )
+
+        val resolutions = ledgerRepo.sweepAndResolvePendingOperations(mockGateway, graceWindowMs = 0L)
+        val res = resolutions.firstOrNull { it.operation.businessTransactionId == txId }
+        assertNotNull(res)
+        assertEquals(com.example.core.model.UnknownOutcomeResolutionResult.VERIFIED_SUCCESS, res!!.result)
+        assertNotNull("Ledger entry must be materialized exactly once", res.ledgerEntry)
+
+        val opAfter = ledgerRepo.getPendingOperationByTransactionId(txId)
+        assertNotNull(opAfter)
+        assertEquals("COMPLETED", opAfter!!.status)
+
+        // Verify ledger entry
+        val ledger = db.localLedgerEntryDao().getByIdOneShot(txId)
+        assertNotNull(ledger)
+        assertEquals("user21_success", ledger!!.accountId)
+        assertEquals(35000.0, ledger.amountIqd, 0.001)
+    }
+
+    @Test
+    fun test22_crashEquivalentPendingCountZero_newIndependentOperationSucceeds() = runTest {
+        val opTime = 1000L
+        val failedTxId = "tx_orphan_failed_22"
+        val newTxId = "tx_new_independent_22"
+
+        db.localAccountDao().insert(
+            LocalAccount(
+                id = "user22_retry",
+                earthlinkUsername = "user22_retry",
+                displayName = "User Twenty Two",
+                currentPriceIqd = 45000.0,
+                debtIqd = 0.0
+            )
+        )
+
+        // 1. Initial crashed orphan
+        val opOrphaned = PendingExternalOperation(
+            businessTransactionId = failedTxId,
+            operationIntentId = "intent_old_22",
+            accountId = "user22_retry",
+            operationType = "ACTIVATION",
+            amountIqd = 45000L,
+            status = "PENDING",
+            dispatchClaimCount = 0,
+            createdAt = opTime,
+            updatedAt = opTime
+        )
+        ledgerRepo.recordPendingOperation(opOrphaned)
+
+        // Resolve orphan via cold start
+        val mockGateway = object : FakeGateway() {
+            override suspend fun checkUsernameAvailable(userId: String): Boolean = true
+        }
+        ledgerRepo.recoverColdStartOrphanedOperations(mockGateway, processStartMs = 5000L)
+        assertEquals("FAILED", ledgerRepo.getPendingOperationByTransactionId(failedTxId)?.status)
+
+        // 2. User initiates new independent operation
+        val opNew = PendingExternalOperation(
+            businessTransactionId = newTxId,
+            operationIntentId = "intent_new_22",
+            accountId = "user22_retry",
+            operationType = "ACTIVATION",
+            amountIqd = 45000L,
+            status = "PENDING",
+            dispatchClaimCount = 0,
+            createdAt = 6000L,
+            updatedAt = 6000L
+        )
+        ledgerRepo.recordPendingOperation(opNew)
+
+        // Claim dispatch for new operation
+        val claimed = ledgerRepo.claimDispatchAuthorization(newTxId)
+        assertTrue("New operation must successfully claim dispatch", claimed)
+
+        val afterClaim = ledgerRepo.getPendingOperationByTransactionId(newTxId)
+        assertEquals("DISPATCHING", afterClaim?.status)
+        assertEquals(1, afterClaim?.dispatchClaimCount)
+
+        // Complete new operation
+        val ledger = ledgerRepo.resolvePendingOperationVerifiedSuccess(newTxId, "New activation success")
+        assertNotNull(ledger)
+        assertEquals("COMPLETED", ledgerRepo.getPendingOperationByTransactionId(newTxId)?.status)
+
+        // Old failed operation remains FAILED and untouched
+        assertEquals("FAILED", ledgerRepo.getPendingOperationByTransactionId(failedTxId)?.status)
     }
 
 }
