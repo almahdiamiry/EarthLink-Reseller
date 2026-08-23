@@ -53,8 +53,9 @@ object BalanceCalculator {
      *
      * Invariants:
      * 1. Stored balances are cached values and never an independent financial authority.
-     * 2. Snapshot semantics: When baseline originates from an authoritative snapshot (stateSource != null),
-     *    historical snapshot entries (isSnapshotHistory == true) are not re-applied.
+     * 2. Snapshot semantics: isSnapshotHistory marks imported historical/snapshot context. Whether such rows participate
+     *    in position reconstruction depends on current baseline/state-source rules in BalanceCalculator (e.g. when stateSource != null,
+     *    openingDebtIqd already incorporates the imported snapshot baseline).
      * 3. Deterministic chronological sorting: occurredAt ASC, then sourceExternalId ASC, then id ASC.
      * 4. Returns both the final AccountBalances and updated ledger entries with exact rolling debtAfterIqd.
      */

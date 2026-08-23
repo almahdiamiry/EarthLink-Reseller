@@ -145,6 +145,7 @@ class Step2OutcomeResolutionTest {
             operationType = "REFILL",
             amountIqd = 35000L,
             status = "PENDING",
+            dispatchClaimCount = 1,
             createdAt = now
         )
         ledgerRepository.recordPendingOperation(pending)
@@ -226,6 +227,7 @@ class Step2OutcomeResolutionTest {
             operationType = "REFILL",
             amountIqd = 35000L,
             status = "PENDING",
+            dispatchClaimCount = 1,
             createdAt = createdAt
         )
         ledgerRepository.recordPendingOperation(pending)
@@ -280,6 +282,7 @@ class Step2OutcomeResolutionTest {
             operationType = "REFILL",
             amountIqd = 35000L,
             status = "PENDING",
+            dispatchClaimCount = 1,
             createdAt = createdAt
         )
         ledgerRepository.recordPendingOperation(pending)
@@ -337,6 +340,7 @@ class Step2OutcomeResolutionTest {
             operationType = "REFILL",
             amountIqd = 35000L,
             status = "PENDING",
+            dispatchClaimCount = 1,
             createdAt = createdAt
         )
         ledgerRepository.recordPendingOperation(pending)

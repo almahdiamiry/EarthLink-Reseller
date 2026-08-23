@@ -277,6 +277,7 @@ class Workstream13G1RealRestartCertificationTest {
             accountId = accountId,
             amountIqd = 35000L,
             status = "PENDING",
+            dispatchClaimCount = 1,
             createdAt = 1000L
         )
 
@@ -338,6 +339,7 @@ class Workstream13G1RealRestartCertificationTest {
             accountId = accountId,
             amountIqd = 35000L,
             status = "PENDING",
+            dispatchClaimCount = 1,
             createdAt = 1000L
         )
 

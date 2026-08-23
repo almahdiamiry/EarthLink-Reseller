@@ -96,6 +96,16 @@ interface LocalAccountDao {
     fun getSearchCountRawFlow(query: androidx.sqlite.db.SupportSQLiteQuery): Flow<Int>
 }
 
+/**
+ * LocalLedgerEntryDao: DAO for local_ledger_entries.
+ *
+ * SEMANTIC GUARDRAIL (Physical Deletion vs User Domain Actions):
+ * Physical DELETE queries in this DAO (deleteById, deleteByAccountId, deleteByBatchId, deleteAll)
+ * are low-level database infrastructure operations used exclusively for batch import/replace,
+ * dataset restore/clear, or developer reset.
+ * They MUST NOT be exposed as user-level domain financial actions. Financial history is strictly
+ * additive in V1 (RED Invariant 2); user corrections use contra-entries via correctsEntryId.
+ */
 @Dao
 interface LocalLedgerEntryDao {
     @Query("SELECT * FROM local_ledger_entries WHERE accountId = :accountId ORDER BY occurredAt DESC, createdAt DESC, id DESC LIMIT :limit")
@@ -889,6 +899,11 @@ abstract class AppDatabase : RoomDatabase() {
                 }
                 val dbFile = context.applicationContext.getDatabasePath(dbName)
                 dbFile.parentFile?.mkdirs()
+                // SEMANTIC GUARDRAIL (16 Sequential Room Migrations):
+                // The 16 incremental migrations (MIGRATION_1_2 .. MIGRATION_16_17) are accepted V1 technical debt
+                // (AGENTS.md Section 5). The current migration chain is retained as the supported historical upgrade path.
+                // FW-04 is deferred migration-history maintenance, not an unrelated cleanup task.
+                // Do NOT attempt to squash or rewrite these migrations during routine maintenance.
                 val builder = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, dbName)
                     .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
                     .addCallback(object : RoomDatabase.Callback() {

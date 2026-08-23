@@ -169,6 +169,7 @@ class Workstream10LockUnificationTest {
             operationType = "ACTIVATION",
             amountIqd = 45000L,
             status = "PENDING_UNKNOWN",
+            dispatchClaimCount = 1,
             payloadJson = "{\"username\":\"lockuser1\"}",
             createdAt = System.currentTimeMillis()
         )
@@ -221,6 +222,7 @@ class Workstream10LockUnificationTest {
             operationType = "ACTIVATION",
             amountIqd = 40000L,
             status = "PENDING_UNKNOWN",
+            dispatchClaimCount = 1,
             payloadJson = "{\"username\":\"lockuser2\"}",
             createdAt = System.currentTimeMillis() - 2000L
         )
@@ -232,6 +234,7 @@ class Workstream10LockUnificationTest {
             operationType = "RENEWAL",
             amountIqd = 35000L,
             status = "PENDING_UNKNOWN",
+            dispatchClaimCount = 1,
             payloadJson = "{\"username\":\"lockuser2\"}",
             createdAt = System.currentTimeMillis() - 1000L
         )

@@ -313,6 +313,25 @@ data class PasswordPayload(
 
 // --- Local Entities (Room) ---
 
+/**
+ * LocalAccount: Primary Subscriber Entity in Room.
+ *
+ * SEMANTIC GUARDRAILS:
+ * 1. Monetary Representation (Double / REAL):
+ *    Monetary fields (debtIqd, currentPriceIqd, openingDebtIqd, etc.) use Double / SQLite REAL.
+ *    This is accepted V1 technical debt (AGENTS.md Section 5), NOT a financial correctness bug.
+ *    Runtime accuracy is enforced at application boundaries (whole-IQD & 250-IQD multiples).
+ *    Do not attempt to migrate these fields to Long as an unrelated refactor (FW-03 is deferred post-V1).
+ *
+ * 2. Subscriber Lifecycle State (isHistoryOnlySubscriber):
+ *    isHistoryOnlySubscriber is a subscriber lifecycle/data-set state.
+ *    It must not be interpreted as authorization to physically delete historical account or ledger records.
+ *    Historical debt and payments remain preserved and immutable (RED Invariant 2).
+ *
+ * 3. Snapshot Baseline Fields (openingDebtIqd, stateSource, etc.):
+ *    Represent the imported baseline state under the snapshot contract. When stateSource != null,
+ *    this baseline is authoritative for starting financial position (AGENTS.md Section 9.4).
+ */
 @Entity(
     tableName = "local_accounts",
     indices = [
@@ -362,6 +381,22 @@ data class LocalAccount(
     // Overload typealias or simple type to represent String fields
 }
 
+/**
+ * LocalLedgerEntry: Immutable Financial Transaction Record in Room.
+ *
+ * SEMANTIC GUARDRAILS:
+ * 1. Additive Immutability:
+ *    Ledger history is strictly additive. Physical rows are never deleted for user-level financial corrections.
+ *    Corrections are performed via contra-entries pointing to the original entry via correctsEntryId.
+ *
+ * 2. Snapshot History Flag (isSnapshotHistory):
+ *    isSnapshotHistory marks imported historical/snapshot context.
+ *    Whether such rows participate in reconstruction depends on the current baseline/state-source rules in BalanceCalculator.
+ *    Do NOT confuse isSnapshotHistory with subscriber lifecycle flag isHistoryOnlySubscriber.
+ *
+ * 3. Monetary Representation (Double / REAL):
+ *    amountIqd and debtAfterIqd use Double as accepted V1 technical debt (FW-03 deferred).
+ */
 @Entity(
     tableName = "local_ledger_entries",
     foreignKeys = [
@@ -501,6 +536,11 @@ data class AuditLog(
  * - "RESOLVING": In the process of atomic post-call materialization / inspection
  * - "COMPLETED": Confirmed successful external execution and atomically materialized into local ledger + outbox
  * - "FAILED": Confirmed external failure; resolved without local ledger mutation
+ *
+ * SEMANTIC GUARDRAILS (dispatchClaimCount):
+ * - dispatchClaimCount = 0: Local single-writer claim was NOT acquired. Execution was not authorized on this path.
+ * - dispatchClaimCount = 1: Single-writer hardware claim WAS acquired before gateway dispatch. External execution may have occurred.
+ * - Do NOT attempt blind redispatch when status=PENDING and dispatchClaimCount=1; restart recovery must inspect gateway statements first (RED Invariant 5).
  */
 @Entity(
     tableName = "pending_external_operations",

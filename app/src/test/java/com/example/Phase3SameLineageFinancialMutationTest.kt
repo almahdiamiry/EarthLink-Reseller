@@ -416,6 +416,7 @@ class Phase3SameLineageFinancialMutationTest {
             accountId = "acc_g1_gw_01",
             operationType = "ACTIVATION",
             amountIqd = 40000L,
+            dispatchClaimCount = 1,
             createdAt = actTime
         )
         ledgerRepo.recordPendingOperation(opAct)
@@ -442,6 +443,7 @@ class Phase3SameLineageFinancialMutationTest {
             accountId = "acc_g1_gw_01",
             operationType = "RENEWAL",
             amountIqd = 40000L,
+            dispatchClaimCount = 1,
             createdAt = System.currentTimeMillis()
         )
         ledgerRepo.recordPendingOperation(opRen)
@@ -471,6 +473,7 @@ class Phase3SameLineageFinancialMutationTest {
             accountId = "acc_g1_gw_01",
             operationType = "RENEWAL",
             amountIqd = 40000L,
+            dispatchClaimCount = 1,
             createdAt = System.currentTimeMillis()
         )
         ledgerRepo.recordPendingOperation(opInconclusive)

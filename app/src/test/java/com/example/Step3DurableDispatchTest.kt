@@ -1261,7 +1261,7 @@ class Step3DurableDispatchTest {
     }
 
     @Test
-    fun test21_crashEquivalentPendingCountZero_verifiedSuccessOnGateway_materializesLedger() = runTest {
+    fun test21_crashEquivalentPendingCountZero_cannotBecomeVerifiedSuccessEvenWithGatewayMatch() = runTest {
         val opTime = 1700000000000L
         val txId = "tx_orphan_success_21"
         val intentId = "intent_orphan_success_21"
@@ -1317,18 +1317,16 @@ class Step3DurableDispatchTest {
         val resolutions = ledgerRepo.sweepAndResolvePendingOperations(mockGateway, graceWindowMs = 0L)
         val res = resolutions.firstOrNull { it.operation.businessTransactionId == txId }
         assertNotNull(res)
-        assertEquals(com.example.core.model.UnknownOutcomeResolutionResult.VERIFIED_SUCCESS, res!!.result)
-        assertNotNull("Ledger entry must be materialized exactly once", res.ledgerEntry)
+        assertEquals(com.example.core.model.UnknownOutcomeResolutionResult.VERIFIED_FAILURE, res!!.result)
+        assertNull("Ledger entry must NOT be materialized for count=0 operation", res.ledgerEntry)
 
         val opAfter = ledgerRepo.getPendingOperationByTransactionId(txId)
         assertNotNull(opAfter)
-        assertEquals("COMPLETED", opAfter!!.status)
+        assertEquals("FAILED", opAfter!!.status)
 
-        // Verify ledger entry
+        // Verify NO ledger entry was created
         val ledger = db.localLedgerEntryDao().getByIdOneShot(txId)
-        assertNotNull(ledger)
-        assertEquals("user21_success", ledger!!.accountId)
-        assertEquals(35000.0, ledger.amountIqd, 0.001)
+        assertNull("Unclaimed operation (dispatchClaimCount=0) must never materialize a local ledger entry", ledger)
     }
 
     @Test

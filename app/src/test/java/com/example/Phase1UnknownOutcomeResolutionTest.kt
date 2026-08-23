@@ -214,7 +214,8 @@ class Phase1UnknownOutcomeResolutionTest {
             operationType = "REFILL",
             amountIqd = 45000L,
             payloadJson = """{"userId":"$username","price":45000.0}""",
-            status = "PENDING"
+            status = "PENDING",
+            dispatchClaimCount = 1
         )
         ledgerRepository.recordPendingOperation(pendingOp)
 
@@ -363,7 +364,8 @@ class Phase1UnknownOutcomeResolutionTest {
             operationType = "RENEWAL",
             amountIqd = 40000L,
             payloadJson = """{"userId":"$username"}""",
-            status = "PENDING"
+            status = "PENDING",
+            dispatchClaimCount = 1
         )
         ledgerRepository.recordPendingOperation(pendingOp)
 
@@ -430,7 +432,8 @@ class Phase1UnknownOutcomeResolutionTest {
                 accountId = username,
                 operationType = "REFILL",
                 amountIqd = 50000L,
-                status = "PENDING"
+                status = "PENDING",
+                dispatchClaimCount = 1
             )
         )
 
@@ -501,7 +504,8 @@ class Phase1UnknownOutcomeResolutionTest {
                 accountId = username,
                 operationType = "ACTIVATION",
                 amountIqd = 0L,
-                status = "PENDING"
+                status = "PENDING",
+                dispatchClaimCount = 1
             )
         )
 
@@ -572,7 +576,8 @@ class Phase1UnknownOutcomeResolutionTest {
                 accountId = username,
                 operationType = "REFILL",
                 amountIqd = 40000L,
-                status = "PENDING"
+                status = "PENDING",
+                dispatchClaimCount = 1
             )
         )
 
@@ -621,7 +626,8 @@ class Phase1UnknownOutcomeResolutionTest {
                 accountId = username,
                 operationType = "REFILL",
                 amountIqd = 45000L,
-                status = "PENDING"
+                status = "PENDING",
+                dispatchClaimCount = 1
             )
         )
 

@@ -57,6 +57,26 @@ data class ImportResult(
     val transactionsFailed: Int = 0
 )
 
+/**
+ * LEGACY IMPORT BOUNDARY — CURRENT V1 DESIGN
+ *
+ * UtowerImporter establishes the V1 starting financial state from available uTower legacy source data.
+ *
+ * SEMANTIC GUARDRAILS:
+ * 1. Scope Boundary:
+ *    The importer normalizes available subscriber and ledger data into V1 entities (LocalAccount, LocalLedgerEntry).
+ *    It intentionally does NOT attempt to reproduce or re-calculate the legacy source system's complete
+ *    historical accounting/reconstruction model.
+ *
+ * 2. Baseline & History Semantics:
+ *    Imported uTower snapshot balances are set in openingDebtIqd / openingAdvanceIqd with stateSource != null.
+ *    Imported historical transactions provide audit context (isSnapshotHistory = true) and are not re-applied
+ *    over opening balances during position reconstruction.
+ *
+ * 3. V1 Ownership:
+ *    After import completion, all ongoing financial activity is strictly governed by V1 ledger,
+ *    materialization, and recovery semantics.
+ */
 class UtowerImporter(
     private val context: Context,
     private val appDatabase: AppDatabase

@@ -28,6 +28,18 @@ sealed interface MoneyValue {
     }
 }
 
+/**
+ * MONEY UNIT BOUNDARY
+ *
+ * uTower source values, raw IQD inputs, and UI shorthand inputs represent different
+ * input representations, NOT different persisted runtime monetary units.
+ *
+ * - parseUtowerAmount(): Normalizes uTower unit values (e.g. 15 -> 15,000 IQD).
+ * - parseRawIqd(): Preserves already-whole IQD amounts without scaling.
+ * - parseUiThousandsAmount() / parseUiInput(): Normalizes user UI shorthand ("50k" -> 50,000 IQD).
+ *
+ * All values persisted in Room or used in BalanceCalculator calculations represent whole IQD.
+ */
 object MoneyParser {
 
     /**

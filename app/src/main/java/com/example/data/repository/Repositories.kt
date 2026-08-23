@@ -1541,14 +1541,26 @@ class LocalLedgerRepositoryImpl(
                         val statementResolution = verifyRenewalViaStatement(op, gateway)
                         when (statementResolution) {
                             UnknownOutcomeResolutionResult.VERIFIED_SUCCESS -> {
-                                val ledger = resolvePendingOperationVerifiedSuccess(businessTransactionId, "[VERIFIED ACTIVATION]")
-                                val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
-                                PendingOperationResolution(
-                                    result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
-                                    operation = updatedOp,
-                                    ledgerEntry = ledger,
-                                    diagnosticMessage = "Activation verified via account statement correlation"
-                                )
+                                if (op.dispatchClaimCount == 0) {
+                                    val diag = "Activation was not dispatched prior to process termination (dispatchClaimCount=0); cannot materialize verified success"
+                                    resolvePendingOperationVerifiedFailure(businessTransactionId, diag)
+                                    val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                                    PendingOperationResolution(
+                                        result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                                        operation = updatedOp,
+                                        ledgerEntry = null,
+                                        diagnosticMessage = diag
+                                    )
+                                } else {
+                                    val ledger = resolvePendingOperationVerifiedSuccess(businessTransactionId, "[VERIFIED ACTIVATION]")
+                                    val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                                    PendingOperationResolution(
+                                        result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
+                                        operation = updatedOp,
+                                        ledgerEntry = ledger,
+                                        diagnosticMessage = "Activation verified via account statement correlation"
+                                    )
+                                }
                             }
                             UnknownOutcomeResolutionResult.VERIFIED_FAILURE -> {
                                 resolvePendingOperationVerifiedFailure(businessTransactionId, "Activation verified failure via statement correlation")
@@ -1624,14 +1636,26 @@ class LocalLedgerRepositoryImpl(
                         val currentExpiration = detail.expirationDate ?: detail.accountExpirationDate ?: ""
                         if (!baselineExpirationDate.isNullOrBlank()) {
                             if (currentExpiration > baselineExpirationDate) {
-                                val ledger = resolvePendingOperationVerifiedSuccess(businessTransactionId, "[VERIFIED RENEW]")
-                                val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
-                                PendingOperationResolution(
-                                    result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
-                                    operation = updatedOp,
-                                    ledgerEntry = ledger,
-                                    diagnosticMessage = "Renewal verified: Expiration date advanced from $baselineExpirationDate to $currentExpiration"
-                                )
+                                if (op.dispatchClaimCount == 0) {
+                                    val diag = "Renewal was not dispatched prior to process termination (dispatchClaimCount=0); cannot materialize verified success"
+                                    resolvePendingOperationVerifiedFailure(businessTransactionId, diag)
+                                    val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                                    PendingOperationResolution(
+                                        result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                                        operation = updatedOp,
+                                        ledgerEntry = null,
+                                        diagnosticMessage = diag
+                                    )
+                                } else {
+                                    val ledger = resolvePendingOperationVerifiedSuccess(businessTransactionId, "[VERIFIED RENEW]")
+                                    val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                                    PendingOperationResolution(
+                                        result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
+                                        operation = updatedOp,
+                                        ledgerEntry = ledger,
+                                        diagnosticMessage = "Renewal verified: Expiration date advanced from $baselineExpirationDate to $currentExpiration"
+                                    )
+                                }
                             } else {
                                 resolvePendingOperationVerifiedFailure(businessTransactionId, "Renewal failed: Expiration date unchanged on ISP ($currentExpiration)")
                                 val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
@@ -1647,14 +1671,26 @@ class LocalLedgerRepositoryImpl(
                             val statementResolution = verifyRenewalViaStatement(op, gateway)
                             when (statementResolution) {
                                 UnknownOutcomeResolutionResult.VERIFIED_SUCCESS -> {
-                                    val ledger = resolvePendingOperationVerifiedSuccess(businessTransactionId, "[VERIFIED RENEW]")
-                                    val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
-                                    PendingOperationResolution(
-                                        result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
-                                        operation = updatedOp,
-                                        ledgerEntry = ledger,
-                                        diagnosticMessage = "Renewal verified via account statement 4-tuple correlation"
-                                    )
+                                    if (op.dispatchClaimCount == 0) {
+                                        val diag = "Renewal was not dispatched prior to process termination (dispatchClaimCount=0); cannot materialize verified success"
+                                        resolvePendingOperationVerifiedFailure(businessTransactionId, diag)
+                                        val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                                        PendingOperationResolution(
+                                            result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                                            operation = updatedOp,
+                                            ledgerEntry = null,
+                                            diagnosticMessage = diag
+                                        )
+                                    } else {
+                                        val ledger = resolvePendingOperationVerifiedSuccess(businessTransactionId, "[VERIFIED RENEW]")
+                                        val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                                        PendingOperationResolution(
+                                            result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
+                                            operation = updatedOp,
+                                            ledgerEntry = ledger,
+                                            diagnosticMessage = "Renewal verified via account statement 4-tuple correlation"
+                                        )
+                                    }
                                 }
                                 UnknownOutcomeResolutionResult.VERIFIED_FAILURE -> {
                                     resolvePendingOperationVerifiedFailure(businessTransactionId, "Renewal verified failure via statement correlation")
@@ -2206,6 +2242,14 @@ class LocalLedgerRepositoryImpl(
         }
     }
 
+    /**
+     * BUSINESS DELETION / CORRECTION OWNERSHIP:
+     * User-facing transaction removal is represented by the existing correction / contra-entry path (correctTransaction / deleteTransaction).
+     * This does not mean the underlying historical ledger row is physically deleted.
+     *
+     * DAO-level DELETE operations used by bulk/import infrastructure are separate dataset-management mechanisms
+     * and must not be interpreted as user-level financial deletion.
+     */
     override suspend fun correctTransaction(
         originalEntryId: String,
         intendedAmount: Double,
