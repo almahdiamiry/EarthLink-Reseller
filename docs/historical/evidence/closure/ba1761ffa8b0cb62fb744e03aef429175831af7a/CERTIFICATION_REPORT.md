@@ -24,7 +24,7 @@ All 13 architectural findings, invariant rules, and certification tests have bee
 | **Java Runtime** | openjdk version "21.0.12" 2026-07-21 LTS |
 | **Gradle Version** | Gradle 9.3.1 |
 | **Kotlin Compiler** | 2.2.21 |
-| **Evaluation Timestamp** | 2026-08-24T20:13:34.330165+00:00 |
+| **Evaluation Timestamp** | 2026-08-24T19:10:59.256547+00:00 |
 
 ---
 

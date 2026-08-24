@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "timestamp": "2026-08-24T20:13:34.171038+00:00",
+  "timestamp": "2026-08-24T19:10:59.089176+00:00",
   "source_identity": {
     "git_sha": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
     "git_branch": "main",
@@ -3575,12 +3575,12 @@
           "violation_details": []
         }
       },
-      "timestamp": "2026-08-24T20:13:33.099688+00:00"
+      "timestamp": "2026-08-24T19:10:57.983236+00:00"
     },
     "invariant_contract_consistency": {
       "status": "PASS",
       "details": "Canonical invariant contract matches all requirements (INV-01..INV-16).",
-      "timestamp": "2026-08-24T20:13:33.099688+00:00"
+      "timestamp": "2026-08-24T19:10:57.983236+00:00"
     },
     "baseline_manifest_verified": {
       "status": "PASS",
@@ -3588,17 +3588,17 @@
         "baseline_manifest_sha256": "a21e293b7a2dbb5d989d0613b3d1440923eb911657ddd6754d0883d610243ddf",
         "baseline_test_manifest_sha256": "1f7707e28279ec00ee51badd81b6a75cd23bf6c6c0316b86d9a4ff7d8ba27293"
       },
-      "timestamp": "2026-08-24T20:13:33.099688+00:00"
+      "timestamp": "2026-08-24T19:10:57.983236+00:00"
     },
     "gradlew_executable_mode_check": {
       "status": "PASS",
       "details": "gradlew filesystem executable mode verified: 0o100755",
-      "timestamp": "2026-08-24T20:13:33.099688+00:00"
+      "timestamp": "2026-08-24T19:10:57.983236+00:00"
     },
     "release_build_gate_check": {
       "status": "PASS",
       "details": "Fail-closed release signing validation present in build.gradle.kts",
-      "timestamp": "2026-08-24T20:13:33.099688+00:00"
+      "timestamp": "2026-08-24T19:10:57.983236+00:00"
     }
   },
   "artifact_checks": {
