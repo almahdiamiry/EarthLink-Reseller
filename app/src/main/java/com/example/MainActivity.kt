@@ -304,16 +304,10 @@ fun OperatorMainScreen(authViewModel: AuthViewModel) {
                     }
                 }
                 composable("create_test_user") {
-                    if (!AppBuildConfig.DEBUG) {
-                        androidx.compose.runtime.LaunchedEffect(Unit) {
-                            navController.popBackStack()
-                        }
-                    } else {
-                        BottomNavPadded {
-                            CreateTestUserScreen(
-                                viewModel = searchViewModel
-                            )
-                        }
+                    BottomNavPadded {
+                        CreateTestUserScreen(
+                            viewModel = searchViewModel
+                        )
                     }
                 }
                 composable("create_using_deposit") {
@@ -392,26 +386,24 @@ fun CreateChooserScreen(
 
         Spacer(modifier = Modifier.padding(16.dp))
 
-        if (AppBuildConfig.DEBUG) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp)
-                    .clickable { onNavigateToTest() }
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = if (isAr) "حساب تجريبي (24 ساعة)" else "Trial / Test User Node",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = if (isAr) "فعال لمدة 24 ساعة لغرض التجربة والربط. لا يخصم من رصيد صندوق الموزع." else "Valid for 24 hours. Does not impact your reseller deposit balance.",
-                        fontSize = 12.sp,
-                        color = Color.Gray
-                    )
-                }
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp)
+                .clickable { onNavigateToTest() }
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = if (isAr) "حساب تجريبي (24 ساعة)" else "Trial / Test User Node",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = if (isAr) "فعال لمدة 24 ساعة لغرض التجربة والربط. لا يخصم من رصيد صندوق الموزع." else "Valid for 24 hours. Does not impact your reseller deposit balance.",
+                    fontSize = 12.sp,
+                    color = Color.Gray
+                )
             }
         }
 

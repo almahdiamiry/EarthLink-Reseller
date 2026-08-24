@@ -592,104 +592,96 @@ fun ArabicSubscriberCard(
         getRemainingTime(expirationStr, user.activeDaysLeft?.toString(), lang, user.accountStatus) 
     }
     
-    val statusClean = user.accountStatus?.trim()?.lowercase() ?: ""
-    val isExpired = remainingTime.contains("منتهي") || remainingTime.contains("Expired")
-    val isDeactivated = statusClean == "suspendedbyagent" || statusClean == "expired" || statusClean == "منتهي"
-    val isActive = !isExpired && !isDeactivated
+    val statusClean = user.accountStatus?.trim()?.lowercase(Locale.US) ?: ""
+    val isExpired = remainingTime.contains("منتهي") || remainingTime.contains("Expired") || statusClean == "expired" || statusClean == "منتهي" || statusClean == "suspendedbyagent"
+    val isActive = !isExpired
     
     val containerBg = MaterialTheme.colorScheme.surface
-    val onlineStatusClean = user.onlineStatus?.trim()?.lowercase() ?: ""
+    val onlineStatusClean = user.onlineStatus?.trim()?.lowercase(Locale.US) ?: ""
     val isOnline = onlineStatusClean.contains("online") || onlineStatusClean == "online" || onlineStatusClean == "onlineno9net" || onlineStatusClean == "onlineno_net"
     val debtIqd = matchingAccount?.debtIqd ?: 0.0
     val advanceIqd = matchingAccount?.advanceIqd ?: 0.0
- 
-    val badgeText = if (isActive && !isExpired) {
-        remainingTime
-    } else {
-        if (lang == "ar") "الاشتراك منتهي" else "Subscription Expired"
-    }
-
 
     val displayName = when {
         !user.displayName.isNullOrBlank() -> user.displayName!!
         !user.customerName.isNullOrBlank() -> user.customerName!!
         else -> user.userID
     }
- 
-    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-        Card(
+
+    CompositionLocalProvider(LocalLayoutDirection provides (if (lang == "ar") LayoutDirection.Rtl else LayoutDirection.Ltr)) {
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 5.dp)
-                .border(
-                    width = 1.dp,
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                    shape = RoundedCornerShape(16.dp)
-                )
+                .padding(vertical = 3.dp)
                 .clickable { onClick() },
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = containerBg),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            shape = RoundedCornerShape(12.dp),
+            color = containerBg,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(14.dp),
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Right Side: Beautiful Profile Info & Debt Status
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                // Avatar spanning both rows
+                Box(
+                    modifier = Modifier.size(40.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    // Profile Avatar with Online Status Indicator
-                    Box(modifier = Modifier.size(42.dp)) {
-                        Box(
-                            modifier = Modifier
-                                .size(42.dp)
-                                .background(
-                                    brush = if (isActive && !isExpired) {
-                                        androidx.compose.ui.graphics.Brush.linearGradient(
-                                            listOf(Color(0xFF007AFF), Color(0xFF5856D6))
-                                        )
-                                    } else {
-                                        androidx.compose.ui.graphics.Brush.linearGradient(
-                                            listOf(Color(0xFF48484A), Color(0xFF3A3A3C))
-                                        )
-                                    },
-                                    shape = androidx.compose.foundation.shape.CircleShape
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            val firstLetter = displayName.trim().firstOrNull()?.toString()?.uppercase() ?: "?"
-                            Text(
-                                text = firstLetter,
-                                color = Color.White,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        
-                        // Status Indicator Dot
-                        Box(
-                            modifier = Modifier
-                                .size(12.dp)
-                                .background(
-                                    color = if (isOnline) Color(0xFF30D158) else Color(0xFF8E8E93),
-                                    shape = androidx.compose.foundation.shape.CircleShape
-                                )
-                                .border(1.5.dp, containerBg, androidx.compose.foundation.shape.CircleShape)
-                                .align(Alignment.BottomEnd)
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .background(
+                                brush = if (isActive) {
+                                    androidx.compose.ui.graphics.Brush.linearGradient(
+                                        listOf(Color(0xFF0288D1), Color(0xFF01579B))
+                                    )
+                                } else {
+                                    androidx.compose.ui.graphics.Brush.linearGradient(
+                                        listOf(Color(0xFF424242), Color(0xFF303030))
+                                    )
+                                },
+                                shape = androidx.compose.foundation.shape.CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val firstLetter = displayName.trim().firstOrNull()?.toString()?.uppercase(Locale.getDefault()) ?: "?"
+                        Text(
+                            text = firstLetter,
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
 
-                    // Text Info (Name & Debt Status ONLY - Tower and ID are removed for clean visual flow)
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    // Status Indicator Dot
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .background(
+                                color = if (isOnline) Color(0xFF30D158) else Color(0xFF8E8E93),
+                                shape = androidx.compose.foundation.shape.CircleShape
+                            )
+                            .border(1.5.dp, containerBg, androidx.compose.foundation.shape.CircleShape)
+                            .align(Alignment.BottomEnd)
+                    )
+                }
+
+                // Two text rows
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    // ROW 1: Name + Status Badge
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(
+                            modifier = Modifier.weight(1f, fill = false),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
@@ -697,13 +689,13 @@ fun ArabicSubscriberCard(
                                 Icon(
                                     imageVector = Icons.Default.CheckCircle,
                                     contentDescription = "Verified subscriber",
-                                    tint = Color(0xFF0A84FF),
+                                    tint = Color(0xFF0288D1),
                                     modifier = Modifier.size(14.dp)
                                 )
                             }
                             Text(
                                 text = displayName,
-                                fontSize = 15.sp,
+                                fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
@@ -711,22 +703,47 @@ fun ArabicSubscriberCard(
                             )
                         }
 
-                        // Apple Wallet Style Minimal debt info
+                        // Status Badge
+                        Surface(
+                            color = if (isActive) Color(0xFF30D158).copy(alpha = 0.12f) else Color(0xFFFF453A).copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(6.dp),
+                            border = BorderStroke(
+                                1.dp,
+                                if (isActive) Color(0xFF30D158).copy(alpha = 0.3f) else Color(0xFFFF453A).copy(alpha = 0.3f)
+                            )
+                        ) {
+                            Text(
+                                text = if (isActive) (if (lang == "ar") "نشط" else "Active") else (if (lang == "ar") "منتهي" else "Expired"),
+                                color = if (isActive) Color(0xFF30D158) else Color(0xFFFF453A),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+
+                    // ROW 2: Debt + Remaining / Expired
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        // Debt
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Text(
-                                text = "الديون والاقساط:",
+                                text = if (lang == "ar") "الدين:" else "Debt:",
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                             )
                             val debtText = if (debtIqd > 0) {
-                                com.example.core.ledger.MoneyParser.formatIqdForDisplay(debtIqd.toDouble()) + " د.ع"
+                                com.example.core.ledger.MoneyParser.formatIqdForDisplay(debtIqd) + (if (lang == "ar") " د.ع" else " IQD")
                             } else if (advanceIqd > 0) {
-                                com.example.core.ledger.MoneyParser.formatIqdForDisplay(advanceIqd.toDouble()) + " د.ع (مودع)"
+                                com.example.core.ledger.MoneyParser.formatIqdForDisplay(advanceIqd) + (if (lang == "ar") " د.ع (مودع)" else " IQD (Advance)")
                             } else {
-                                "0 د.ع"
+                                if (lang == "ar") "0 د.ع" else "0 IQD"
                             }
                             Text(
                                 text = debtText,
@@ -735,46 +752,27 @@ fun ArabicSubscriberCard(
                                 color = if (debtIqd > 0) Color(0xFFFF453A) else if (advanceIqd > 0) Color(0xFF10B981) else Color(0xFF30D158)
                             )
                         }
-                    }
-                }
 
-                Spacer(modifier = Modifier.width(12.dp))
-
-                // Left Side: Super Sleek Compact Apple-style Subscription Status block (Removed empty spaces)
-                Column(
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .background(
-                                color = if (isActive && !isExpired) Color(0xFF30D158).copy(alpha = 0.12f) else Color(0xFFFF453A).copy(alpha = 0.12f),
-                                shape = RoundedCornerShape(8.dp)
+                        // Remaining / Expired State
+                        if (isActive) {
+                            Text(
+                                text = remainingTime,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Normal,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
-                            .border(
-                                width = 1.dp,
-                                color = if (isActive && !isExpired) Color(0xFF30D158).copy(alpha = 0.3f) else Color(0xFFFF453A).copy(alpha = 0.3f),
-                                shape = RoundedCornerShape(8.dp)
+                        } else {
+                            Text(
+                                text = if (lang == "ar") "منتهي" else "Expired",
+                                color = Color(0xFFFF453A).copy(alpha = 0.8f),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1
                             )
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = if (isActive && !isExpired) "نشط" else "منتهي",
-                            color = if (isActive && !isExpired) Color(0xFF30D158) else Color(0xFFFF453A),
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        }
                     }
-
-                    Text(
-                        text = badgeText,
-                        color = if (isActive && !isExpired) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f) else Color(0xFFFF453A),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        textAlign = TextAlign.End,
-                        maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                    )
                 }
             }
         }

@@ -48,13 +48,146 @@ import com.example.ui.viewmodels.*
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 
 // Formatting helper for Money
+
+private fun parseExpirationTimestamp(dateStr: String?): Long? {
+    if (dateStr.isNullOrBlank() || dateStr.equals("n/a", ignoreCase = true) || dateStr.equals("none", ignoreCase = true)) {
+        return null
+    }
+
+    var cleanStr = dateStr
+        .replace("\u200E", "") // LRM
+        .replace("\u200F", "") // RLM
+        .replace("\u206F", "")
+        .replace("\u206E", "")
+        .replace("\u202A", "")
+        .replace("\u202B", "")
+        .replace("\u202C", "")
+        .replace("\u202D", "")
+        .replace("\u202E", "")
+        .replace("\u00A0", " ")
+        .replace("\\s+".toRegex(), " ")
+        .trim()
+
+    // Convert Arabic/Persian numerals
+    val arabicDigits = charArrayOf('٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩')
+    val persianDigits = charArrayOf('۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '٨', '٩')
+    for (i in 0..9) {
+        cleanStr = cleanStr.replace(arabicDigits[i], (i + 48).toChar())
+        cleanStr = cleanStr.replace(persianDigits[i], (i + 48).toChar())
+    }
+
+    val baghdadTz = java.util.TimeZone.getTimeZone("Asia/Baghdad")
+
+    try {
+        val amPmRegex = """(?i)(AM|PM)""".toRegex()
+        val amPmMatch = amPmRegex.find(cleanStr)
+        val amPm = amPmMatch?.groupValues?.get(1)?.uppercase(Locale.US)
+
+        val timeRegex = """(\d{1,2}):(\d{2})(?::(\d{2}))?""".toRegex()
+        val timeMatch = timeRegex.find(cleanStr)
+
+        val dateRegex = """(\d{1,4})[/-](\d{1,2})[/-](\d{1,4})""".toRegex()
+        val dateMatch = dateRegex.find(cleanStr)
+
+        if (dateMatch != null) {
+            val p1 = dateMatch.groupValues[1].toInt()
+            val p2 = dateMatch.groupValues[2].toInt()
+            val p3 = dateMatch.groupValues[3].toInt()
+
+            var year = 0
+            var month = 0
+            var day = 0
+
+            if (p1 > 100) {
+                year = p1
+                month = p2
+                day = p3
+            } else if (p3 > 100) {
+                year = p3
+                day = p1
+                month = p2
+            } else {
+                year = p3 + 2000
+                day = p1
+                month = p2
+            }
+
+            if (month > 12 && day <= 12) {
+                val temp = day
+                day = month
+                month = temp
+            }
+
+            var hour = 0
+            var minute = 0
+            var second = 0
+
+            if (timeMatch != null) {
+                hour = timeMatch.groupValues[1].toInt()
+                minute = timeMatch.groupValues[2].toInt()
+                second = timeMatch.groupValues[3].let { if (it.isEmpty()) 0 else it.toInt() }
+
+                if (amPm != null) {
+                    if (amPm == "PM" && hour < 12) {
+                        hour += 12
+                    } else if (amPm == "AM" && hour == 12) {
+                        hour = 0
+                    }
+                }
+            }
+
+            if (year > 0 && month in 1..12 && day in 1..31) {
+                val cal = java.util.Calendar.getInstance(baghdadTz)
+                cal.set(java.util.Calendar.YEAR, year)
+                cal.set(java.util.Calendar.MONTH, month - 1)
+                cal.set(java.util.Calendar.DAY_OF_MONTH, day)
+                cal.set(java.util.Calendar.HOUR_OF_DAY, hour)
+                cal.set(java.util.Calendar.MINUTE, minute)
+                cal.set(java.util.Calendar.SECOND, second)
+                cal.set(java.util.Calendar.MILLISECOND, 0)
+                return cal.timeInMillis
+            }
+        }
+    } catch (e: Exception) {
+        if (e is kotlinx.coroutines.CancellationException) throw e
+    }
+
+    val fallbackPatterns = listOf(
+        "yyyy-MM-dd'T'HH:mm:ss'Z'",
+        "yyyy-MM-dd'T'HH:mm:ss",
+        "yyyy-MM-dd HH:mm:ss",
+        "yyyy-MM-dd HH:mm",
+        "yyyy-MM-dd",
+        "yyyy/MM/dd",
+        "dd/MM/yyyy",
+        "MM/dd/yyyy"
+    )
+
+    for (pattern in fallbackPatterns) {
+        try {
+            val sdf = SimpleDateFormat(pattern, Locale.US).apply {
+                timeZone = if (pattern.endsWith("'Z'")) java.util.TimeZone.getTimeZone("UTC") else baghdadTz
+            }
+            val parsed = sdf.parse(cleanStr)
+            if (parsed != null) {
+                return parsed.time
+            }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+        }
+    }
+
+    return null
+}
 
 @Composable
 fun DashboardScreen(
@@ -92,16 +225,15 @@ fun DashboardScreen(
 
     // Sorting & Filtering State
     var showSortSheet by rememberSaveable { mutableStateOf(false) }
-    var selectedSort by rememberSaveable { mutableStateOf("نهاية الاشتراك") } // Default selectable option in image 2
-    var selectedPanel by rememberSaveable { mutableStateOf("الكل") } // Panels: "الكل", "EarthLink admin@sacx", "محذوفة"
-    var selectedStatusFilter by rememberSaveable { mutableStateOf("الكل") } // Statuses: "الكل", "فعال", "قريب من الانتهاء", "منتهي"
+    var selectedSort by rememberSaveable { mutableStateOf("نهاية الاشتراك") } // Options: "نهاية الاشتراك", "الاسم", "الدين"
+    var selectedStatusFilter by rememberSaveable { mutableStateOf("الكل") } // Options: "الكل", "فعال", "قريب من الانتهاء", "منتهي"
 
     var isSearchActive by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
 
     // 1. FILTERING & SORTING VIA DERIVED STATE
-    val filteredList by remember(subscribers, localAccounts, localAccountMatcher, selectedPanel, selectedStatusFilter, selectedSort, isSearchActive, searchQuery) {
+    val filteredList by remember(subscribers, localAccounts, localAccountMatcher, selectedStatusFilter, selectedSort, isSearchActive, searchQuery) {
         derivedStateOf {
             val baseList = if (subscribers.isEmpty() && localAccounts.isNotEmpty()) {
                 localAccounts.map { acc ->
@@ -111,11 +243,8 @@ fun DashboardScreen(
                         customerNameLower = acc.displayName.ifBlank { acc.earthlinkUsername ?: "Unknown" },
                         mobileNumberLower = acc.phone1,
                         accountStatusLower = if (acc.expiresAt != null) {
-                            try {
-                                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
-                                val expireDate = sdf.parse(acc.expiresAt)
-                                if (expireDate != null && expireDate.before(java.util.Date())) "Expired" else "Active"
-                            } catch(e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; "Active" }
+                            val expTime = parseExpirationTimestamp(acc.expiresAt)
+                            if (expTime != null && expTime < System.currentTimeMillis()) "Expired" else "Active"
                         } else "Active",
                         expirationDateLower = acc.expiresAt ?: "",
                         displayNameLower = acc.displayName,
@@ -126,60 +255,112 @@ fun DashboardScreen(
                 subscribers
             }
 
+            val now = System.currentTimeMillis()
+
             var list = baseList.filter { user ->
                 val matchingAccount = localAccountMatcher.findMatchingByUsername(user.userID) ?: localAccountMatcher.findMatching(user)
-                val panelMatch = when (selectedPanel) {
-                    "الكل" -> matchingAccount?.isHistoryOnlySubscriber != true
-                    "EarthLink admin@sacx" -> matchingAccount?.towerName?.equals("sacx", ignoreCase = true) == true && matchingAccount.isHistoryOnlySubscriber != true
-                    "محذوفة" -> matchingAccount?.isHistoryOnlySubscriber == true
-                    else -> true
+                if (matchingAccount?.isHistoryOnlySubscriber == true) {
+                    return@filter false
                 }
-                
-                val statusMatch = when (selectedStatusFilter) {
+
+                val expStr = listOfNotNull(
+                    user.manualExpirationDate,
+                    user.accountExpirationDate,
+                    user.expirationDate,
+                    matchingAccount?.expiresAt
+                ).firstOrNull { it.isNotBlank() && !it.equals("N/A", ignoreCase = true) && !it.equals("none", ignoreCase = true) }
+                val expTimestamp = parseExpirationTimestamp(expStr)
+                val statusClean = user.accountStatus?.trim()?.lowercase(Locale.US) ?: ""
+
+                val isExplicitExpired = statusClean == "expired" || statusClean == "منتهي" || statusClean == "suspendedbyagent"
+                val isDateExpired = expTimestamp != null && expTimestamp < now
+                val isExpired = isExplicitExpired || isDateExpired
+
+                when (selectedStatusFilter) {
                     "الكل" -> true
-                    "فعال" -> user.accountStatus?.equals("Active", ignoreCase = true) == true
-                    "منتهي" -> user.accountStatus?.equals("Expired", ignoreCase = true) == true
+                    "فعال" -> !isExpired
+                    "منتهي" -> isExpired
                     "قريب من الانتهاء" -> {
-                        val dateStr = user.expirationDate ?: ""
-                        try {
-                            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
-                            val expireDate = sdf.parse(dateStr)
-                            if (expireDate != null) {
-                                val diffMs = expireDate.time - java.util.Date().time
-                                val diffDays = diffMs / (1000 * 60 * 60 * 24)
-                                diffDays in 0..7
+                        if (expTimestamp != null) {
+                            val diffMs = expTimestamp - now
+                            diffMs in 0..(7L * 24 * 60 * 60 * 1000L)
+                        } else {
+                            val daysLeft = user.activeDaysLeft?.toString()?.toDoubleOrNull()
+                            if (daysLeft != null) {
+                                daysLeft in 0.0..7.0
                             } else false
-                        } catch(e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; false }
+                        }
                     }
                     else -> true
                 }
-                
-                panelMatch && statusMatch
             }
 
             list = when (selectedSort) {
-                "الاسم" -> list.sortedBy { it.displayName ?: it.customerName ?: it.userID }
-                "نهاية الاشتراك" -> list.sortedBy { it.expirationDate ?: "" }
-                "بدء الاشتراك" -> list.sortedByDescending { it.userID }
-                "دين المشترك" -> list.sortedByDescending { user ->
-                    (localAccountMatcher.findMatchingByUsername(user.userID) ?: localAccountMatcher.findMatching(user))?.debtIqd ?: 0.0
-                }
-                "سعر الاشتراك" -> list.sortedBy { it.userIndex }
-                "رقم الهاتف" -> list.sortedBy { it.mobileNumber ?: "" }
-                else -> list
+                "الاسم" -> list.sortedWith(
+                    compareBy<com.example.core.model.UserListItem> { user ->
+                        val matchingAccount = localAccountMatcher.findMatchingByUsername(user.userID) ?: localAccountMatcher.findMatching(user)
+                        val name = user.displayName?.takeIf { it.isNotBlank() }
+                            ?: matchingAccount?.displayName?.takeIf { it.isNotBlank() }
+                            ?: user.customerName?.takeIf { it.isNotBlank() }
+                            ?: user.userID
+                        name.trim().lowercase(Locale.getDefault())
+                    }.thenBy { it.userID }
+                )
+                "الدين", "دين المشترك" -> list.sortedWith(
+                    compareByDescending<com.example.core.model.UserListItem> { user ->
+                        val matchingAccount = localAccountMatcher.findMatchingByUsername(user.userID) ?: localAccountMatcher.findMatching(user)
+                        matchingAccount?.debtIqd ?: 0.0
+                    }.thenBy { user ->
+                        val matchingAccount = localAccountMatcher.findMatchingByUsername(user.userID) ?: localAccountMatcher.findMatching(user)
+                        user.displayName?.takeIf { it.isNotBlank() }
+                            ?: matchingAccount?.displayName?.takeIf { it.isNotBlank() }
+                            ?: user.customerName?.takeIf { it.isNotBlank() }
+                            ?: user.userID
+                    }.thenBy { it.userID }
+                )
+                "نهاية الاشتراك" -> list.sortedWith(
+                    compareBy<com.example.core.model.UserListItem> { user ->
+                        val matchingAccount = localAccountMatcher.findMatchingByUsername(user.userID) ?: localAccountMatcher.findMatching(user)
+                        val expStr = listOfNotNull(
+                            user.manualExpirationDate,
+                            user.accountExpirationDate,
+                            user.expirationDate,
+                            matchingAccount?.expiresAt
+                        ).firstOrNull { it.isNotBlank() && !it.equals("N/A", ignoreCase = true) && !it.equals("none", ignoreCase = true) }
+                        parseExpirationTimestamp(expStr) ?: Long.MAX_VALUE
+                    }.thenBy { user ->
+                        val matchingAccount = localAccountMatcher.findMatchingByUsername(user.userID) ?: localAccountMatcher.findMatching(user)
+                        user.displayName?.takeIf { it.isNotBlank() }
+                            ?: matchingAccount?.displayName?.takeIf { it.isNotBlank() }
+                            ?: user.customerName?.takeIf { it.isNotBlank() }
+                            ?: user.userID
+                    }.thenBy { it.userID }
+                )
+                else -> list.sortedWith(
+                    compareBy<com.example.core.model.UserListItem> { user ->
+                        val matchingAccount = localAccountMatcher.findMatchingByUsername(user.userID) ?: localAccountMatcher.findMatching(user)
+                        val expStr = listOfNotNull(
+                            user.manualExpirationDate,
+                            user.accountExpirationDate,
+                            user.expirationDate,
+                            matchingAccount?.expiresAt
+                        ).firstOrNull { it.isNotBlank() && !it.equals("N/A", ignoreCase = true) && !it.equals("none", ignoreCase = true) }
+                        parseExpirationTimestamp(expStr) ?: Long.MAX_VALUE
+                    }.thenBy { it.userID }
+                )
             }
 
             if (isSearchActive && searchQuery.isNotEmpty()) {
-                val q = searchQuery.trim().lowercase()
+                val q = searchQuery.trim().lowercase(Locale.getDefault())
                 list = list.filter { user ->
                     user.userIndex.toString().contains(q) ||
-                    user.userID.lowercase().contains(q) ||
-                    user.customerName?.lowercase()?.contains(q) == true ||
-                    user.displayName?.lowercase()?.contains(q) == true ||
-                    user.mobileNumber?.lowercase()?.contains(q) == true
+                    user.userID.lowercase(Locale.getDefault()).contains(q) ||
+                    user.customerName?.lowercase(Locale.getDefault())?.contains(q) == true ||
+                    user.displayName?.lowercase(Locale.getDefault())?.contains(q) == true ||
+                    user.mobileNumber?.lowercase(Locale.getDefault())?.contains(q) == true
                 }
             }
-            
+
             list
         }
     }
@@ -193,319 +374,171 @@ fun DashboardScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            // High-Fidelity Custom Earthlink Header Row with Clickable E Logo status portal
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    // Clickable E Logo Box
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .background(
-                                color = Color(0xFF0288D1),
-                                shape = RoundedCornerShape(8.dp)
-                            )
-                            .clickable { onEClick() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "E",
-                            color = Color.White,
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Black
-                        )
-                    }
-
-                    Column {
-                        Text(
-                            text = stringResource(id = R.string.header_earthlink_mobile),
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        Text(
-                            text = stringResource(id = R.string.header_reseller_manager),
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                        )
-                    }
-                }
-
-                // Action controls: Filter/sorting & Search & Plus button
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Refined Search Pill Button
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape = androidx.compose.foundation.shape.CircleShape)
-                            .clickable { isSearchActive = true },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = stringResource(id = R.string.action_search),
-                            tint = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    // Refined Sorting Pill Button
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape = androidx.compose.foundation.shape.CircleShape)
-                            .clickable { showSortSheet = true },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Tune,
-                            contentDescription = stringResource(id = R.string.action_sort_filter),
-                            tint = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    // Refined Plus Button Pill
-                    Box(
-                        modifier = Modifier
-                            .width(64.dp)
-                            .height(38.dp)
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape = RoundedCornerShape(19.dp))
-                            .clickable { onPlusClick() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = stringResource(id = R.string.action_add_user),
-                            tint = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                }
-            }
-
-            // Sleek Operator Deposit & Health Bar
-            var showFinancials by rememberSaveable { mutableStateOf(false) }
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // Compact Earthlink Header Row: [ E Logo ] --- [ Balance Capsule ] --- [ Filter Action ]
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { showFinancials = !showFinancials },
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.AccountBalanceWallet,
-                                contentDescription = null,
-                                tint = Color(0xFF039BE5)
-                            )
-                            Text(
-                                text = if (lang == "ar") "الوكيل والرصيد والصحة" else "Operator Deposit & Health",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp,
-                                color = Color.White
-                            )
-                        }
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text(
-                                text = formatIqd(balance),
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 13.sp,
-                                color = Color(0xFF039BE5)
-                            )
-                            Icon(
-                                imageVector = if (showFinancials) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                contentDescription = "Expand financials",
-                                tint = Color.White
-                            )
-                        }
-                    }
-
-                    if (showFinancials) {
-                        Spacer(modifier = Modifier.height(10.dp))
-                        HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            val activeAccounts = localAccounts.filter { !it.isLegacy }
-                            val totalLocalDebt = activeAccounts.sumOf { it.debtIqd }
-                            val totalLocalAdvance = activeAccounts.sumOf { it.advanceIqd }
-
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(text = if (lang == "ar") "إجمالي الديون (محلي)" else "Total Local Debt", fontSize = 12.sp, color = Color.Gray)
-                                Text(text = formatIqd(totalLocalDebt), fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFFEF5350))
-                            }
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(text = if (lang == "ar") "إجمالي المودع (محلي)" else "Total Local Deposits", fontSize = 12.sp, color = Color.Gray)
-                                Text(text = formatIqd(totalLocalAdvance), fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF66BB6A))
-                            }
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(text = if (lang == "ar") "الرصيد المطلوب (7 أيام)" else "Prepaid Needed (7 days)", fontSize = 12.sp, color = Color.Gray)
-                                Text(text = formatIqd(prepaidNeeded), fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFFEF5350))
-                            }
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(text = if (lang == "ar") "الهامش المتوقع" else "Expected Margin", fontSize = 12.sp, color = Color.Gray)
-                                val fColor = if (forecastAfter >= 0) Color(0xFF66BB6A) else Color(0xFFEF5350)
-                                Text(text = formatIqd(forecastAfter), fontWeight = FontWeight.Bold, fontSize = 12.sp, color = fColor)
-                            }
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(text = if (lang == "ar") "مستخدمي التجربة المتبقين" else "Remaining Test Users", fontSize = 12.sp, color = Color.Gray)
-                                Text(text = "$testCount", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Custom error block if any
-
-            if (syncState == SyncStatusState.OFFLINE || syncState == SyncStatusState.ERROR) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
-                    border = BorderStroke(1.dp, Color(0xFFFF9800)),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
+                            .padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.CloudOff,
-                            contentDescription = "Offline",
-                            tint = Color(0xFFF57C00),
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Text(
-                            text = if (lang == "ar") "أنت تعمل الآن في وضع عدم الاتصال (بيانات مخزنة مؤقتاً)." else "You are operating offline (cached data).",
-                            color = Color(0xFFE65100),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-            }
-            
-            if (isCredentialsEmpty && !isDemoOn) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE)),
-                    border = BorderStroke(1.dp, Color(0xFFEF5350)),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        // Clickable E Logo Box (Opens status portal)
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .background(
+                                    color = Color(0xFF0288D1),
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                                .clickable { onEClick() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "E",
+                                color = Color.White,
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
+
+                        // Remaining Balance Capsule Promoted to Header
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AccountBalanceWallet,
+                                    contentDescription = null,
+                                    tint = Color(0xFF039BE5),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = formatIqd(balance),
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 13.sp,
+                                    color = Color(0xFF039BE5)
+                                )
+                            }
+                        }
+
+                        // Filter / Sorting Action Button
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape = androidx.compose.foundation.shape.CircleShape)
+                                .clickable { showSortSheet = true },
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = androidx.compose.material.icons.Icons.Default.Warning,
-                                contentDescription = "Warning",
-                                tint = Color(0xFFC62828),
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Text(
-                                text = if (lang == "ar") "تنبيه: معلومات الحساب فارغة!" else "Warning: Account Credentials Empty!",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
-                                color = Color(0xFFC62828)
-                            )
-                        }
-                        Text(
-                            text = if (lang == "ar") {
-                                "الرجاء إضافة معلومات مسؤول ISP (اسم المستخدم وكلمة المرور) في الإعدادات للاتصال بـ Earthlink وعرض الحسابات والبيانات الحية."
-                            } else {
-                                "Please add your Earthlink ISP Admin credentials (username and password) in Settings to load live accounts and connect."
-                            },
-                            fontSize = 13.sp,
-                            color = Color(0xFF333333),
-                            textAlign = TextAlign.Center
-                        )
-                        Button(
-                            onClick = { onNavigateToSettings() },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828)),
-                            shape = RoundedCornerShape(20.dp),
-                            modifier = Modifier.height(38.dp)
-                        ) {
-                            Text(
-                                text = if (lang == "ar") "الذهاب إلى الإعدادات الآن" else "Go to Settings Now",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = stringResource(id = R.string.action_sort_filter),
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
-                }
-            }
 
-            if (error != null && !isDemoOn) {
-                ErrorStateCard(
-                    message = error ?: "Unknown connection anomaly",
-                    title = if (lang == "ar") "خطأ في الاتصال" else "Connection Error"
-                )
-            }
+                    // Network/Offline Alert Banner if applicable
+                    if (syncState == SyncStatusState.OFFLINE || syncState == SyncStatusState.ERROR) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
+                            border = BorderStroke(1.dp, Color(0xFFFF9800)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CloudOff,
+                                    contentDescription = "Offline",
+                                    tint = Color(0xFFF57C00),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Text(
+                                    text = if (lang == "ar") "أنت تعمل الآن في وضع عدم الاتصال (بيانات مخزنة مؤقتاً)." else "You are operating offline (cached data).",
+                                    color = Color(0xFFE65100),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                    
+                    if (isCredentialsEmpty && !isDemoOn) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE)),
+                            border = BorderStroke(1.dp, Color(0xFFEF5350)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = androidx.compose.material.icons.Icons.Default.Warning,
+                                        contentDescription = "Warning",
+                                        tint = Color(0xFFC62828),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Text(
+                                        text = if (lang == "ar") "تنبيه: معلومات الحساب فارغة!" else "Warning: Account Credentials Empty!",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp,
+                                        color = Color(0xFFC62828)
+                                    )
+                                }
+                                Text(
+                                    text = if (lang == "ar") {
+                                        "الرجاء إضافة معلومات مسؤول ISP (اسم المستخدم وكلمة المرور) في الإعدادات للاتصال بـ Earthlink وعرض الحسابات والبيانات الحية."
+                                    } else {
+                                        "Please add your Earthlink ISP Admin credentials (username and password) in Settings to load live accounts and connect."
+                                    },
+                                    fontSize = 13.sp,
+                                    color = Color(0xFF333333),
+                                    textAlign = TextAlign.Center
+                                )
+                                Button(
+                                    onClick = { onNavigateToSettings() },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828)),
+                                    shape = RoundedCornerShape(20.dp),
+                                    modifier = Modifier.height(38.dp)
+                                ) {
+                                    Text(
+                                        text = if (lang == "ar") "الذهاب إلى الإعدادات الآن" else "Go to Settings Now",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
 
-            // Flat Continuous Subscriber List Block
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 6.dp, bottom = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    color = Color(0xFF039BE5).copy(alpha = 0.15f),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text(
-                        text = "${filteredList.size} مشتركين",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF039BE5)
-                    )
-                }
-                
-                Text(
-                    text = "قائمة المشتركين",
-                    fontWeight = FontWeight.Black,
-                    fontSize = 15.sp,
-                    color = Color.White,
-                    textAlign = TextAlign.Right
-                )
-            }
-
+                    if (error != null && !isDemoOn) {
+                        ErrorStateCard(
+                            message = error ?: "Unknown connection anomaly",
+                            title = if (lang == "ar") "خطأ في الاتصال" else "Connection Error"
+                        )
+                    }
                 }
             }
 
@@ -528,7 +561,13 @@ fun DashboardScreen(
             item { Spacer(modifier = Modifier.height(100.dp)) }
         }
 
-        // 4. Center Floating Capsule Search Pill ("بحث") or Full Width Keyboard Search
+        // BackHandler: Close search if active
+        BackHandler(enabled = isSearchActive) {
+            isSearchActive = false
+            searchQuery = ""
+        }
+
+        // Floating Capsule Search Pill ("بــحــث") or Expanded Active Search Bar
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -619,11 +658,11 @@ fun DashboardScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(0.42f)
-                        .align(Alignment.Center) // Clean center pill sizing
+                        .align(Alignment.Center)
                 ) {
                     Button(
                         onClick = { isSearchActive = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E2830)), // dark slate search button
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E2830)),
                         shape = RoundedCornerShape(24.dp),
                         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
                         modifier = Modifier
@@ -643,7 +682,7 @@ fun DashboardScreen(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "بــحــث", // centered spacious arabic search label
+                                text = "بــحــث",
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 13.sp,
                                 color = Color.White
@@ -654,8 +693,12 @@ fun DashboardScreen(
             }
         }
 
-        // 2. DIM BACKGROUND AND SELECTABLE BOTTOM SORT SLIDE SHEET (Image 2)
+        // 2. DIM BACKGROUND AND SELECTABLE BOTTOM SORT SLIDE SHEET
         if (showSortSheet) {
+            BackHandler(enabled = true) {
+                showSortSheet = false
+            }
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -667,14 +710,17 @@ fun DashboardScreen(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .clickable(enabled = false) {}, // prevent dismiss tap leak
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {}, // prevent dismiss tap leak
                     shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF12181F))
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
+                            .padding(20.dp),
                         horizontalAlignment = Alignment.End // RTL Arabic Support
                     ) {
                         // Drag Handle
@@ -688,27 +734,37 @@ fun DashboardScreen(
                         
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Head Title - "الترتيب بحسب"
+                        // Head Title - "فرز وتصفية"
                         Text(
-                            text = "الترتيب بحسب",
+                            text = "فرز وتصفية",
                             fontWeight = FontWeight.Black,
-                            fontSize = 15.sp,
+                            fontSize = 16.sp,
                             color = Color.White,
                             textAlign = TextAlign.Right
                         )
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
 
-                        // Horizontally scrollable sort pills (Exactly matches list in Image 2)
-                        val criteria = listOf("نهاية الاشتراك", "الاسم", "بدء الاشتراك", "دين المشترك", "سعر الاشتراك", "رقم الهاتف")
+                        // Section 1 - "ترتيب حسب"
+                        Text(
+                            text = "ترتيب حسب",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = Color.White.copy(alpha = 0.8f),
+                            textAlign = TextAlign.Right
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        val sortOptions = listOf("نهاية الاشتراك", "الاسم", "الدين")
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
                         ) {
-                            criteria.forEach { item ->
-                                val selected = selectedSort == item
+                            sortOptions.forEach { item ->
+                                val selected = selectedSort == item || (item == "الدين" && selectedSort == "دين المشترك")
                                 Box(
                                     modifier = Modifier
                                         .background(
@@ -722,106 +778,56 @@ fun DashboardScreen(
                                         text = item,
                                         color = if (selected) Color.White else Color.White.copy(alpha = 0.7f),
                                         fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
                                     )
                                 }
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(20.dp))
+                        Spacer(modifier = Modifier.height(18.dp))
                         HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Panels Section - "اللوحات"
+                        // Section 2 - "حالة الاشتراك"
                         Text(
-                            text = "اللوحات",
-                            fontWeight = FontWeight.Black,
-                            fontSize = 15.sp,
-                            color = Color.White,
+                            text = "حالة الاشتراك",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = Color.White.copy(alpha = 0.8f),
                             textAlign = TextAlign.Right
                         )
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
 
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            // الكل switch row
-                            PanelSwitchRow(
-                                label = "الكل",
-                                checked = selectedPanel == "الكل",
-                                icon = Icons.Default.Check,
-                                onCheckedChange = { if (it) selectedPanel = "الكل" }
-                            )
-
-                            // EarthLink admin@sacx switch row
-                            PanelSwitchRow(
-                                label = "EarthLink admin@sacx",
-                                checked = selectedPanel == "EarthLink admin@sacx",
-                                icon = Icons.Default.AccountCircle,
-                                onCheckedChange = { if (it) selectedPanel = "EarthLink admin@sacx" }
-                            )
-
-                            // محذوفة switch row
-                            PanelSwitchRow(
-                                label = "محذوفة",
-                                checked = selectedPanel == "محذوفة",
-                                icon = Icons.Default.Delete,
-                                onCheckedChange = { if (it) selectedPanel = "محذوفة" }
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(20.dp))
-                        HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // Time Section - "الوقت"
-                        Text(
-                            text = "الوقت",
-                            fontWeight = FontWeight.Black,
-                            fontSize = 15.sp,
-                            color = Color.White,
-                            textAlign = TextAlign.Right
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            PanelSwitchRow(
-                                label = "الكل",
-                                checked = selectedStatusFilter == "الكل",
-                                icon = Icons.Default.List,
-                                onCheckedChange = { if (it) selectedStatusFilter = "الكل" }
-                            )
-                            PanelSwitchRow(
-                                label = "فعال",
-                                checked = selectedStatusFilter == "فعال",
-                                icon = Icons.Default.CheckCircle,
-                                onCheckedChange = { if (it) selectedStatusFilter = "فعال" }
-                            )
-                            PanelSwitchRow(
-                                label = "قريب من الانتهاء",
-                                checked = selectedStatusFilter == "قريب من الانتهاء",
-                                icon = Icons.Default.HourglassEmpty,
-                                onCheckedChange = { if (it) selectedStatusFilter = "قريب من الانتهاء" }
-                            )
-                            PanelSwitchRow(
-                                label = "منتهي",
-                                checked = selectedStatusFilter == "منتهي",
-                                icon = Icons.Default.Cancel,
-                                onCheckedChange = { if (it) selectedStatusFilter = "منتهي" }
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(24.dp))
-                        
-                        // Action Dismiss Button
-                        Button(
-                            onClick = { showSortSheet = false },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0288D1)),
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
+                        val statusOptions = listOf("الكل", "فعال", "قريب من الانتهاء", "منتهي")
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
                         ) {
-                            Text(text = "تطبيق الفرز", fontWeight = FontWeight.Bold, color = Color.White)
+                            statusOptions.forEach { item ->
+                                val selected = selectedStatusFilter == item
+                                Box(
+                                    modifier = Modifier
+                                        .background(
+                                            color = if (selected) Color(0xFF0288D1) else Color(0xFF1C242E),
+                                            shape = RoundedCornerShape(16.dp)
+                                        )
+                                        .clickable { selectedStatusFilter = item }
+                                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                                ) {
+                                    Text(
+                                        text = item,
+                                        color = if (selected) Color.White else Color.White.copy(alpha = 0.7f),
+                                        fontSize = 12.sp,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                    )
+                                }
+                            }
                         }
+
+                        Spacer(modifier = Modifier.height(16.dp))
                     }
                 }
             }
