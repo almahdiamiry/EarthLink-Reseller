@@ -700,7 +700,7 @@ class RemoteSyncCoordinator(
         
         val isSnapshot = account.stateSource != null
         val unrecognizedTxs = mutableListOf<Pair<LocalLedgerEntry, String>>()
-        val (derivedBalances, _) = com.example.core.ledger.BalanceCalculator.reconstructCurrentPosition(
+        val (derivedBalances, updatedEntries) = com.example.core.ledger.BalanceCalculator.reconstructCurrentPosition(
             openingDebt = account.openingDebtIqd,
             openingAdvance = account.openingAdvanceIqd,
             openingLoan = account.openingLoanIqd,
@@ -724,6 +724,14 @@ class RemoteSyncCoordinator(
             auditDao?.insert(quarantineAudit)
         }
 
+        val updatedLedgers = mutableListOf<LocalLedgerEntry>()
+        for (updatedTx in updatedEntries) {
+            val originalTx = ledgers.find { it.id == updatedTx.id }
+            if (originalTx == null || kotlin.math.abs(originalTx.debtAfterIqd - updatedTx.debtAfterIqd) > 0.01) {
+                updatedLedgers.add(updatedTx)
+            }
+        }
+
         // Preserve business updatedAt timestamp when updating derived calculation! (INV-04)
         accountDao.upsert(
             account.copy(
@@ -733,6 +741,10 @@ class RemoteSyncCoordinator(
                 // Note: updatedAt is NOT modified here so remote apply does not trigger outbox
             )
         )
+
+        if (updatedLedgers.isNotEmpty()) {
+            ledgerDao.insertAll(updatedLedgers)
+        }
     }
 
     suspend fun clearCache() {
