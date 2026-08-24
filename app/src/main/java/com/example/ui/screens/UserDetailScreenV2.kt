@@ -11,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.StickyNote2
@@ -1716,43 +1717,36 @@ fun UserDetailScreenV2(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(Color(0xFF10161D))
-                        .padding(bottom = 24.dp, start = 16.dp, end = 16.dp, top = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .padding(bottom = 16.dp, start = 14.dp, end = 14.dp, top = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    Button(
+                        onClick = { showDepositDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1C242F)),
+                        border = BorderStroke(1.dp, Color(0xFF2C3E50)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp),
+                        shape = RoundedCornerShape(22.dp)
                     ) {
-                        Button(
-                            onClick = { showDepositDialog = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                            border = BorderStroke(1.dp, Color(0xFF2C2C2E)),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(46.dp),
-                            shape = RoundedCornerShape(23.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(if (currentLang == "ar") if ((matchingAccount?.debtIqd ?: 0.0) > 0) "تسديد مبلغ" else "ايداع مبلغ" else if ((matchingAccount?.debtIqd ?: 0.0) > 0) "Pay Amount" else "Deposit Amount", color = Color.White, fontSize = 14.sp)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Icon(imageVector = Icons.Default.Payment, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                            }
-                        }
-
-                        Button(
-                            onClick = { showDebtDialog = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                            border = BorderStroke(1.dp, Color(0xFF2C2C2E)),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(46.dp),
-                            shape = RoundedCornerShape(23.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(if (currentLang == "ar") "إضافة دين" else "Add Debt", color = Color.White, fontSize = 14.sp)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Icon(imageVector = Icons.Default.AttachMoney, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                            }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = if (currentLang == "ar") {
+                                    if ((matchingAccount?.debtIqd ?: 0.0) > 0) "تسديد مبلغ" else "ايداع مبلغ"
+                                } else {
+                                    if ((matchingAccount?.debtIqd ?: 0.0) > 0) "Pay Amount" else "Deposit Amount"
+                                },
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Icon(
+                                imageVector = Icons.Default.Payment,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
                         }
                     }
 
@@ -1761,13 +1755,23 @@ fun UserDetailScreenV2(
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF90CAF9)),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(50.dp),
-                        shape = RoundedCornerShape(25.dp)
+                            .height(48.dp),
+                        shape = RoundedCornerShape(24.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(if (currentLang == "ar") "تجديد الإشتراك" else "Renew Subscription", color = Color.Black, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = if (currentLang == "ar") "تجديد الإشتراك" else "Renew Subscription",
+                                color = Color.Black,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Icon(imageVector = Icons.Default.Refresh, contentDescription = null, tint = Color.Black, modifier = Modifier.size(20.dp))
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = null,
+                                tint = Color.Black,
+                                modifier = Modifier.size(18.dp)
+                            )
                         }
                     }
                 }
@@ -1778,9 +1782,9 @@ fun UserDetailScreenV2(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-                    .padding(horizontal = 16.dp)
+                    .padding(horizontal = 14.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 if (isLoading && detail == null) {
                     Box(modifier = Modifier.height(300.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -2164,38 +2168,87 @@ fun UserDetailScreenV2(
                     }
                 }
                 
-                // Blue Card
+                // Blue Identity Card
                 Card(
-                    modifier = Modifier.fillMaxWidth().height(160.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(132.dp),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF1E88E5)),
-                    shape = RoundedCornerShape(16.dp)
+                    shape = RoundedCornerShape(14.dp)
                 ) {
-                    Box(modifier = Modifier.fillMaxSize().padding(20.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                    ) {
                         Text(
-                            text = "E", 
-                            fontSize = 48.sp, 
-                            fontWeight = FontWeight.ExtraBold, 
-                            color = Color.White, 
-                            modifier = Modifier.align(Alignment.TopEnd) // because RTL
+                            text = "E",
+                            fontSize = 44.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color.White.copy(alpha = 0.22f),
+                            modifier = Modifier.align(Alignment.TopEnd)
                         )
-                        
-                        Column(modifier = Modifier.align(Alignment.TopStart), horizontalAlignment = Alignment.Start) {
-                            Text(text = if (currentLang == "ar") "الاسم" else "Name", fontSize = 12.sp, color = Color.White.copy(alpha = 0.8f))
-                            Text(text = displayNameToUse, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                        }
-                        
-                        Column(modifier = Modifier.align(Alignment.BottomStart), horizontalAlignment = Alignment.Start) {
-                            val debtVal = matchingAccount?.debtIqd ?: 0.0
-                            val advanceVal = matchingAccount?.advanceIqd ?: 0.0
-                            if (debtVal > 0) {
-                                Text(text = if (currentLang == "ar") "الديون" else "Debt", fontSize = 12.sp, color = Color.White.copy(alpha = 0.8f))
-                                Text(text = formatIqd(debtVal), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            } else if (advanceVal > 0) {
-                                Text(text = if (currentLang == "ar") "مودع" else "Deposited", fontSize = 12.sp, color = Color.White.copy(alpha = 0.8f))
-                                Text(text = formatIqd(advanceVal), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            } else {
-                                Text(text = if (currentLang == "ar") "الديون" else "Debt", fontSize = 12.sp, color = Color.White.copy(alpha = 0.8f))
-                                Text(text = "0", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
+
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.SpaceBetween,
+                            horizontalAlignment = Alignment.Start
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = if (currentLang == "ar") "الاسم" else "Name",
+                                    fontSize = 11.5.sp,
+                                    color = Color.White.copy(alpha = 0.8f)
+                                )
+                                Text(
+                                    text = displayNameToUse,
+                                    fontSize = 19.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    maxLines = 1
+                                )
+                            }
+
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                val debtVal = matchingAccount?.debtIqd ?: 0.0
+                                val advanceVal = matchingAccount?.advanceIqd ?: 0.0
+                                if (debtVal > 0) {
+                                    Text(
+                                        text = if (currentLang == "ar") "الديون" else "Debt",
+                                        fontSize = 11.5.sp,
+                                        color = Color.White.copy(alpha = 0.8f)
+                                    )
+                                    Text(
+                                        text = formatIqd(debtVal),
+                                        fontSize = 22.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                } else if (advanceVal > 0) {
+                                    Text(
+                                        text = if (currentLang == "ar") "مودع" else "Deposited",
+                                        fontSize = 11.5.sp,
+                                        color = Color.White.copy(alpha = 0.8f)
+                                    )
+                                    Text(
+                                        text = formatIqd(advanceVal),
+                                        fontSize = 22.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                } else {
+                                    Text(
+                                        text = if (currentLang == "ar") "الديون" else "Debt",
+                                        fontSize = 11.5.sp,
+                                        color = Color.White.copy(alpha = 0.8f)
+                                    )
+                                    Text(
+                                        text = "0",
+                                        fontSize = 22.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
                             }
                         }
                     }
@@ -2205,28 +2258,57 @@ fun UserDetailScreenV2(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1C1E)),
-                    shape = RoundedCornerShape(16.dp)
+                    border = BorderStroke(1.dp, Color(0xFF2C2C2E).copy(alpha = 0.6f)),
+                    shape = RoundedCornerShape(14.dp)
                 ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        
+                    Column(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        // --- GROUP 1: Status & Session Information ---
+
                         // Status
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(text = if (currentLang == "ar") "الحالة" else "Status", color = Color(0xFF8E8E93), fontSize = 14.sp)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (currentLang == "ar") "الحالة" else "Status",
+                                color = Color(0xFF8E8E93),
+                                fontSize = 13.5.sp
+                            )
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(modifier = Modifier.size(8.dp).background(if (isReallyOnline) Color(0xFF30D158) else Color(0xFFFF453A), shape = CircleShape))
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .background(if (isReallyOnline) Color(0xFF30D158) else Color(0xFFFF453A), shape = CircleShape)
+                                )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = if (isReallyOnline && currentLang == "ar") "متصل" else if (isReallyOnline) "Online" else if (currentLang == "ar") "غير متصل" else "Offline", 
-                                    color = if (isReallyOnline) Color(0xFF30D158) else Color(0xFFFF453A), 
-                                    fontSize = 14.sp, 
+                                    text = if (isReallyOnline && currentLang == "ar") "متصل" else if (isReallyOnline) "Online" else if (currentLang == "ar") "غير متصل" else "Offline",
+                                    color = if (isReallyOnline) Color(0xFF30D158) else Color(0xFFFF453A),
+                                    fontSize = 13.5.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
                         }
 
-                        // Account Status (Active, Suspended, etc.)
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(text = if (currentLang == "ar") "حالة الحساب" else "Account Status", color = Color(0xFF8E8E93), fontSize = 14.sp)
+                        // Account Status
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (currentLang == "ar") "حالة الحساب" else "Account Status",
+                                color = Color(0xFF8E8E93),
+                                fontSize = 13.5.sp
+                            )
                             val statusLabel = when (statusClean) {
                                 "suspendedbyagent" -> if (currentLang == "ar") "موقوف من الوكيل" else "Suspended by Agent"
                                 "expired" -> if (currentLang == "ar") "منتهي الصلاحية" else "Expired"
@@ -2241,49 +2323,157 @@ fun UserDetailScreenV2(
                                 "recentlyexpired" -> Color(0xFFFFD60A)
                                 else -> Color.White
                             }
-                            Text(text = statusLabel, color = statusColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            Text(text = statusLabel, color = statusColor, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
                         }
 
-                        // Connection Duration / Online Time
+                        // Online Duration
                         val connTime = user.onlineSessionTime
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(text = if (currentLang == "ar") "مدة الاتصال" else "Online Duration", color = Color(0xFF8E8E93), fontSize = 14.sp)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (currentLang == "ar") "مدة الاتصال" else "Online Duration",
+                                color = Color(0xFF8E8E93),
+                                fontSize = 13.5.sp
+                            )
                             Text(
                                 text = if (!connTime.isNullOrBlank()) connTime else "N/A",
                                 color = if (!connTime.isNullOrBlank() && connTime != "N/A") Color(0xFF30D158) else Color.White,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
 
                         // Remaining
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(text = if (currentLang == "ar") "المتبقي" else "Remaining", color = Color(0xFF8E8E93), fontSize = 14.sp)
-                            Text(text = remainingTime, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        // Sub Price
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(text = if (currentLang == "ar") "سعر الإشتراك" else "Sub Price", color = Color(0xFF8E8E93), fontSize = 14.sp)
-                            Text(text = formatIqd(matchingAccount?.currentPriceIqd ?: 40000.0), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        // Package Name
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(text = if (currentLang == "ar") "نوع الإشتراك" else "Package", color = Color(0xFF8E8E93), fontSize = 14.sp)
-                            Text(text = user.packageName ?: "Unknown", color = Color(0xFF90CAF9), fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        // Tower
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(text = if (currentLang == "ar") "البرج" else "Tower", color = Color(0xFF8E8E93), fontSize = 14.sp)
-                            Text(text = matchingAccount?.towerName ?: user.userID.substringAfter("@", "N/A"), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        // Username
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .padding(vertical = 2.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (currentLang == "ar") "المتبقي" else "Remaining",
+                                color = Color(0xFF8E8E93),
+                                fontSize = 13.5.sp
+                            )
+                            Text(
+                                text = remainingTime,
+                                color = Color.White,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        HorizontalDivider(
+                            color = Color.White.copy(alpha = 0.08f),
+                            thickness = 1.dp,
+                            modifier = Modifier.padding(vertical = 3.dp)
+                        )
+
+                        // --- GROUP 2: Subscription & Financial Information ---
+
+                        // Sub Price
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (currentLang == "ar") "سعر الإشتراك" else "Sub Price",
+                                color = Color(0xFF8E8E93),
+                                fontSize = 13.5.sp
+                            )
+                            Text(
+                                text = formatIqd(matchingAccount?.currentPriceIqd ?: 40000.0),
+                                color = Color.White,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        // Package Name
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (currentLang == "ar") "نوع الإشتراك" else "Package",
+                                color = Color(0xFF8E8E93),
+                                fontSize = 13.5.sp
+                            )
+                            Text(
+                                text = user.packageName ?: "Unknown",
+                                color = Color(0xFF90CAF9),
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        // Expiration
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (currentLang == "ar") "تاريخ انتهاء الاشتراك" else "Expiration",
+                                color = Color(0xFF8E8E93),
+                                fontSize = 13.5.sp
+                            )
+                            Text(
+                                text = finalExpirationStr ?: "N/A",
+                                color = Color.White,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        HorizontalDivider(
+                            color = Color.White.copy(alpha = 0.08f),
+                            thickness = 1.dp,
+                            modifier = Modifier.padding(vertical = 3.dp)
+                        )
+
+                        // --- GROUP 3: Identity & Network Information ---
+
+                        // Tower
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (currentLang == "ar") "البرج" else "Tower",
+                                color = Color(0xFF8E8E93),
+                                fontSize = 13.5.sp
+                            )
+                            Text(
+                                text = matchingAccount?.towerName ?: user.userID.substringAfter("@", "N/A"),
+                                color = Color.White,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        // Username (Clickable with copy icon)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(6.dp))
                                 .clickable {
                                     try {
                                         val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
@@ -2294,20 +2484,24 @@ fun UserDetailScreenV2(
                                             if (currentLang == "ar") "تم نسخ اسم المستخدم إلى الحافظة!" else "Username copied to clipboard!",
                                             android.widget.Toast.LENGTH_SHORT
                                         ).show()
-                                    } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                                        // Ignore
+                                    } catch (e: Exception) {
+                                        if (e is kotlinx.coroutines.CancellationException) throw e
                                     }
                                 }
-                                .padding(vertical = 4.dp),
+                                .padding(vertical = 2.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(text = if (currentLang == "ar") "اليوزر" else "Username", color = Color(0xFF8E8E93), fontSize = 14.sp)
+                            Text(
+                                text = if (currentLang == "ar") "اليوزر" else "Username",
+                                color = Color(0xFF8E8E93),
+                                fontSize = 13.5.sp
+                            )
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     text = user.userID,
                                     color = Color(0xFF90CAF9),
-                                    fontSize = 14.sp,
+                                    fontSize = 13.5.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
@@ -2315,21 +2509,37 @@ fun UserDetailScreenV2(
                                     imageVector = Icons.Default.ContentCopy,
                                     contentDescription = "Copy",
                                     tint = Color(0xFF90CAF9),
-                                    modifier = Modifier.size(14.dp)
+                                    modifier = Modifier.size(13.dp)
                                 )
                             }
                         }
 
                         // Phone
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(text = if (currentLang == "ar") "رقم الهاتف الاول" else "Phone 1", color = Color(0xFF8E8E93), fontSize = 14.sp)
-                            Text(text = user.mobileNumber ?: "N/A", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        // Current IP
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .padding(vertical = 2.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (currentLang == "ar") "رقم الهاتف الاول" else "Phone 1",
+                                color = Color(0xFF8E8E93),
+                                fontSize = 13.5.sp
+                            )
+                            Text(
+                                text = user.mobileNumber ?: "N/A",
+                                color = Color.White,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        // Current IP (Clickable to open)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(6.dp))
                                 .clickable {
                                     val ip = user.currentIP
                                     if (!ip.isNullOrBlank() && ip != "N/A") {
@@ -2337,7 +2547,8 @@ fun UserDetailScreenV2(
                                             val formattedIp = if (!ip.startsWith("http://") && !ip.startsWith("https://")) "http://$ip" else ip
                                             val browserIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(formattedIp))
                                             context.startActivity(browserIntent)
-                                        } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+                                        } catch (e: Exception) {
+                                            if (e is kotlinx.coroutines.CancellationException) throw e
                                             android.widget.Toast.makeText(
                                                 context,
                                                 if (currentLang == "ar") "فشل فتح المتصفح" else "Failed to open browser",
@@ -2346,17 +2557,21 @@ fun UserDetailScreenV2(
                                         }
                                     }
                                 }
-                                .padding(vertical = 4.dp),
+                                .padding(vertical = 2.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(text = if (currentLang == "ar") "IP" else "IP Address", color = Color(0xFF8E8E93), fontSize = 14.sp)
+                            Text(
+                                text = if (currentLang == "ar") "IP" else "IP Address",
+                                color = Color(0xFF8E8E93),
+                                fontSize = 13.5.sp
+                            )
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     text = user.currentIP ?: "N/A",
                                     color = if (!user.currentIP.isNullOrBlank() && user.currentIP != "N/A") Color(0xFF4FC3F7) else Color.White,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.SemiBold
                                 )
                                 if (!user.currentIP.isNullOrBlank() && user.currentIP != "N/A") {
                                     Spacer(modifier = Modifier.width(4.dp))
@@ -2364,16 +2579,17 @@ fun UserDetailScreenV2(
                                         imageVector = Icons.Default.OpenInNew,
                                         contentDescription = "Open",
                                         tint = Color(0xFF4FC3F7),
-                                        modifier = Modifier.size(14.dp)
+                                        modifier = Modifier.size(13.dp)
                                     )
                                 }
                             }
                         }
 
-                        // Custom IP
+                        // Custom IP (Clickable to open)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .clip(RoundedCornerShape(6.dp))
                                 .clickable {
                                     val nanoIp = matchingAccount?.nanoIp
                                     if (!nanoIp.isNullOrBlank() && nanoIp != "N/A") {
@@ -2381,7 +2597,8 @@ fun UserDetailScreenV2(
                                             val formattedIp = if (!nanoIp.startsWith("http://") && !nanoIp.startsWith("https://")) "http://$nanoIp" else nanoIp
                                             val browserIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(formattedIp))
                                             context.startActivity(browserIntent)
-                                        } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+                                        } catch (e: Exception) {
+                                            if (e is kotlinx.coroutines.CancellationException) throw e
                                             android.widget.Toast.makeText(
                                                 context,
                                                 if (currentLang == "ar") "فشل فتح المتصفح" else "Failed to open browser",
@@ -2390,17 +2607,21 @@ fun UserDetailScreenV2(
                                         }
                                     }
                                 }
-                                .padding(vertical = 4.dp),
+                                .padding(vertical = 2.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(text = if (currentLang == "ar") "IP (مخصص)" else "Custom IP", color = Color(0xFF8E8E93), fontSize = 14.sp)
+                            Text(
+                                text = if (currentLang == "ar") "IP (مخصص)" else "Custom IP",
+                                color = Color(0xFF8E8E93),
+                                fontSize = 13.5.sp
+                            )
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     text = matchingAccount?.nanoIp ?: "N/A",
                                     color = if (!matchingAccount?.nanoIp.isNullOrBlank() && matchingAccount?.nanoIp != "N/A") Color(0xFF4FC3F7) else Color.White,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.SemiBold
                                 )
                                 if (!matchingAccount?.nanoIp.isNullOrBlank() && matchingAccount?.nanoIp != "N/A") {
                                     Spacer(modifier = Modifier.width(4.dp))
@@ -2408,16 +2629,10 @@ fun UserDetailScreenV2(
                                         imageVector = Icons.Default.OpenInNew,
                                         contentDescription = "Open",
                                         tint = Color(0xFF4FC3F7),
-                                        modifier = Modifier.size(14.dp)
+                                        modifier = Modifier.size(13.dp)
                                     )
                                 }
                             }
-                        }
-
-                        // Expiration
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(text = if (currentLang == "ar") "تاريخ انتهاء الاشتراك" else "Expiration", color = Color(0xFF8E8E93), fontSize = 14.sp)
-                            Text(text = finalExpirationStr ?: "N/A", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }

@@ -62,6 +62,7 @@ fun SearchScreen(
     lang: String = "ar",
     onUserSelect: (user: com.example.core.model.UserListItem) -> Unit
 ) {
+    val focusManager = LocalFocusManager.current
     val query by viewModel.searchQuery.collectAsStateWithLifecycle()
     val users by viewModel.usersList.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
@@ -88,13 +89,19 @@ fun SearchScreen(
                     localQuery = it
                     viewModel.setSearchQuery(it)
                 },
-                label = { Text(if (lang == "ar") "ID, اليوزر او رقم الهاتف" else "ID, Username or Phone") },
+                label = { Text(if (lang == "ar") "ابحث عن مشترك" else "Search subscriber") },
+                textStyle = LocalTextStyle.current.copy(fontSize = 18.sp),
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(
                     imeAction = androidx.compose.ui.text.input.ImeAction.Search
                 ),
                 keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                    onSearch = { if (!isLoading) viewModel.search() }
+                    onSearch = {
+                        if (!isLoading) {
+                            focusManager.clearFocus()
+                            viewModel.search()
+                        }
+                    }
                 ),
                 modifier = Modifier
                     .weight(1f)
@@ -102,7 +109,12 @@ fun SearchScreen(
             )
 
             Button(
-                onClick = { if (!isLoading) viewModel.search() },
+                onClick = {
+                    if (!isLoading) {
+                        focusManager.clearFocus()
+                        viewModel.search()
+                    }
+                },
                 enabled = !isLoading,
                 modifier = Modifier.heightIn(min = 52.dp),
                 shape = RoundedCornerShape(8.dp)

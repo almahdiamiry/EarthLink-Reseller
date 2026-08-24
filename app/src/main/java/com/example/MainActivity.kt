@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.rememberScrollState
@@ -84,10 +86,11 @@ fun MainLayout() {
 
 @Composable
 fun BottomNavPadded(content: @Composable () -> Unit) {
+    val isImeVisible = WindowInsets.ime.asPaddingValues().calculateBottomPadding() > 0.dp
     androidx.compose.foundation.layout.Box(
         modifier = androidx.compose.ui.Modifier
             .fillMaxSize()
-            .padding(bottom = 80.dp)
+            .padding(bottom = if (isImeVisible) 0.dp else 80.dp)
     ) {
         content()
     }
@@ -109,6 +112,8 @@ fun OperatorMainScreen(authViewModel: AuthViewModel) {
     val prefs = remember(context) { (context.applicationContext as EarthlinkApp).preferenceManager }
     val currentLang by prefs.languageFlow.collectAsStateWithLifecycle()
 
+    val isImeVisible = WindowInsets.ime.asPaddingValues().calculateBottomPadding() > 0.dp
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets.systemBars
@@ -120,49 +125,51 @@ fun OperatorMainScreen(authViewModel: AuthViewModel) {
                 .consumeWindowInsets(innerPadding)
                 .imePadding()
         ) {
-            NavigationBar(modifier = Modifier.align(Alignment.BottomCenter)) {
-                NavigationBarItem(
-                    selected = currentRoute == "dashboard" || currentRoute == "dashboard_status" || currentRoute == "search",
-                    onClick = {
-                        if (currentRoute != "dashboard") {
-                            navController.navigate("dashboard") {
-                                popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
+            if (!isImeVisible) {
+                NavigationBar(modifier = Modifier.align(Alignment.BottomCenter)) {
+                    NavigationBarItem(
+                        selected = currentRoute == "dashboard" || currentRoute == "dashboard_status" || currentRoute == "search",
+                        onClick = {
+                            if (currentRoute != "dashboard") {
+                                navController.navigate("dashboard") {
+                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
                             }
-                        }
-                    },
-                    icon = { Icon(imageVector = Icons.Default.People, contentDescription = "Subscribers") },
-                    label = { Text(if (currentLang == "ar") "المشتركين" else "Subscribers", fontSize = 11.sp) }
-                )
-                NavigationBarItem(
-                    selected = currentRoute == "create_chooser" || currentRoute == "create_test_user" || currentRoute == "create_using_deposit",
-                    onClick = {
-                        if (currentRoute != "create_chooser") {
-                            navController.navigate("create_chooser") {
-                                popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
+                        },
+                        icon = { Icon(imageVector = Icons.Default.People, contentDescription = "Subscribers") },
+                        label = { Text(if (currentLang == "ar") "المشتركين" else "Subscribers", fontSize = 11.sp) }
+                    )
+                    NavigationBarItem(
+                        selected = currentRoute == "create_chooser" || currentRoute == "create_test_user" || currentRoute == "create_using_deposit",
+                        onClick = {
+                            if (currentRoute != "create_chooser") {
+                                navController.navigate("create_chooser") {
+                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
                             }
-                        }
-                    },
-                    icon = { Icon(imageVector = Icons.Default.AddCircle, contentDescription = "Create") },
-                    label = { Text(if (currentLang == "ar") "إنشاء" else "Create", fontSize = 11.sp) }
-                )
-                NavigationBarItem(
-                    selected = currentRoute == "settings",
-                    onClick = {
-                        if (currentRoute != "settings") {
-                            navController.navigate("settings") {
-                                popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
+                        },
+                        icon = { Icon(imageVector = Icons.Default.AddCircle, contentDescription = "Create") },
+                        label = { Text(if (currentLang == "ar") "إنشاء" else "Create", fontSize = 11.sp) }
+                    )
+                    NavigationBarItem(
+                        selected = currentRoute == "settings",
+                        onClick = {
+                            if (currentRoute != "settings") {
+                                navController.navigate("settings") {
+                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
                             }
-                        }
-                    },
-                    icon = { Icon(imageVector = Icons.Default.Settings, contentDescription = "Settings") },
-                    label = { Text(if (currentLang == "ar") "الإعدادات" else "Settings", fontSize = 11.sp) }
-                )
+                        },
+                        icon = { Icon(imageVector = Icons.Default.Settings, contentDescription = "Settings") },
+                        label = { Text(if (currentLang == "ar") "الإعدادات" else "Settings", fontSize = 11.sp) }
+                    )
+                }
             }
             NavHost(
                 navController = navController,
