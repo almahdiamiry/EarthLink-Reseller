@@ -3,12 +3,15 @@ import com.example.EarthlinkApp
 import com.example.domain.repository.SyncStatusState
 
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -23,8 +26,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -33,6 +37,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -189,6 +194,7 @@ private fun parseExpirationTimestamp(dateStr: String?): Long? {
     return null
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
     viewModel: DashboardViewModel,
@@ -222,6 +228,9 @@ fun DashboardScreen(
     val forecastAfter = balance - prepaidNeeded
     val localAccounts by viewModel.localAccounts.collectAsStateWithLifecycle(emptyList())
     val localAccountMatcher = remember(localAccounts) { LocalAccountMatcher(localAccounts) }
+
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     // Sorting & Filtering State
     var showSortSheet by rememberSaveable { mutableStateOf(false) }
@@ -435,8 +444,13 @@ fun DashboardScreen(
                         Box(
                             modifier = Modifier
                                 .size(38.dp)
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape = androidx.compose.foundation.shape.CircleShape)
-                                .clickable { showSortSheet = true },
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape = CircleShape)
+                                .clickable {
+                                    focusManager.clearFocus(force = true)
+                                    keyboardController?.hide()
+                                    isSearchActive = false
+                                    showSortSheet = true
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -563,18 +577,26 @@ fun DashboardScreen(
 
         // BackHandler: Close search if active
         BackHandler(enabled = isSearchActive) {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
             isSearchActive = false
             searchQuery = ""
         }
 
         // Floating Capsule Search Pill ("بــحــث") or Expanded Active Search Bar
-        Box(
+        AnimatedContent(
+            targetState = isSearchActive,
+            transitionSpec = {
+                (fadeIn(animationSpec = tween(180)) + scaleIn(initialScale = 0.94f, animationSpec = tween(180))) togetherWith
+                fadeOut(animationSpec = tween(140))
+            },
+            label = "SearchTransition",
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .padding(bottom = if (isSearchActive) 16.dp else 24.dp)
-        ) {
-            if (isSearchActive) {
+        ) { active ->
+            if (active) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -593,6 +615,15 @@ fun DashboardScreen(
                             )
                         },
                         singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Search,
+                            keyboardType = KeyboardType.Text
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onSearch = {
+                                // Keep search results visible
+                            }
+                        ),
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.Default.Search,
@@ -634,9 +665,11 @@ fun DashboardScreen(
                     Box(
                         modifier = Modifier
                             .size(38.dp)
-                            .background(Color.White.copy(alpha = 0.08f), shape = androidx.compose.foundation.shape.CircleShape)
-                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(Color.White.copy(alpha = 0.08f), shape = CircleShape)
+                            .clip(CircleShape)
                             .clickable {
+                                focusManager.clearFocus(force = true)
+                                keyboardController?.hide()
                                 isSearchActive = false
                                 searchQuery = ""
                             },
@@ -657,8 +690,9 @@ fun DashboardScreen(
             } else {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(0.42f)
-                        .align(Alignment.Center)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.Center
                 ) {
                     Button(
                         onClick = { isSearchActive = true },
@@ -666,7 +700,7 @@ fun DashboardScreen(
                         shape = RoundedCornerShape(24.dp),
                         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
                         modifier = Modifier
-                            .fillMaxWidth()
+                            .fillMaxWidth(0.42f)
                             .height(44.dp),
                         elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp)
                     ) {
@@ -693,142 +727,123 @@ fun DashboardScreen(
             }
         }
 
-        // 2. DIM BACKGROUND AND SELECTABLE BOTTOM SORT SLIDE SHEET
+        // 2. MATERIAL 3 MODAL BOTTOM SHEET FOR SORT & FILTER
         if (showSortSheet) {
-            BackHandler(enabled = true) {
-                showSortSheet = false
-            }
+            val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.5f))
-                    .clickable { showSortSheet = false }
+            ModalBottomSheet(
+                onDismissRequest = { showSortSheet = false },
+                sheetState = sheetState,
+                containerColor = Color(0xFF12181F),
+                contentColor = Color.White,
+                dragHandle = {
+                    BottomSheetDefaults.DragHandle(
+                        color = Color.White.copy(alpha = 0.25f)
+                    )
+                },
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
             ) {
-                // Actual Sheet Container
-                Card(
+                Column(
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) {}, // prevent dismiss tap leak
-                    shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF12181F))
+                        .padding(horizontal = 20.dp)
+                        .padding(bottom = 32.dp),
+                    horizontalAlignment = Alignment.End // RTL Arabic Support
                 ) {
-                    Column(
+                    // Head Title - "فرز وتصفية"
+                    Text(
+                        text = "فرز وتصفية",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 16.sp,
+                        color = Color.White,
+                        textAlign = TextAlign.Right
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Section 1 - "ترتيب حسب"
+                    Text(
+                        text = "ترتيب حسب",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = Color.White.copy(alpha = 0.8f),
+                        textAlign = TextAlign.Right
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    val sortOptions = listOf("نهاية الاشتراك", "الاسم", "الدين")
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(20.dp),
-                        horizontalAlignment = Alignment.End // RTL Arabic Support
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
                     ) {
-                        // Drag Handle
-                        Box(
-                            modifier = Modifier
-                                .width(36.dp)
-                                .height(4.dp)
-                                .background(Color.White.copy(alpha = 0.2f), shape = RoundedCornerShape(2.dp))
-                                .align(Alignment.CenterHorizontally)
-                        )
-                        
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // Head Title - "فرز وتصفية"
-                        Text(
-                            text = "فرز وتصفية",
-                            fontWeight = FontWeight.Black,
-                            fontSize = 16.sp,
-                            color = Color.White,
-                            textAlign = TextAlign.Right
-                        )
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // Section 1 - "ترتيب حسب"
-                        Text(
-                            text = "ترتيب حسب",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = Color.White.copy(alpha = 0.8f),
-                            textAlign = TextAlign.Right
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        val sortOptions = listOf("نهاية الاشتراك", "الاسم", "الدين")
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
-                        ) {
-                            sortOptions.forEach { item ->
-                                val selected = selectedSort == item || (item == "الدين" && selectedSort == "دين المشترك")
-                                Box(
-                                    modifier = Modifier
-                                        .background(
-                                            color = if (selected) Color(0xFF0288D1) else Color(0xFF1C242E),
-                                            shape = RoundedCornerShape(16.dp)
-                                        )
-                                        .clickable { selectedSort = item }
-                                        .padding(horizontal = 14.dp, vertical = 8.dp)
-                                ) {
-                                    Text(
-                                        text = item,
-                                        color = if (selected) Color.White else Color.White.copy(alpha = 0.7f),
-                                        fontSize = 12.sp,
-                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                        sortOptions.forEach { item ->
+                            val selected = selectedSort == item || (item == "الدين" && selectedSort == "دين المشترك")
+                            Box(
+                                modifier = Modifier
+                                    .background(
+                                        color = if (selected) Color(0xFF0288D1) else Color(0xFF1C242E),
+                                        shape = RoundedCornerShape(16.dp)
                                     )
-                                }
+                                    .clickable { selectedSort = item }
+                                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                            ) {
+                                Text(
+                                    text = item,
+                                    color = if (selected) Color.White else Color.White.copy(alpha = 0.7f),
+                                    fontSize = 12.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                )
                             }
                         }
-
-                        Spacer(modifier = Modifier.height(18.dp))
-                        HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // Section 2 - "حالة الاشتراك"
-                        Text(
-                            text = "حالة الاشتراك",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = Color.White.copy(alpha = 0.8f),
-                            textAlign = TextAlign.Right
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        val statusOptions = listOf("الكل", "فعال", "قريب من الانتهاء", "منتهي")
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
-                        ) {
-                            statusOptions.forEach { item ->
-                                val selected = selectedStatusFilter == item
-                                Box(
-                                    modifier = Modifier
-                                        .background(
-                                            color = if (selected) Color(0xFF0288D1) else Color(0xFF1C242E),
-                                            shape = RoundedCornerShape(16.dp)
-                                        )
-                                        .clickable { selectedStatusFilter = item }
-                                        .padding(horizontal = 14.dp, vertical = 8.dp)
-                                ) {
-                                    Text(
-                                        text = item,
-                                        color = if (selected) Color.White else Color.White.copy(alpha = 0.7f),
-                                        fontSize = 12.sp,
-                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
                     }
+
+                    Spacer(modifier = Modifier.height(18.dp))
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Section 2 - "حالة الاشتراك"
+                    Text(
+                        text = "حالة الاشتراك",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = Color.White.copy(alpha = 0.8f),
+                        textAlign = TextAlign.Right
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    val statusOptions = listOf("الكل", "فعال", "قريب من الانتهاء", "منتهي")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
+                    ) {
+                        statusOptions.forEach { item ->
+                            val selected = selectedStatusFilter == item
+                            Box(
+                                modifier = Modifier
+                                    .background(
+                                        color = if (selected) Color(0xFF0288D1) else Color(0xFF1C242E),
+                                        shape = RoundedCornerShape(16.dp)
+                                    )
+                                    .clickable { selectedStatusFilter = item }
+                                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                            ) {
+                                Text(
+                                    text = item,
+                                    color = if (selected) Color.White else Color.White.copy(alpha = 0.7f),
+                                    fontSize = 12.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
             }
         }
