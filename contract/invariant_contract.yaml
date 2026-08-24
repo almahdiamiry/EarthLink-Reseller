@@ -395,7 +395,7 @@ invariants:
   - id: "INV-16"
     name: "Immutable Certification Evidence"
     canonical_definition: >
-      Certification test suites (FinalTestMatrixCertificationTest, ProductionCertificationPipelineTest,
+      Certification test suites (ProductionCertificationPipelineTest,
       ProductionExecutableInvariantsTest, DeepCrossLayerInvariantsTest) and baseline regression suites are frozen contracts.
       Tests must never be weakened, skipped, or rewritten to conform to buggy production behavior.
     affected_components:

@@ -1,0 +1,80 @@
+{
+  "phase": 0,
+  "requirements": [
+    {
+      "requirement_id": "P0-REQ-01",
+      "phase": 0,
+      "source_anchor": "Handover Appendix Section 7 (Phase 0 - Alignment)",
+      "requirement": "Inspect exact current artifact; remove, archive, or update obsolete plans and historical development artifacts to prevent architectural drift.",
+      "blocking": true,
+      "production_code_location": "scripts/verify_invariant_contract.py",
+      "behavioral_test_location": "scripts/verify_invariant_contract.py",
+      "adversarial_fixture_location": "scripts/test_meta_gate_fixtures.py",
+      "registry_location": "contract/invariant_contract.yaml",
+      "evidence_reference": "evidence/baseline_manifest.json",
+      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
+      "status": "PASS",
+      "failure_reason": null
+    },
+    {
+      "requirement_id": "P0-REQ-02",
+      "phase": 0,
+      "source_anchor": "Handover Appendix Section 6.3 (Governance Alignment)",
+      "requirement": "Align AGENTS.md, AI_DEVELOPMENT_GUIDE.md, and governance files to point exclusively to the Frozen Implementation Authority Bundle.",
+      "blocking": true,
+      "production_code_location": "AGENTS.md",
+      "behavioral_test_location": null,
+      "adversarial_fixture_location": "scripts/test_meta_gate_fixtures.py",
+      "registry_location": "contract/forbidden_patterns.yaml",
+      "evidence_reference": "AGENTS.md",
+      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
+      "status": "PASS",
+      "failure_reason": null
+    },
+    {
+      "requirement_id": "P0-REQ-03",
+      "phase": 0,
+      "source_anchor": "INV-17 / Meta-Gate Specification",
+      "requirement": "Enforce bounded verification runner (run_verified_command.py) with strict timeout handling, process-tree termination, heartbeat emission, and NO-SOURCE detection.",
+      "blocking": true,
+      "production_code_location": "scripts/run_verified_command.py",
+      "behavioral_test_location": "scripts/test_verified_runner_fixtures.py",
+      "adversarial_fixture_location": "scripts/test_verified_runner_fixtures.py",
+      "registry_location": null,
+      "evidence_reference": "scripts/test_verified_runner_fixtures.py",
+      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
+      "status": "PASS",
+      "failure_reason": null
+    },
+    {
+      "requirement_id": "P0-REQ-04",
+      "phase": 0,
+      "source_anchor": "Handover Appendix Section 6.2 (Documentation Drift Audit)",
+      "requirement": "Add non-authoritative historical notices to all superseded documentation artifacts in docs/ to prevent obsolete mechanisms (e.g. DEAD_LETTER, global CRUD coordinator) from remaining as active instructions.",
+      "blocking": true,
+      "production_code_location": "docs/authority/G1-G8 Consolidated Architecture Summary.md",
+      "behavioral_test_location": null,
+      "adversarial_fixture_location": null,
+      "registry_location": null,
+      "evidence_reference": "docs/authority/G1-G8 Consolidated Architecture Summary.md",
+      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
+      "status": "PASS",
+      "failure_reason": null
+    },
+    {
+      "requirement_id": "P0-REQ-05",
+      "phase": 0,
+      "source_anchor": "Handover Appendix Section 7 (Phase 0 Exit Criteria)",
+      "requirement": "Pass all 6 control plane verification suites with zero failures and record complete baseline evidence.",
+      "blocking": true,
+      "production_code_location": "scripts/verify_test_environment_matrix.py",
+      "behavioral_test_location": "scripts/test_meta_gate_fixtures.py",
+      "adversarial_fixture_location": "scripts/test_meta_gate_fixtures.py",
+      "registry_location": "contract/test_environment_matrix.yaml",
+      "evidence_reference": "evidence/baseline_test_manifest.json",
+      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
+      "status": "PASS",
+      "failure_reason": null
+    }
+  ]
+}

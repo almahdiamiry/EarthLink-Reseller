@@ -675,9 +675,9 @@ test_suites:
       - "INV-16"
 
   - name: "production_gate_ps1"
-    path: "scripts/production_gate.ps1"
-    environment: "STRUCTURAL"
-    tier_purpose: "PowerShell production gate script"
+    path: "docs/historical/operational-gates/production_gate.ps1"
+    environment: "HISTORICAL"
+    tier_purpose: "Historical PowerShell production gate script mirror"
     associated_invariants:
       - "INV-16"
 
@@ -894,6 +894,43 @@ test_suites:
     path: "app/src/test/java/com/example/Workstream13G1RealRestartCertificationTest.kt"
     environment: "ROBOLECTRIC"
     tier_purpose: "Workstream 13 G1 Real Restart Certification test suite"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+
+  - name: "ProductionExecutableInvariantsTest"
+    path: "app/src/test/java/com/example/ProductionExecutableInvariantsTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Production Executable Invariants test suite"
+    associated_invariants:
+      - "INV-01"
+      - "INV-02"
+      - "INV-05"
+      - "INV-06"
+      - "INV-11"
+      - "INV-12"
+
+  - name: "DeepCrossLayerInvariantsTest"
+    path: "app/src/test/java/com/example/DeepCrossLayerInvariantsTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Deep Cross Layer Invariants test suite"
+    associated_invariants:
+      - "INV-01"
+      - "INV-05"
+      - "INV-11"
+
+  - name: "ProductionCertificationPipelineTest"
+    path: "app/src/test/java/com/example/ProductionCertificationPipelineTest.kt"
+    environment: "JVM"
+    tier_purpose: "Production Certification Pipeline test suite"
+    associated_invariants:
+      - "INV-15"
+      - "INV-16"
+
+  - name: "RemoteSyncDebtAfterRecalculationTest"
+    path: "app/src/test/java/com/example/RemoteSyncDebtAfterRecalculationTest.kt"
+    environment: "ROBOLECTRIC"
+    tier_purpose: "Remote Sync Debt After Recalculation test suite"
     associated_invariants:
       - "INV-01"
       - "INV-05"

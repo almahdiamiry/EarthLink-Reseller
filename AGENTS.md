@@ -111,7 +111,7 @@ The following items are **officially accepted V1 technical debt**. They are **NO
    - direct product, safety, architectural, or repository problem.
 4. **Do NOT perform "while-we're-here" expansions:** Implement ONLY the minimal required scope for the current authorized task.
 5. **Do NOT refactor working code solely for line count:** Large files that work reliably and pass tests are acceptable V1 debt.
-6. **Historical certification records:** Files `PRODUCTION_INVARIANTS.md`, `ARCHITECTURE.md`, `PRODUCTION_CONTRACT_MATRIX.md`, `ISSUE_LOG.md`, `G8_Plan.md`, and all files in `evidence/` are historical certification records. Do not modify them during routine maintenance unless the active task explicitly concerns those records.
+6. **Historical certification records:** Files `PRODUCTION_INVARIANTS.md`, `ARCHITECTURE.md`, `PRODUCTION_CONTRACT_MATRIX.md`, `ISSUE_LOG.md`, `docs/historical/g8/G8_Plan.md`, and all files in `evidence/` are historical certification records. Do not modify them during routine maintenance unless the active task explicitly concerns those records.
 
 ---
 
@@ -186,8 +186,9 @@ Confidence:            [HIGH / MEDIUM / LOW]
 > - Never state "all tests passed" unless the full repository test suite was executed. A targeted run must be reported as *"Focused verification passed."*
 > - For documentation or routing inspection, explicitly state that no application runtime behavior or test suites were executed. Do not report inspection as runtime verification.
 
-### 9.6 G8 Operational Status: Historical Reference Only
-* **G8 is permanently CLOSED.** All G8 certification contracts, evidence, scripts, and reports in `contract/`, `evidence/`, `scripts/`, and `G8_Plan.md` are frozen historical certification artifacts.
+### 9.6 G8 Operational Status & Release Gate Routing
+* **G8 is permanently CLOSED.** All historical G8 certification contracts, scripts, plans, and tests are archived under `docs/historical/g8/`.
+* **Canonical Production Gate:** `scripts/production_gate.sh` is the sole supported release gate. `production_gate.ps1` is a historical unsupported mirror in `docs/historical/operational-gates/`.
 * Future agents and maintainers **must NOT** run G8 certification, require G8 artifacts for routine changes, recreate G8, or reopen G8 scope. The Testing Playbook above governs all ongoing development.
 
 ---

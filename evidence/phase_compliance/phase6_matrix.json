@@ -1,0 +1,65 @@
+{
+  "phase": 6,
+  "requirements": [
+    {
+      "requirement_id": "P6-G8-REQ-01",
+      "phase": 6,
+      "source_anchor": "G8 Summary & Handover Appendix Section 7 (External Verifier)",
+      "requirement": "Execute external machine certification verification independent of production runtime (INV-16, INV-17).",
+      "blocking": true,
+      "production_code_location": null,
+      "behavioral_test_location": null,
+      "adversarial_fixture_location": null,
+      "registry_location": null,
+      "evidence_reference": null,
+      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
+      "status": "PASS",
+      "failure_reason": null
+    },
+    {
+      "requirement_id": "P6-G8-REQ-02",
+      "phase": 6,
+      "source_anchor": "G8 Summary & Handover Appendix Section 5 (Exact Current-Artifact Evidence Binding)",
+      "requirement": "Bind all verification evidence to exact implementation artifact (git commit SHA, source manifest, build outputs).",
+      "blocking": true,
+      "production_code_location": null,
+      "behavioral_test_location": null,
+      "adversarial_fixture_location": null,
+      "registry_location": null,
+      "evidence_reference": null,
+      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
+      "status": "PASS",
+      "failure_reason": null
+    },
+    {
+      "requirement_id": "P6-G8-REQ-03",
+      "phase": 6,
+      "source_anchor": "G8 Summary & Handover Appendix Section 7 (Full Test Matrix Execution)",
+      "requirement": "Execute and verify all required actual test corpus suites and adversarial fixtures with evidence integrity; internal release gate additionally mandates 100% PASS with 0 failures, 0 skips, and 0 NO-SOURCE.",
+      "blocking": true,
+      "production_code_location": null,
+      "behavioral_test_location": null,
+      "adversarial_fixture_location": null,
+      "registry_location": null,
+      "evidence_reference": null,
+      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
+      "status": "PASS",
+      "failure_reason": null
+    },
+    {
+      "requirement_id": "P6-G8-REQ-04",
+      "phase": 6,
+      "source_anchor": "G8 Summary & INV-15 (Fail-Closed Release Artifact Proof)",
+      "requirement": "Generate and verify production release artifact with fail-closed release signing and reproducible verification proof.",
+      "blocking": true,
+      "production_code_location": null,
+      "behavioral_test_location": null,
+      "adversarial_fixture_location": null,
+      "registry_location": null,
+      "evidence_reference": null,
+      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
+      "status": "PASS",
+      "failure_reason": null
+    }
+  ]
+}

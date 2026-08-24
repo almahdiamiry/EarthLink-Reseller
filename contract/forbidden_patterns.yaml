@@ -202,34 +202,34 @@ patterns:
       - "-----BEGIN (RSA )?PRIVATE KEY-----"
     explanation: "INV-15 mandates that API keys and secrets must never be hardcoded in source files."
 
-  - id: "INV-16-g8-runtime-import-in-prod"
+  - id: "INV-16-test-import-in-prod"
     invariant: "INV-16"
-    description: "Forbidden G8 certification runtime imports in production source code"
+    description: "Forbidden test or certification runtime imports in production source code"
     check_type: "regex"
     file_glob: "app/src/main/java/**/*.kt"
     forbidden_regexes:
       - "import\\s+com\\.example\\.g8"
       - "import\\s+com\\.g8"
-    explanation: "G8 certification runtime code must remain strictly separated from production application sources."
+    explanation: "Test and certification runtime code must remain strictly separated from production application sources."
 
-  - id: "INV-16-runtime-governance-registry"
+  - id: "INV-16-no-runtime-governance-registry"
     invariant: "INV-16"
     description: "Forbidden runtime governance registry singleton objects in production source"
     check_type: "regex"
     file_glob: "app/src/main/java/**/*.kt"
     forbidden_regexes:
       - "(object|class)\\s+GovernanceRegistry"
-    explanation: "G8 governance registry objects must not be compiled into production source binaries."
+    explanation: "Governance registry objects must not be compiled into production source binaries."
 
-  - id: "INV-16-g8-mutating-db-call"
+  - id: "INV-16-no-script-database-mutation"
     invariant: "INV-16"
-    description: "Forbidden direct database mutation or Firestore write calls inside certification scripts"
+    description: "Forbidden direct database mutation or Firestore write calls inside verification scripts"
     check_type: "regex"
     file_glob: "scripts/**/*.py"
     forbidden_regexes:
       - "firestore\\.collection\\([^)]*\\)\\.(add|set|update|delete)"
       - "AppDatabase\\.(insert|update|delete)"
-    explanation: "G8 certification scripts must never write directly to Room or Firestore business state."
+    explanation: "Verification scripts must never write directly to Room or Firestore business state."
 
 
 

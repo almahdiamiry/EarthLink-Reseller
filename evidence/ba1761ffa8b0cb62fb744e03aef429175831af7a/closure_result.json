@@ -1,0 +1,362 @@
+{
+  "schema_version": "1.0",
+  "timestamp": "2026-08-24T18:57:44.085187+00:00",
+  "source_sha": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
+  "evaluated_contract_sha256": "4170547bf454e6ce3c92f60c645c0aa2ada7cb18c33b4ffce055a74dd9f5bbe3",
+  "overall_verdict": "READY_FOR_CLOSURE",
+  "findings": [
+    {
+      "id": "RC-1",
+      "title": "Remote-Version Bootstrap & Fallback Removal",
+      "invariant": "INV-06",
+      "severity": "P0",
+      "derived_status": "PASS",
+      "structural_status": "PASS",
+      "behavioral_status": "PASS",
+      "artifact_status": "PASS",
+      "failed_reasons": [],
+      "checks_summary": {
+        "required_structural": [
+          "forbidden_patterns_scan"
+        ],
+        "required_behavioral": [
+          "ResolveLocalVersionTest",
+          "Phase2RemoteVersionAdversarialTest",
+          "Phase2ServerConfirmedLifecycleTest"
+        ],
+        "required_artifact": [
+          "evidence_bundle_verified"
+        ],
+        "source_paths": [
+          "app/src/main/java/com/example/core/sync/RemoteSyncCoordinator.kt",
+          "app/src/main/java/com/example/core/sync/SyncConflictResolver.kt"
+        ]
+      }
+    },
+    {
+      "id": "RC-2",
+      "title": "Akamel Historical Source Immutability & Debt Baseline",
+      "invariant": "INV-02",
+      "severity": "P0",
+      "derived_status": "PASS",
+      "structural_status": "PASS",
+      "behavioral_status": "PASS",
+      "artifact_status": "PASS",
+      "failed_reasons": [],
+      "checks_summary": {
+        "required_structural": [
+          "forbidden_patterns_scan"
+        ],
+        "required_behavioral": [
+          "ResolveLocalVersionTest",
+          "Phase2ServerConfirmedLifecycleTest"
+        ],
+        "required_artifact": [
+          "evidence_bundle_verified"
+        ],
+        "source_paths": [
+          "app/src/main/java/com/example/core/sync/UtowerImporter.kt",
+          "app/src/main/java/com/example/data/repository/Repositories.kt"
+        ]
+      }
+    },
+    {
+      "id": "RC-3",
+      "title": "Distributed Settings Winner Selection & Device Clock Independence",
+      "invariant": "INV-06",
+      "severity": "P0",
+      "derived_status": "PASS",
+      "structural_status": "PASS",
+      "behavioral_status": "PASS",
+      "artifact_status": "PASS",
+      "failed_reasons": [],
+      "checks_summary": {
+        "required_structural": [
+          "forbidden_patterns_scan"
+        ],
+        "required_behavioral": [
+          "Phase2RemoteVersionAdversarialTest",
+          "Phase2ServerConfirmedLifecycleTest"
+        ],
+        "required_artifact": [
+          "evidence_bundle_verified"
+        ],
+        "source_paths": [
+          "app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt"
+        ]
+      }
+    },
+    {
+      "id": "RC-4",
+      "title": "DataOperationCoordinator Concurrency & Safe Lock Acquisition",
+      "invariant": "INV-11",
+      "severity": "P0",
+      "derived_status": "PASS",
+      "structural_status": "PASS",
+      "behavioral_status": "PASS",
+      "artifact_status": "PASS",
+      "failed_reasons": [],
+      "checks_summary": {
+        "required_structural": [
+          "forbidden_patterns_scan"
+        ],
+        "required_behavioral": [
+          "Phase3CoordinatorMutexTokenTest"
+        ],
+        "required_artifact": [
+          "evidence_bundle_verified"
+        ],
+        "source_paths": [
+          "app/src/main/java/com/example/core/sync/DataOperationCoordinator.kt",
+          "app/src/main/java/com/example/core/backup/BackupManager.kt"
+        ]
+      }
+    },
+    {
+      "id": "RC-5",
+      "title": "Restore Protocol Atomicity & Cursor Reset",
+      "invariant": "INV-13",
+      "severity": "P0",
+      "derived_status": "PASS",
+      "structural_status": "PASS",
+      "behavioral_status": "PASS",
+      "artifact_status": "PASS",
+      "failed_reasons": [],
+      "checks_summary": {
+        "required_structural": [
+          "forbidden_patterns_scan"
+        ],
+        "required_behavioral": [
+          "Phase3CoordinatorMutexTokenTest"
+        ],
+        "required_artifact": [
+          "evidence_bundle_verified"
+        ],
+        "source_paths": [
+          "app/src/main/java/com/example/core/backup/BackupManager.kt"
+        ]
+      }
+    },
+    {
+      "id": "RC-6-release-build",
+      "title": "Fail-Closed Release Signing Gate",
+      "invariant": "INV-15",
+      "severity": "P0",
+      "derived_status": "PASS",
+      "structural_status": "PASS",
+      "behavioral_status": "PASS",
+      "artifact_status": "PASS",
+      "failed_reasons": [],
+      "checks_summary": {
+        "required_structural": [
+          "forbidden_patterns_scan",
+          "release_build_gate_check"
+        ],
+        "required_behavioral": [
+          "Phase2ServerConfirmedLifecycleTest"
+        ],
+        "required_artifact": [
+          "evidence_bundle_verified"
+        ],
+        "source_paths": [
+          "app/build.gradle.kts",
+          "scripts/production_gate.sh",
+          "docs/historical/operational-gates/production_gate.ps1"
+        ]
+      }
+    },
+    {
+      "id": "B6/D-05",
+      "title": "Room Database Local Single Source of Truth & Failed Import Eligibility",
+      "invariant": "INV-03",
+      "severity": "P0",
+      "derived_status": "PASS",
+      "structural_status": "PASS",
+      "behavioral_status": "PASS",
+      "artifact_status": "PASS",
+      "failed_reasons": [],
+      "checks_summary": {
+        "required_structural": [
+          "forbidden_patterns_scan"
+        ],
+        "required_behavioral": [
+          "ResolveLocalVersionTest"
+        ],
+        "required_artifact": [
+          "evidence_bundle_verified"
+        ],
+        "source_paths": [
+          "app/src/main/java/com/example/core/database/AppDatabase.kt"
+        ]
+      }
+    },
+    {
+      "id": "INV-TEST-MAP-DRIFT",
+      "title": "Invariant-Test Mapping Consistency",
+      "invariant": "INV-16",
+      "severity": "P0",
+      "derived_status": "PASS",
+      "structural_status": "PASS",
+      "behavioral_status": "PASS",
+      "artifact_status": "PASS",
+      "failed_reasons": [],
+      "checks_summary": {
+        "required_structural": [
+          "invariant_contract_consistency"
+        ],
+        "required_behavioral": [
+          "Phase2ServerConfirmedLifecycleTest"
+        ],
+        "required_artifact": [
+          "evidence_bundle_verified"
+        ],
+        "source_paths": [
+          "PRODUCTION_INVARIANTS.md",
+          "contract/invariant_contract.yaml",
+          "contract/invariant_test_map.yaml"
+        ]
+      }
+    },
+    {
+      "id": "COORDINATOR-DIRECT-MUTATION",
+      "title": "Prohibition of Uncoordinated Mutation Channels",
+      "invariant": "INV-11",
+      "severity": "P0",
+      "derived_status": "PASS",
+      "structural_status": "PASS",
+      "behavioral_status": "PASS",
+      "artifact_status": "PASS",
+      "failed_reasons": [],
+      "checks_summary": {
+        "required_structural": [
+          "forbidden_patterns_scan"
+        ],
+        "required_behavioral": [
+          "Phase3CoordinatorMutexTokenTest"
+        ],
+        "required_artifact": [
+          "evidence_bundle_verified"
+        ],
+        "source_paths": [
+          "app/src/main/java/com/example/core/sync/DataOperationCoordinator.kt"
+        ]
+      }
+    },
+    {
+      "id": "IMPORT-SNAPSHOT-BOUNDARY",
+      "title": "Zero Double-Application of Historical Import Debt",
+      "invariant": "INV-04",
+      "severity": "P0",
+      "derived_status": "PASS",
+      "structural_status": "PASS",
+      "behavioral_status": "PASS",
+      "artifact_status": "PASS",
+      "failed_reasons": [],
+      "checks_summary": {
+        "required_structural": [
+          "forbidden_patterns_scan"
+        ],
+        "required_behavioral": [
+          "ResolveLocalVersionTest"
+        ],
+        "required_artifact": [
+          "evidence_bundle_verified"
+        ],
+        "source_paths": [
+          "app/src/main/java/com/example/core/ledger/BalanceCalculator.kt"
+        ]
+      }
+    },
+    {
+      "id": "EVIDENCE-SOURCE-ID",
+      "title": "Evidence Tying to Machine Source SHA and Invariant Hash",
+      "invariant": "INV-16",
+      "severity": "P0",
+      "derived_status": "PASS",
+      "structural_status": "PASS",
+      "behavioral_status": "PASS",
+      "artifact_status": "PASS",
+      "failed_reasons": [],
+      "checks_summary": {
+        "required_structural": [
+          "baseline_manifest_verified"
+        ],
+        "required_behavioral": [
+          "Phase2ServerConfirmedLifecycleTest"
+        ],
+        "required_artifact": [
+          "evidence_bundle_verified"
+        ],
+        "source_paths": [
+          "evidence/baseline_manifest.json",
+          "evidence/baseline_test_manifest.json"
+        ]
+      }
+    },
+    {
+      "id": "WRAPPER-REPRODUCIBILITY",
+      "title": "Reproducible Toolchain & Gradle Wrapper Executable Permission",
+      "invariant": "INV-16",
+      "severity": "P0",
+      "derived_status": "PASS",
+      "structural_status": "PASS",
+      "behavioral_status": "PASS",
+      "artifact_status": "PASS",
+      "failed_reasons": [],
+      "checks_summary": {
+        "required_structural": [
+          "gradlew_executable_mode_check"
+        ],
+        "required_behavioral": [
+          "Phase2ServerConfirmedLifecycleTest"
+        ],
+        "required_artifact": [
+          "evidence_bundle_verified"
+        ],
+        "source_paths": [
+          "gradlew",
+          "gradlew.bat",
+          "gradle/wrapper/gradle-wrapper.properties"
+        ]
+      }
+    },
+    {
+      "id": "VERSION-DRIFT",
+      "title": "Release Metadata & Version Drift Guard",
+      "invariant": "INV-16",
+      "severity": "P0",
+      "derived_status": "PASS",
+      "structural_status": "PASS",
+      "behavioral_status": "PASS",
+      "artifact_status": "PASS",
+      "failed_reasons": [],
+      "checks_summary": {
+        "required_structural": [
+          "invariant_contract_consistency"
+        ],
+        "required_behavioral": [
+          "Phase2ServerConfirmedLifecycleTest"
+        ],
+        "required_artifact": [
+          "evidence_bundle_verified"
+        ],
+        "source_paths": [
+          "app/build.gradle.kts",
+          "contract/invariant_contract.yaml",
+          "PRODUCTION_INVARIANTS.md"
+        ]
+      }
+    }
+  ],
+  "summary": {
+    "total_findings": 13,
+    "passed_findings": 13,
+    "failed_findings": 0,
+    "p0_passed": 13,
+    "p0_failed": 0,
+    "p1_passed": 0,
+    "p1_failed": 0,
+    "all_p0_passed": true,
+    "all_p1_passed": true
+  }
+}

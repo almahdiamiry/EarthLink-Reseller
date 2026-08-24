@@ -127,7 +127,7 @@ findings:
     source_paths:
       - "app/build.gradle.kts"
       - "scripts/production_gate.sh"
-      - "scripts/production_gate.ps1"
+      - "docs/historical/operational-gates/production_gate.ps1"
     closure_rule: "ALL_REQUIRED_CHECKS_PASS"
 
   - id: "B6/D-05"
