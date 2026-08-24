@@ -2263,7 +2263,7 @@ fun UserDetailScreenV2(
                 ) {
                     Column(
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         // --- GROUP 1: Status & Session Information ---
 
@@ -2271,7 +2271,7 @@ fun UserDetailScreenV2(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 2.dp),
+                                .padding(vertical = 1.5.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -2300,7 +2300,7 @@ fun UserDetailScreenV2(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 2.dp),
+                                .padding(vertical = 1.5.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -2331,7 +2331,7 @@ fun UserDetailScreenV2(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 2.dp),
+                                .padding(vertical = 1.5.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -2352,7 +2352,7 @@ fun UserDetailScreenV2(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 2.dp),
+                                .padding(vertical = 1.5.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -2369,11 +2369,7 @@ fun UserDetailScreenV2(
                             )
                         }
 
-                        HorizontalDivider(
-                            color = Color.White.copy(alpha = 0.08f),
-                            thickness = 1.dp,
-                            modifier = Modifier.padding(vertical = 3.dp)
-                        )
+                        Spacer(modifier = Modifier.height(4.dp))
 
                         // --- GROUP 2: Subscription & Financial Information ---
 
@@ -2381,7 +2377,7 @@ fun UserDetailScreenV2(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 2.dp),
+                                .padding(vertical = 1.5.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -2402,7 +2398,7 @@ fun UserDetailScreenV2(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 2.dp),
+                                .padding(vertical = 1.5.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -2423,7 +2419,7 @@ fun UserDetailScreenV2(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 2.dp),
+                                .padding(vertical = 1.5.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -2440,34 +2436,9 @@ fun UserDetailScreenV2(
                             )
                         }
 
-                        HorizontalDivider(
-                            color = Color.White.copy(alpha = 0.08f),
-                            thickness = 1.dp,
-                            modifier = Modifier.padding(vertical = 3.dp)
-                        )
+                        Spacer(modifier = Modifier.height(4.dp))
 
                         // --- GROUP 3: Identity & Network Information ---
-
-                        // Tower
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 2.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = if (currentLang == "ar") "البرج" else "Tower",
-                                color = Color(0xFF8E8E93),
-                                fontSize = 13.5.sp
-                            )
-                            Text(
-                                text = matchingAccount?.towerName ?: user.userID.substringAfter("@", "N/A"),
-                                color = Color.White,
-                                fontSize = 13.5.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
 
                         // Username (Clickable with copy icon)
                         Row(
@@ -2488,7 +2459,7 @@ fun UserDetailScreenV2(
                                         if (e is kotlinx.coroutines.CancellationException) throw e
                                     }
                                 }
-                                .padding(vertical = 2.dp),
+                                .padding(vertical = 1.5.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -2518,7 +2489,7 @@ fun UserDetailScreenV2(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 2.dp),
+                                .padding(vertical = 1.5.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -2557,7 +2528,7 @@ fun UserDetailScreenV2(
                                         }
                                     }
                                 }
-                                .padding(vertical = 2.dp),
+                                .padding(vertical = 1.5.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -2607,7 +2578,7 @@ fun UserDetailScreenV2(
                                         }
                                     }
                                 }
-                                .padding(vertical = 2.dp),
+                                .padding(vertical = 1.5.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
