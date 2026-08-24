@@ -6,6 +6,9 @@
 -keep class com.example.core.model.** { *; }
 -keep class com.example.core.database.** { *; }
 
+# Keep SQLCipher native JNI bridge classes from being stripped or renamed by R8
+-keep class net.sqlcipher.** { *; }
+
 # Keep Retrofit/Moshi models for JSON serialization
 -keepattributes *Annotation*
 -keepclassmembers class * {
