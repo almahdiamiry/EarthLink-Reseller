@@ -42,6 +42,9 @@ sealed interface MoneyValue {
  */
 object MoneyParser {
 
+    // Pre-compiled regex constant to avoid re-compiling the pattern on every parseAmount call in loops/network parsing
+    private val NON_NUMERIC_REGEX = Regex("[^0-9.-eE]")
+
     /**
      * Extracts a numeric amount from JSON objects using a list of potential keys.
      */
@@ -53,7 +56,7 @@ object MoneyParser {
                     val value = json.opt(key)
                     if (value is Number) return value.toDouble()
                     if (value is String) {
-                        val cleanStr = value.replace(",", "").replace(Regex("[^0-9.-eE]"), "")
+                        val cleanStr = value.replace(",", "").replace(NON_NUMERIC_REGEX, "")
                         val d = cleanStr.toDoubleOrNull()
                         if (d != null && !d.isNaN()) return d
                     }

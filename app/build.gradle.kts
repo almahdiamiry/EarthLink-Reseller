@@ -127,7 +127,7 @@ android {
         testTask.jvmArgs(
           "-XX:+EnableDynamicAgentLoading",
           "-Dnet.bytebuddy.experimental=true",
-          "-javaagent:/opt/gradle/.gradle/caches/modules-2/files-2.1/net.bytebuddy/byte-buddy-agent/1.14.12/be4984cb6fd1ef1d11f218a648889dfda44b8a15/byte-buddy-agent-1.14.12.jar"
+          "-javaagent:${gradle.gradleUserHomeDir}/caches/modules-2/files-2.1/net.bytebuddy/byte-buddy-agent/1.14.12/be4984cb6fd1ef1d11f218a648889dfda44b8a15/byte-buddy-agent-1.14.12.jar"
         )
       }
     }
