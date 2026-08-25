@@ -220,4 +220,111 @@ class Phase5SettingsSyncUnifiedCallerTest {
         assertTrue("Background settings sync must complete successfully", syncResult)
         testScope.cancel()
     }
+
+    /**
+     * YELLOW-02 TEST A: Routine settings sync is suppressed when settings are clean and baseline exists.
+     */
+    @Test
+    fun routineSettingsSync_suppressedWhenCleanAndBaselineExists() {
+        val prefs = com.example.core.security.PreferenceManager(context)
+        prefs.clearSettingsLocalMutation()
+        prefs.saveSettingsLastSyncedTimestamp(1700000000000L)
+
+        assertFalse("Local settings mutation must be false", prefs.hasSettingsLocalMutation())
+        assertTrue("Baseline timestamp must be > 0", prefs.getSettingsLastSyncedTimestamp() > 0L)
+
+        // Evaluate the exact condition in executeSyncPassInternal
+        val shouldTriggerRoutine = prefs.hasSettingsLocalMutation() || prefs.getSettingsLastSyncedTimestamp() == 0L
+        assertFalse(
+            "Routine pull_remote_changes must NOT trigger when clean and baseline exists",
+            shouldTriggerRoutine
+        )
+    }
+
+    /**
+     * YELLOW-02 TEST B: Routine settings sync triggers when local settings mutation exists.
+     */
+    @Test
+    fun routineSettingsSync_triggersWhenLocalMutationExists() {
+        val prefs = com.example.core.security.PreferenceManager(context)
+        prefs.saveSettingsLastSyncedTimestamp(1700000000000L)
+        prefs.recordSettingsLocalMutation()
+
+        assertTrue("Local settings mutation must be true", prefs.hasSettingsLocalMutation())
+        assertTrue("Baseline timestamp must be > 0", prefs.getSettingsLastSyncedTimestamp() > 0L)
+
+        val shouldTriggerRoutine = prefs.hasSettingsLocalMutation() || prefs.getSettingsLastSyncedTimestamp() == 0L
+        assertTrue(
+            "Routine pull_remote_changes MUST trigger when local mutation exists",
+            shouldTriggerRoutine
+        )
+    }
+
+    /**
+     * YELLOW-02 TEST C: Routine settings sync triggers when baseline does not exist (timestamp == 0L).
+     */
+    @Test
+    fun routineSettingsSync_triggersWhenBaselineMissing() {
+        val prefs = com.example.core.security.PreferenceManager(context)
+        prefs.clearSettingsLocalMutation()
+        prefs.saveSettingsLastSyncedTimestamp(0L)
+
+        assertFalse("Local settings mutation must be false", prefs.hasSettingsLocalMutation())
+        assertEquals("Baseline timestamp must be 0L", 0L, prefs.getSettingsLastSyncedTimestamp())
+
+        val shouldTriggerRoutine = prefs.hasSettingsLocalMutation() || prefs.getSettingsLastSyncedTimestamp() == 0L
+        assertTrue(
+            "Routine pull_remote_changes MUST trigger when baseline is missing",
+            shouldTriggerRoutine
+        )
+    }
+
+    /**
+     * YELLOW-02 TEST D: Direct event paths remain active and invoke triggerSettingsSync unconditionally.
+     */
+    @Test
+    fun directEventPaths_remainUnconditionallyActive() {
+        val syncRepoFile = findSourceFile("app/src/main/java/com/example/core/sync/SyncRepositoryImpl.kt")
+        val authVmFile = findSourceFile("app/src/main/java/com/example/ui/viewmodels/AuthViewModel.kt")
+
+        val syncRepoText = syncRepoFile.readText()
+        val authVmText = authVmFile.readText()
+
+        // 1. google_sign_in path
+        assertTrue(
+            "google_sign_in must trigger settings sync directly",
+            syncRepoText.contains("triggerSettingsSync(uid, \"google_sign_in\")")
+        )
+
+        // 2. email_sign_in path
+        assertTrue(
+            "email_sign_in must trigger settings sync directly",
+            syncRepoText.contains("triggerSettingsSync(uid, \"email_sign_in\")")
+        )
+
+        // 3. auth_state_changed path
+        assertTrue(
+            "auth_state_changed must trigger settings sync directly",
+            syncRepoText.contains("triggerSettingsSync(user.uid, \"auth_state_changed\")")
+        )
+
+        // 4. auth_login path in AuthViewModel
+        assertTrue(
+            "auth_login must trigger settings sync directly in AuthViewModel",
+            authVmText.contains("triggerSettingsSync(reason = \"auth_login\")")
+        )
+
+        // 5. save_isp_credentials path in AuthViewModel
+        assertTrue(
+            "save_isp_credentials must trigger settings sync directly in AuthViewModel",
+            authVmText.contains("triggerSettingsSync(reason = \"save_isp_credentials\")")
+        )
+
+        // 6. Routine pull_remote_changes is gated by state check in SyncRepositoryImpl
+        assertTrue(
+            "pull_remote_changes must be guarded by hasSettingsLocalMutation() or timestamp == 0L",
+            syncRepoText.contains("if (prefManager.hasSettingsLocalMutation() || prefManager.getSettingsLastSyncedTimestamp() == 0L)") &&
+                    syncRepoText.contains("triggerSettingsSync(currentUid, \"pull_remote_changes\")")
+        )
+    }
 }

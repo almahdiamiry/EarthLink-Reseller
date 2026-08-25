@@ -373,8 +373,10 @@ class SyncRepositoryImpl(
             val currentUid = fbAuth.currentUser?.uid ?: return false
             val syncStartTime = System.currentTimeMillis()
 
-            // Sync user settings (ISP credentials & deposit pass) with Firestore
-            triggerSettingsSync(currentUid, "pull_remote_changes")
+            // Sync user settings (ISP credentials & deposit pass) with Firestore only if local changes exist or baseline missing
+            if (prefManager.hasSettingsLocalMutation() || prefManager.getSettingsLastSyncedTimestamp() == 0L) {
+                triggerSettingsSync(currentUid, "pull_remote_changes")
+            }
 
             // Reset any items stuck in 'syncing' status from a previous interrupted sync run
             OutboxManager.resetSyncingToPending(outboxDao)
