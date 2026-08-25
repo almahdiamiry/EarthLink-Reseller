@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.EarthlinkApp
 import com.example.core.model.*
 import com.example.domain.repository.SyncStatusState
+import com.example.domain.repository.SyncProgress
 import com.example.domain.repository.UtowerImportPreview
 import java.security.MessageDigest
 import kotlinx.coroutines.flow.*
@@ -18,6 +19,7 @@ class SyncStatusViewModel(
 ) : ViewModel() {
 
     val syncState = syncRepo.syncState
+    val syncProgress = syncRepo.syncProgress
 
     private val _lastSyncTime = MutableStateFlow(prefs.getLastSyncTime())
     val lastSyncTime = _lastSyncTime.asStateFlow()
@@ -38,6 +40,20 @@ class SyncStatusViewModel(
 
     init {
         refreshPendingCount()
+        viewModelScope.launch {
+            syncRepo.syncState.collect {
+                _lastSyncTime.value = prefs.getLastSyncTime()
+                refreshPendingCount()
+            }
+        }
+        viewModelScope.launch {
+            syncRepo.syncProgress.collect { progress ->
+                if (progress.lastCompletedTime > 0L) {
+                    _lastSyncTime.value = progress.lastCompletedTime
+                }
+                refreshPendingCount()
+            }
+        }
     }
 
     fun refreshPendingCount() {
@@ -74,18 +90,21 @@ class SyncStatusViewModel(
             _isSyncingProgress.value = true
             try {
                 val success = syncRepo.triggerSyncOneShot()
+                _lastSyncTime.value = prefs.getLastSyncTime()
                 if (success) {
-                    _lastSyncTime.value = prefs.getLastSyncTime()
                     _syncSuccessTrigger.value = true
-                    refreshPendingCount()
                 }
+                refreshPendingCount()
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                Log.e("SyncStatusVM", "Manual sync triggered error", e)
             } finally {
                 _isSyncingProgress.value = false
+                _lastSyncTime.value = prefs.getLastSyncTime()
+                refreshPendingCount()
             }
         }
     }
 
     fun getFirebaseUid(): String? = syncRepo.getFirebaseUid()
-
-
 }

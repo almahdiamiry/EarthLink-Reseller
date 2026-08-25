@@ -51,6 +51,8 @@ import com.example.core.backup.LocalAutoBackupWorker
 import com.example.core.ledger.MoneyParser
 import com.example.core.util.AppBuildConfig
 import com.example.domain.repository.SyncStatusState
+import com.example.domain.repository.SyncProgress
+import com.example.domain.repository.SyncPhase
 import com.example.ui.viewmodels.AuthViewModel
 import com.example.ui.viewmodels.DashboardViewModel
 import com.example.ui.viewmodels.SyncStatusViewModel
@@ -94,8 +96,11 @@ fun SettingsScreen(
     }
 
     val syncState by finalSyncViewModel.syncState.collectAsStateWithLifecycle(SyncStatusState.IDLE)
+    val syncProgress by finalSyncViewModel.syncProgress.collectAsStateWithLifecycle()
     val lastSyncTime by finalSyncViewModel.lastSyncTime.collectAsStateWithLifecycle()
     val isSyncingProgress by finalSyncViewModel.isSyncingProgress.collectAsStateWithLifecycle()
+    val pendingCount by finalSyncViewModel.pendingCount.collectAsStateWithLifecycle()
+    val failedCount by finalSyncViewModel.failedCount.collectAsStateWithLifecycle()
 
     val username by authViewModel.username.collectAsStateWithLifecycle()
     val prefs = authViewModel.prefs
@@ -271,8 +276,11 @@ fun SettingsScreen(
                     SyncAndBackupSection(
                         currentLang = currentLang,
                         syncState = syncState,
+                        syncProgress = syncProgress,
                         lastSyncTime = lastSyncTime,
-                        isSyncing = isSyncingProgress,
+                        isSyncing = isSyncingProgress || syncState == SyncStatusState.SYNCING || syncProgress.isSyncing,
+                        pendingCount = pendingCount,
+                        failedCount = failedCount,
                         onTriggerSync = { finalSyncViewModel.triggeredSync() },
                         isAutoBackupEnabled = isLocalBackupEnabled,
                         onToggleAutoBackup = { enabled ->
@@ -1291,8 +1299,11 @@ private fun AccountAndIspSection(
 private fun SyncAndBackupSection(
     currentLang: String,
     syncState: SyncStatusState,
+    syncProgress: SyncProgress,
     lastSyncTime: Long,
     isSyncing: Boolean,
+    pendingCount: Int,
+    failedCount: Int,
     onTriggerSync: () -> Unit,
     isAutoBackupEnabled: Boolean,
     onToggleAutoBackup: (Boolean) -> Unit,
@@ -1304,79 +1315,216 @@ private fun SyncAndBackupSection(
     onExportZip: () -> Unit,
     onImportUtower: () -> Unit
 ) {
-    // Cloud Sync Status Row
+    // Cloud Sync Status Row (Balanced Single Card with Aligned Status & Actions)
+    val iconTint = when {
+        isSyncing || syncState == SyncStatusState.SYNCING -> Color(0xFF38BDF8)
+        syncState == SyncStatusState.COMPLETE -> Color(0xFF10B981)
+        syncState == SyncStatusState.COMPLETE_WITH_ERRORS || failedCount > 0 -> Color(0xFFF59E0B)
+        syncState == SyncStatusState.ERROR -> Color(0xFFEF4444)
+        syncState == SyncStatusState.AUTH_REQUIRED -> Color(0xFFA855F7)
+        syncState == SyncStatusState.OFFLINE -> Color(0xFF94A3B8)
+        else -> if (lastSyncTime > 0L) Color(0xFF10B981) else Color(0xFF38BDF8)
+    }
+
+    val (badgeText, badgeBg, badgeTextClr) = when {
+        isSyncing || syncState == SyncStatusState.SYNCING -> Triple(
+            if (currentLang == "ar") "جاري المزامنة" else "Syncing",
+            Color(0xFF0288D1).copy(alpha = 0.2f),
+            Color(0xFF38BDF8)
+        )
+        syncState == SyncStatusState.COMPLETE_WITH_ERRORS || (failedCount > 0 && syncState != SyncStatusState.ERROR) -> Triple(
+            if (currentLang == "ar") "أخطاء في المزامنة" else "Sync Errors",
+            Color(0xFFF59E0B).copy(alpha = 0.2f),
+            Color(0xFFF59E0B)
+        )
+        syncState == SyncStatusState.ERROR -> Triple(
+            if (currentLang == "ar") "تعذر المزامنة" else "Failed",
+            Color(0xFFEF4444).copy(alpha = 0.2f),
+            Color(0xFFEF4444)
+        )
+        syncState == SyncStatusState.AUTH_REQUIRED -> Triple(
+            if (currentLang == "ar") "مطلوب تسجيل الدخول" else "Auth Required",
+            Color(0xFFA855F7).copy(alpha = 0.2f),
+            Color(0xFFA855F7)
+        )
+        syncState == SyncStatusState.OFFLINE -> Triple(
+            if (currentLang == "ar") "غير متصل" else "Offline",
+            Color(0xFF64748B).copy(alpha = 0.2f),
+            Color(0xFF94A3B8)
+        )
+        syncState == SyncStatusState.COMPLETE || (syncState == SyncStatusState.IDLE && lastSyncTime > 0L) -> Triple(
+            if (currentLang == "ar") "مكتمل" else "Up to date",
+            Color(0xFF10B981).copy(alpha = 0.2f),
+            Color(0xFF10B981)
+        )
+        else -> Triple(
+            if (currentLang == "ar") "جاهز" else "Ready",
+            Color.White.copy(alpha = 0.1f),
+            Color.White.copy(alpha = 0.7f)
+        )
+    }
+
+    val subtitleText = when {
+        isSyncing -> {
+            when {
+                syncProgress.totalCount > 0 && syncProgress.phase == SyncPhase.UPLOADING -> {
+                    if (currentLang == "ar") "جاري رفع البيانات (${syncProgress.processedCount}/${syncProgress.totalCount})"
+                    else "Uploading records (${syncProgress.processedCount}/${syncProgress.totalCount})"
+                }
+                syncProgress.phase == SyncPhase.DOWNLOADING -> {
+                    if (currentLang == "ar") "جاري جلب التحديثات..."
+                    else "Downloading updates..."
+                }
+                else -> {
+                    if (currentLang == "ar") "جاري مزامنة قاعدة البيانات..."
+                    else "Syncing database..."
+                }
+            }
+        }
+        lastSyncTime > 0L -> {
+            val locale = if (currentLang == "ar") Locale("ar") else Locale.US
+            val formattedTime = SimpleDateFormat("h:mm a", locale).format(Date(lastSyncTime))
+            val base = if (currentLang == "ar") "آخر مزامنة · $formattedTime" else "Last sync · $formattedTime"
+            when {
+                failedCount > 0 -> if (currentLang == "ar") "$base (فشل $failedCount عناصر)" else "$base ($failedCount failed)"
+                pendingCount > 0 -> if (currentLang == "ar") "$base ($pendingCount معلقة)" else "$base ($pendingCount pending)"
+                else -> base
+            }
+        }
+        syncState == SyncStatusState.ERROR -> if (currentLang == "ar") "تعذر إتمام المزامنة الأخيرة" else "Last sync attempt failed"
+        syncState == SyncStatusState.AUTH_REQUIRED -> if (currentLang == "ar") "سجل الدخول بحساب Google للتفعيل" else "Sign in with Google to enable sync"
+        syncState == SyncStatusState.OFFLINE -> if (currentLang == "ar") "التطبيق في وضع عدم الاتصال" else "App is running offline"
+        else -> if (currentLang == "ar") "لم تتم مزامنة سابقة" else "Never synced"
+    }
+
+    val subtitleColor = when {
+        isSyncing -> Color(0xFF38BDF8)
+        failedCount > 0 || syncState == SyncStatusState.COMPLETE_WITH_ERRORS -> Color(0xFFF59E0B)
+        syncState == SyncStatusState.ERROR -> Color(0xFFEF4444)
+        syncState == SyncStatusState.AUTH_REQUIRED -> Color(0xFFA855F7)
+        lastSyncTime > 0L -> Color.White.copy(alpha = 0.45f)
+        else -> Color.White.copy(alpha = 0.4f)
+    }
+
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(12.dp),
         color = Color(0xFF171E29),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Start side: Icon + Title & Subtitle Stack
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
                     Icon(
-                        imageVector = Icons.Default.Sync,
+                        imageVector = Icons.Default.CloudSync,
                         contentDescription = null,
-                        tint = Color(0xFF38BDF8),
-                        modifier = Modifier.size(18.dp)
+                        tint = iconTint,
+                        modifier = Modifier.size(20.dp)
                     )
-                    Text(
-                        text = if (currentLang == "ar") "المزامنة السحابية" else "Cloud Sync",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = if (currentLang == "ar") "المزامنة السحابية" else "Cloud Sync",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = subtitleText,
+                            fontSize = 10.sp,
+                            color = subtitleColor
+                        )
+                    }
                 }
 
-                val (badgeText, badgeBg, badgeTextClr) = when {
-                    isSyncing || syncState == SyncStatusState.SYNCING -> Triple(if (currentLang == "ar") "جاري المزامنة" else "Syncing", Color(0xFF0288D1).copy(alpha = 0.2f), Color(0xFF38BDF8))
-                    syncState == SyncStatusState.COMPLETE || syncState == SyncStatusState.IDLE -> Triple(if (currentLang == "ar") "مكتمل" else "Up to date", Color(0xFF10B981).copy(alpha = 0.2f), Color(0xFF10B981))
-                    else -> Triple(if (currentLang == "ar") "غير معروف" else "Unknown", Color.White.copy(alpha = 0.1f), Color.White.copy(alpha = 0.6f))
-                }
+                // End side: Status Badge + Action Button
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = badgeBg
+                    ) {
+                        Text(
+                            text = badgeText,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = badgeTextClr,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
 
-                Surface(shape = RoundedCornerShape(6.dp), color = badgeBg) {
-                    Text(text = badgeText, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = badgeTextClr, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isSyncing) Color(0xFF1E293B) else Color(0xFF0288D1),
+                        border = if (isSyncing) BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)) else null,
+                        modifier = Modifier.clickable(enabled = !isSyncing) { onTriggerSync() }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            if (isSyncing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(12.dp),
+                                    color = Color(0xFF38BDF8),
+                                    strokeWidth = 1.5.dp
+                                )
+                            } else {
+                                Icon(
+                                    Icons.Default.Refresh,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                            }
+                            Text(
+                                text = if (currentLang == "ar") {
+                                    if (isSyncing) "مزامنة..." else "مزامنة الآن"
+                                } else {
+                                    if (isSyncing) "Syncing..." else "Sync Now"
+                                },
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSyncing) Color(0xFF38BDF8) else Color.White
+                            )
+                        }
+                    }
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = if (lastSyncTime <= 0L) (if (currentLang == "ar") "لم تتم مزامنة سابقة" else "Never synced")
-                    else "${if (currentLang == "ar") "آخر مزامنة:" else "Last sync:"} ${SimpleDateFormat("HH:mm", Locale.US).format(Date(lastSyncTime))}",
-                    fontSize = 11.sp,
-                    color = Color.White.copy(alpha = 0.45f)
-                )
-
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFF0288D1),
-                    modifier = Modifier.clickable(enabled = !isSyncing) { onTriggerSync() }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        if (isSyncing) {
-                            CircularProgressIndicator(modifier = Modifier.size(12.dp), color = Color.White, strokeWidth = 1.5.dp)
-                        } else {
-                            Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
-                        }
-                        Text(text = if (currentLang == "ar") "مزامنة الآن" else "Sync Now", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    }
+            // Bottom Progress Indicator (if syncing)
+            if (isSyncing) {
+                if (syncProgress.totalCount > 0 && syncProgress.phase == SyncPhase.UPLOADING) {
+                    val progressFraction = (syncProgress.processedCount.toFloat() / syncProgress.totalCount.toFloat()).coerceIn(0f, 1f)
+                    LinearProgressIndicator(
+                        progress = { progressFraction },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(2.dp),
+                        color = Color(0xFF38BDF8),
+                        trackColor = Color.White.copy(alpha = 0.08f)
+                    )
+                } else {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(2.dp),
+                        color = Color(0xFF38BDF8),
+                        trackColor = Color.White.copy(alpha = 0.08f)
+                    )
                 }
             }
         }

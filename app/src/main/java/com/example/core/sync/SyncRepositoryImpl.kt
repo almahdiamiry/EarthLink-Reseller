@@ -18,6 +18,8 @@ import com.example.core.security.CloudSecretEncryptor
 import com.example.core.security.PreferenceManager
 import com.example.domain.repository.SyncRepository
 import com.example.domain.repository.SyncStatusState
+import com.example.domain.repository.SyncProgress
+import com.example.domain.repository.SyncPhase
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
@@ -98,6 +100,9 @@ class SyncRepositoryImpl(
 
     private val _syncState = MutableStateFlow(SyncStatusState.IDLE)
     override val syncState: StateFlow<SyncStatusState> = _syncState.asStateFlow()
+
+    private val _syncProgress = MutableStateFlow(SyncProgress(lastCompletedTime = prefManager.getLastSyncTime()))
+    override val syncProgress: StateFlow<SyncProgress> = _syncProgress.asStateFlow()
 
     init {
         // If there is an auth state listener, we can update status
@@ -336,10 +341,16 @@ class SyncRepositoryImpl(
 
     private suspend fun executeSyncPassInternal(): Boolean {
         _syncState.value = SyncStatusState.SYNCING
+        _syncProgress.value = SyncProgress(
+            isSyncing = true,
+            phase = SyncPhase.PREPARING,
+            lastCompletedTime = prefManager.getLastSyncTime()
+        )
 
         if (prefManager.getAuthToken().isNullOrEmpty()) {
             Log.w("FirebaseSync", "No active session auth token in PreferenceManager. Sync requires authentication.")
             _syncState.value = SyncStatusState.AUTH_REQUIRED
+            _syncProgress.value = _syncProgress.value.copy(isSyncing = false, phase = SyncPhase.FAILED, lastError = "Auth required")
             return false
         }
 
@@ -347,6 +358,7 @@ class SyncRepositoryImpl(
         val fbFirestore = firestore
         if (fbAuth == null || fbFirestore == null) {
             _syncState.value = SyncStatusState.OFFLINE
+            _syncProgress.value = _syncProgress.value.copy(isSyncing = false, phase = SyncPhase.FAILED, lastError = "Offline")
             return false
         }
         return try {
@@ -356,6 +368,7 @@ class SyncRepositoryImpl(
                 val anonymousUid = anonymousSignIn()
                 if (anonymousUid == null) {
                     _syncState.value = SyncStatusState.AUTH_REQUIRED
+                    _syncProgress.value = _syncProgress.value.copy(isSyncing = false, phase = SyncPhase.FAILED, lastError = "Auth required")
                     return false
                 }
             }
@@ -372,12 +385,16 @@ class SyncRepositoryImpl(
             // Critical Maintenance rule: pause sync if global data maintenance (restore/import/signout) is in progress
             if (DataOperationCoordinator.isMaintenanceActive) {
                 Log.w("SyncRepository", "Sync paused because global data maintenance is active.")
+                _syncState.value = SyncStatusState.IDLE
+                _syncProgress.value = _syncProgress.value.copy(isSyncing = false, phase = SyncPhase.IDLE)
                 return false
             }
 
             // Critical Outbox rule: pause sync if an import is running or incomplete (running or failed/resumable)
             if (appDatabase.importBatchDao().getIncompleteCount() > 0) {
                 Log.w("SyncRepository", "Sync paused because import is incomplete.")
+                _syncState.value = SyncStatusState.IDLE
+                _syncProgress.value = _syncProgress.value.copy(isSyncing = false, phase = SyncPhase.IDLE)
                 return false
             }
 
@@ -387,6 +404,7 @@ class SyncRepositoryImpl(
                 if (!reconciliationSuccess) {
                     Log.w("SyncRepository", "Replace-All remote reconciliation failed. Pausing sync until reconciliation succeeds.")
                     _syncState.value = SyncStatusState.ERROR
+                    _syncProgress.value = _syncProgress.value.copy(isSyncing = false, phase = SyncPhase.FAILED, lastError = "Reconciliation failed")
                     return false
                 }
                 metadataDao.remove("replace_all_pending_reconciliation")
@@ -424,6 +442,19 @@ class SyncRepositoryImpl(
                 deduplicatedItems.add(Pair(item, listOf(item)))
             }
 
+            val totalToUpload = deduplicatedItems.size
+            var processedCount = 0
+            var successCount = 0
+            var failureCount = 0
+
+            _syncProgress.value = SyncProgress(
+                isSyncing = true,
+                phase = if (totalToUpload > 0) SyncPhase.UPLOADING else SyncPhase.DOWNLOADING,
+                processedCount = 0,
+                totalCount = totalToUpload,
+                lastCompletedTime = prefManager.getLastSyncTime()
+            )
+
             val chunkedItems = deduplicatedItems.chunked(500)
 
             for (chunk in chunkedItems) {
@@ -446,6 +477,13 @@ class SyncRepositoryImpl(
                         appDatabase.withTransaction {
                             OutboxManager.markOrphanFailure(outboxDao, allForEntity, orphanReason)
                         }
+                        processedCount++
+                        failureCount++
+                        _syncProgress.value = _syncProgress.value.copy(
+                            processedCount = processedCount,
+                            successCount = successCount,
+                            failureCount = failureCount
+                        )
                         continue
                     }
 
@@ -459,6 +497,13 @@ class SyncRepositoryImpl(
                             val errReason = "Malformed payload error: ${e.message ?: "Invalid JSON"}"
                             OutboxManager.markRetryableFailure(outboxDao, allForEntity, errReason)
                         }
+                        processedCount++
+                        failureCount++
+                        _syncProgress.value = _syncProgress.value.copy(
+                            processedCount = processedCount,
+                            successCount = successCount,
+                            failureCount = failureCount
+                        )
                     }
                 }
 
@@ -484,6 +529,13 @@ class SyncRepositoryImpl(
                                 }
                                 confirmRemoteVersionReadBack(item, currentUid, fbFirestore)
                             }
+                            processedCount += preparedItems.size
+                            successCount += preparedItems.size
+                            _syncProgress.value = _syncProgress.value.copy(
+                                processedCount = processedCount,
+                                successCount = successCount,
+                                failureCount = failureCount
+                            )
                         } catch (e: Exception) {
                             if (e is kotlinx.coroutines.CancellationException) throw e
                             Log.w("FirebaseSync", "Batch push commit failed; falling back to per-item isolation push", e)
@@ -493,11 +545,24 @@ class SyncRepositoryImpl(
                     // Fallback to per-item isolation if batch failed or single item
                     if (!batchSucceeded) {
                         for ((item, allForEntity, dataMap) in preparedItems) {
-                            executeSingleItemPush(item, allForEntity, dataMap, currentUid, fbFirestore)
+                            val itemPushed = executeSingleItemPush(item, allForEntity, dataMap, currentUid, fbFirestore)
+                            processedCount++
+                            if (itemPushed) {
+                                successCount++
+                            } else {
+                                failureCount++
+                            }
+                            _syncProgress.value = _syncProgress.value.copy(
+                                processedCount = processedCount,
+                                successCount = successCount,
+                                failureCount = failureCount
+                            )
                         }
                     }
                 }
             }
+
+            _syncProgress.value = _syncProgress.value.copy(phase = SyncPhase.DOWNLOADING)
 
             // 2. Downward sync (pull remote changes per collection)
             val collectionsToSync = listOf("local_accounts", "local_ledger_entries", "import_batches", "audit_logs")
@@ -510,7 +575,26 @@ class SyncRepositoryImpl(
                 }
             }
 
-            _syncState.value = SyncStatusState.COMPLETE
+            val finalFailedOutbox = outboxDao.getFailedCount()
+            val finalState = if (failureCount > 0 || finalFailedOutbox > 0) {
+                SyncStatusState.COMPLETE_WITH_ERRORS
+            } else {
+                SyncStatusState.COMPLETE
+            }
+            val completedTime = System.currentTimeMillis()
+            prefManager.saveLastSyncTime(completedTime)
+            metadataDao.put("last_sync_timestamp", completedTime.toString())
+
+            _syncState.value = finalState
+            _syncProgress.value = SyncProgress(
+                isSyncing = false,
+                phase = SyncPhase.COMPLETED,
+                processedCount = processedCount,
+                totalCount = totalToUpload,
+                successCount = successCount,
+                failureCount = failureCount + finalFailedOutbox,
+                lastCompletedTime = completedTime
+            )
             true
         } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
             Log.e("FirebaseSync", "One shot sync error", e)
@@ -527,6 +611,12 @@ class SyncRepositoryImpl(
             } else {
                 _syncState.value = SyncStatusState.ERROR
             }
+            _syncProgress.value = SyncProgress(
+                isSyncing = false,
+                phase = SyncPhase.FAILED,
+                lastCompletedTime = prefManager.getLastSyncTime(),
+                lastError = e.message
+            )
             false
         }
     }
@@ -649,8 +739,8 @@ class SyncRepositoryImpl(
         dataMap: Map<String, Any?>,
         currentUid: String,
         fbFirestore: FirebaseFirestore
-    ) {
-        try {
+    ): Boolean {
+        return try {
             val collRef = getCollectionRef(item.entityType, currentUid, fbFirestore)
             if (collRef != null) {
                 val docRef = collRef.document(item.entityId)
@@ -661,6 +751,9 @@ class SyncRepositoryImpl(
                 }
 
                 confirmRemoteVersionReadBack(item, currentUid, fbFirestore)
+                true
+            } else {
+                false
             }
         } catch (itemError: Exception) {
             if (itemError is kotlinx.coroutines.CancellationException) throw itemError
@@ -669,6 +762,7 @@ class SyncRepositoryImpl(
                 val errReason = itemError.localizedMessage ?: "Sync error"
                 OutboxManager.markRetryableFailure(outboxDao, allForEntity, errReason)
             }
+            false
         }
     }
 
