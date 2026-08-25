@@ -137,7 +137,22 @@ fun OperatorMainScreen(authViewModel: AuthViewModel) {
         modifier = Modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets.systemBars,
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                containerColor = Color(0xFF10161D),
+                contentColor = Color.White,
+                tonalElevation = 0.dp,
+                modifier = Modifier.border(
+                    BorderStroke(0.8.dp, Color.White.copy(alpha = 0.08f))
+                )
+            ) {
+                val itemColors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = Color(0xFF38BDF8),
+                    selectedTextColor = Color(0xFF38BDF8),
+                    unselectedIconColor = Color.White.copy(alpha = 0.45f),
+                    unselectedTextColor = Color.White.copy(alpha = 0.45f),
+                    indicatorColor = Color(0xFF0288D1).copy(alpha = 0.22f)
+                )
+
                 NavigationBarItem(
                     selected = (currentRoute == "dashboard" || currentRoute == "dashboard_status" || currentRoute == "search") && !showCreateSheet,
                     onClick = {
@@ -153,7 +168,8 @@ fun OperatorMainScreen(authViewModel: AuthViewModel) {
                         }
                     },
                     icon = { Icon(imageVector = Icons.Default.People, contentDescription = "Subscribers") },
-                    label = { Text(if (isAr) "المشتركين" else "Subscribers", fontSize = 11.sp) }
+                    label = { Text(if (isAr) "المشتركين" else "Subscribers", fontSize = 11.sp, fontWeight = if ((currentRoute == "dashboard" || currentRoute == "dashboard_status" || currentRoute == "search") && !showCreateSheet) FontWeight.Bold else FontWeight.Normal) },
+                    colors = itemColors
                 )
                 NavigationBarItem(
                     selected = showCreateSheet || currentRoute == "create_chooser" || currentRoute == "create_test_user" || currentRoute == "create_using_deposit",
@@ -163,7 +179,8 @@ fun OperatorMainScreen(authViewModel: AuthViewModel) {
                         showCreateSheet = true
                     },
                     icon = { Icon(imageVector = Icons.Default.AddCircle, contentDescription = "Create") },
-                    label = { Text(if (isAr) "إنشاء" else "Create", fontSize = 11.sp) }
+                    label = { Text(if (isAr) "إنشاء" else "Create", fontSize = 11.sp, fontWeight = if (showCreateSheet || currentRoute == "create_chooser" || currentRoute == "create_test_user" || currentRoute == "create_using_deposit") FontWeight.Bold else FontWeight.Normal) },
+                    colors = itemColors
                 )
                 NavigationBarItem(
                     selected = currentRoute == "settings" && !showCreateSheet,
@@ -180,7 +197,8 @@ fun OperatorMainScreen(authViewModel: AuthViewModel) {
                         }
                     },
                     icon = { Icon(imageVector = Icons.Default.Settings, contentDescription = "Settings") },
-                    label = { Text(if (isAr) "الإعدادات" else "Settings", fontSize = 11.sp) }
+                    label = { Text(if (isAr) "الإعدادات" else "Settings", fontSize = 11.sp, fontWeight = if (currentRoute == "settings" && !showCreateSheet) FontWeight.Bold else FontWeight.Normal) },
+                    colors = itemColors
                 )
             }
         }
