@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -23,6 +24,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -31,6 +33,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -67,6 +70,9 @@ fun LocalAccountDetailScreen(
     val ledger by viewModel.ledgerEntries.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
 
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+
     var showEditDialog by rememberSaveable { mutableStateOf(false) }
     var showPaymentDialog by rememberSaveable { mutableStateOf(false) }
     var paymentIdempotencyKey by rememberSaveable { mutableStateOf("") }
@@ -86,8 +92,14 @@ fun LocalAccountDetailScreen(
         ConfirmationDialog(
             title = "Log Local Payment Recieved",
             message = "This decreases outstanding debt limit. Any excess value converts to prepaid advances.",
-            onCancel = { showPaymentDialog = false },
+            onCancel = { 
+                focusManager.clearFocus(force = true)
+                keyboardController?.hide()
+                showPaymentDialog = false 
+            },
             onConfirm = {
+                focusManager.clearFocus(force = true)
+                keyboardController?.hide()
                 showPaymentDialog = false
                 val amt = com.example.core.ledger.MoneyParser.parseUiThousandsAmount(inputAmt)?.toDouble() ?: 0.0
                 viewModel.addPaymentLocal(accountId, amt, inputNote, paymentIdempotencyKey.ifBlank { null })
@@ -98,7 +110,11 @@ fun LocalAccountDetailScreen(
                     value = inputAmt,
                     onValueChange = { inputAmt = it },
                     label = { Text("Payment in IQD") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = {
+                        focusManager.clearFocus(force = true)
+                        keyboardController?.hide()
+                    }),
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
@@ -119,8 +135,14 @@ fun LocalAccountDetailScreen(
         ConfirmationDialog(
             title = "Log Customer Debt/Loan",
             message = "Increases this subscriber's local debt balance.",
-            onCancel = { showDebtDialog = false },
+            onCancel = { 
+                focusManager.clearFocus(force = true)
+                keyboardController?.hide()
+                showDebtDialog = false 
+            },
             onConfirm = {
+                focusManager.clearFocus(force = true)
+                keyboardController?.hide()
                 showDebtDialog = false
                 val amt = com.example.core.ledger.MoneyParser.parseUiThousandsAmount(inputAmt)?.toDouble() ?: 0.0
                 viewModel.addDebtLocal(accountId, amt, inputNote, debtIdempotencyKey.ifBlank { null })
@@ -131,7 +153,11 @@ fun LocalAccountDetailScreen(
                     value = inputAmt,
                     onValueChange = { inputAmt = it },
                     label = { Text("Debt Load in IQD") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = {
+                        focusManager.clearFocus(force = true)
+                        keyboardController?.hide()
+                    }),
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(

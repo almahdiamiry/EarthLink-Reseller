@@ -36,9 +36,12 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -204,6 +207,7 @@ fun UserDetailScreenV2(
             var noteInput by rememberSaveable { mutableStateOf("") }
             var isSubmitting by rememberSaveable { mutableStateOf(false) }
             
+            val focusManager = LocalFocusManager.current
             val focusRequester = remember { FocusRequester() }
             val keyboardController = LocalSoftwareKeyboardController.current
             LaunchedEffect(Unit) {
@@ -253,6 +257,8 @@ fun UserDetailScreenV2(
             
             Dialog(
                 onDismissRequest = { 
+                    focusManager.clearFocus(force = true)
+                    keyboardController?.hide()
                     isSubmitting = false
                     showRefillDialog = false 
                 },
@@ -264,6 +270,7 @@ fun UserDetailScreenV2(
                     modifier = Modifier
                         .fillMaxWidth(0.95f)
                         .fillMaxHeight(0.85f)
+                        .imePadding()
                         .padding(vertical = 12.dp),
                     shape = RoundedCornerShape(24.dp),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF10161D)),
@@ -334,7 +341,11 @@ fun UserDetailScreenV2(
                                     textAlign = TextAlign.End
                                 ),
                                 cursorBrush = SolidColor(Color(0xFF90CAF9)),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+                                keyboardActions = KeyboardActions(onDone = {
+                                    focusManager.clearFocus(force = true)
+                                    keyboardController?.hide()
+                                }),
                                 decorationBox = { innerTextField ->
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -617,6 +628,7 @@ fun UserDetailScreenV2(
     if (showDepositDialog) {
         val user = detail
         if (user != null) {
+            val focusManager = LocalFocusManager.current
             val focusRequester = remember { FocusRequester() }
             val keyboardController = LocalSoftwareKeyboardController.current
             
@@ -638,6 +650,8 @@ fun UserDetailScreenV2(
             
             Dialog(
                 onDismissRequest = { 
+                    focusManager.clearFocus(force = true)
+                    keyboardController?.hide()
                     isSubmitting = false
                     showDepositDialog = false 
                 },
@@ -649,6 +663,7 @@ fun UserDetailScreenV2(
                     modifier = Modifier
                         .fillMaxWidth(0.95f)
                         .fillMaxHeight(0.85f)
+                        .imePadding()
                         .padding(vertical = 12.dp),
                     shape = RoundedCornerShape(24.dp),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF10161D)),
@@ -714,7 +729,11 @@ fun UserDetailScreenV2(
                                     textAlign = TextAlign.End
                                 ),
                                 cursorBrush = SolidColor(Color(0xFF90CAF9)),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+                                keyboardActions = KeyboardActions(onDone = {
+                                    focusManager.clearFocus(force = true)
+                                    keyboardController?.hide()
+                                }),
                                 decorationBox = { innerTextField ->
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -947,6 +966,7 @@ fun UserDetailScreenV2(
     if (showDebtDialog) {
         val user = detail
         if (user != null) {
+            val focusManager = LocalFocusManager.current
             val focusRequester = remember { FocusRequester() }
             val keyboardController = LocalSoftwareKeyboardController.current
             
@@ -968,6 +988,8 @@ fun UserDetailScreenV2(
             
             Dialog(
                 onDismissRequest = { 
+                    focusManager.clearFocus(force = true)
+                    keyboardController?.hide()
                     isSubmitting = false
                     showDebtDialog = false 
                 },
@@ -979,6 +1001,7 @@ fun UserDetailScreenV2(
                     modifier = Modifier
                         .fillMaxWidth(0.95f)
                         .fillMaxHeight(0.85f)
+                        .imePadding()
                         .padding(vertical = 12.dp),
                     shape = RoundedCornerShape(24.dp),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF10161D)),
@@ -1039,7 +1062,11 @@ fun UserDetailScreenV2(
                                     textAlign = TextAlign.End
                                 ),
                                 cursorBrush = SolidColor(Color(0xFF90CAF9)),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                                keyboardActions = KeyboardActions(onDone = {
+                                    focusManager.clearFocus(force = true)
+                                    keyboardController?.hide()
+                                }),
                                 decorationBox = { innerTextField ->
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -1541,9 +1568,15 @@ fun UserDetailScreenV2(
     }
 
     if (showNotesDialog) {
+        val focusManager = LocalFocusManager.current
+        val keyboardController = LocalSoftwareKeyboardController.current
         var noteText by rememberSaveable { mutableStateOf(matchingAccount?.note ?: "") }
         AlertDialog(
-            onDismissRequest = { showNotesDialog = false },
+            onDismissRequest = { 
+                focusManager.clearFocus(force = true)
+                keyboardController?.hide()
+                showNotesDialog = false 
+            },
             title = {
                 Text(
                     text = if (currentLang == "ar") "ملاحظات المشترك" else "Subscriber Notes",
@@ -1580,6 +1613,8 @@ fun UserDetailScreenV2(
             confirmButton = {
                 Button(
                     onClick = {
+                        focusManager.clearFocus(force = true)
+                        keyboardController?.hide()
                         val user = detail
                         if (user != null) {
                             val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
@@ -1610,7 +1645,11 @@ fun UserDetailScreenV2(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showNotesDialog = false }) {
+                TextButton(onClick = { 
+                    focusManager.clearFocus(force = true)
+                    keyboardController?.hide()
+                    showNotesDialog = false 
+                }) {
                     Text(
                         text = if (currentLang == "ar") "إلغاء" else "Cancel",
                         color = Color(0xFF9CA3AF),
@@ -1650,63 +1689,163 @@ fun UserDetailScreenV2(
                             Icon(imageVector = Icons.Default.History, contentDescription = "History", tint = Color.White)
                         }
                         var expanded by rememberSaveable { mutableStateOf(false) }
-                        IconButton(onClick = { expanded = true }) {
-                            Icon(imageVector = Icons.Default.MoreVert, contentDescription = "More", tint = Color.White)
-                        }
-                        DropdownMenu(
-                            expanded = expanded,
-                            onDismissRequest = { expanded = false },
-                            modifier = Modifier.background(Color(0xFF1C1C1E))
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text(if (currentLang == "ar") "تعديل نوع الاشتراك" else "Edit Package", color = Color.White) },
-                                onClick = {
-                                    expanded = false
-                                    showEditPackageDialog = true
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text(if (currentLang == "ar") "تعديل اسم المشترك الظاهر" else "Edit Display Name", color = Color.White) },
-                                onClick = {
-                                    expanded = false
-                                    showEditDisplayNameDialog = true
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text(if (currentLang == "ar") "تمديد المشترك" else "Extend User", color = Color.White) },
-                                onClick = {
-                                    expanded = false
-                                    showExtendDialog = true
-                                }
-                            )
-                            val isSuspended = detail?.accountStatus?.trim()?.lowercase() == "suspendedbyagent"
-                            DropdownMenuItem(
-                                text = { 
-                                    if (isSuspended) {
-                                        Text(if (currentLang == "ar") "تفعيل المشترك" else "Resume/Activate User", color = Color.White)
-                                    } else {
-                                        Text(if (currentLang == "ar") "ايقاف المشترك" else "Stop/Suspend User", color = Color.White)
+                        Box {
+                            IconButton(onClick = { expanded = true }) {
+                                Icon(imageVector = Icons.Default.MoreVert, contentDescription = "More", tint = Color.White)
+                            }
+                            DropdownMenu(
+                                expanded = expanded,
+                                onDismissRequest = { expanded = false },
+                                modifier = Modifier
+                                    .background(Color(0xFF161C26), shape = RoundedCornerShape(16.dp))
+                                    .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
+                                    .padding(vertical = 4.dp),
+                                shape = RoundedCornerShape(16.dp),
+                                containerColor = Color(0xFF161C26)
+                            ) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            if (currentLang == "ar") "تعديل نوع الاشتراك" else "Edit Package",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 14.sp
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Tune,
+                                            contentDescription = null,
+                                            tint = Color(0xFF0288D1),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    },
+                                    onClick = {
+                                        expanded = false
+                                        showEditPackageDialog = true
                                     }
-                                },
-                                onClick = {
-                                    expanded = false
-                                    showStopUserDialog = true
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text(if (currentLang == "ar") "IP مخصص (اضافة/تعديل)" else "Edit Custom IP", color = Color.White) },
-                                onClick = {
-                                    expanded = false
-                                    showEditCustomIpDialog = true
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text(if (currentLang == "ar") "تعديل كلمات المرور" else "Edit Passwords", color = Color.White) },
-                                onClick = {
-                                    expanded = false
-                                    showPassToolsDialog = true
-                                }
-                            )
+                                )
+                                HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.8.dp)
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            if (currentLang == "ar") "تعديل اسم المشترك الظاهر" else "Edit Display Name",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 14.sp
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Badge,
+                                            contentDescription = null,
+                                            tint = Color(0xFF0288D1),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    },
+                                    onClick = {
+                                        expanded = false
+                                        showEditDisplayNameDialog = true
+                                    }
+                                )
+                                HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.8.dp)
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            if (currentLang == "ar") "تمديد المشترك" else "Extend User",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 14.sp
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.HourglassTop,
+                                            contentDescription = null,
+                                            tint = Color(0xFFF59E0B),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    },
+                                    onClick = {
+                                        expanded = false
+                                        showExtendDialog = true
+                                    }
+                                )
+                                HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.8.dp)
+                                val isSuspended = detail?.accountStatus?.trim()?.lowercase() == "suspendedbyagent"
+                                DropdownMenuItem(
+                                    text = { 
+                                        Text(
+                                            text = if (isSuspended) {
+                                                if (currentLang == "ar") "تفعيل المشترك" else "Resume/Activate User"
+                                            } else {
+                                                if (currentLang == "ar") "إيقاف المشترك" else "Stop/Suspend User"
+                                            },
+                                            color = if (isSuspended) Color(0xFF30D158) else Color(0xFFFF453A),
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 14.sp
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = if (isSuspended) Icons.Default.PlayCircle else Icons.Default.PauseCircle,
+                                            contentDescription = null,
+                                            tint = if (isSuspended) Color(0xFF30D158) else Color(0xFFFF453A),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    },
+                                    onClick = {
+                                        expanded = false
+                                        showStopUserDialog = true
+                                    }
+                                )
+                                HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.8.dp)
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            if (currentLang == "ar") "IP مخصص (إضافة/تعديل)" else "Edit Custom IP",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 14.sp
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Router,
+                                            contentDescription = null,
+                                            tint = Color(0xFF0288D1),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    },
+                                    onClick = {
+                                        expanded = false
+                                        showEditCustomIpDialog = true
+                                    }
+                                )
+                                HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.8.dp)
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            if (currentLang == "ar") "تعديل كلمات المرور" else "Edit Passwords",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 14.sp
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.LockReset,
+                                            contentDescription = null,
+                                            tint = Color(0xFF0288D1),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    },
+                                    onClick = {
+                                        expanded = false
+                                        showPassToolsDialog = true
+                                    }
+                                )
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF10161D))
@@ -2729,9 +2868,15 @@ fun UserDetailScreenV2(
                 }
 
                 if (showEditDisplayNameDialog) {
+                    val focusManager = LocalFocusManager.current
+                    val keyboardController = LocalSoftwareKeyboardController.current
                     var newName by rememberSaveable { mutableStateOf(if (displayNameToUse != "N/A") displayNameToUse else "") }
                     AlertDialog(
-                        onDismissRequest = { showEditDisplayNameDialog = false },
+                        onDismissRequest = { 
+                            focusManager.clearFocus(force = true)
+                            keyboardController?.hide()
+                            showEditDisplayNameDialog = false 
+                        },
                         title = { Text(if (currentLang == "ar") "تعديل اسم المشترك الظاهر" else "Edit Display Name") },
                         text = {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2747,6 +2892,8 @@ fun UserDetailScreenV2(
                         confirmButton = {
                             Button(
                                 onClick = {
+                                    focusManager.clearFocus(force = true)
+                                    keyboardController?.hide()
                                     showEditDisplayNameDialog = false
                                     if (newName.isNotBlank()) {
                                         val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
@@ -2771,7 +2918,11 @@ fun UserDetailScreenV2(
                             }
                         },
                         dismissButton = {
-                            TextButton(onClick = { showEditDisplayNameDialog = false }) {
+                            TextButton(onClick = { 
+                                focusManager.clearFocus(force = true)
+                                keyboardController?.hide()
+                                showEditDisplayNameDialog = false 
+                            }) {
                                 Text(if (currentLang == "ar") "الغاء" else "Cancel")
                             }
                         }
@@ -2801,9 +2952,15 @@ fun UserDetailScreenV2(
                 }
 
                 if (showEditCustomIpDialog) {
+                    val focusManager = LocalFocusManager.current
+                    val keyboardController = LocalSoftwareKeyboardController.current
                     var newIp by rememberSaveable { mutableStateOf(matchingAccount?.nanoIp ?: "") }
                     AlertDialog(
-                        onDismissRequest = { showEditCustomIpDialog = false },
+                        onDismissRequest = { 
+                            focusManager.clearFocus(force = true)
+                            keyboardController?.hide()
+                            showEditCustomIpDialog = false 
+                        },
                         title = { Text(if (currentLang == "ar") "تعديل الـ IP المخصص" else "Edit Custom IP") },
                         text = {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2819,6 +2976,8 @@ fun UserDetailScreenV2(
                         confirmButton = {
                             Button(
                                 onClick = {
+                                    focusManager.clearFocus(force = true)
+                                    keyboardController?.hide()
                                     showEditCustomIpDialog = false
                                     val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
                                         earthlinkUsername = user.userID,
@@ -2840,7 +2999,11 @@ fun UserDetailScreenV2(
                              }
                         },
                         dismissButton = {
-                            TextButton(onClick = { showEditCustomIpDialog = false }) {
+                            TextButton(onClick = { 
+                                focusManager.clearFocus(force = true)
+                                keyboardController?.hide()
+                                showEditCustomIpDialog = false 
+                            }) {
                                 Text(if (currentLang == "ar") "الغاء" else "Cancel")
                             }
                         }

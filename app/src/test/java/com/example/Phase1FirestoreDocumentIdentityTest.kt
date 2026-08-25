@@ -416,4 +416,325 @@ class Phase1FirestoreDocumentIdentityTest {
         assertNotNull(remoteEvent)
         assertEquals(customEntityId, remoteEvent?.entityId)
     }
+
+    // 8. Payload Boundary: LocalLedgerEntry.rawJson is stripped while preserving shared financial fields
+    @Test
+    fun testLedgerPayloadBoundary_stripsRawJson_andPreservesSharedFields() = runBlocking {
+        val txId = "tx_boundary_test_001"
+        val rawUtowerJson = """{"utower_id":12345,"subscriber_id":"sub_777","action":"REFILL","amount":25000}"""
+        val payloadJson = JSONObject().apply {
+            put("id", txId)
+            put("accountId", "acc_sub_777")
+            put("typeRaw", "REFILL")
+            put("amountIqd", 25000.0)
+            put("debtAfterIqd", 0.0)
+            put("occurredAt", 1700000000000L)
+            put("correctsEntryId", "tx_prev_000")
+            put("sourceExternalId", "ext_utower_12345")
+            put("sourceBatchId", "batch_2026_08")
+            put("isSnapshotHistory", false)
+            put("rawJson", rawUtowerJson)
+        }.toString()
+
+        val outboxItem = OutboxManager.enqueue(
+            outboxDao = outboxDao,
+            entityType = "local_ledger_entries",
+            entityId = txId,
+            operation = "upsert",
+            payloadJson = payloadJson
+        )
+
+        val payloadMap = syncRepository.buildOutboxPayloadMap(outboxItem)
+
+        // 1. Boundary Assertion: rawJson MUST NOT enter the Firestore cloud payload
+        assertFalse("Ledger cloud payload MUST NOT contain rawJson", payloadMap.containsKey("rawJson"))
+
+        // 2. Shared Financial Fields Preservation Assertions
+        assertEquals(txId, payloadMap["id"])
+        assertEquals("acc_sub_777", payloadMap["accountId"])
+        assertEquals("REFILL", payloadMap["typeRaw"])
+        assertEquals(25000.0, (payloadMap["amountIqd"] as Number).toDouble(), 0.001)
+        assertEquals(0.0, (payloadMap["debtAfterIqd"] as Number).toDouble(), 0.001)
+        assertEquals(1700000000000L, payloadMap["occurredAt"])
+        assertEquals("tx_prev_000", payloadMap["correctsEntryId"])
+        assertEquals("ext_utower_12345", payloadMap["sourceExternalId"])
+        assertEquals("batch_2026_08", payloadMap["sourceBatchId"])
+        assertEquals(false, payloadMap["isSnapshotHistory"])
+    }
+
+    // Scenario A — Local Storage Preservation
+    @Test
+    fun testScenarioA_localStoragePreservesRawJson() = runBlocking {
+        db.localAccountDao().insert(LocalAccount(id = "acc_001", displayName = "Test User 1"))
+        val rawJson = """{"utower_tx_id":9988,"action":"PAYMENT","amount":15000}"""
+        val entry = LocalLedgerEntry(
+            id = "tx_local_store_001",
+            accountId = "acc_001",
+            typeRaw = "gave",
+            amountIqd = 15000.0,
+            debtAfterIqd = 5000.0,
+            occurredAt = System.currentTimeMillis(),
+            rawJson = rawJson
+        )
+
+        db.localLedgerEntryDao().insert(entry)
+        val fetched = db.localLedgerEntryDao().getByAccountIdOneShot("acc_001")
+
+        assertEquals(1, fetched.size)
+        assertEquals(rawJson, fetched[0].rawJson)
+        assertEquals(15000.0, fetched[0].amountIqd, 0.001)
+    }
+
+    // Scenario B — Outbox Preservation
+    @Test
+    fun testScenarioB_outboxPreservesRawJsonInLocalState() = runBlocking {
+        val rawJson = """{"utower_tx_id":9988,"action":"PAYMENT","amount":15000}"""
+        val payload = JSONObject().apply {
+            put("id", "tx_outbox_store_001")
+            put("accountId", "acc_002")
+            put("typeRaw", "gave")
+            put("amountIqd", 15000.0)
+            put("debtAfterIqd", 0.0)
+            put("rawJson", rawJson)
+        }.toString()
+
+        OutboxManager.enqueue(
+            outboxDao = outboxDao,
+            entityType = "local_ledger_entries",
+            entityId = "tx_outbox_store_001",
+            operation = "upsert",
+            payloadJson = payload
+        )
+
+        val pendingList = outboxDao.getPending()
+        val found = pendingList.firstOrNull { it.entityId == "tx_outbox_store_001" }
+
+        assertNotNull(found)
+        assertTrue(JSONObject(found!!.payloadJson).has("rawJson"))
+        assertEquals(rawJson, JSONObject(found.payloadJson).getString("rawJson"))
+    }
+
+    // Scenario D — Simulated Firestore Write Payload Check
+    @Test
+    fun testScenarioD_simulatedFirestoreWritePayloadOmitsRawJson() = runBlocking {
+        val rawJson = """{"utower_raw": true}"""
+        val payload = JSONObject().apply {
+            put("id", "tx_sim_write_001")
+            put("accountId", "acc_003")
+            put("typeRaw", "took")
+            put("amountIqd", 25000.0)
+            put("debtAfterIqd", 25000.0)
+            put("rawJson", rawJson)
+        }.toString()
+
+        val outboxItem = OutboxManager.enqueue(
+            outboxDao = outboxDao,
+            entityType = "local_ledger_entries",
+            entityId = "tx_sim_write_001",
+            operation = "upsert",
+            payloadJson = payload
+        )
+
+        val cloudMap = syncRepository.buildOutboxPayloadMap(outboxItem)
+
+        assertFalse(cloudMap.containsKey("rawJson"))
+        assertEquals("tx_sim_write_001", cloudMap["id"])
+        assertEquals("acc_003", cloudMap["accountId"])
+        assertEquals("took", cloudMap["typeRaw"])
+        assertEquals(25000.0, (cloudMap["amountIqd"] as Number).toDouble(), 0.001)
+    }
+
+    // Scenario E — Lost ACK Retry Payload Check
+    @Test
+    fun testScenarioE_retryPayloadOmitsRawJsonAndTargetsSameDocumentId() = runBlocking {
+        val rawJson = """{"utower_retry": true}"""
+        val payload = JSONObject().apply {
+            put("id", "tx_retry_001")
+            put("accountId", "acc_004")
+            put("typeRaw", "gave")
+            put("amountIqd", 10000.0)
+            put("debtAfterIqd", 0.0)
+            put("rawJson", rawJson)
+        }.toString()
+
+        val originalOutbox = OutboxManager.enqueue(
+            outboxDao = outboxDao,
+            entityType = "local_ledger_entries",
+            entityId = "tx_retry_001",
+            operation = "upsert",
+            payloadJson = payload
+        )
+
+        val retryOutbox = originalOutbox.copy(attemptCount = 1, status = "pending")
+        outboxDao.update(retryOutbox)
+
+        val retryPayloadMap = syncRepository.buildOutboxPayloadMap(retryOutbox)
+
+        assertEquals("tx_retry_001", retryPayloadMap["id"])
+        assertFalse(retryPayloadMap.containsKey("rawJson"))
+        assertEquals("acc_004", retryPayloadMap["accountId"])
+    }
+
+    // Scenario F — Outbox Deduplication & Selection
+    @Test
+    fun testScenarioF_deduplicationPreservesSharedFieldsAndOmitsRawJson() = runBlocking {
+        val rawJson1 = """{"v":1}"""
+        val rawJson2 = """{"v":2}"""
+
+        val payload1 = JSONObject().apply {
+            put("id", "tx_dedup_001")
+            put("accountId", "acc_005")
+            put("typeRaw", "gave")
+            put("amountIqd", 5000.0)
+            put("debtAfterIqd", 15000.0)
+            put("rawJson", rawJson1)
+        }.toString()
+
+        val payload2 = JSONObject().apply {
+            put("id", "tx_dedup_001")
+            put("accountId", "acc_005")
+            put("typeRaw", "gave")
+            put("amountIqd", 10000.0)
+            put("debtAfterIqd", 10000.0)
+            put("rawJson", rawJson2)
+        }.toString()
+
+        outboxDao.insert(SyncOutbox(entityType = "local_ledger_entries", entityId = "tx_dedup_001", operation = "upsert", payloadJson = payload1))
+        outboxDao.insert(SyncOutbox(entityType = "local_ledger_entries", entityId = "tx_dedup_001", operation = "upsert", payloadJson = payload2))
+
+        val pending = outboxDao.getPending().filter { it.entityId == "tx_dedup_001" }
+        val winningItem = pending.maxByOrNull { it.id }!!
+
+        val cloudMap = syncRepository.buildOutboxPayloadMap(winningItem)
+
+        assertFalse(cloudMap.containsKey("rawJson"))
+        assertEquals(10000.0, (cloudMap["amountIqd"] as Number).toDouble(), 0.001)
+    }
+
+    // Scenario G — Downward Sync / New Device Reconstruction
+    @Test
+    fun testScenarioG_downwardSyncReconstructsLedgerEntryWithoutRawJson() {
+        val remoteDocMap = mapOf<String, Any>(
+            "id" to "tx_remote_001",
+            "accountId" to "acc_remote_001",
+            "typeRaw" to "gave",
+            "amountIqd" to 50000.0,
+            "debtAfterIqd" to 0.0,
+            "occurredAt" to 1700000000000L,
+            "createdAt" to 1700000000000L,
+            "updatedAt" to 1700000000000L,
+            "isSnapshotHistory" to false,
+            "correctsEntryId" to "tx_remote_000"
+        )
+
+        val result = RemoteEntityValidator.validateAndMapLedgerEntry(
+            id = "tx_remote_001",
+            d = remoteDocMap,
+            remoteUpdatedAt = 1700000000000L
+        )
+
+        assertTrue(result is RemoteEntityValidationResult.Valid)
+        val entry = (result as RemoteEntityValidationResult.Valid).entity
+
+        assertEquals("tx_remote_001", entry.id)
+        assertEquals("acc_remote_001", entry.accountId)
+        assertEquals("gave", entry.typeRaw)
+        assertEquals(50000.0, entry.amountIqd, 0.001)
+        assertEquals(0.0, entry.debtAfterIqd, 0.001)
+        assertEquals("tx_remote_000", entry.correctsEntryId)
+        assertNull("Restored entry has null rawJson when absent from cloud doc", entry.rawJson)
+    }
+
+    // Scenario H — Local Import Flow
+    @Test
+    fun testScenarioH_uTowerImportFlowStoresRawJsonLocallyStripsOnEgress() = runBlocking {
+        db.localAccountDao().insert(LocalAccount(id = "acc_import_001", displayName = "Imported User"))
+        val rawImportJson = """{"import_file":"sheet1.xlsx","row":42,"raw_txt":"REFILL 25000"}"""
+        val importedEntry = LocalLedgerEntry(
+            id = "tx_import_001",
+            accountId = "acc_import_001",
+            sourceExternalId = "ext_42",
+            sourceBatchId = "batch_001",
+            typeRaw = "gave",
+            amountIqd = 25000.0,
+            debtAfterIqd = 0.0,
+            rawJson = rawImportJson
+        )
+
+        db.localLedgerEntryDao().insert(importedEntry)
+        val outboxItem = OutboxManager.enqueue(
+            outboxDao = outboxDao,
+            entityType = "local_ledger_entries",
+            entityId = importedEntry.id,
+            operation = "upsert",
+            payloadJson = JSONObject().apply {
+                put("id", importedEntry.id)
+                put("accountId", importedEntry.accountId)
+                put("typeRaw", importedEntry.typeRaw)
+                put("amountIqd", importedEntry.amountIqd)
+                put("debtAfterIqd", importedEntry.debtAfterIqd)
+                put("rawJson", importedEntry.rawJson)
+            }.toString()
+        )
+
+        val storedLocal = db.localLedgerEntryDao().getByAccountIdOneShot("acc_import_001")[0]
+        assertEquals(rawImportJson, storedLocal.rawJson)
+
+        val cloudMap = syncRepository.buildOutboxPayloadMap(outboxItem)
+        assertFalse("Cloud map stripped rawJson", cloudMap.containsKey("rawJson"))
+        assertEquals("tx_import_001", cloudMap["id"])
+    }
+
+    // Scenario I — Financial Semantics & Balance Calculation Intact
+    @Test
+    fun testScenarioI_financialSemanticsPreservedWithoutRawJson() = runBlocking {
+        val payload1 = JSONObject().apply {
+            put("id", "e1")
+            put("accountId", "acc_fin")
+            put("typeRaw", "took")
+            put("amountIqd", 100000.0)
+            put("debtAfterIqd", 100000.0)
+            put("rawJson", """{"raw":1}""")
+        }.toString()
+
+        val payload2 = JSONObject().apply {
+            put("id", "e2")
+            put("accountId", "acc_fin")
+            put("typeRaw", "gave")
+            put("amountIqd", 40000.0)
+            put("debtAfterIqd", 60000.0)
+            put("correctsEntryId", "e1")
+            put("rawJson", """{"raw":2}""")
+        }.toString()
+
+        val item1 = OutboxManager.enqueue(outboxDao = outboxDao, entityType = "local_ledger_entries", entityId = "e1", operation = "upsert", payloadJson = payload1)
+        val item2 = OutboxManager.enqueue(outboxDao = outboxDao, entityType = "local_ledger_entries", entityId = "e2", operation = "upsert", payloadJson = payload2)
+
+        val map1 = syncRepository.buildOutboxPayloadMap(item1)
+        val map2 = syncRepository.buildOutboxPayloadMap(item2)
+
+        assertFalse(map1.containsKey("rawJson"))
+        assertFalse(map2.containsKey("rawJson"))
+        assertEquals(100000.0, (map1["amountIqd"] as Number).toDouble(), 0.001)
+        assertEquals(40000.0, (map2["amountIqd"] as Number).toDouble(), 0.001)
+        assertEquals(60000.0, (map2["debtAfterIqd"] as Number).toDouble(), 0.001)
+        assertEquals("e1", map2["correctsEntryId"])
+    }
+
+    // Scenario J — Counterfactual
+    @Test
+    fun testScenarioJ_counterfactualRawPayloadContainsRawJson() {
+        val rawUtowerJson = """{"utower_id":12345}"""
+        val rawUnstrippedMap = mapOf<String, Any>(
+            "id" to "tx_cf",
+            "accountId" to "acc_cf",
+            "typeRaw" to "gave",
+            "amountIqd" to 10000.0,
+            "rawJson" to rawUtowerJson
+        )
+
+        // Verifies that unstripped raw payload map DOES contain rawJson key
+        assertTrue("Unstripped map contains rawJson", rawUnstrippedMap.containsKey("rawJson"))
+    }
 }
+

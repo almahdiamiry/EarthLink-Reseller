@@ -14,24 +14,24 @@ import androidx.compose.ui.platform.LocalContext
 private val SophisticatedDarkColorScheme = darkColorScheme(
     primary = Color(0xFF0288D1),
     onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFF01579B),
-    onPrimaryContainer = Color(0xFFE1F5FE),
-    secondary = Color(0xFF03A9F4),
+    primaryContainer = Color(0xFF0288D1).copy(alpha = 0.18f),
+    onPrimaryContainer = Color(0xFF38BDF8),
+    secondary = Color(0xFF38BDF8),
     onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFF0288D1),
-    onSecondaryContainer = Color(0xFFE1F5FE),
-    background = Color(0xFF10161D),
+    secondaryContainer = Color(0xFF171E29),
+    onSecondaryContainer = Color(0xFFFFFFFF),
+    background = Color(0xFF0B0F14),
     onBackground = Color(0xFFFFFFFF),
-    surface = Color(0xFF1C1C1E),
+    surface = Color(0xFF11161F),
     onSurface = Color(0xFFFFFFFF),
-    surfaceVariant = Color(0xFF1A222D),
-    onSurfaceVariant = Color(0xFFCAC4D0),
-    outline = Color(0xFF2C2C2E),
-    outlineVariant = Color(0xFF2C2C2E),
-    error = Color(0xFFFF453A),
+    surfaceVariant = Color(0xFF171E29),
+    onSurfaceVariant = Color(0xFF94A3B8),
+    outline = Color(0xFF242E3D),
+    outlineVariant = Color(0xFF1E2836),
+    error = Color(0xFFEF4444),
     onError = Color(0xFFFFFFFF),
-    errorContainer = Color(0xFF8C1D18),
-    onErrorContainer = Color(0xFFF9DEDC)
+    errorContainer = Color(0xFFEF4444).copy(alpha = 0.15f),
+    onErrorContainer = Color(0xFFFCA5A5)
 )
 
 private val LightColorScheme = lightColorScheme(

@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -597,6 +598,7 @@ fun ArabicSubscriberCard(
     val isActive = !isExpired
     
     val containerBg = MaterialTheme.colorScheme.surface
+    val rowBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
     val onlineStatusClean = user.onlineStatus?.trim()?.lowercase(Locale.US) ?: ""
     val isOnline = onlineStatusClean.contains("online") || onlineStatusClean == "online" || onlineStatusClean == "onlineno9net" || onlineStatusClean == "onlineno_net"
     val debtIqd = matchingAccount?.debtIqd ?: 0.0
@@ -612,27 +614,26 @@ fun ArabicSubscriberCard(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 3.dp)
+                .padding(vertical = 2.dp)
                 .clickable { onClick() },
             shape = RoundedCornerShape(12.dp),
-            color = containerBg,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+            color = rowBg
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                    .padding(horizontal = 14.dp, vertical = 11.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 // Avatar spanning both rows
                 Box(
-                    modifier = Modifier.size(40.dp),
+                    modifier = Modifier.size(42.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(42.dp)
                             .background(
                                 brush = if (isActive) {
                                     androidx.compose.ui.graphics.Brush.linearGradient(
@@ -640,7 +641,7 @@ fun ArabicSubscriberCard(
                                     )
                                 } else {
                                     androidx.compose.ui.graphics.Brush.linearGradient(
-                                        listOf(Color(0xFF424242), Color(0xFF303030))
+                                        listOf(Color(0xFF3A3A3C), Color(0xFF2C2C2E))
                                     )
                                 },
                                 shape = androidx.compose.foundation.shape.CircleShape
@@ -664,7 +665,7 @@ fun ArabicSubscriberCard(
                                 color = if (isOnline) Color(0xFF30D158) else Color(0xFF8E8E93),
                                 shape = androidx.compose.foundation.shape.CircleShape
                             )
-                            .border(1.5.dp, containerBg, androidx.compose.foundation.shape.CircleShape)
+                            .border(2.dp, rowBg, androidx.compose.foundation.shape.CircleShape)
                             .align(Alignment.BottomEnd)
                     )
                 }
@@ -683,20 +684,20 @@ fun ArabicSubscriberCard(
                         Row(
                             modifier = Modifier.weight(1f, fill = false),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
                             if (matchingAccount != null) {
                                 Icon(
                                     imageVector = Icons.Default.CheckCircle,
                                     contentDescription = "Verified subscriber",
                                     tint = Color(0xFF0288D1),
-                                    modifier = Modifier.size(14.dp)
+                                    modifier = Modifier.size(15.dp)
                                 )
                             }
                             Text(
                                 text = displayName,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
@@ -705,24 +706,24 @@ fun ArabicSubscriberCard(
 
                         // Status Badge
                         Surface(
-                            color = if (isActive) Color(0xFF30D158).copy(alpha = 0.12f) else Color(0xFFFF453A).copy(alpha = 0.12f),
-                            shape = RoundedCornerShape(6.dp),
+                            color = if (isActive) Color(0xFF30D158).copy(alpha = 0.15f) else Color(0xFFFF453A).copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(8.dp),
                             border = BorderStroke(
                                 1.dp,
-                                if (isActive) Color(0xFF30D158).copy(alpha = 0.3f) else Color(0xFFFF453A).copy(alpha = 0.3f)
+                                if (isActive) Color(0xFF30D158).copy(alpha = 0.35f) else Color(0xFFFF453A).copy(alpha = 0.35f)
                             )
                         ) {
                             Text(
                                 text = if (isActive) (if (lang == "ar") "نشط" else "Active") else (if (lang == "ar") "منتهي" else "Expired"),
-                                color = if (isActive) Color(0xFF30D158) else Color(0xFFFF453A),
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                color = if (isActive) Color(0xFF30D158) else Color(0xFFFF6961),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
                             )
                         }
                     }
 
-                    // ROW 2: Debt + Remaining / Expired
+                    // ROW 2: Debt + Remaining / Expired Date
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -735,8 +736,8 @@ fun ArabicSubscriberCard(
                         ) {
                             Text(
                                 text = if (lang == "ar") "الدين:" else "Debt:",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                             )
                             val debtText = if (debtIqd > 0) {
                                 com.example.core.ledger.MoneyParser.formatIqdForDisplay(debtIqd) + (if (lang == "ar") " د.ع" else " IQD")
@@ -747,31 +748,31 @@ fun ArabicSubscriberCard(
                             }
                             Text(
                                 text = debtText,
-                                fontSize = 11.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (debtIqd > 0) Color(0xFFFF453A) else if (advanceIqd > 0) Color(0xFF10B981) else Color(0xFF30D158)
+                                color = if (debtIqd > 0) Color(0xFFFF6961) else if (advanceIqd > 0) Color(0xFF30D158) else Color(0xFF30D158)
                             )
                         }
 
-                        // Remaining / Expired State
-                        if (isActive) {
-                            Text(
-                                text = remainingTime,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Normal,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                            )
+                        // Remaining / Expiration Date
+                        val subDateText = if (isActive) {
+                            remainingTime
                         } else {
-                            Text(
-                                text = if (lang == "ar") "منتهي" else "Expired",
-                                color = Color(0xFFFF453A).copy(alpha = 0.8f),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 1
-                            )
+                            if (!expirationStr.isNullOrBlank() && expirationStr != "N/A") {
+                                expirationStr
+                            } else {
+                                if (lang == "ar") "منتهي" else "Expired"
+                            }
                         }
+
+                        Text(
+                            text = subDateText,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Normal,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
                     }
                 }
             }
@@ -817,28 +818,36 @@ fun ConfirmationDialog(
     val currentLang by prefs.languageFlow.collectAsStateWithLifecycle(initialValue = prefs.getLanguage())
     val isAr = currentLang == "ar"
 
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+
     var password by rememberSaveable { mutableStateOf("") }
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
     var isSubmitting by rememberSaveable { mutableStateOf(false) }
 
     Dialog(onDismissRequest = {
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
         isSubmitting = false
         onCancel()
     }) {
         Card(
             modifier = Modifier
                 .fillMaxWidth()
+                .imePadding()
                 .padding(16.dp),
-            shape = RoundedCornerShape(12.dp)
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF11161F)),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f))
         ) {
             Column(
                 modifier = Modifier
                     .padding(20.dp)
                     .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Text(text = title, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = MaterialTheme.colorScheme.primary)
-                Text(text = message, fontSize = 14.sp)
+                Text(text = title, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.White)
+                Text(text = message, fontSize = 14.sp, color = Color.White.copy(alpha = 0.8f))
 
                 if (needsPasswordField) {
                     OutlinedTextField(
@@ -851,9 +860,17 @@ fun ConfirmationDialog(
                         trailingIcon = {
                             val image = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
                             IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                Icon(imageVector = image, contentDescription = null)
+                                Icon(imageVector = image, contentDescription = null, tint = Color.White.copy(alpha = 0.7f))
                             }
                         },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = Color(0xFF0288D1),
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+                            focusedLabelColor = Color(0xFF0288D1),
+                            unfocusedLabelColor = Color.White.copy(alpha = 0.6f)
+                        ),
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(min = 52.dp)
@@ -866,24 +883,29 @@ fun ConfirmationDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TextButton(onClick = {
+                        focusManager.clearFocus(force = true)
+                        keyboardController?.hide()
                         isSubmitting = false
                         onCancel()
                     }, modifier = Modifier.heightIn(min = 48.dp)) {
-                        Text(if (isAr) "إلغاء" else "Cancel")
+                        Text(if (isAr) "إلغاء" else "Cancel", color = Color.White.copy(alpha = 0.6f))
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         enabled = !isSubmitting,
                         onClick = { 
                             if (!isSubmitting) {
+                                focusManager.clearFocus(force = true)
+                                keyboardController?.hide()
                                 isSubmitting = true
                                 onConfirm(password) 
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0288D1)),
+                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.heightIn(min = 48.dp)
                     ) {
-                        Text("Confirm")
+                        Text(if (isAr) "تأكيد" else "Confirm", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
             }

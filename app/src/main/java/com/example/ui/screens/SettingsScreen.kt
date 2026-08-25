@@ -1,19 +1,21 @@
 package com.example.ui.screens
 
+import android.content.Intent
 import android.widget.Toast
-import com.example.core.util.AppBuildConfig
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.*
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.*
@@ -27,40 +29,43 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import kotlinx.coroutines.launch
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.EarthlinkApp
-import com.alamiry.earthlinkreseller.R
-import com.example.core.model.*
+import com.example.core.backup.BackupManager
+import com.example.core.backup.LocalAutoBackupWorker
+import com.example.core.ledger.MoneyParser
+import com.example.core.util.AppBuildConfig
 import com.example.domain.repository.SyncStatusState
-import com.example.domain.repository.UtowerImportPreview
-import com.example.ui.viewmodels.*
+import com.example.ui.viewmodels.AuthViewModel
+import com.example.ui.viewmodels.DashboardViewModel
+import com.example.ui.viewmodels.SyncStatusViewModel
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.GoogleApiAvailability
+import com.google.android.gms.common.api.ApiException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.android.gms.common.api.ApiException
-
-// Formatting helper for Money
 
 @Composable
 fun SettingsScreen(
@@ -71,12 +76,16 @@ fun SettingsScreen(
     onNavigateToImport: () -> Unit,
     onNavigateToSubscribers: (() -> Unit)? = null
 ) {
-    val context = LocalContext.current.applicationContext as EarthlinkApp
+    val app = LocalContext.current.applicationContext as EarthlinkApp
+    val localContext = LocalContext.current
+    val focusManager = LocalFocusManager.current
+    val coroutineScope = rememberCoroutineScope()
+
     val finalSyncViewModel: SyncStatusViewModel = syncViewModel ?: remember {
         SyncStatusViewModel(
-            syncRepo = context.syncRepository,
-            audit = context.auditRepository,
-            prefs = context.preferenceManager
+            syncRepo = app.syncRepository,
+            audit = app.auditRepository,
+            prefs = app.preferenceManager
         )
     }
 
@@ -86,37 +95,34 @@ fun SettingsScreen(
 
     val syncState by finalSyncViewModel.syncState.collectAsStateWithLifecycle(SyncStatusState.IDLE)
     val lastSyncTime by finalSyncViewModel.lastSyncTime.collectAsStateWithLifecycle()
-    val pendingCount by finalSyncViewModel.pendingCount.collectAsStateWithLifecycle()
     val isSyncingProgress by finalSyncViewModel.isSyncingProgress.collectAsStateWithLifecycle()
 
     val username by authViewModel.username.collectAsStateWithLifecycle()
     val prefs = authViewModel.prefs
     val currentLang by prefs.languageFlow.collectAsStateWithLifecycle()
+
+    // Dialog States
     var showPricingDialog by rememberSaveable { mutableStateOf(false) }
     var showLogoutConfirmDialog by rememberSaveable { mutableStateOf(false) }
     var unsyncedWarningDialog by rememberSaveable { mutableStateOf(false) }
     var pendingCountState by rememberSaveable { mutableStateOf(0) }
-    val coroutineScope = rememberCoroutineScope()
-    
-    val localContext = LocalContext.current
-    val focusManager = LocalFocusManager.current
 
-    // --- LOCAL AUTO BACKUP STATES ---
+    // Backup & Restore States
     val isLocalBackupEnabled by prefs.localBackupEnabledFlow.collectAsStateWithLifecycle()
     val lastLocalBackupTime by prefs.localLastBackupTimeFlow.collectAsStateWithLifecycle()
 
     var isPerformingLocalBackup by rememberSaveable { mutableStateOf(false) }
     var isFetchingLocalBackups by rememberSaveable { mutableStateOf(false) }
-    var availableLocalBackups by remember { mutableStateOf<List<java.io.File>?>(null) }
-    var selectedBackupToRestore by remember { mutableStateOf<java.io.File?>(null) }
+    var availableLocalBackups by remember { mutableStateOf<List<File>?>(null) }
+    var selectedBackupToRestore by remember { mutableStateOf<File?>(null) }
     var isRestoringFromLocal by rememberSaveable { mutableStateOf(false) }
     var pendingOutboxCountForRestore by rememberSaveable { mutableStateOf(0) }
-    var pendingFileForRestore by remember { mutableStateOf<java.io.File?>(null) }
+    var pendingFileForRestore by remember { mutableStateOf<File?>(null) }
     var showUnsyncedOutboxWarningDialog by rememberSaveable { mutableStateOf(false) }
     var backupRestoreDate by rememberSaveable { mutableStateOf<String?>(null) }
-    var currentDbStats by remember { mutableStateOf<com.example.core.backup.BackupManager.DatabaseStats?>(null) }
+    var currentDbStats by remember { mutableStateOf<BackupManager.DatabaseStats?>(null) }
 
-    // --- PORTABLE BACKUP ENCRYPTION STATES ---
+    // Password Protected Backup
     var showBackupPasswordOptionsDialog by rememberSaveable { mutableStateOf(false) }
     var backupPasswordInput by rememberSaveable { mutableStateOf("") }
     var backupPasswordError by rememberSaveable { mutableStateOf<String?>(null) }
@@ -127,13 +133,13 @@ fun SettingsScreen(
     var showRestorePasswordPromptDialog by rememberSaveable { mutableStateOf(false) }
     var restorePasswordInput by rememberSaveable { mutableStateOf("") }
     var restorePasswordError by rememberSaveable { mutableStateOf<String?>(null) }
-    var restoreTargetFile by remember { mutableStateOf<java.io.File?>(null) }
+    var restoreTargetFile by remember { mutableStateOf<File?>(null) }
 
     LaunchedEffect(selectedBackupToRestore) {
         val file = selectedBackupToRestore
         if (file != null) {
-            backupRestoreDate = com.example.core.backup.BackupManager.getBackupFormattedDate(file)
-            currentDbStats = com.example.core.backup.BackupManager.getCurrentDatabaseStats(localContext)
+            backupRestoreDate = BackupManager.getBackupFormattedDate(file)
+            currentDbStats = BackupManager.getCurrentDatabaseStats(localContext)
         } else {
             backupRestoreDate = null
             currentDbStats = null
@@ -145,7 +151,7 @@ fun SettingsScreen(
     ) { uri ->
         if (uri != null) {
             coroutineScope.launch {
-                val success = com.example.core.backup.BackupManager.exportBackupToUri(localContext, uri, tempBackupPassword)
+                val success = BackupManager.exportBackupToUri(localContext, uri, tempBackupPassword)
                 if (success) {
                     Toast.makeText(localContext, if (currentLang == "ar") "تم تصدير النسخة الاحتياطية بنجاح" else "Backup exported successfully!", Toast.LENGTH_SHORT).show()
                 } else {
@@ -182,1732 +188,1985 @@ fun SettingsScreen(
             } else {
                 Toast.makeText(localContext, if (currentLang == "ar") "لم يتم العثور على معرف Google ID Token" else "Google ID Token not found.", Toast.LENGTH_LONG).show()
             }
-        } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             val statusCode = (e as? ApiException)?.statusCode ?: -1
             val isDeveloperError = statusCode == 10 || statusCode == 12500 || statusCode == 10200 || e.message?.contains("10:") == true
             val errMsg = if (isDeveloperError) {
-                if (currentLang == "ar") "خطأ تهيئة Google (رمز 10/12500). تأكد من إضافة بصمة SHA-1 في Firebase Console." else "Google Config Error (Code 10/12500). Missing SHA-1 in Firebase Console."
+                if (currentLang == "ar") "خطأ تهيئة Google (رمز 10/12500). تأكد من إضافة بصمة SHA-1 في Firebase Console." else "Google Config Error (Code 10/12500)."
             } else {
                 e.message ?: if (currentLang == "ar") "فشل تسجيل الدخول بواسطة Google" else "Google Sign-In failed"
             }
             Toast.makeText(localContext, errMsg, Toast.LENGTH_LONG).show()
         }
     }
-    
-    // --- DEV MODE ---
-    var showDevMode by rememberSaveable { mutableStateOf(false) }
+
     val isDemoMode by prefs.demoModeFlow.collectAsStateWithLifecycle()
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(24.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(
-                imageVector = Icons.Default.Settings,
-                contentDescription = null,
-                modifier = Modifier.size(54.dp),
-                tint = Color(0xFF007AFF) // Apple System Blue
-            )
-            Text(
-                text = if (currentLang == "ar") "إعدادات الموزع" else "Operator Configuration",
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-        }
+    val layoutDir = if (currentLang == "ar") LayoutDirection.Rtl else LayoutDirection.Ltr
 
-        // --- CLOUD SYNC SECTION ---
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(
-                text = if (currentLang == "ar") "المزامنة السحابية" else "Cloud Sync",
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(horizontal = 4.dp)
-            )
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    CompositionLocalProvider(LocalLayoutDirection provides layoutDir) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFF0B0F14))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                // Header Bar
+                SettingsHeader(currentLang = currentLang)
+
+                // 1. GROUP 1: ACCOUNT & ISP GATEWAY
+                SettingsGroupCard(
+                    title = if (currentLang == "ar") "بيانات الموزع وبوابة إيرثلنك" else "Affiliate & ISP Gateway",
+                    subtitle = if (currentLang == "ar") "حساب الوكيل، البوابة، وتراخيص التجديد" else "ISP Admin credentials and auto-renewal box",
+                    icon = Icons.Default.AdminPanelSettings,
+                    accentColor = Color(0xFF0288D1)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Icon(imageVector = Icons.Default.Sync, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
-                            Text(text = if (currentLang == "ar") "الحالة" else "Status", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                        }
-                        
-                        val (badgeText, badgeBg, badgeTextClr) = when {
-                            isSyncingProgress || syncState == SyncStatusState.SYNCING -> Triple(if (currentLang == "ar") "جاري المزامنة" else "Syncing", MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.primary)
-                            syncState == SyncStatusState.COMPLETE || syncState == SyncStatusState.IDLE -> Triple(if (currentLang == "ar") "مكتمل" else "Up to date", MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.secondary)
-                            else -> Triple(if (currentLang == "ar") "غير معروف" else "Unknown", MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Box(modifier = Modifier.background(badgeBg, RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 5.dp)) {
-                            Text(text = badgeText, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = badgeTextClr)
-                        }
-                    }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(text = if (currentLang == "ar") "آخر مزامنة:" else "Last sync:", color = Color.Gray, fontSize = 13.sp)
-                        Text(text = if (lastSyncTime <= 0L) "-" else java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(java.util.Date(lastSyncTime)), fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                    }
-                    Button(
-                        onClick = { finalSyncViewModel.triggeredSync() },
-                        enabled = !isSyncingProgress,
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text(text = if (currentLang == "ar") "مزامنة الآن" else "Sync Now", fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-
-        // --- LOCAL AUTO BACKUP SECTION ---
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(
-                text = if (currentLang == "ar") "النسخ الاحتياطي المحلي التلقائي" else "Local Auto Backup (30 Days)",
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(horizontal = 4.dp)
-            )
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    // Daily Auto Backup Switch Row
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                text = if (currentLang == "ar") "نسخ احتياطي يومي (30 يوم)" else "Daily Rolling Backup (30 days)",
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp
-                            )
-                            Text(
-                                text = if (currentLang == "ar") "يحفظ نسخة احتياطية يومياً في مجلد Documents/EarthlinkBackups ويمسح الأقدم من 30 يوماً" else "Saves a daily backup to Documents/EarthlinkBackups and removes backups older than 30 days",
-                                fontSize = 11.sp,
-                                color = Color.Gray
-                            )
-                        }
-                        Switch(
-                            checked = isLocalBackupEnabled,
-                            onCheckedChange = { enabled ->
-                                prefs.setLocalBackupEnabled(enabled)
-                                com.example.core.backup.LocalAutoBackupWorker.schedule(localContext, enabled)
-                                Toast.makeText(
-                                    localContext,
-                                    if (enabled) {
-                                        if (currentLang == "ar") "تم تفعيل النسخ الاحتياطي اليومي" else "Daily local backup enabled"
-                                    } else {
-                                        if (currentLang == "ar") "تم إيقاف النسخ الاحتياطي اليومي" else "Daily local backup disabled"
-                                    },
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        )
-                    }
-
-                    // Last Backup Time
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = if (currentLang == "ar") "آخر نسخة احتياطية:" else "Last Backup:",
-                            color = Color.Gray,
-                            fontSize = 13.sp
-                        )
-                        Text(
-                            text = if (lastLocalBackupTime <= 0L) "-" else java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).format(java.util.Date(lastLocalBackupTime)),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
-                    // Backup & Restore Buttons
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(
-                            onClick = {
-                                isBackupOperationExport = false
-                                backupPasswordInput = ""
-                                backupPasswordError = null
-                                selectedEncryptionModePassword = false
-                                showBackupPasswordOptionsDialog = true
-                            },
-                            enabled = !isPerformingLocalBackup,
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            if (isPerformingLocalBackup) {
-                                CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(if (currentLang == "ar") "جاري النسخ..." else "Backing up...")
-                            } else {
-                                Icon(imageVector = Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(if (currentLang == "ar") "نسخ احتياطي الآن" else "Backup Now", fontWeight = FontWeight.Bold)
-                            }
-                        }
-
-                        OutlinedButton(
-                            onClick = {
-                                coroutineScope.launch {
-                                    isFetchingLocalBackups = true
-                                    try {
-                                        val list = com.example.core.backup.BackupManager.listDailyBackups(localContext)
-                                        if (list.isEmpty()) {
-                                            Toast.makeText(localContext, if (currentLang == "ar") "لا توجد نسخ احتياطية سابقة" else "No backups found", Toast.LENGTH_LONG).show()
-                                        } else {
-                                            availableLocalBackups = list
-                                        }
-                                    } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                                        Toast.makeText(localContext, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                                    } finally {
-                                        isFetchingLocalBackups = false
+                    AccountAndIspSection(
+                        username = username,
+                        prefs = prefs,
+                        currentLang = currentLang,
+                        onSaveIsp = { u, p ->
+                            authViewModel.saveIspAdminCredentials(u, p)
+                            dashboardViewModel.loadDashboardData()
+                            onNavigateToSubscribers?.invoke()
+                        },
+                        onLinkGoogle = {
+                            val availability = GoogleApiAvailability.getInstance()
+                            val resultCode = availability.isGooglePlayServicesAvailable(localContext)
+                            if (resultCode != com.google.android.gms.common.ConnectionResult.SUCCESS) {
+                                if (availability.isUserResolvableError(resultCode)) {
+                                    (localContext as? android.app.Activity)?.let { act ->
+                                        availability.getErrorDialog(act, resultCode, 9000)?.show()
                                     }
+                                } else {
+                                    Toast.makeText(localContext, if (currentLang == "ar") "خدمات Google Play غير متوفرة" else "Google Play Services unavailable", Toast.LENGTH_LONG).show()
                                 }
-                            },
-                            enabled = !isFetchingLocalBackups,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            if (isFetchingLocalBackups) {
-                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(if (currentLang == "ar") "جاري جلب القائمة..." else "Fetching backups...")
-                            } else {
-                                Icon(imageVector = Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(if (currentLang == "ar") "استرجاع من النسخ المحلية" else "Restore from Local Backups", fontWeight = FontWeight.Bold)
+                                return@AccountAndIspSection
+                            }
+                            try {
+                                val intent = googleSignInClient.signInIntent
+                                googleSignInLauncher.launch(intent)
+                            } catch (e: Exception) {
+                                if (e is kotlinx.coroutines.CancellationException) throw e
+                                Toast.makeText(localContext, "Google Sign-In Error: ${e.message}", Toast.LENGTH_LONG).show()
                             }
                         }
+                    )
+                }
 
-                        TextButton(
-                            onClick = {
-                                isBackupOperationExport = true
-                                backupPasswordInput = ""
-                                backupPasswordError = null
-                                selectedEncryptionModePassword = false
-                                showBackupPasswordOptionsDialog = true
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(imageVector = Icons.Default.FolderZip, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(if (currentLang == "ar") "تصدير نسخة احتياطية (مشاركة)" else "Export / Share Backup (.zip)", fontSize = 13.sp)
-                        }
+                // 2. GROUP 2: SYNC, BACKUPS & DATA TRANSFER
+                SettingsGroupCard(
+                    title = if (currentLang == "ar") "المزامنة والنسخ الاحتياطي" else "Sync & Backup Engine",
+                    subtitle = if (currentLang == "ar") "حماية قواعد البيانات والاسترجاع المحلي ونقل البيانات" else "Cloud sync status, daily rolling backups and uTower",
+                    icon = Icons.Default.CloudSync,
+                    accentColor = Color(0xFF10B981)
+                ) {
+                    SyncAndBackupSection(
+                        currentLang = currentLang,
+                        syncState = syncState,
+                        lastSyncTime = lastSyncTime,
+                        isSyncing = isSyncingProgress,
+                        onTriggerSync = { finalSyncViewModel.triggeredSync() },
+                        isAutoBackupEnabled = isLocalBackupEnabled,
+                        onToggleAutoBackup = { enabled ->
+                            prefs.setLocalBackupEnabled(enabled)
+                            LocalAutoBackupWorker.schedule(localContext, enabled)
+                        },
+                        lastLocalBackupTime = lastLocalBackupTime,
+                        isPerformingBackup = isPerformingLocalBackup,
+                        onStartManualBackup = {
+                            isBackupOperationExport = false
+                            backupPasswordInput = ""
+                            backupPasswordError = null
+                            selectedEncryptionModePassword = false
+                            showBackupPasswordOptionsDialog = true
+                        },
+                        isFetchingBackups = isFetchingLocalBackups,
+                        onListBackups = {
+                            coroutineScope.launch {
+                                isFetchingLocalBackups = true
+                                try {
+                                    val list = BackupManager.listDailyBackups(localContext)
+                                    if (list.isEmpty()) {
+                                        Toast.makeText(localContext, if (currentLang == "ar") "لا توجد نسخ احتياطية سابقة" else "No backups found", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        availableLocalBackups = list
+                                    }
+                                } catch (e: Exception) {
+                                    if (e is kotlinx.coroutines.CancellationException) throw e
+                                    Toast.makeText(localContext, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                                } finally {
+                                    isFetchingLocalBackups = false
+                                }
+                            }
+                        },
+                        onExportZip = {
+                            isBackupOperationExport = true
+                            backupPasswordInput = ""
+                            backupPasswordError = null
+                            selectedEncryptionModePassword = false
+                            showBackupPasswordOptionsDialog = true
+                        },
+                        onImportUtower = onNavigateToImport
+                    )
+                }
+
+                // 3. GROUP 3: DISPLAY & PRICING
+                SettingsGroupCard(
+                    title = if (currentLang == "ar") "تخصيص الواجهة والأسعار" else "Display & Pricing",
+                    subtitle = if (currentLang == "ar") "فلاتر العرض الرئيسية وأسعار بيع الباقات والربح" else "Dashboard filters and retail pricing model",
+                    icon = Icons.Default.Tune,
+                    accentColor = Color(0xFFF59E0B)
+                ) {
+                    DisplayAndPricingSection(
+                        prefs = prefs,
+                        currentLang = currentLang,
+                        onOpenPricingDialog = { showPricingDialog = true }
+                    )
+                }
+
+                // 4. GROUP 4: GENERAL & PRIVACY
+                SettingsGroupCard(
+                    title = if (currentLang == "ar") "التفضيلات العامة والنظام" else "General Preferences",
+                    subtitle = if (currentLang == "ar") "لغة التطبيق وسياسة الخصوصية" else "Language selection and legal terms",
+                    icon = Icons.Default.Language,
+                    accentColor = Color(0xFFA78BFA)
+                ) {
+                    GeneralSection(
+                        currentLang = currentLang,
+                        onSelectLang = { prefs.setLanguage(it) }
+                    )
+                }
+
+                // --- DEV MODE (DEBUG BUILD ONLY) ---
+                if (AppBuildConfig.DEBUG) {
+                    SettingsGroupCard(
+                        title = if (currentLang == "ar") "أدوات المطور والتجريب" else "Developer & Sandbox",
+                        subtitle = if (currentLang == "ar") "محاكاة البيانات ومسح الجداول المحلية (Debug Only)" else "Mock data simulator and local database purge",
+                        icon = Icons.Default.Terminal,
+                        accentColor = Color(0xFFEF4444)
+                    ) {
+                        DeveloperSection(
+                            isDemoMode = isDemoMode,
+                            onToggleDemo = { prefs.setDemoMode(it) },
+                            dashboardViewModel = dashboardViewModel,
+                            currentLang = currentLang
+                        )
                     }
                 }
-            }
-        }
 
-        // --- DIALOG 1: Available Local Backups List ---
-        availableLocalBackups?.let { backupsList ->
-            AlertDialog(
-                onDismissRequest = { availableLocalBackups = null },
-                title = {
-                    Text(
-                        text = if (currentLang == "ar") "النسخ الاحتياطية المحلية" else "Local Backups",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp
-                    )
-                },
-                text = {
-                    Column(
+                // 6. LOGOUT BUTTON
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFFEF4444).copy(alpha = 0.12f),
+                    border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.35f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showLogoutConfirmDialog = true }
+                ) {
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 300.dp)
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
                     ) {
-                        backupsList.forEach { file ->
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        coroutineScope.launch {
-                                            val pendingCount = context.syncRepository.getPendingOutboxCount()
-                                            if (pendingCount > 0) {
-                                                pendingOutboxCountForRestore = pendingCount
-                                                pendingFileForRestore = file
-                                                showUnsyncedOutboxWarningDialog = true
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ExitToApp,
+                            contentDescription = null,
+                            tint = Color(0xFFEF4444),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (currentLang == "ar") "تسجيل الخروج الآمن" else "Secure Sign Out",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = Color(0xFFEF4444)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+    }
+
+    // --- ALL DIALOGS MANAGED SAFELY ---
+
+    // 1. Available Local Backups Dialog
+    availableLocalBackups?.let { backupsList ->
+        AlertDialog(
+            onDismissRequest = { availableLocalBackups = null },
+            title = {
+                Text(
+                    text = if (currentLang == "ar") "النسخ الاحتياطية المحلية" else "Local Backups",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 300.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    backupsList.forEach { file ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFF171E29),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    coroutineScope.launch {
+                                        val pendingCount = app.syncRepository.getPendingOutboxCount()
+                                        if (pendingCount > 0) {
+                                            pendingOutboxCountForRestore = pendingCount
+                                            pendingFileForRestore = file
+                                            showUnsyncedOutboxWarningDialog = true
+                                        } else {
+                                            if (BackupManager.isBackupPasswordProtected(file)) {
+                                                restoreTargetFile = file
+                                                restorePasswordInput = ""
+                                                restorePasswordError = null
+                                                showRestorePasswordPromptDialog = true
                                             } else {
-                                                if (com.example.core.backup.BackupManager.isBackupPasswordProtected(file)) {
-                                                    restoreTargetFile = file
-                                                    restorePasswordInput = ""
-                                                    restorePasswordError = null
-                                                    showRestorePasswordPromptDialog = true
-                                                } else {
-                                                    selectedBackupToRestore = file
-                                                }
+                                                selectedBackupToRestore = file
                                             }
                                         }
-                                    },
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                            ) {
-                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text(text = file.name, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text(text = "Size: ${file.length() / 1024} KB", fontSize = 11.sp, color = Color.Gray)
-                                        Text(text = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).format(java.util.Date(file.lastModified())), fontSize = 11.sp, color = Color.Gray)
                                     }
+                                }
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(text = file.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(text = "${file.length() / 1024} KB", fontSize = 11.sp, color = Color.White.copy(alpha = 0.5f))
+                                    Text(
+                                        text = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(file.lastModified())),
+                                        fontSize = 11.sp,
+                                        color = Color.White.copy(alpha = 0.5f)
+                                    )
                                 }
                             }
                         }
                     }
-                },
-                confirmButton = {},
-                dismissButton = {
-                    TextButton(onClick = { availableLocalBackups = null }) {
-                        Text(if (currentLang == "ar") "إلغاء" else "Cancel")
-                    }
                 }
-            )
-        }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { availableLocalBackups = null }) {
+                    Text(if (currentLang == "ar") "إلغاء" else "Cancel")
+                }
+            }
+        )
+    }
 
-        // --- DIALOG 1.5: Unsynced Outbox Warning Before Restore ---
-        if (showUnsyncedOutboxWarningDialog && pendingFileForRestore != null) {
-            val fileToRestore = pendingFileForRestore!!
-            AlertDialog(
-                onDismissRequest = {
+    // 2. Unsynced Outbox Warning Before Restore
+    if (showUnsyncedOutboxWarningDialog && pendingFileForRestore != null) {
+        val fileToRestore = pendingFileForRestore!!
+        AlertDialog(
+            onDismissRequest = {
+                showUnsyncedOutboxWarningDialog = false
+                pendingFileForRestore = null
+            },
+            title = {
+                Text(
+                    text = if (currentLang == "ar") "تحذير: بيانات غير متزامنة معلقة!" else "Warning: Unsynced Data Pending!",
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFEF4444),
+                    fontSize = 17.sp
+                )
+            },
+            text = {
+                Text(
+                    text = if (currentLang == "ar") {
+                        "يوجد ($pendingOutboxCountForRestore) عملية معلقة في صندوق المزامنة لم يتم رفعها للسيرفر بعد.\nاسترجاع النسخة الاحتياطية سيستبدل قاعدة البيانات الحالية مما يؤدي لمسح هذه البيانات.\nهل تريد فرض الاسترجاع؟"
+                    } else {
+                        "There are ($pendingOutboxCountForRestore) unsynced operations pending. Restoring a backup will overwrite the database and erase these pending changes. Proceed?"
+                    },
+                    fontSize = 13.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showUnsyncedOutboxWarningDialog = false
+                        if (BackupManager.isBackupPasswordProtected(fileToRestore)) {
+                            restoreTargetFile = fileToRestore
+                            restorePasswordInput = ""
+                            restorePasswordError = null
+                            showRestorePasswordPromptDialog = true
+                        } else {
+                            selectedBackupToRestore = fileToRestore
+                        }
+                        pendingFileForRestore = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                ) {
+                    Text(if (currentLang == "ar") "فرض الاسترجاع" else "Force Restore")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
                     showUnsyncedOutboxWarningDialog = false
                     pendingFileForRestore = null
-                },
-                title = {
-                    Text(
-                        text = if (currentLang == "ar") "تحذير: بيانات غير متزامنة معلقة!" else "Warning: Unsynced Pending Outbox Data!",
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.error,
-                        fontSize = 18.sp
-                    )
-                },
-                text = {
-                    Text(
-                        text = if (currentLang == "ar") {
-                            "تنبيه هام: يوجد ($pendingOutboxCountForRestore) عملية/تعديل معلق في صندوق المزامنة (Outbox) لم يتم رفعها للسيرفر بعد.\n\nاسترجاع النسخة الاحتياطية سيستبدل قاعدة البيانات الحالية على هذا الجهاز، مما يؤدي إلى مسح هذه البيانات المعلقة بشكل نهائي قبل المزامنة.\n\nهل ترغب بالاستمرار وفرض الاسترجاع؟"
-                        } else {
-                            "Critical Warning: There are ($pendingOutboxCountForRestore) unsynced pending changes in your sync outbox queue that have not reached the cloud server yet.\n\nRestoring a backup will overwrite your local database, permanently wiping these unsynced changes before they can be synchronized.\n\nDo you want to proceed and force restore anyway?"
-                        },
-                        fontSize = 14.sp
-                    )
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            showUnsyncedOutboxWarningDialog = false
-                            if (com.example.core.backup.BackupManager.isBackupPasswordProtected(fileToRestore)) {
-                                restoreTargetFile = fileToRestore
-                                restorePasswordInput = ""
-                                restorePasswordError = null
-                                showRestorePasswordPromptDialog = true
-                            } else {
-                                selectedBackupToRestore = fileToRestore
-                            }
-                            pendingFileForRestore = null
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                    ) {
-                        Text(if (currentLang == "ar") "فرض الاسترجاع" else "Force Restore")
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = {
-                            showUnsyncedOutboxWarningDialog = false
-                            pendingFileForRestore = null
-                        }
-                    ) {
-                        Text(if (currentLang == "ar") "إلغاء" else "Cancel")
-                    }
+                }) {
+                    Text(if (currentLang == "ar") "إلغاء" else "Cancel")
                 }
-            )
-        }
+            }
+        )
+    }
 
-        // --- DIALOG 2: Confirm Restore from Local Backup ---
-        selectedBackupToRestore?.let { fileInfo ->
-            AlertDialog(
-                onDismissRequest = { if (!isRestoringFromLocal) selectedBackupToRestore = null },
-                title = {
-                    Text(
-                        text = if (currentLang == "ar") "تأكيد استرجاع البيانات" else "Confirm Data Restore",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp
-                    )
-                },
-                text = {
-                    val dateText = backupRestoreDate ?: java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).format(java.util.Date(fileInfo.lastModified()))
-                    val stats = currentDbStats
-                    val statsInfo = if (stats != null) {
-                        if (currentLang == "ar") {
-                            "السجلات الحالية: (${stats.accountCount} حساب، ${stats.ledgerCount} حركة مالية)"
-                        } else {
-                            "Current records: (${stats.accountCount} accounts, ${stats.ledgerCount} ledger entries)"
-                        }
-                    } else ""
+    // 3. Confirm Restore Dialog
+    selectedBackupToRestore?.let { fileInfo ->
+        AlertDialog(
+            onDismissRequest = { if (!isRestoringFromLocal) selectedBackupToRestore = null },
+            title = {
+                Text(
+                    text = if (currentLang == "ar") "تأكيد استرجاع البيانات" else "Confirm Restore",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp
+                )
+            },
+            text = {
+                val dateText = backupRestoreDate ?: SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(fileInfo.lastModified()))
+                val stats = currentDbStats
+                val statsInfo = if (stats != null) {
+                    if (currentLang == "ar") "السجلات الحالية: (${stats.accountCount} مشترك، ${stats.ledgerCount} حركة مالية)"
+                    else "Current: (${stats.accountCount} accounts, ${stats.ledgerCount} entries)"
+                } else ""
 
-                    Text(
-                        text = if (currentLang == "ar") {
-                            "تحذير: استرجاع النسخة الاحتياطية (${fileInfo.name}) المؤرخة في [$dateText] سيستبدل جميع البيانات الحالية على هذا الجهاز بالبيانات المسترجعة.\n\n$statsInfo\n\nسيتم إنشاء نسخة احتياطية تلقائية لبياناتك الحالية قبل الاسترجاع لحمايتها من الضياع."
-                        } else {
-                            "Warning: Restoring backup (${fileInfo.name}) created on [$dateText] will replace ALL current database records on this device with the restored file.\n\n$statsInfo\n\nAn automatic pre-restore backup of your current database will be saved before restoring so you can undo if needed. Proceed?"
-                        },
-                        fontSize = 14.sp
-                    )
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                                isRestoringFromLocal = true
-                                try {
-                                    val restored = com.example.core.backup.BackupManager.restoreBackupZip(localContext, fileInfo, force = true)
+                Text(
+                    text = if (currentLang == "ar") {
+                        "استرجاع النسخة (${fileInfo.name}) المؤرخة في [$dateText] سيستبدل جميع السجلات الحالية.\n\n$statsInfo\n\n(سيتم أخذ نسخة أمان احتياطية تلقائياً قبل الاسترجاع)."
+                    } else {
+                        "Restoring (${fileInfo.name}) from [$dateText] will replace all current records.\n\n$statsInfo"
+                    },
+                    fontSize = 13.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        CoroutineScope(Dispatchers.IO).launch {
+                            isRestoringFromLocal = true
+                            try {
+                                val restored = BackupManager.restoreBackupZip(localContext, fileInfo, force = true)
+                                withContext(Dispatchers.Main) {
                                     if (restored) {
-                                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                            Toast.makeText(localContext, if (currentLang == "ar") "تم استرجاع النسخة بنجاح! جاري إعادة التشغيل..." else "Database restored successfully! Restarting...", Toast.LENGTH_LONG).show()
-                                            selectedBackupToRestore = null
-                                            availableLocalBackups = null
-                                            
-                                            // Force restart to reinitialize Room InvalidationTracker and singletons
-                                            val pm = localContext.packageManager
-                                            val intent = pm.getLaunchIntentForPackage(localContext.packageName)
-                                            if (intent != null) {
-                                                val mainIntent = android.content.Intent.makeRestartActivityTask(intent.component)
-                                                localContext.startActivity(mainIntent)
-                                                Runtime.getRuntime().exit(0)
-                                            }
+                                        Toast.makeText(localContext, if (currentLang == "ar") "تم استرجاع النسخة بنجاح! جاري إعادة التشغيل..." else "Restored! Restarting...", Toast.LENGTH_LONG).show()
+                                        selectedBackupToRestore = null
+                                        availableLocalBackups = null
+                                        val pm = localContext.packageManager
+                                        val intent = pm.getLaunchIntentForPackage(localContext.packageName)
+                                        if (intent != null) {
+                                            val mainIntent = Intent.makeRestartActivityTask(intent.component)
+                                            localContext.startActivity(mainIntent)
+                                            Runtime.getRuntime().exit(0)
                                         }
                                     } else {
-                                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                            Toast.makeText(localContext, if (currentLang == "ar") "فشل استرجاع النسخة" else "Database restore failed", Toast.LENGTH_LONG).show()
-                                        }
+                                        Toast.makeText(localContext, if (currentLang == "ar") "فشل استرجاع النسخة" else "Restore failed", Toast.LENGTH_LONG).show()
                                     }
-                                } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                        Toast.makeText(localContext, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                                    }
-                                } finally {
-                                    isRestoringFromLocal = false
                                 }
+                            } catch (e: Exception) {
+                                if (e is kotlinx.coroutines.CancellationException) throw e
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(localContext, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                                }
+                            } finally {
+                                isRestoringFromLocal = false
                             }
-                        },
-                        enabled = !isRestoringFromLocal,
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                    ) {
-                        if (isRestoringFromLocal) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(if (currentLang == "ar") "جاري الاسترجاع..." else "Restoring...")
-                        } else {
-                            Text(if (currentLang == "ar") "تأكيد واسترجاع" else "Confirm & Restore")
                         }
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = { selectedBackupToRestore = null },
-                        enabled = !isRestoringFromLocal
-                    ) {
-                        Text(if (currentLang == "ar") "إلغاء" else "Cancel")
+                    },
+                    enabled = !isRestoringFromLocal,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                ) {
+                    if (isRestoringFromLocal) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(if (currentLang == "ar") "جاري الاسترجاع..." else "Restoring...")
+                    } else {
+                        Text(if (currentLang == "ar") "تأكيد واسترجاع" else "Confirm & Restore")
                     }
                 }
-            )
-        }
-
-        // --- DIALOG 1.6: Backup Password / Encryption Options Dialog ---
-        if (showBackupPasswordOptionsDialog) {
-            AlertDialog(
-                onDismissRequest = { showBackupPasswordOptionsDialog = false },
-                title = {
-                    Text(
-                        text = if (currentLang == "ar") "خيارات حماية النسخة الاحتياطية" else "Backup Security Options",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp
-                    )
-                },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(
-                            text = if (currentLang == "ar") {
-                                "اختر طريقة تشفير وحماية النسخة الاحتياطية الخاصة بك للتنقل الآمن بين الأجهزة:"
-                            } else {
-                                "Select the security format for your backup to ensure secure cross-device portability:"
-                            },
-                            fontSize = 14.sp
-                        )
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { selectedEncryptionModePassword = false }
-                                .padding(vertical = 4.dp)
-                        ) {
-                            RadioButton(
-                                selected = !selectedEncryptionModePassword,
-                                onClick = { selectedEncryptionModePassword = false }
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column {
-                                Text(
-                                    text = if (currentLang == "ar") "بدون تشفير" else "No Encryption",
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 14.sp
-                                )
-                                Text(
-                                    text = if (currentLang == "ar") "غير محمية بكلمة مرور (سهلة الاسترجاع)" else "Not password protected (easy to restore)",
-                                    fontSize = 11.sp,
-                                    color = Color.Gray
-                                )
-                            }
-                        }
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { selectedEncryptionModePassword = true }
-                                .padding(vertical = 4.dp)
-                        ) {
-                            RadioButton(
-                                selected = selectedEncryptionModePassword,
-                                onClick = { selectedEncryptionModePassword = true }
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column {
-                                Text(
-                                    text = if (currentLang == "ar") "محمية بكلمة مرور" else "Password Protected",
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 14.sp
-                                )
-                                Text(
-                                    text = if (currentLang == "ar") "تشفير AES-256 آمن (يتطلب كلمة المرور للاسترجاع)" else "Secure AES-256 encryption (requires password to restore)",
-                                    fontSize = 11.sp,
-                                    color = Color.Gray
-                                )
-                            }
-                        }
-
-                        if (selectedEncryptionModePassword) {
-                            OutlinedTextField(
-                                value = backupPasswordInput,
-                                onValueChange = {
-                                    backupPasswordInput = it
-                                    backupPasswordError = if (it.length < 4) {
-                                        if (currentLang == "ar") "يجب أن تكون كلمة المرور 4 أحرف على الأقل" else "Password must be at least 4 characters"
-                                    } else null
-                                },
-                                label = { Text(if (currentLang == "ar") "كلمة مرور النسخة الاحتياطية" else "Backup Password") },
-                                isError = backupPasswordError != null,
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                                shape = RoundedCornerShape(8.dp)
-                            )
-                            backupPasswordError?.let {
-                                Text(text = it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
-                            }
-                        }
-                    }
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            if (selectedEncryptionModePassword) {
-                                if (backupPasswordInput.length < 4) {
-                                    backupPasswordError = if (currentLang == "ar") "يجب أن تكون كلمة المرور 4 أحرف على الأقل" else "Password must be at least 4 characters"
-                                    return@Button
-                                }
-                                tempBackupPassword = backupPasswordInput
-                            } else {
-                                tempBackupPassword = null
-                            }
-
-                            showBackupPasswordOptionsDialog = false
-
-                            if (isBackupOperationExport) {
-                                exportLocalBackupLauncher.launch("earthlink_backup_${System.currentTimeMillis()}.zip")
-                            } else {
-                                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                                    isPerformingLocalBackup = true
-                                    try {
-                                        val zipFile = com.example.core.backup.BackupManager.createDailyRollingBackup(localContext, tempBackupPassword)
-                                        if (zipFile != null && zipFile.exists()) {
-                                            val now = System.currentTimeMillis()
-                                            prefs.saveLocalLastBackupTime(now)
-                                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                                Toast.makeText(localContext, if (currentLang == "ar") "تم حفظ النسخة الاحتياطية بنجاح!" else "Local backup created successfully!", Toast.LENGTH_SHORT).show()
-                                            }
-                                        } else {
-                                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                                Toast.makeText(localContext, if (currentLang == "ar") "فشل إنشاء النسخة الاحتياطية" else "Backup creation failed", Toast.LENGTH_LONG).show()
-                                            }
-                                        }
-                                    } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                            Toast.makeText(localContext, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                                        }
-                                    } finally {
-                                        isPerformingLocalBackup = false
-                                        tempBackupPassword = null
-                                    }
-                                }
-                            }
-                        }
-                    ) {
-                        Text(if (currentLang == "ar") "إنشاء نسخة احتياطية" else "Create Backup")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showBackupPasswordOptionsDialog = false }) {
-                        Text(if (currentLang == "ar") "إلغاء" else "Cancel")
-                    }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { selectedBackupToRestore = null },
+                    enabled = !isRestoringFromLocal
+                ) {
+                    Text(if (currentLang == "ar") "إلغاء" else "Cancel")
                 }
-            )
-        }
+            }
+        )
+    }
 
-        // --- DIALOG 1.7: Restore Password Prompt Dialog ---
-        if (showRestorePasswordPromptDialog && restoreTargetFile != null) {
-            val fileToRestore = restoreTargetFile!!
-            AlertDialog(
-                onDismissRequest = {
-                    showRestorePasswordPromptDialog = false
-                    restoreTargetFile = null
-                },
-                title = {
+    // 4. Backup Password Options Dialog
+    if (showBackupPasswordOptionsDialog) {
+        AlertDialog(
+            onDismissRequest = { showBackupPasswordOptionsDialog = false },
+            title = {
+                Text(
+                    text = if (currentLang == "ar") "خيارات حماية النسخة الاحتياطية" else "Backup Protection",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = if (currentLang == "ar") "أدخل كلمة مرور فك التشفير" else "Enter Decryption Password",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp
+                        text = if (currentLang == "ar") "اختر مستوى الحماية للنسخة الاحتياطية:" else "Select security level:",
+                        fontSize = 13.sp
                     )
-                },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            text = if (currentLang == "ar") {
-                                "هذه النسخة الاحتياطية مشفرة بكلمة مرور. يرجى إدخال كلمة المرور لفك التشفير والاسترجاع:"
-                            } else {
-                                "This backup is password protected. Please enter the password to decrypt and restore:"
-                            },
-                            fontSize = 14.sp
-                        )
 
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selectedEncryptionModePassword = false }
+                            .padding(vertical = 4.dp)
+                    ) {
+                        RadioButton(
+                            selected = !selectedEncryptionModePassword,
+                            onClick = { selectedEncryptionModePassword = false }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(text = if (currentLang == "ar") "بدون تشفير" else "No Encryption", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            Text(text = if (currentLang == "ar") "غير محمية بكلمة مرور (سهلة الاسترجاع)" else "Not password protected", fontSize = 11.sp, color = Color.Gray)
+                        }
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selectedEncryptionModePassword = true }
+                            .padding(vertical = 4.dp)
+                    ) {
+                        RadioButton(
+                            selected = selectedEncryptionModePassword,
+                            onClick = { selectedEncryptionModePassword = true }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(text = if (currentLang == "ar") "محمية بكلمة مرور" else "Password Protected", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            Text(text = if (currentLang == "ar") "تشفير AES-256 آمن" else "AES-256 encryption", fontSize = 11.sp, color = Color.Gray)
+                        }
+                    }
+
+                    if (selectedEncryptionModePassword) {
                         OutlinedTextField(
-                            value = restorePasswordInput,
+                            value = backupPasswordInput,
                             onValueChange = {
-                                restorePasswordInput = it
-                                restorePasswordError = null
+                                backupPasswordInput = it
+                                backupPasswordError = if (it.length < 4) {
+                                    if (currentLang == "ar") "يجب أن تكون 4 أحرف على الأقل" else "Must be >= 4 chars"
+                                } else null
                             },
-                            label = { Text(if (currentLang == "ar") "كلمة المرور" else "Password") },
-                            isError = restorePasswordError != null,
+                            label = { Text(if (currentLang == "ar") "كلمة مرور النسخة" else "Password") },
+                            isError = backupPasswordError != null,
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(8.dp)
+                            shape = RoundedCornerShape(10.dp)
                         )
-                        restorePasswordError?.let {
+                        backupPasswordError?.let {
                             Text(text = it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
                         }
                     }
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            if (restorePasswordInput.isEmpty()) {
-                                restorePasswordError = if (currentLang == "ar") "يرجى إدخال كلمة المرور" else "Please enter the password"
-                                return@Button
-                            }
-
-                            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                                isRestoringFromLocal = true
-                                try {
-                                    val restored = com.example.core.backup.BackupManager.restoreBackupZip(localContext, fileToRestore, force = true, password = restorePasswordInput)
-                                    if (restored) {
-                                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                            Toast.makeText(localContext, if (currentLang == "ar") "تم استرجاع النسخة بنجاح! جاري إعادة التشغيل..." else "Database restored successfully! Restarting...", Toast.LENGTH_LONG).show()
-                                            showRestorePasswordPromptDialog = false
-                                            restoreTargetFile = null
-                                            availableLocalBackups = null
-                                            
-                                            // Force restart to reinitialize Room InvalidationTracker and singletons
-                                            val pm = localContext.packageManager
-                                            val intent = pm.getLaunchIntentForPackage(localContext.packageName)
-                                            if (intent != null) {
-                                                val mainIntent = android.content.Intent.makeRestartActivityTask(intent.component)
-                                                localContext.startActivity(mainIntent)
-                                                Runtime.getRuntime().exit(0)
-                                            }
-                                        }
-                                    } else {
-                                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                            restorePasswordError = if (currentLang == "ar") "كلمة مرور خاطئة أو فشل فك التشفير" else "Incorrect password or decryption failed"
-                                        }
-                                    }
-                                } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                        restorePasswordError = e.message ?: "Decryption error"
-                                    }
-                                } finally {
-                                    isRestoringFromLocal = false
-                                }
-                            }
-                        },
-                        enabled = !isRestoringFromLocal
-                    ) {
-                        if (isRestoringFromLocal) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(if (currentLang == "ar") "جاري فك التشفير..." else "Decrypting...")
-                        } else {
-                            Text(if (currentLang == "ar") "فك التشفير والاسترجاع" else "Decrypt & Restore")
-                        }
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = {
-                            showRestorePasswordPromptDialog = false
-                            restoreTargetFile = null
-                        },
-                        enabled = !isRestoringFromLocal
-                    ) {
-                        Text(if (currentLang == "ar") "إلغاء" else "Cancel")
-                    }
                 }
-            )
-        }
-
-        // --- LANGUAGE ---
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(
-                text = if (currentLang == "ar") "اللغة" else "Language",
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(horizontal = 4.dp)
-            )
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    listOf("ar" to "العربية", "en" to "English").forEach { (code, label) ->
-                        val isSelected = currentLang == code
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(44.dp)
-                                .background(if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp))
-                                .clickable { prefs.setLanguage(code) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(label, color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                }
-            }
-        }
-
-        // --- DEV MODE (DEBUG BUILD ONLY) ---
-        if (AppBuildConfig.DEBUG) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = if (currentLang == "ar") "وضع المطور" else "Developer Mode",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.padding(horizontal = 4.dp)
-                )
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = RoundedCornerShape(16.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(if (currentLang == "ar") "وضع التجريب (Demo)" else "Demo Mode")
-                            Switch(checked = isDemoMode, onCheckedChange = { prefs.setDemoMode(it) })
-                        }
-                        var showConfirmDelete by rememberSaveable { mutableStateOf(false) }
-                        var unsyncedWarningClearDataDialog by rememberSaveable { mutableStateOf(false) }
-                        var pendingClearDataCountState by rememberSaveable { mutableStateOf(0) }
-
-                        if (showConfirmDelete) {
-                            AlertDialog(
-                                onDismissRequest = { showConfirmDelete = false },
-                                title = { Text(if (currentLang == "ar") "حذف البيانات نهائياً؟" else "Delete Data Permanently?") },
-                                text = { Text(if (currentLang == "ar") "سيتم حذف جميع البيانات نهائياً من هذا الجهاز ومن السحابة (Firestore). لا يمكن التراجع عن هذا الإجراء أبداً." else "All data will be permanently deleted from this device AND the cloud (Firestore). This action cannot be undone.") },
-                                confirmButton = {
-                                    Button(
-                                        onClick = {
-                                            showConfirmDelete = false
-                                            dashboardViewModel.clearLocalData(
-                                                force = false,
-                                                onSuccess = {},
-                                                onError = { err ->
-                                                    if (err.startsWith("UNSYNCED_CHANGES:")) {
-                                                        pendingClearDataCountState = err.substringAfter("UNSYNCED_CHANGES:").toIntOrNull() ?: 1
-                                                        unsyncedWarningClearDataDialog = true
-                                                    }
-                                                }
-                                            )
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                                    ) {
-                                        Text(if (currentLang == "ar") "حذف نهائي" else "Permanent Delete")
-                                    }
-                                },
-                                dismissButton = { TextButton(onClick = { showConfirmDelete = false }) { Text(if (currentLang == "ar") "إلغاء" else "Cancel") } }
-                            )
-                        }
-
-                        if (unsyncedWarningClearDataDialog) {
-                            AlertDialog(
-                                onDismissRequest = { unsyncedWarningClearDataDialog = false },
-                                title = { Text(if (currentLang == "ar") "تنبيه: تغييرات غير مزامنة!" else "Warning: Unsynced Changes!") },
-                                text = {
-                                    Text(
-                                        if (currentLang == "ar")
-                                            "يوجد $pendingClearDataCountState عملية لم يتم رفعها للسيرفر بعد. مسح البيانات الآن سيؤدي لحذف هذه البيانات نهائياً!"
-                                        else
-                                            "There are $pendingClearDataCountState unsynced operations pending. Clearing data now will permanently delete these pending changes!"
-                                    )
-                                },
-                                confirmButton = {
-                                    Button(
-                                        onClick = {
-                                            unsyncedWarningClearDataDialog = false
-                                            dashboardViewModel.clearLocalData(
-                                                force = true,
-                                                onSuccess = {},
-                                                onError = {}
-                                            )
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                                    ) {
-                                        Text(if (currentLang == "ar") "حذف بالقوة (مسح البيانات)" else "Force Clear (Delete)")
-                                    }
-                                },
-                                dismissButton = {
-                                    TextButton(onClick = { unsyncedWarningClearDataDialog = false }) {
-                                        Text(if (currentLang == "ar") "إلغاء" else "Cancel")
-                                    }
-                                }
-                            )
-                        }
-                        TextButton(onClick = { showConfirmDelete = true }, modifier = Modifier.fillMaxWidth()) {
-                            Text(if (currentLang == "ar") "مسح جميع البيانات المحلية" else "Clear All Local Data", color = MaterialTheme.colorScheme.error)
-                        }
-                    }
-                }
-            }
-        }
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1C1E)),
-            border = BorderStroke(1.dp, Color(0xFF2C2C2E))
-        ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = if (currentLang == "ar") "بيانات الموزع" else "Affiliate User Details",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    color = Color.White
-                )
-                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
-                Text(
-                    text = if (currentLang == "ar") "اسم المستخدم: $username" else "Logged Username: $username",
-                    color = Color.White,
-                    fontSize = 13.sp
-                )
-                Text(
-                    text = if (currentLang == "ar") "خادم البوابة: rapi.earthlink.iq" else "Base Server API: rapi.earthlink.iq",
-                    color = Color(0xFF8E8E93),
-                    fontSize = 12.sp
-                )
-                
-                Button(
-                    onClick = onNavigateToImport,
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF))
-                ) {
-                    Text(if (currentLang == "ar") "استيراد بيانات uTower" else "Import uTower Data")
-                }
-                Text(
-                    text = if (currentLang == "ar") "تشفير البيانات الحساسة: نشط (AES)" else "Secure Credential Encryption: Active (AES/XOR)",
-                    color = Color(0xFF30D158),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-        }
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1C1E)),
-            border = BorderStroke(1.dp, Color(0xFF2C2C2E))
-        ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = if (currentLang == "ar") "كلمة مرور الصندوق (تجديد/تعبئة)" else "Deposit/Refill Password",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    color = Color.White
-                )
-                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
-                
-                var depositPassText by rememberSaveable { mutableStateOf(prefs.getDepositPassword()) }
-                var isPasswordVisible by rememberSaveable { mutableStateOf(false) }
-                
-                OutlinedTextField(
-                    value = depositPassText,
-                    onValueChange = {
-                        depositPassText = it
-                        prefs.saveDepositPassword(it)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text(if (currentLang == "ar") "كلمة مرور الصندوق" else "Deposit Password", color = Color(0xFF8E8E93)) },
-                    visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                    trailingIcon = {
-                        IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
-                            Icon(
-                                imageVector = if (isPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                contentDescription = if (isPasswordVisible) "Hide password" else "Show password",
-                                tint = Color(0xFF8E8E93)
-                            )
-                        }
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF007AFF),
-                        unfocusedBorderColor = Color(0xFF2C2C2E)
-                    ),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(); Toast.makeText(context, if (currentLang == "ar") "تم حفظ كلمة مرور الصندوق" else "Deposit password saved", Toast.LENGTH_SHORT).show() }),
-                    singleLine = true
-                )
-                
-                Text(
-                    text = if (currentLang == "ar") {
-                        "تستخدم لتجديد رصيد المشتركين دون الحاجة لكتابتها في كل مرة."
-                    } else {
-                        "Used automatically for subscriber renewals without typing it each time."
-                    },
-                    color = Color(0xFF8E8E93),
-                    fontSize = 11.sp
-                )
-            }
-        }
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1C1E)),
-            border = BorderStroke(1.dp, Color(0xFF2C2C2E))
-        ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = if (currentLang == "ar") "بيانات بوابة إيرثلنك (ISP Admin)" else "Earthlink Reseller (ISP Admin)",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    color = Color.White
-                )
-                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
-                
-                var ispAdminUserText by rememberSaveable { mutableStateOf(prefs.getIspAdminUsername() ?: "") }
-                var ispAdminPassText by rememberSaveable { mutableStateOf(prefs.getIspAdminPassword() ?: "") }
-                var isIspPasswordVisible by rememberSaveable { mutableStateOf(false) }
-
-                val performSaveAndNavigate = {
-                    focusManager.clearFocus()
-                    if (ispAdminUserText.isBlank() || ispAdminPassText.isBlank()) {
-                        Toast.makeText(
-                            localContext,
-                            if (currentLang == "ar") "يرجى إدخال اسم المستخدم وكلمة المرور للوكيل" else "Please enter ISP Admin username and password",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    } else {
-                        authViewModel.saveIspAdminCredentials(ispAdminUserText, ispAdminPassText)
-                        Toast.makeText(
-                            localContext,
-                            if (currentLang == "ar") "تم حفظ البيانات والتوجه لقائمة المشتركين" else "Saved! Loading subscribers...",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                        dashboardViewModel.loadDashboardData()
-                        onNavigateToSubscribers?.invoke()
-                    }
-                }
-                
-                OutlinedTextField(
-                    value = ispAdminUserText,
-                    onValueChange = {
-                        ispAdminUserText = it
-                        prefs.saveIspAdminUsername(it)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text(if (currentLang == "ar") "اسم المستخدم للوكيل" else "ISP Admin Username", color = Color(0xFF8E8E93)) },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF007AFF),
-                        unfocusedBorderColor = Color(0xFF2C2C2E)
-                    ),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                    singleLine = true
-                )
-
-                OutlinedTextField(
-                    value = ispAdminPassText,
-                    onValueChange = {
-                        ispAdminPassText = it
-                        prefs.saveIspAdminPassword(it)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text(if (currentLang == "ar") "كلمة المرور للوكيل" else "ISP Admin Password", color = Color(0xFF8E8E93)) },
-                    visualTransformation = if (isIspPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                    trailingIcon = {
-                        IconButton(onClick = { isIspPasswordVisible = !isIspPasswordVisible }) {
-                            Icon(
-                                imageVector = if (isIspPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                contentDescription = if (isIspPasswordVisible) "Hide password" else "Show password",
-                                tint = Color(0xFF8E8E93)
-                            )
-                        }
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF007AFF),
-                        unfocusedBorderColor = Color(0xFF2C2C2E)
-                    ),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { performSaveAndNavigate() }),
-                    singleLine = true
-                )
-                
-                Text(
-                    text = if (currentLang == "ar") {
-                        "تُسجل هذه البيانات بشكل آمن لتبادل وإثبات التراخيص والعمليات مع مزود خدمة إيرثلنك تلقائياً."
-                    } else {
-                        "These credentials are saved securely to authenticate background API sync processes with the Earthlink reseller gateway."
-                    },
-                    color = Color(0xFF8E8E93),
-                    fontSize = 11.sp
-                )
-
-                Button(
-                    onClick = { performSaveAndNavigate() },
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF)),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = if (currentLang == "ar") "حفظ الحساب والتوجه للمشتركين" else "Save & Go to Subscribers",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
-                    )
-                }
-                
-                Spacer(modifier = Modifier.height(16.dp))
-                
+            },
+            confirmButton = {
                 Button(
                     onClick = {
-                        val availability = com.google.android.gms.common.GoogleApiAvailability.getInstance()
-                        val resultCode = availability.isGooglePlayServicesAvailable(localContext)
-                        if (resultCode != com.google.android.gms.common.ConnectionResult.SUCCESS) {
-                            if (availability.isUserResolvableError(resultCode)) {
-                                (localContext as? android.app.Activity)?.let { act ->
-                                    availability.getErrorDialog(act, resultCode, 9000)?.show()
-                                }
-                            } else {
-                                Toast.makeText(
-                                    localContext,
-                                    if (currentLang == "ar") "خدمات Google Play غير متوفرة على هذا الجهاز" else "Google Play Services unavailable on this device",
-                                    Toast.LENGTH_LONG
-                                ).show()
+                        if (selectedEncryptionModePassword) {
+                            if (backupPasswordInput.length < 4) {
+                                backupPasswordError = if (currentLang == "ar") "يجب أن تكون 4 أحرف على الأقل" else "Must be >= 4 chars"
+                                return@Button
                             }
+                            tempBackupPassword = backupPasswordInput
+                        } else {
+                            tempBackupPassword = null
+                        }
+
+                        showBackupPasswordOptionsDialog = false
+
+                        if (isBackupOperationExport) {
+                            exportLocalBackupLauncher.launch("earthlink_backup_${System.currentTimeMillis()}.zip")
+                        } else {
+                            CoroutineScope(Dispatchers.IO).launch {
+                                isPerformingLocalBackup = true
+                                try {
+                                    val zipFile = BackupManager.createDailyRollingBackup(localContext, tempBackupPassword)
+                                    if (zipFile != null && zipFile.exists()) {
+                                        prefs.saveLocalLastBackupTime(System.currentTimeMillis())
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(localContext, if (currentLang == "ar") "تم حفظ النسخة الاحتياطية بنجاح!" else "Backup created successfully!", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } else {
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(localContext, if (currentLang == "ar") "فشل إنشاء النسخة الاحتياطية" else "Backup failed", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    if (e is kotlinx.coroutines.CancellationException) throw e
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(localContext, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                                    }
+                                } finally {
+                                    isPerformingLocalBackup = false
+                                    tempBackupPassword = null
+                                }
+                            }
+                        }
+                    }
+                ) {
+                    Text(if (currentLang == "ar") "متابعة" else "Continue")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBackupPasswordOptionsDialog = false }) {
+                    Text(if (currentLang == "ar") "إلغاء" else "Cancel")
+                }
+            }
+        )
+    }
+
+    // 5. Restore Password Prompt Dialog
+    if (showRestorePasswordPromptDialog && restoreTargetFile != null) {
+        val fileToRestore = restoreTargetFile!!
+        AlertDialog(
+            onDismissRequest = {
+                showRestorePasswordPromptDialog = false
+                restoreTargetFile = null
+            },
+            title = {
+                Text(
+                    text = if (currentLang == "ar") "فك تشفير النسخة الاحتياطية" else "Decrypt Backup",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = if (currentLang == "ar") "هذه النسخة مشفرة، يرجى إدخال كلمة المرور للاسترجاع:" else "Enter password to decrypt and restore:",
+                        fontSize = 13.sp
+                    )
+
+                    OutlinedTextField(
+                        value = restorePasswordInput,
+                        onValueChange = {
+                            restorePasswordInput = it
+                            restorePasswordError = null
+                        },
+                        label = { Text(if (currentLang == "ar") "كلمة المرور" else "Password") },
+                        isError = restorePasswordError != null,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                    restorePasswordError?.let {
+                        Text(text = it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (restorePasswordInput.isEmpty()) {
+                            restorePasswordError = if (currentLang == "ar") "يرجى إدخال كلمة المرور" else "Enter password"
                             return@Button
                         }
-                        try {
-                            val intent = googleSignInClient.signInIntent
-                            googleSignInLauncher.launch(intent)
-                        } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                            Toast.makeText(
-                                localContext,
-                                if (currentLang == "ar") "تعذر بدء تسجيل الدخول بواسطة Google: ${e.message}" else "Google Sign-In unavailable: ${e.message}",
-                                Toast.LENGTH_LONG
-                            ).show()
+
+                        CoroutineScope(Dispatchers.IO).launch {
+                            isRestoringFromLocal = true
+                            try {
+                                val restored = BackupManager.restoreBackupZip(localContext, fileToRestore, force = true, password = restorePasswordInput)
+                                withContext(Dispatchers.Main) {
+                                    if (restored) {
+                                        Toast.makeText(localContext, if (currentLang == "ar") "تم استرجاع النسخة بنجاح! جاري إعادة التشغيل..." else "Restored! Restarting...", Toast.LENGTH_LONG).show()
+                                        showRestorePasswordPromptDialog = false
+                                        restoreTargetFile = null
+                                        availableLocalBackups = null
+                                        val pm = localContext.packageManager
+                                        val intent = pm.getLaunchIntentForPackage(localContext.packageName)
+                                        if (intent != null) {
+                                            val mainIntent = Intent.makeRestartActivityTask(intent.component)
+                                            localContext.startActivity(mainIntent)
+                                            Runtime.getRuntime().exit(0)
+                                        }
+                                    } else {
+                                        restorePasswordError = if (currentLang == "ar") "كلمة مرور خاطئة أو فشل فك التشفير" else "Incorrect password or decryption failed"
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                if (e is kotlinx.coroutines.CancellationException) throw e
+                                withContext(Dispatchers.Main) {
+                                    restorePasswordError = e.message ?: "Decryption error"
+                                }
+                            } finally {
+                                isRestoringFromLocal = false
+                            }
                         }
                     },
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A3A3C)),
-                    shape = RoundedCornerShape(12.dp)
+                    enabled = !isRestoringFromLocal
+                ) {
+                    if (isRestoringFromLocal) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(if (currentLang == "ar") "جاري فك التشفير..." else "Decrypting...")
+                    } else {
+                        Text(if (currentLang == "ar") "فك التشفير والاسترجاع" else "Decrypt & Restore")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showRestorePasswordPromptDialog = false
+                        restoreTargetFile = null
+                    },
+                    enabled = !isRestoringFromLocal
+                ) {
+                    Text(if (currentLang == "ar") "إلغاء" else "Cancel")
+                }
+            }
+        )
+    }
+
+    // 6. Pricing Dialog
+    if (showPricingDialog) {
+        PricingManagementDialog(
+            authViewModel = authViewModel,
+            currentLang = currentLang,
+            onDismiss = { showPricingDialog = false }
+        )
+    }
+
+    // 7. Logout Confirm Dialog
+    if (showLogoutConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutConfirmDialog = false },
+            title = { Text(if (currentLang == "ar") "تأكيد تسجيل الخروج" else "Confirm Sign Out") },
+            text = { Text(if (currentLang == "ar") "هل أنت متأكد من تسجيل الخروج؟ سيتم إغلاق الجلسة ومسح قاعدة البيانات المحلية من هذا الجهاز." else "Are you sure you want to sign out? Your session will end and local database tables will be cleared.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showLogoutConfirmDialog = false
+                        authViewModel.logout(
+                            force = false,
+                            onSuccess = {
+                                prefs.clearAll()
+                                onLogout()
+                            },
+                            onError = { err ->
+                                if (err.startsWith("UNSYNCED_CHANGES:")) {
+                                    pendingCountState = err.substringAfter("UNSYNCED_CHANGES:").toIntOrNull() ?: 1
+                                    unsyncedWarningDialog = true
+                                } else {
+                                    prefs.clearAll()
+                                    onLogout()
+                                }
+                            }
+                        )
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                ) {
+                    Text(if (currentLang == "ar") "تسجيل الخروج" else "Sign Out")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutConfirmDialog = false }) {
+                    Text(if (currentLang == "ar") "إلغاء" else "Cancel")
+                }
+            }
+        )
+    }
+
+    // 8. Logout Unsynced Warning Dialog
+    if (unsyncedWarningDialog) {
+        AlertDialog(
+            onDismissRequest = { unsyncedWarningDialog = false },
+            title = { Text(if (currentLang == "ar") "تنبيه: تغييرات غير متزامنة!" else "Warning: Unsynced Changes!") },
+            text = {
+                Text(
+                    if (currentLang == "ar")
+                        "يوجد $pendingCountState عملية لم يتم رفعها للسيرفر بعد. تسجيل الخروج الآن سيؤدي لحذف هذه البيانات نهائياً من هذا الجهاز!"
+                    else
+                        "There are $pendingCountState unsynced operations pending. Signing out now will permanently delete these local changes!"
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        unsyncedWarningDialog = false
+                        authViewModel.logout(
+                            force = true,
+                            onSuccess = {
+                                prefs.clearAll()
+                                onLogout()
+                            },
+                            onError = {
+                                prefs.clearAll()
+                                onLogout()
+                            }
+                        )
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                ) {
+                    Text(if (currentLang == "ar") "خروج بالقوة (حذف البيانات)" else "Force Sign Out")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { unsyncedWarningDialog = false }) {
+                    Text(if (currentLang == "ar") "إلغاء" else "Cancel")
+                }
+            }
+        )
+    }
+}
+
+// ==========================================
+// SUB-COMPOSABLES & MODULAR UI CARDS
+// ==========================================
+
+@Composable
+private fun SettingsHeader(currentLang: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = if (currentLang == "ar") "إعدادات النظام" else "System Settings",
+                fontWeight = FontWeight.Black,
+                fontSize = 20.sp,
+                color = Color.White
+            )
+            Text(
+                text = if (currentLang == "ar") "إدارة الحسابات، البيانات، والتفضيلات" else "Manage accounts, sync engine & app preferences",
+                fontSize = 12.sp,
+                color = Color.White.copy(alpha = 0.5f)
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .background(Color(0xFF0288D1).copy(alpha = 0.15f), RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Settings,
+                contentDescription = null,
+                tint = Color(0xFF38BDF8),
+                modifier = Modifier.size(22.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsGroupCard(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    accentColor: Color,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = Color(0xFF11161F),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Group Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .background(accentColor.copy(alpha = 0.15f), RoundedCornerShape(10.dp)),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.AccountCircle,
-                        contentDescription = "Google Logo",
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp)
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = accentColor,
+                        modifier = Modifier.size(18.dp)
                     )
-                    Spacer(modifier = Modifier.width(12.dp))
+                }
+
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                     Text(
-                        text = if (currentLang == "ar") "ربط بحساب Google" else "Link with Google Account",
-                        color = Color.White,
-                        fontWeight = FontWeight.SemiBold
+                        text = title,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = subtitle,
+                        fontSize = 11.sp,
+                        color = Color.White.copy(alpha = 0.45f)
                     )
                 }
             }
-        }
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1C1E)),
-            border = BorderStroke(1.dp, Color(0xFF2C2C2E))
+            HorizontalDivider(color = Color.White.copy(alpha = 0.06f))
+
+            content()
+        }
+    }
+}
+
+// 1. ACCOUNT & ISP SECTION
+@Composable
+private fun AccountAndIspSection(
+    username: String,
+    prefs: com.example.core.security.PreferenceManager,
+    currentLang: String,
+    onSaveIsp: (String, String) -> Unit,
+    onLinkGoogle: () -> Unit
+) {
+    val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
+
+    // Affiliate Details Pill
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = Color(0xFF171E29),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = if (currentLang == "ar") "نطاق الاتصال والتجريب" else "App Mode & Connectivity",
+                    text = if (currentLang == "ar") "المستخدم النشط: $username" else "User: $username",
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
                     color = Color.White
                 )
-                if (AppBuildConfig.DEBUG) {
-                    HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
-                    val isDemoEnabled by prefs.demoModeFlow.collectAsStateWithLifecycle()
+                Text(
+                    text = "rapi.earthlink.iq",
+                    fontSize = 10.sp,
+                    color = Color.White.copy(alpha = 0.4f)
+                )
+            }
+
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = Color(0xFF10B981).copy(alpha = 0.15f)
+            ) {
+                Text(
+                    text = if (currentLang == "ar") "تشفير نشط" else "Encrypted",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF10B981),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+        }
+    }
+
+    // ISP Admin Username & Password
+    var ispAdminUserText by rememberSaveable { mutableStateOf(prefs.getIspAdminUsername() ?: "") }
+    var ispAdminPassText by rememberSaveable { mutableStateOf(prefs.getIspAdminPassword() ?: "") }
+    var isIspPasswordVisible by rememberSaveable { mutableStateOf(false) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = if (currentLang == "ar") "بيانات بوابة إيرثلنك (ISP Admin)" else "ISP Admin Credentials",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.White.copy(alpha = 0.9f)
+        )
+
+        OutlinedTextField(
+            value = ispAdminUserText,
+            onValueChange = {
+                ispAdminUserText = it
+                prefs.saveIspAdminUsername(it)
+            },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text(if (currentLang == "ar") "اسم المستخدم للوكيل" else "ISP Admin Username", fontSize = 12.sp) },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                focusedBorderColor = Color(0xFF0288D1),
+                unfocusedBorderColor = Color.White.copy(alpha = 0.12f),
+                focusedContainerColor = Color(0xFF171E29),
+                unfocusedContainerColor = Color(0xFF171E29)
+            ),
+            shape = RoundedCornerShape(12.dp),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+            singleLine = true
+        )
+
+        OutlinedTextField(
+            value = ispAdminPassText,
+            onValueChange = {
+                ispAdminPassText = it
+                prefs.saveIspAdminPassword(it)
+            },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text(if (currentLang == "ar") "كلمة المرور للوكيل" else "ISP Admin Password", fontSize = 12.sp) },
+            visualTransformation = if (isIspPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                IconButton(onClick = { isIspPasswordVisible = !isIspPasswordVisible }) {
+                    Icon(
+                        imageVector = if (isIspPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.5f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                focusedBorderColor = Color(0xFF0288D1),
+                unfocusedBorderColor = Color.White.copy(alpha = 0.12f),
+                focusedContainerColor = Color(0xFF171E29),
+                unfocusedContainerColor = Color(0xFF171E29)
+            ),
+            shape = RoundedCornerShape(12.dp),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = {
+                focusManager.clearFocus()
+                if (ispAdminUserText.isNotBlank() && ispAdminPassText.isNotBlank()) {
+                    onSaveIsp(ispAdminUserText, ispAdminPassText)
+                }
+            }),
+            singleLine = true
+        )
+
+        Button(
+            onClick = {
+                focusManager.clearFocus()
+                if (ispAdminUserText.isBlank() || ispAdminPassText.isBlank()) {
+                    Toast.makeText(context, if (currentLang == "ar") "يرجى ملء اسم المستخدم وكلمة المرور" else "Please fill ISP credentials", Toast.LENGTH_SHORT).show()
+                } else {
+                    onSaveIsp(ispAdminUserText, ispAdminPassText)
+                    Toast.makeText(context, if (currentLang == "ar") "تم الحفظ والتحميل بنجاح" else "Saved successfully!", Toast.LENGTH_SHORT).show()
+                }
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0288D1)),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth().height(42.dp)
+        ) {
+            Icon(Icons.Default.Save, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(if (currentLang == "ar") "حفظ الحساب والتوجه للمشتركين" else "Save & Go to Subscribers", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+        }
+    }
+
+    // Box / Deposit Password
+    var depositPassText by rememberSaveable { mutableStateOf(prefs.getDepositPassword()) }
+    var isDepositPassVisible by rememberSaveable { mutableStateOf(false) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = if (currentLang == "ar") "كلمة مرور الصندوق الافتراضية (التجديد السريع)" else "Default Box / Deposit Password",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.White.copy(alpha = 0.9f)
+        )
+
+        OutlinedTextField(
+            value = depositPassText,
+            onValueChange = {
+                depositPassText = it
+                prefs.saveDepositPassword(it)
+            },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text(if (currentLang == "ar") "كلمة مرور الصندوق" else "Box Password", fontSize = 12.sp) },
+            visualTransformation = if (isDepositPassVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                IconButton(onClick = { isDepositPassVisible = !isDepositPassVisible }) {
+                    Icon(
+                        imageVector = if (isDepositPassVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.5f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                focusedBorderColor = Color(0xFF0288D1),
+                unfocusedBorderColor = Color.White.copy(alpha = 0.12f),
+                focusedContainerColor = Color(0xFF171E29),
+                unfocusedContainerColor = Color(0xFF171E29)
+            ),
+            shape = RoundedCornerShape(12.dp),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = {
+                focusManager.clearFocus()
+                Toast.makeText(context, if (currentLang == "ar") "تم حفظ كلمة مرور الصندوق" else "Box password saved", Toast.LENGTH_SHORT).show()
+            }),
+            singleLine = true
+        )
+    }
+
+    // Google Account Link Row
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = Color(0xFF171E29),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onLinkGoogle() }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(
+                    imageVector = Icons.Default.AccountCircle,
+                    contentDescription = null,
+                    tint = Color(0xFF38BDF8),
+                    modifier = Modifier.size(20.dp)
+                )
+                Column {
+                    Text(
+                        text = if (currentLang == "ar") "ربط ومزامنة حساب Google" else "Link Google Account",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = if (currentLang == "ar") "تأمين المزامنة السحابية الاحتياطية" else "Cloud database authorization",
+                        fontSize = 10.sp,
+                        color = Color.White.copy(alpha = 0.45f)
+                    )
+                }
+            }
+
+            Icon(
+                imageVector = Icons.Default.ChevronLeft,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.4f),
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
+
+// 2. SYNC & BACKUP SECTION
+@Composable
+private fun SyncAndBackupSection(
+    currentLang: String,
+    syncState: SyncStatusState,
+    lastSyncTime: Long,
+    isSyncing: Boolean,
+    onTriggerSync: () -> Unit,
+    isAutoBackupEnabled: Boolean,
+    onToggleAutoBackup: (Boolean) -> Unit,
+    lastLocalBackupTime: Long,
+    isPerformingBackup: Boolean,
+    onStartManualBackup: () -> Unit,
+    isFetchingBackups: Boolean,
+    onListBackups: () -> Unit,
+    onExportZip: () -> Unit,
+    onImportUtower: () -> Unit
+) {
+    // Cloud Sync Status Row
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = Color(0xFF171E29),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.Sync,
+                        contentDescription = null,
+                        tint = Color(0xFF38BDF8),
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = if (currentLang == "ar") "المزامنة السحابية" else "Cloud Sync",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+
+                val (badgeText, badgeBg, badgeTextClr) = when {
+                    isSyncing || syncState == SyncStatusState.SYNCING -> Triple(if (currentLang == "ar") "جاري المزامنة" else "Syncing", Color(0xFF0288D1).copy(alpha = 0.2f), Color(0xFF38BDF8))
+                    syncState == SyncStatusState.COMPLETE || syncState == SyncStatusState.IDLE -> Triple(if (currentLang == "ar") "مكتمل" else "Up to date", Color(0xFF10B981).copy(alpha = 0.2f), Color(0xFF10B981))
+                    else -> Triple(if (currentLang == "ar") "غير معروف" else "Unknown", Color.White.copy(alpha = 0.1f), Color.White.copy(alpha = 0.6f))
+                }
+
+                Surface(shape = RoundedCornerShape(6.dp), color = badgeBg) {
+                    Text(text = badgeText, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = badgeTextClr, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (lastSyncTime <= 0L) (if (currentLang == "ar") "لم تتم مزامنة سابقة" else "Never synced")
+                    else "${if (currentLang == "ar") "آخر مزامنة:" else "Last sync:"} ${SimpleDateFormat("HH:mm", Locale.US).format(Date(lastSyncTime))}",
+                    fontSize = 11.sp,
+                    color = Color.White.copy(alpha = 0.45f)
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF0288D1),
+                    modifier = Modifier.clickable(enabled = !isSyncing) { onTriggerSync() }
+                ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = if (currentLang == "ar") "وضع التجريب المحلي (المحاكي)" else "Offline Demo Mode",
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 13.sp,
-                                color = Color.White
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = if (currentLang == "ar") {
-                                    "يتيح استخدام التطبيق ببيانات تجريبية محلية دقيقة عند عدم الاتصال بشبكة إيرثلنك الخاصة بالموزعين."
-                                } else {
-                                    "Bypasses real rapi.earthlink.iq calls with rich mock data when not on Iraq's Earthlink network range."
-                                },
-                                color = Color(0xFF8E8E93),
-                                fontSize = 11.sp,
-                                lineHeight = 14.sp
-                            )
+                        if (isSyncing) {
+                            CircularProgressIndicator(modifier = Modifier.size(12.dp), color = Color.White, strokeWidth = 1.5.dp)
+                        } else {
+                            Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Switch(
-                            checked = isDemoEnabled,
-                            onCheckedChange = { checked ->
-                                prefs.setDemoMode(checked)
-                            },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = Color(0xFF30D158) // iOS green switch track
-                            )
-                        )
+                        Text(text = if (currentLang == "ar") "مزامنة الآن" else "Sync Now", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
             }
         }
+    }
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1C1E)),
-            border = BorderStroke(1.dp, Color(0xFF2C2C2E))
+    // Daily Auto Backup Switch
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = Color(0xFF171E29),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = if (currentLang == "ar") "نسخ احتياطي يومي تلقائي (30 يوم)" else "Daily Rolling Backup (30 Days)",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = if (currentLang == "ar") "حفظ نسخة محلية مشفرة يومياً وحذف ما زاد عن 30 يوم" else "Saves rolling backup daily to Documents/EarthlinkBackups",
+                        fontSize = 10.sp,
+                        color = Color.White.copy(alpha = 0.45f)
+                    )
+                }
+                Switch(
+                    checked = isAutoBackupEnabled,
+                    onCheckedChange = { onToggleAutoBackup(it) }
+                )
+            }
+
+            if (lastLocalBackupTime > 0L) {
                 Text(
-                    text = if (currentLang == "ar") "تخصيص الواجهة الرئيسية" else "Dashboard Customization",
+                    text = "${if (currentLang == "ar") "آخر نسخة محلية:" else "Last Local Backup:"} ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(lastLocalBackupTime))}",
+                    fontSize = 10.sp,
+                    color = Color(0xFF10B981)
+                )
+            }
+        }
+    }
+
+    // Backup Action Tools Grid (3 Buttons)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // Backup Now
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0xFF171E29),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+            modifier = Modifier
+                .weight(1f)
+                .clickable(enabled = !isPerformingBackup) { onStartManualBackup() }
+        ) {
+            Column(
+                modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(Icons.Default.CloudUpload, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(18.dp))
+                Text(
+                    text = if (currentLang == "ar") "نسخ الآن" else "Backup Now",
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
+                    color = Color.White,
+                    maxLines = 1
+                )
+            }
+        }
+
+        // Restore Local
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0xFF171E29),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+            modifier = Modifier
+                .weight(1f)
+                .clickable(enabled = !isFetchingBackups) { onListBackups() }
+        ) {
+            Column(
+                modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(Icons.Default.CloudDownload, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(18.dp))
+                Text(
+                    text = if (currentLang == "ar") "استرجاع محلي" else "Restore",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1
+                )
+            }
+        }
+
+        // Share / Export Zip
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0xFF171E29),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+            modifier = Modifier
+                .weight(1f)
+                .clickable { onExportZip() }
+        ) {
+            Column(
+                modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(Icons.Default.FolderZip, contentDescription = null, tint = Color(0xFFF59E0B), modifier = Modifier.size(18.dp))
+                Text(
+                    text = if (currentLang == "ar") "مشاركة (.zip)" else "Export (.zip)",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+
+    // uTower Data Import Button
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = Color(0xFF171E29),
+        border = BorderStroke(1.dp, Color(0xFF0288D1).copy(alpha = 0.3f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onImportUtower() }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Default.Download, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(18.dp))
+                Column {
+                    Text(
+                        text = if (currentLang == "ar") "استيراد وترحيل بيانات uTower" else "Import uTower Database",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = if (currentLang == "ar") "استيراد المشتركين وسجل الحركات من ملف uTower القديم" else "Migrate subscribers and historical ledger from uTower",
+                        fontSize = 10.sp,
+                        color = Color.White.copy(alpha = 0.45f)
+                    )
+                }
+            }
+            Icon(Icons.Default.ChevronLeft, contentDescription = null, tint = Color.White.copy(alpha = 0.4f), modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+// 3. DISPLAY & PRICING SECTION
+@Composable
+private fun DisplayAndPricingSection(
+    prefs: com.example.core.security.PreferenceManager,
+    currentLang: String,
+    onOpenPricingDialog: () -> Unit
+) {
+    var showActive by rememberSaveable { mutableStateOf(prefs.getShowActive()) }
+    var showExpired by rememberSaveable { mutableStateOf(prefs.getShowExpired()) }
+    var maxItems by rememberSaveable { mutableStateOf(prefs.getMaxDashboardItems()) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Switch: Active Users
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = if (currentLang == "ar") "عرض المشتركين النشطين" else "Show Active Subscribers",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
-                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
-                
-                var showActive by rememberSaveable { mutableStateOf(prefs.getShowActive()) }
-                var showExpired by rememberSaveable { mutableStateOf(prefs.getShowExpired()) }
-                var maxItems by rememberSaveable { mutableStateOf(prefs.getMaxDashboardItems()) }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = if (currentLang == "ar") "عرض المشتركين النشطين" else "Show Active Subscribers",
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp,
-                            color = Color.White
-                        )
-                        Text(
-                            text = if (currentLang == "ar") "تبديل لعرض قائمة المستخدمين الفعالين بالواحدة الرئيسية" else "Toggle to display live active users list on your home dashboard",
-                            color = Color(0xFF8E8E93),
-                            fontSize = 11.sp
-                        )
-                    }
-                    Switch(
-                        checked = showActive,
-                        onCheckedChange = {
-                            prefs.setShowActive(it)
-                            showActive = it
-                        },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = Color(0xFF30D158)
-                        )
-                    )
+                Text(
+                    text = if (currentLang == "ar") "إظهار قائمة الحسابات الفعالة في الواجهة الرئيسية" else "Display active accounts on home dashboard",
+                    fontSize = 10.sp,
+                    color = Color.White.copy(alpha = 0.45f)
+                )
+            }
+            Switch(
+                checked = showActive,
+                onCheckedChange = {
+                    prefs.setShowActive(it)
+                    showActive = it
                 }
+            )
+        }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = if (currentLang == "ar") "عرض الاشتراكات المنتهية" else "Show Recently Expired Users",
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp,
-                            color = Color.White
-                        )
-                        Text(
-                            text = if (currentLang == "ar") "تبديل لعرض المشتركين المنتهية صلاحيتهم مؤخراً" else "Toggle to view recently expired users on your home dashboard",
-                            color = Color(0xFF8E8E93),
-                            fontSize = 11.sp
-                        )
-                    }
-                    Switch(
-                        checked = showExpired,
-                        onCheckedChange = {
-                            prefs.setShowExpired(it)
-                            showExpired = it
-                        },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = Color(0xFF30D158)
-                        )
-                    )
+        // Switch: Expired Users
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = if (currentLang == "ar") "عرض الاشتراكات المنتهية" else "Show Expired Subscribers",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                Text(
+                    text = if (currentLang == "ar") "إظهار الحسابات المنتهية صلاحيتها مؤخراً" else "Display expired accounts on home dashboard",
+                    fontSize = 10.sp,
+                    color = Color.White.copy(alpha = 0.45f)
+                )
+            }
+            Switch(
+                checked = showExpired,
+                onCheckedChange = {
+                    prefs.setShowExpired(it)
+                    showExpired = it
                 }
+            )
+        }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = if (currentLang == "ar") "الحد الأقصى للمشتركين" else "Max Dashboard Subscribers",
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp,
-                            color = Color.White
-                        )
-                        Text(
-                            text = if (currentLang == "ar") "الحد الحالي المعتمد: $maxItems مشترك" else "Currently configured limit: $maxItems subscribers",
-                            color = Color(0xFF8E8E93),
-                            fontSize = 11.sp
-                        )
-                    }
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        IconButton(onClick = {
+        // Counter: Max Items
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = if (currentLang == "ar") "الحد الأقصى للعرض في الرئيسية" else "Max Dashboard Items",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                Text(
+                    text = "${if (currentLang == "ar") "العدد الحالي:" else "Current limit:"} $maxItems",
+                    fontSize = 10.sp,
+                    color = Color.White.copy(alpha = 0.45f)
+                )
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0xFF171E29),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clickable {
                             if (maxItems > 5) {
                                 val newVal = maxItems - 5
                                 prefs.setMaxDashboardItems(newVal)
                                 maxItems = newVal
                             }
-                        }) {
-                            Icon(imageVector = Icons.Default.RemoveCircleOutline, contentDescription = "Decrease", tint = Color.White)
                         }
-                        Text(text = "$maxItems", fontWeight = FontWeight.Bold, color = Color.White)
-                        IconButton(onClick = {
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.Remove, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    }
+                }
+
+                Text(
+                    text = "$maxItems",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0xFF171E29),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clickable {
                             if (maxItems < 100) {
                                 val newVal = maxItems + 5
                                 prefs.setMaxDashboardItems(newVal)
                                 maxItems = newVal
                             }
-                        }) {
-                            Icon(imageVector = Icons.Default.AddCircleOutline, contentDescription = "Increase", tint = Color.White)
                         }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                     }
                 }
             }
         }
 
-        // --- CUSTOM SUBSCRIPTION PRICING CARD TRIGGER ---
-        Card(
+        HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+
+        // Subscription Pricing Tile
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0xFF171E29),
+            border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.3f)),
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { showPricingDialog = true },
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1C1E)),
-            border = BorderStroke(1.dp, Color(0xFF2C2C2E))
+                .clickable { onOpenPricingDialog() }
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(14.dp),
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = null,
-                        tint = Color(0xFF30D158),
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.Sell, contentDescription = null, tint = Color(0xFFF59E0B), modifier = Modifier.size(18.dp))
                     Column {
                         Text(
-                            text = if (currentLang == "ar") "أسعار بيع الاشتراكات" else "Subscription Selling Prices",
+                            text = if (currentLang == "ar") "ضبط أسعار بيع الاشتراكات" else "Package Retail Selling Prices",
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
                             color = Color.White
                         )
-                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = if (currentLang == "ar") "تعديل أسعار البيع لتسهيل الحسابات وحساب الأرباح" else "Edit selling prices to simplify accounting and profit",
-                            fontSize = 11.sp,
-                            color = Color(0xFF8E8E93)
+                            text = if (currentLang == "ar") "تحديد سعر البيع لكل باقة لحساب الأرباح تلقائياً" else "Set selling prices to calculate profits automatically",
+                            fontSize = 10.sp,
+                            color = Color.White.copy(alpha = 0.45f)
+                        )
+                    }
+                }
+                Icon(Icons.Default.ChevronLeft, contentDescription = null, tint = Color.White.copy(alpha = 0.4f), modifier = Modifier.size(18.dp))
+            }
+        }
+    }
+}
+
+// 4. GENERAL SECTION
+@Composable
+private fun GeneralSection(
+    currentLang: String,
+    onSelectLang: (String) -> Unit
+) {
+    val uriHandler = LocalUriHandler.current
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Language Selector Row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf("ar" to "العربية 🇮🇶", "en" to "English 🇺🇸").forEach { (code, label) ->
+                val isSelected = currentLang == code
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isSelected) Color(0xFF0288D1).copy(alpha = 0.2f) else Color(0xFF171E29),
+                    border = BorderStroke(1.dp, if (isSelected) Color(0xFF0288D1) else Color.White.copy(alpha = 0.05f)),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(38.dp)
+                        .clickable { onSelectLang(code) }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = label,
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) Color(0xFF38BDF8) else Color.White.copy(alpha = 0.7f)
                         )
                     }
                 }
             }
         }
 
-        if (showPricingDialog) {
-            Dialog(
-                onDismissRequest = { showPricingDialog = false },
-                properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        // Privacy Policy Link
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0xFF171E29),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                    uriHandler.openUri("https://docs.google.com/document/d/1e7gm4KkC1jjhwlm0YPQMVmwnJXP6eeWeKKJTWlzKg7w/edit?usp=sharing")
+                }
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth(0.95f)
-                        .fillMaxHeight(0.9f)
-                        .padding(vertical = 16.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1C1E)),
-                    border = BorderStroke(1.dp, Color(0xFF2C2C2E)),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-                ) {
-                    val targetPackages = listOf("economy", "plus", "standard", "turbo", "more", "business")
-                    val fallbackPackages = listOf(
-                        Triple("economy", if (currentLang == "ar") "اقتصادي (Economy)" else "Economy", 2),
-                        Triple("plus", if (currentLang == "ar") "بلس (Plus)" else "Plus", 4),
-                        Triple("standard", if (currentLang == "ar") "اعتيادي (Standard)" else "Standard", 3),
-                        Triple("turbo", if (currentLang == "ar") "توربو (Turbo)" else "Turbo", 5),
-                        Triple("more", if (currentLang == "ar") "مور (More)" else "More", 6),
-                        Triple("business", if (currentLang == "ar") "بزنس (Business)" else "Business", 7)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.Policy, contentDescription = null, tint = Color(0xFFA78BFA), modifier = Modifier.size(18.dp))
+                    Text(
+                        text = if (currentLang == "ar") "سياسة الخصوصية وشروط الاستخدام" else "Privacy Policy & Terms",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
                     )
-                    
-                    var packagesList by remember { mutableStateOf<List<Triple<String, String, Int>>>(fallbackPackages) }
-                    val apiCosts = remember { mutableStateMapOf<String, Double>() }
-                    val apiLoading = remember { mutableStateMapOf<String, Boolean>() }
-                    val localInputs = remember { mutableStateMapOf<String, String>() }
-                    
-                    LaunchedEffect(Unit) {
-                        try {
-                            val pkgs = authViewModel.gateway.getPackages()
-                            if (pkgs.isNotEmpty()) {
-                                packagesList = pkgs.filter { pkg -> 
-                                    pkg.accountName.trim().lowercase() in targetPackages 
-                                }.map { pkg ->
-                                    val keyName = pkg.accountName.trim().lowercase()
-                                    val label = if (currentLang == "ar") {
-                                        when (keyName) {
-                                            "economy" -> "اقتصادي (Economy)"
-                                            "standard" -> "اعتيادي (Standard)"
-                                            "plus" -> "بلس (Plus)"
-                                            "turbo" -> "توربو (Turbo)"
-                                            "more" -> "مور (More)"
-                                            "business" -> "بزنس (Business)"
-                                            else -> pkg.accountName
-                                        }
-                                    } else {
-                                        pkg.accountName
-                                    }
-                                    Triple(keyName, label, pkg.accountIndex)
+                }
+                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = Color.White.copy(alpha = 0.4f), modifier = Modifier.size(16.dp))
+            }
+        }
+    }
+}
+
+// 5. DEVELOPER SECTION (DEBUG ONLY)
+@Composable
+private fun DeveloperSection(
+    isDemoMode: Boolean,
+    onToggleDemo: (Boolean) -> Unit,
+    dashboardViewModel: DashboardViewModel,
+    currentLang: String
+) {
+    var showConfirmDelete by rememberSaveable { mutableStateOf(false) }
+    var unsyncedWarningClearDataDialog by rememberSaveable { mutableStateOf(false) }
+    var pendingClearDataCountState by rememberSaveable { mutableStateOf(0) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Demo Mode Switch
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = if (currentLang == "ar") "وضع التجريب المحلي (Demo Sandbox)" else "Demo Sandbox Mode",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                Text(
+                    text = if (currentLang == "ar") "توليد بيانات وهمية دون إرسال طلبات حقيقية للبوابة" else "Uses local mock dataset without hitting live gateway",
+                    fontSize = 10.sp,
+                    color = Color.White.copy(alpha = 0.45f)
+                )
+            }
+            Switch(
+                checked = isDemoMode,
+                onCheckedChange = { onToggleDemo(it) }
+            )
+        }
+
+        // Clear All Data Action
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0xFFEF4444).copy(alpha = 0.1f),
+            border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.3f)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showConfirmDelete = true }
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(Icons.Default.DeleteForever, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = if (currentLang == "ar") "مسح جميع البيانات المحلية (Clear Local DB)" else "Purge All Local DB Data",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFEF4444)
+                )
+            }
+        }
+    }
+
+    if (showConfirmDelete) {
+        AlertDialog(
+            onDismissRequest = { showConfirmDelete = false },
+            title = { Text(if (currentLang == "ar") "مسح البيانات المحلية نهائياً؟" else "Delete Local Data?") },
+            text = { Text(if (currentLang == "ar") "سيتم مسح جميع البيانات المحلية من هذا الجهاز. هل أنت متأكد؟" else "All local data will be permanently cleared from this device.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showConfirmDelete = false
+                        dashboardViewModel.clearLocalData(
+                            force = false,
+                            onSuccess = {},
+                            onError = { err ->
+                                if (err.startsWith("UNSYNCED_CHANGES:")) {
+                                    pendingClearDataCountState = err.substringAfter("UNSYNCED_CHANGES:").toIntOrNull() ?: 1
+                                    unsyncedWarningClearDataDialog = true
                                 }
                             }
-                        } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;}
-                        
-                        packagesList.forEach { (key, _, index) ->
-                            val currentCustom = prefs.getPackageSellingPrice(key, 0.0)
-                            localInputs[key] = com.example.core.ledger.MoneyParser.formatIqdToUiString(currentCustom)
-                            apiLoading[key] = true
-                        }
-                        
-                        val scope = this
-                        packagesList.forEach { (key, _, index) ->
-                            scope.launch {
-                                try {
-                                    val cost = authViewModel.gateway.getAccountCost(index)
-                                    apiCosts[key] = cost
-                                } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                                    apiCosts[key] = 0.0
-                                } finally {
-                                    apiLoading[key] = false
+                        )
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                ) {
+                    Text(if (currentLang == "ar") "حذف نهائي" else "Permanent Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirmDelete = false }) {
+                    Text(if (currentLang == "ar") "إلغاء" else "Cancel")
+                }
+            }
+        )
+    }
+
+    if (unsyncedWarningClearDataDialog) {
+        AlertDialog(
+            onDismissRequest = { unsyncedWarningClearDataDialog = false },
+            title = { Text(if (currentLang == "ar") "تنبيه: تغييرات غير متزامنة!" else "Warning: Unsynced Changes!") },
+            text = {
+                Text(
+                    if (currentLang == "ar")
+                        "يوجد $pendingClearDataCountState عملية لم يتم رفعها للسيرفر بعد. مسح البيانات سيحذفها نهائياً!"
+                    else
+                        "There are $pendingClearDataCountState unsynced operations. Clearing will permanently delete them!"
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        unsyncedWarningClearDataDialog = false
+                        dashboardViewModel.clearLocalData(
+                            force = true,
+                            onSuccess = {},
+                            onError = {}
+                        )
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                ) {
+                    Text(if (currentLang == "ar") "حذف بالقوة" else "Force Clear")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { unsyncedWarningClearDataDialog = false }) {
+                    Text(if (currentLang == "ar") "إلغاء" else "Cancel")
+                }
+            }
+        )
+    }
+}
+
+// 6. PRICING MANAGEMENT DIALOG
+@Composable
+private fun PricingManagementDialog(
+    authViewModel: AuthViewModel,
+    currentLang: String,
+    onDismiss: () -> Unit
+) {
+    val prefs = authViewModel.prefs
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .fillMaxHeight(0.88f)
+                .padding(vertical = 12.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = Color(0xFF11161F),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+        ) {
+            val targetPackages = listOf("economy", "plus", "standard", "turbo", "more", "business")
+            val fallbackPackages = listOf(
+                Triple("economy", if (currentLang == "ar") "اقتصادي (Economy)" else "Economy", 2),
+                Triple("plus", if (currentLang == "ar") "بلس (Plus)" else "Plus", 4),
+                Triple("standard", if (currentLang == "ar") "اعتيادي (Standard)" else "Standard", 3),
+                Triple("turbo", if (currentLang == "ar") "توربو (Turbo)" else "Turbo", 5),
+                Triple("more", if (currentLang == "ar") "مور (More)" else "More", 6),
+                Triple("business", if (currentLang == "ar") "بزنس (Business)" else "Business", 7)
+            )
+
+            var packagesList by remember { mutableStateOf<List<Triple<String, String, Int>>>(fallbackPackages) }
+            val apiCosts = remember { mutableStateMapOf<String, Double>() }
+            val apiLoading = remember { mutableStateMapOf<String, Boolean>() }
+            val localInputs = remember { mutableStateMapOf<String, String>() }
+
+            LaunchedEffect(Unit) {
+                try {
+                    val pkgs = authViewModel.gateway.getPackages()
+                    if (pkgs.isNotEmpty()) {
+                        packagesList = pkgs.filter { pkg ->
+                            pkg.accountName.trim().lowercase() in targetPackages
+                        }.map { pkg ->
+                            val keyName = pkg.accountName.trim().lowercase()
+                            val label = if (currentLang == "ar") {
+                                when (keyName) {
+                                    "economy" -> "اقتصادي (Economy)"
+                                    "standard" -> "اعتيادي (Standard)"
+                                    "plus" -> "بلس (Plus)"
+                                    "turbo" -> "توربو (Turbo)"
+                                    "more" -> "مور (More)"
+                                    "business" -> "بزنس (Business)"
+                                    else -> pkg.accountName
                                 }
+                            } else {
+                                pkg.accountName
                             }
+                            Triple(keyName, label, pkg.accountIndex)
                         }
                     }
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                }
 
-                    Column(
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Text(
-                            text = if (currentLang == "ar") "أسعار بيع الاشتراكات" else "Subscription Selling Prices",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
-                            color = Color.White,
-                            textAlign = TextAlign.Center,
+                packagesList.forEach { (key, _, _) ->
+                    val currentCustom = prefs.getPackageSellingPrice(key, 0.0)
+                    localInputs[key] = MoneyParser.formatIqdToUiString(currentCustom)
+                    apiLoading[key] = true
+                }
+
+                packagesList.forEach { (key, _, index) ->
+                    launch {
+                        try {
+                            val cost = authViewModel.gateway.getAccountCost(index)
+                            apiCosts[key] = cost
+                        } catch (e: Exception) {
+                            if (e is kotlinx.coroutines.CancellationException) throw e
+                            apiCosts[key] = 0.0
+                        } finally {
+                            apiLoading[key] = false
+                        }
+                    }
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Dialog Header
+                    Text(
+                        text = if (currentLang == "ar") "أسعار بيع باقات الاشتراك" else "Subscription Retail Prices",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 16.sp,
+                        color = Color.White
+                    )
+                    Text(
+                        text = if (currentLang == "ar") "اضبط أسعار البيع بالآلاف (مثال: 35 يعني 35,000 د.ع) لحساب أرباحك تلقائياً." else "Configure retail selling prices (e.g. 35 = 35,000 IQD).",
+                        fontSize = 11.sp,
+                        color = Color.White.copy(alpha = 0.5f)
+                    )
+
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+
+                    packagesList.forEach { (key, label, _) ->
+                        val sellingPriceInput = localInputs[key] ?: ""
+                        val apiCost = apiCosts[key] ?: 0.0
+                        val customSellingPrice = MoneyParser.parseSubscriptionPriceIqd(sellingPriceInput)?.toDouble() ?: 0.0
+                        val profit = customSellingPrice - apiCost
+
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFF171E29),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
                             modifier = Modifier.fillMaxWidth()
-                        )
-                        Text(
-                            text = if (currentLang == "ar") {
-                                "اضبط أسعار بيع الاشتراكات لتسهيل المحاسبة والربح التلقائي في التطبيق."
-                            } else {
-                                "Configure retail selling prices for simplified accounting and automatic profit calculations in the app."
-                            },
-                            color = Color(0xFF8E8E93),
-                            fontSize = 11.sp,
-                            lineHeight = 14.sp,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
-                        
-                        packagesList.forEach { (key, label, _) ->
-                            val sellingPriceInput = localInputs[key] ?: ""
-                            
-                            val apiCost = apiCosts[key] ?: 0.0
-                            val customSellingPrice = com.example.core.ledger.MoneyParser.parseSubscriptionPriceIqd(sellingPriceInput)?.toDouble() ?: 0.0
-                            val profit = customSellingPrice - apiCost
-                            
-                            val apiText = if (apiLoading[key] == true) {
-                                if (currentLang == "ar") "جاري التحميل..." else "Loading..."
-                            } else if (apiCost > 0.0) {
-                                com.example.core.ledger.MoneyParser.formatIqdForDisplay(apiCost.toDouble()) + (if (currentLang == "ar") " د.ع" else " IQD")
-                            } else {
-                                if (currentLang == "ar") "غير متوفر" else "N/A"
-                            }
-                            
+                        ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .background(Color(0xFF2C2C2E).copy(alpha = 0.4f), RoundedCornerShape(10.dp))
-                                    .border(1.dp, Color(0xFF2C2C2E), RoundedCornerShape(10.dp))
                                     .padding(10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Column(modifier = Modifier.weight(1.2f)) {
-                                    Text(text = label, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Color.White)
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = if (currentLang == "ar") "تكلفة الاشتراك: " else "Subscription Cost: ",
-                                            color = Color(0xFF8E8E93),
-                                            fontSize = 11.sp
-                                        )
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(text = label, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(text = if (currentLang == "ar") "التكلفة:" else "Cost:", fontSize = 10.sp, color = Color.White.copy(alpha = 0.45f))
                                         if (apiLoading[key] == true) {
-                                            CircularProgressIndicator(modifier = Modifier.size(10.dp), strokeWidth = 1.dp, color = Color(0xFF007AFF))
+                                            CircularProgressIndicator(modifier = Modifier.size(8.dp), color = Color(0xFF38BDF8), strokeWidth = 1.dp)
                                         } else {
                                             Text(
-                                                text = apiText,
-                                                color = if (apiCost > 0.0) Color(0xFFE5E5EA) else Color(0xFFFF453A),
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Medium
+                                                text = if (apiCost > 0.0) "${MoneyParser.formatIqdForDisplay(apiCost)} ${if (currentLang == "ar") "د.ع" else "IQD"}" else "N/A",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Color.White.copy(alpha = 0.8f)
                                             )
                                         }
                                     }
+
                                     if (customSellingPrice > 0.0 && apiCost > 0.0) {
-                                        Spacer(modifier = Modifier.height(2.dp))
                                         Text(
-                                            text = if (currentLang == "ar") {
-                                                "الربح المتوقع: +${com.example.core.ledger.MoneyParser.formatIqdForDisplay(profit.toDouble())} د.ع"
-                                            } else {
-                                                "Estimated Profit: +${com.example.core.ledger.MoneyParser.formatIqdForDisplay(profit.toDouble())} IQD"
-                                            },
-                                            color = if (profit >= 0.0) Color(0xFF30D158) else Color(0xFFFF453A),
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold
+                                            text = "${if (currentLang == "ar") "الربح:" else "Profit:"} +${MoneyParser.formatIqdForDisplay(profit)} ${if (currentLang == "ar") "د.ع" else "IQD"}",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (profit >= 0.0) Color(0xFF10B981) else Color(0xFFEF4444)
                                         )
                                     }
                                 }
-                                
-                                Spacer(modifier = Modifier.width(8.dp))
-                                
+
                                 OutlinedTextField(
                                     value = sellingPriceInput,
                                     onValueChange = { input ->
-                                        val cleanInput = input.filter { it.isDigit() }
-                                        localInputs[key] = cleanInput
+                                        localInputs[key] = input.filter { it.isDigit() }
                                     },
-                                    modifier = Modifier.width(95.dp),
+                                    modifier = Modifier.width(90.dp),
                                     singleLine = true,
-                                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = Color.White, textAlign = androidx.compose.ui.text.style.TextAlign.Center, fontWeight = FontWeight.Bold),
+                                    textStyle = TextStyle(fontSize = 13.sp, color = Color.White, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold),
                                     suffix = {
                                         Text(
                                             text = if (currentLang == "ar") "ألف" else "k",
-                                            color = Color(0xFF8E8E93),
+                                            color = Color.White.copy(alpha = 0.4f),
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold
                                         )
                                     },
                                     placeholder = {
                                         Text(
-                                            text = com.example.core.ledger.MoneyParser.formatIqdToUiString(apiCost).ifEmpty { "0" },
+                                            text = MoneyParser.formatIqdToUiString(apiCost).ifEmpty { "0" },
                                             color = Color.White.copy(alpha = 0.2f),
                                             fontSize = 11.sp,
-                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                            textAlign = TextAlign.Center,
                                             modifier = Modifier.fillMaxWidth()
                                         )
                                     },
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedTextColor = Color.White,
                                         unfocusedTextColor = Color.White,
-                                        focusedBorderColor = Color(0xFF007AFF),
-                                        unfocusedBorderColor = Color(0xFF3A3A3C),
-                                        focusedContainerColor = Color(0xFF1C1C1E),
-                                        unfocusedContainerColor = Color(0xFF1C1C1E)
+                                        focusedBorderColor = Color(0xFF0288D1),
+                                        unfocusedBorderColor = Color.White.copy(alpha = 0.15f),
+                                        focusedContainerColor = Color(0xFF11161F),
+                                        unfocusedContainerColor = Color(0xFF11161F)
                                     ),
-                                    keyboardOptions = KeyboardOptions(
-                                        keyboardType = KeyboardType.Number
-                                    )
-                                )
-                            }
-                        }
-                        
-                        Spacer(modifier = Modifier.height(8.dp))
-                        
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Button(
-                                onClick = { showPricingDialog = false },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A3A3C)),
-                                modifier = Modifier.weight(1f).height(48.dp),
-                                shape = RoundedCornerShape(10.dp)
-                            ) {
-                                Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
-                            }
-                            
-                            Button(
-                                onClick = {
-                                    localInputs.forEach { (k, v) ->
-                                        val priceVal = com.example.core.ledger.MoneyParser.parseSubscriptionPriceIqd(v)?.toDouble() ?: 0.0
-                                        if (priceVal >= 0.0) {
-                                            prefs.setPackageSellingPrice(k, priceVal)
-                                        }
-                                    }
-                                    showPricingDialog = false
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF)),
-                                modifier = Modifier.weight(3.5f).height(48.dp),
-                                shape = RoundedCornerShape(10.dp)
-                            ) {
-                                Text(
-                                    text = if (currentLang == "ar") "حفظ" else "Save",
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
+                                    shape = RoundedCornerShape(10.dp),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                                 )
                             }
                         }
                     }
                 }
-            }
-        }
 
-        // --- LEGAL & PRIVACY ---
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-
-            if (showLogoutConfirmDialog) {
-                AlertDialog(
-                    onDismissRequest = { showLogoutConfirmDialog = false },
-                    title = { Text(if (currentLang == "ar") "تأكيد تسجيل الخروج" else "Confirm Sign Out") },
-                    text = { Text(if (currentLang == "ar") "هل أنت تأكد من تسجيل الخروج؟ سيتم إغلاق الجلسة ومسح قاعدة البيانات المحلية من هذا الجهاز." else "Are you sure you want to sign out? Your session will end and local database tables will be cleared.") },
-                    confirmButton = {
-                        Button(
-                            onClick = {
-                                showLogoutConfirmDialog = false
-                                authViewModel.logout(
-                                    force = false,
-                                    onSuccess = {
-                                        prefs.clearAll()
-                                        onLogout()
-                                    },
-                                    onError = { err ->
-                                        if (err.startsWith("UNSYNCED_CHANGES:")) {
-                                            pendingCountState = err.substringAfter("UNSYNCED_CHANGES:").toIntOrNull() ?: 1
-                                            unsyncedWarningDialog = true
-                                        } else {
-                                            prefs.clearAll()
-                                            onLogout()
-                                        }
-                                    }
-                                )
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF453A))
-                        ) {
-                            Text(if (currentLang == "ar") "تسجيل الخروج" else "Sign Out")
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showLogoutConfirmDialog = false }) {
-                            Text(if (currentLang == "ar") "إلغاء" else "Cancel")
-                        }
-                    }
-                )
-            }
-
-            if (unsyncedWarningDialog) {
-                AlertDialog(
-                    onDismissRequest = { unsyncedWarningDialog = false },
-                    title = { Text(if (currentLang == "ar") "تنبيه: تغييرات غير مزامنة!" else "Warning: Unsynced Changes!") },
-                    text = { 
-                        Text(
-                            if (currentLang == "ar") 
-                                "يوجد $pendingCountState عملية لم يتم رفعها للسيرفر بعد. تسجيل الخروج الآن سيؤدي لحذف هذه البيانات نهائياً من هذا الجهاز!" 
-                            else 
-                                "There are $pendingCountState unsynced operations pending. Signing out now will permanently delete these local changes!"
-                        ) 
-                    },
-                    confirmButton = {
-                        Button(
-                            onClick = {
-                                unsyncedWarningDialog = false
-                                authViewModel.logout(
-                                    force = true,
-                                    onSuccess = {
-                                        prefs.clearAll()
-                                        onLogout()
-                                    },
-                                    onError = {
-                                        prefs.clearAll()
-                                        onLogout()
-                                    }
-                                )
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF453A))
-                        ) {
-                            Text(if (currentLang == "ar") "خروج بالقوة (حذف البيانات)" else "Force Sign Out (Delete)")
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { unsyncedWarningDialog = false }) {
-                            Text(if (currentLang == "ar") "إلغاء" else "Cancel")
-                        }
-                    }
-                )
-            }
-
-            Text(
-                text = if (currentLang == "ar") "القانونية والخصوصية" else "Legal & Privacy",
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(horizontal = 4.dp)
-            )
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    TextButton(
-                        onClick = { uriHandler.openUri("https://docs.google.com/document/d/1e7gm4KkC1jjhwlm0YPQMVmwnJXP6eeWeKKJTWlzKg7w/edit?usp=sharing") },
-                        modifier = Modifier.fillMaxWidth()
+                // Action Buttons at Bottom
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(if (currentLang == "ar") "سياسة الخصوصية" else "Privacy Policy", color = MaterialTheme.colorScheme.onSurface)
-                            Icon(imageVector = Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        }
+                        Text(if (currentLang == "ar") "إلغاء" else "Cancel")
+                    }
+
+                    Button(
+                        onClick = {
+                            localInputs.forEach { (k, v) ->
+                                val priceVal = MoneyParser.parseSubscriptionPriceIqd(v)?.toDouble() ?: 0.0
+                                if (priceVal >= 0.0) {
+                                    prefs.setPackageSellingPrice(k, priceVal)
+                                }
+                            }
+                            onDismiss()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0288D1)),
+                        modifier = Modifier
+                            .weight(2f)
+                            .height(44.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(if (currentLang == "ar") "حفظ الأسعار" else "Save Prices", fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
             }
         }
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-
-
-        Button(
-            onClick = {
-                showLogoutConfirmDialog = true
-            },
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF453A)), // iOS Destructive Red
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Icon(imageVector = Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null, tint = Color.White)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = if (currentLang == "ar") "تسجيل الخروج الآمن" else "Secure logout",
-                fontWeight = FontWeight.Bold,
-                fontSize = 14.sp,
-                color = Color.White
-            )
-        }
-        Spacer(modifier = Modifier.height(20.dp))
     }
 }

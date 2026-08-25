@@ -26,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -36,6 +37,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -194,7 +196,7 @@ private fun parseExpirationTimestamp(dateStr: String?): Long? {
     return null
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun DashboardScreen(
     viewModel: DashboardViewModel,
@@ -231,15 +233,40 @@ fun DashboardScreen(
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val density = LocalDensity.current
 
     // Sorting & Filtering State
+    var showFinancialSummarySheet by rememberSaveable { mutableStateOf(false) }
+    val totalDebt = remember(localAccounts) {
+        localAccounts.filter { !it.isHistoryOnlySubscriber }.sumOf { it.debtIqd }
+    }
     var showSortSheet by rememberSaveable { mutableStateOf(false) }
+    var pendingSortOpen by rememberSaveable { mutableStateOf(false) }
     var selectedSort by rememberSaveable { mutableStateOf("نهاية الاشتراك") } // Options: "نهاية الاشتراك", "الاسم", "الدين"
     var selectedStatusFilter by rememberSaveable { mutableStateOf("الكل") } // Options: "الكل", "فعال", "قريب من الانتهاء", "منتهي"
 
     var isSearchActive by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
+
+    val isImeVisible = WindowInsets.isImeVisible
+    val imeInsets = WindowInsets.ime
+
+    LaunchedEffect(pendingSortOpen, isImeVisible) {
+        if (pendingSortOpen) {
+            if (!isImeVisible && imeInsets.getBottom(density) == 0) {
+                isSearchActive = false
+                showSortSheet = true
+                pendingSortOpen = false
+            } else {
+                snapshotFlow { imeInsets.getBottom(density) }
+                    .first { it == 0 }
+                isSearchActive = false
+                showSortSheet = true
+                pendingSortOpen = false
+            }
+        }
+    }
 
     // 1. FILTERING & SORTING VIA DERIVED STATE
     val filteredList by remember(subscribers, localAccounts, localAccountMatcher, selectedStatusFilter, selectedSort, isSearchActive, searchQuery) {
@@ -387,7 +414,7 @@ fun DashboardScreen(
         ) {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    // Compact Earthlink Header Row: [ E Logo ] --- [ Balance Capsule ] --- [ Filter Action ]
+                    // Compact Earthlink Header Row: [ E Logo ] <---> [ Balance Capsule + Filter Action ]
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -414,51 +441,79 @@ fun DashboardScreen(
                             )
                         }
 
-                        // Remaining Balance Capsule Promoted to Header
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                            shape = RoundedCornerShape(16.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        // Actions & Financial Balance Group
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            // Remaining Balance Capsule Promoted to Header (Clickable for Financial Breakdown)
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                modifier = Modifier
+                                    .height(38.dp)
+                                    .clickable {
+                                        val hadFocusOrKeyboard = isSearchActive || isImeVisible || imeInsets.getBottom(density) > 0
+                                        focusManager.clearFocus(force = true)
+                                        keyboardController?.hide()
+                                        showFinancialSummarySheet = true
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxHeight()
+                                        .padding(horizontal = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AccountBalanceWallet,
+                                        contentDescription = "Balance summary",
+                                        tint = Color(0xFF039BE5),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = formatIqd(balance),
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 13.sp,
+                                        color = Color(0xFF039BE5)
+                                    )
+                                }
+                            }
+
+                            // Filter / Sorting Action Button
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .background(
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                        shape = RoundedCornerShape(10.dp)
+                                    )
+                                    .border(
+                                        1.dp,
+                                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                        RoundedCornerShape(10.dp)
+                                    )
+                                    .clickable {
+                                        val hadFocusOrKeyboard = isSearchActive || isImeVisible || imeInsets.getBottom(density) > 0
+                                        focusManager.clearFocus(force = true)
+                                        keyboardController?.hide()
+                                        if (hadFocusOrKeyboard) {
+                                            pendingSortOpen = true
+                                        } else {
+                                            showSortSheet = true
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.AccountBalanceWallet,
-                                    contentDescription = null,
-                                    tint = Color(0xFF039BE5),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Text(
-                                    text = formatIqd(balance),
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 13.sp,
-                                    color = Color(0xFF039BE5)
+                                    imageVector = Icons.Default.Tune,
+                                    contentDescription = stringResource(id = R.string.action_sort_filter),
+                                    tint = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
-                        }
-
-                        // Filter / Sorting Action Button
-                        Box(
-                            modifier = Modifier
-                                .size(38.dp)
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape = CircleShape)
-                                .clickable {
-                                    focusManager.clearFocus(force = true)
-                                    keyboardController?.hide()
-                                    isSearchActive = false
-                                    showSortSheet = true
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Tune,
-                                contentDescription = stringResource(id = R.string.action_sort_filter),
-                                tint = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.size(20.dp)
-                            )
                         }
                     }
 
@@ -594,7 +649,7 @@ fun DashboardScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(bottom = if (isSearchActive) 16.dp else 24.dp)
+                .padding(bottom = 16.dp)
         ) { active ->
             if (active) {
                 Row(
@@ -729,125 +784,784 @@ fun DashboardScreen(
 
         // 2. MATERIAL 3 MODAL BOTTOM SHEET FOR SORT & FILTER
         if (showSortSheet) {
-            val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                SortAndFilterBottomSheet(
+                    selectedSort = selectedSort,
+                    onSortSelected = { selectedSort = it },
+                    selectedStatusFilter = selectedStatusFilter,
+                    onStatusFilterSelected = { selectedStatusFilter = it },
+                    onResetDefaults = {
+                        selectedSort = "نهاية الاشتراك"
+                        selectedStatusFilter = "الكل"
+                    },
+                    onDismissRequest = { showSortSheet = false }
+                )
+            }
+        }
 
-            ModalBottomSheet(
-                onDismissRequest = { showSortSheet = false },
-                sheetState = sheetState,
-                containerColor = Color(0xFF12181F),
-                contentColor = Color.White,
-                dragHandle = {
-                    BottomSheetDefaults.DragHandle(
-                        color = Color.White.copy(alpha = 0.25f)
-                    )
-                },
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+        // 3. MATERIAL 3 MODAL BOTTOM SHEET FOR FINANCIAL SUMMARY
+        if (showFinancialSummarySheet) {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                FinancialSummaryBottomSheet(
+                    balance = balance,
+                    totalDebt = totalDebt,
+                    prepaidNeeded = prepaidNeeded,
+                    forecastAfter = forecastAfter,
+                    testCount = testCount,
+                    isLoading = isLoading,
+                    onRefresh = { viewModel.loadDashboardData() },
+                    onDismissRequest = { showFinancialSummarySheet = false }
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun FinancialSummaryBottomSheet(
+    balance: Double,
+    totalDebt: Double,
+    prepaidNeeded: Double,
+    forecastAfter: Double,
+    testCount: Int,
+    isLoading: Boolean,
+    onRefresh: () -> Unit,
+    onDismissRequest: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    LaunchedEffect(Unit) {
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+    }
+
+    val isSufficient = forecastAfter >= 0.0
+    val deficitAmount = if (forecastAfter < 0) kotlin.math.abs(forecastAfter) else 0.0
+
+    ModalBottomSheet(
+        onDismissRequest = {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+            onDismissRequest()
+        },
+        sheetState = sheetState,
+        containerColor = Color(0xFF11161F),
+        contentColor = Color.White,
+        dragHandle = {
+            BottomSheetDefaults.DragHandle(
+                modifier = Modifier.padding(top = 10.dp, bottom = 6.dp),
+                color = Color.White.copy(alpha = 0.25f)
+            )
+        },
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    ) {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.Start
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp)
-                        .padding(bottom = 32.dp),
-                    horizontalAlignment = Alignment.End // RTL Arabic Support
+                // 1. Top Bar: Title on Right, Refresh Action on Left
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Head Title - "فرز وتصفية"
-                    Text(
-                        text = "فرز وتصفية",
-                        fontWeight = FontWeight.Black,
-                        fontSize = 16.sp,
-                        color = Color.White,
-                        textAlign = TextAlign.Right
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Section 1 - "ترتيب حسب"
-                    Text(
-                        text = "ترتيب حسب",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = Color.White.copy(alpha = 0.8f),
-                        textAlign = TextAlign.Right
-                    )
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    val sortOptions = listOf("نهاية الاشتراك", "الاسم", "الدين")
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
+                    Column(
+                        horizontalAlignment = Alignment.Start,
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        sortOptions.forEach { item ->
-                            val selected = selectedSort == item || (item == "الدين" && selectedSort == "دين المشترك")
-                            Box(
-                                modifier = Modifier
-                                    .background(
-                                        color = if (selected) Color(0xFF0288D1) else Color(0xFF1C242E),
-                                        shape = RoundedCornerShape(16.dp)
-                                    )
-                                    .clickable { selectedSort = item }
-                                    .padding(horizontal = 14.dp, vertical = 8.dp)
-                            ) {
-                                Text(
-                                    text = item,
-                                    color = if (selected) Color.White else Color.White.copy(alpha = 0.7f),
-                                    fontSize = 12.sp,
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                        Text(
+                            text = "تحليل الصندوق وتوقعات 7 أيام",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 17.sp,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "نظرة فورية على كفاية الرصيد للتجديدات القادمة",
+                            fontSize = 12.sp,
+                            color = Color.White.copy(alpha = 0.55f)
+                        )
+                    }
+
+                    // Refresh Button (Apple Glass style)
+                    Surface(
+                        onClick = onRefresh,
+                        shape = CircleShape,
+                        color = Color.White.copy(alpha = 0.08f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            if (isLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    color = Color(0xFF38BDF8),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "تحديث",
+                                    tint = Color.White.copy(alpha = 0.85f),
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
                     }
+                }
 
-                    Spacer(modifier = Modifier.height(18.dp))
-                    HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Section 2 - "حالة الاشتراك"
-                    Text(
-                        text = "حالة الاشتراك",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = Color.White.copy(alpha = 0.8f),
-                        textAlign = TextAlign.Right
+                // 2. HERO CARD: Smart Decision & Forecast
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(22.dp),
+                    color = Color(0xFF171E29),
+                    border = BorderStroke(
+                        1.dp,
+                        if (isSufficient) Color(0xFF10B981).copy(alpha = 0.35f) else Color(0xFFEF4444).copy(alpha = 0.35f)
                     )
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    val statusOptions = listOf("الكل", "فعال", "قريب من الانتهاء", "منتهي")
-                    Row(
+                ) {
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
+                            .padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                        horizontalAlignment = Alignment.Start
                     ) {
-                        statusOptions.forEach { item ->
-                            val selected = selectedStatusFilter == item
-                            Box(
-                                modifier = Modifier
-                                    .background(
-                                        color = if (selected) Color(0xFF0288D1) else Color(0xFF1C242E),
-                                        shape = RoundedCornerShape(16.dp)
-                                    )
-                                    .clickable { selectedStatusFilter = item }
-                                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                        // Top Header inside Hero: Title on Right, Status Pill on Left
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "الهامش المتوقع بعد 7 أيام",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White.copy(alpha = 0.8f)
+                            )
+
+                            // Status Pill
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = if (isSufficient) Color(0xFF10B981).copy(alpha = 0.15f) else Color(0xFFEF4444).copy(alpha = 0.15f),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isSufficient) Color(0xFF10B981).copy(alpha = 0.4f) else Color(0xFFEF4444).copy(alpha = 0.4f)
+                                )
                             ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(7.dp)
+                                            .background(
+                                                if (isSufficient) Color(0xFF10B981) else Color(0xFFEF4444),
+                                                shape = CircleShape
+                                            )
+                                    )
+                                    Text(
+                                        text = if (isSufficient) "الرصيد كافٍ ومغطى" else "تحتاج تعبئة رصيد",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (isSufficient) Color(0xFF10B981) else Color(0xFFEF4444)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Big Net Figure
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                            horizontalAlignment = Alignment.Start
+                        ) {
+                            Text(
+                                text = if (isSufficient) "+${formatIqd(forecastAfter)}" else "-${formatIqd(deficitAmount)}",
+                                fontSize = 30.sp,
+                                fontWeight = FontWeight.Black,
+                                color = if (isSufficient) Color(0xFF10B981) else Color(0xFFEF4444),
+                                letterSpacing = (-0.5).sp
+                            )
+                            Text(
+                                text = if (isSufficient) "فائض نقدي متاح بعد تغطية تجديدات الأسبوع" else "المبلغ المطلوب إيداعه لتغطية تجديدات الأسبوع",
+                                fontSize = 11.sp,
+                                color = Color.White.copy(alpha = 0.5f)
+                            )
+                        }
+
+                        // Subtle Divider
+                        HorizontalDivider(
+                            color = Color.White.copy(alpha = 0.08f),
+                            thickness = 1.dp
+                        )
+
+                        // Breakdown Details (Balance vs 7-Day Required)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Current Balance (Right in RTL)
+                            Column(
+                                horizontalAlignment = Alignment.Start,
+                                verticalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .background(Color(0xFF38BDF8), shape = CircleShape)
+                                    )
+                                    Text(
+                                        text = "رصيد الصندوق الحالي",
+                                        fontSize = 11.sp,
+                                        color = Color.White.copy(alpha = 0.6f)
+                                    )
+                                }
                                 Text(
-                                    text = item,
-                                    color = if (selected) Color.White else Color.White.copy(alpha = 0.7f),
-                                    fontSize = 12.sp,
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                    text = formatIqd(balance),
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF38BDF8)
+                                )
+                            }
+
+                            // 7-Day Needed (Left in RTL)
+                            Column(
+                                horizontalAlignment = Alignment.End,
+                                verticalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .background(Color(0xFF818CF8), shape = CircleShape)
+                                    )
+                                    Text(
+                                        text = "المطلوب للتجديد (7 أيام)",
+                                        fontSize = 11.sp,
+                                        color = Color.White.copy(alpha = 0.6f)
+                                    )
+                                }
+                                Text(
+                                    text = formatIqd(prepaidNeeded),
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFFE2E8F0)
                                 )
                             }
                         }
                     }
+                }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                // 3. SECONDARY CARDS (Trial Users & Total Debts)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Card 1: Active 24h Trial Users (Right in RTL)
+                    Surface(
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(18.dp),
+                        color = Color(0xFF171E29),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            horizontalAlignment = Alignment.Start
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "مستخدمي التجربة",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White.copy(alpha = 0.75f)
+                                )
+
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .background(Color(0xFF8B5CF6).copy(alpha = 0.15f), shape = RoundedCornerShape(10.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Bolt,
+                                        contentDescription = null,
+                                        tint = Color(0xFFA78BFA),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+
+                            Text(
+                                text = "$testCount مستخدم",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White
+                            )
+
+                            Text(
+                                text = "24 ساعة بدون خصم",
+                                fontSize = 10.sp,
+                                color = Color.White.copy(alpha = 0.45f)
+                            )
+                        }
+                    }
+
+                    // Card 2: Total Subscriber Debts (Left in RTL)
+                    Surface(
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(18.dp),
+                        color = Color(0xFF171E29),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            horizontalAlignment = Alignment.Start
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "إجمالي الديون",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White.copy(alpha = 0.75f)
+                                )
+
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .background(Color(0xFFF59E0B).copy(alpha = 0.15f), shape = RoundedCornerShape(10.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ReceiptLong,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFBBF24),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+
+                            Text(
+                                text = formatIqd(totalDebt),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White,
+                                maxLines = 1
+                            )
+
+                            Text(
+                                text = "مستحقات بذمة المشتركين",
+                                fontSize = 10.sp,
+                                color = Color.White.copy(alpha = 0.45f)
+                            )
+                        }
+                    }
                 }
             }
         }
     }
 }
 
-// Helper custom switch item row for the bottom sorting dialog
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SortAndFilterBottomSheet(
+    selectedSort: String,
+    onSortSelected: (String) -> Unit,
+    selectedStatusFilter: String,
+    onStatusFilterSelected: (String) -> Unit,
+    onResetDefaults: () -> Unit,
+    onDismissRequest: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    LaunchedEffect(Unit) {
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+    }
+
+    val dismissWithAction: (action: () -> Unit) -> Unit = { action ->
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+        scope.launch {
+            sheetState.hide()
+        }.invokeOnCompletion {
+            if (!sheetState.isVisible) {
+                onDismissRequest()
+                action()
+            }
+        }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+            onDismissRequest()
+        },
+        sheetState = sheetState,
+        containerColor = Color(0xFF11161F),
+        contentColor = Color.White,
+        dragHandle = {
+            BottomSheetDefaults.DragHandle(
+                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                color = Color.White.copy(alpha = 0.25f)
+            )
+        },
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // 1. Top Header Bar: Title & Subtitle (Right in RTL) + Reset Action (Left in RTL)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = "فرز وتصفية المشتركين",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 17.sp,
+                        color = Color.White
+                    )
+                    Text(
+                        text = "تخصيص أولوية الترتيب وحالات الحسابات",
+                        fontSize = 11.sp,
+                        color = Color.White.copy(alpha = 0.5f)
+                    )
+                }
+
+                val isCustomized = selectedSort != "نهاية الاشتراك" || selectedStatusFilter != "الكل"
+                if (isCustomized) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFF1E293B),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                        modifier = Modifier.clickable { onResetDefaults() }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.RestartAlt,
+                                contentDescription = "إعادة ضبط",
+                                tint = Color(0xFF94A3B8),
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Text(
+                                text = "إعادة ضبط",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF94A3B8)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 2. Card 1: معيار الترتيب (Apple Card Grouped Style)
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = Color(0xFF171E29),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .background(Color(0xFF0288D1).copy(alpha = 0.15f), shape = RoundedCornerShape(8.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SwapVert,
+                                contentDescription = null,
+                                tint = Color(0xFF38BDF8),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        Text(
+                            text = "ترتيب القائمة حسب",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White
+                        )
+                    }
+
+                    // 3 Sort Option Tiles
+                    val sortItems = listOf(
+                        Triple("نهاية الاشتراك", "تاريخ نهاية الاشتراك", "الأقرب انتهاءً أولاً لمتابعة التجديدات"),
+                        Triple("الدين", "حجم الدين والمستحقات", "المشتركون أصحاب الديون الأعلى أولاً"),
+                        Triple("الاسم", "الاسم أبجدياً", "ترتيب تصاعدي من أ إلى ي")
+                    )
+
+                    sortItems.forEach { (key, title, subtitle) ->
+                        val isSelected = selectedSort == key || (key == "الدين" && selectedSort == "دين المشترك")
+
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (isSelected) Color(0xFF0288D1).copy(alpha = 0.12f) else Color(0xFF121822),
+                            border = BorderStroke(
+                                1.dp,
+                                if (isSelected) Color(0xFF0288D1).copy(alpha = 0.5f) else Color.White.copy(alpha = 0.05f)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSortSelected(key) }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .background(
+                                                when (key) {
+                                                    "نهاية الاشتراك" -> Color(0xFF38BDF8).copy(alpha = 0.15f)
+                                                    "الدين" -> Color(0xFFF59E0B).copy(alpha = 0.15f)
+                                                    else -> Color(0xFFA78BFA).copy(alpha = 0.15f)
+                                                },
+                                                shape = RoundedCornerShape(10.dp)
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = when (key) {
+                                                "نهاية الاشتراك" -> Icons.Default.Schedule
+                                                "الدين" -> Icons.Default.ReceiptLong
+                                                else -> Icons.Default.Person
+                                            },
+                                            contentDescription = null,
+                                            tint = when (key) {
+                                                "نهاية الاشتراك" -> Color(0xFF38BDF8)
+                                                "الدين" -> Color(0xFFFBBF24)
+                                                else -> Color(0xFFA78BFA)
+                                            },
+                                            modifier = Modifier.size(17.dp)
+                                        )
+                                    }
+
+                                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                        Text(
+                                            text = title,
+                                            fontSize = 13.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) Color.White else Color.White.copy(alpha = 0.85f)
+                                        )
+                                        Text(
+                                            text = subtitle,
+                                            fontSize = 10.sp,
+                                            color = Color.White.copy(alpha = 0.45f)
+                                        )
+                                    }
+                                }
+
+                                // Selection Indicator Circle
+                                Box(
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .border(
+                                            1.5.dp,
+                                            if (isSelected) Color(0xFF0288D1) else Color.White.copy(alpha = 0.25f),
+                                            CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (isSelected) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(10.dp)
+                                                .background(Color(0xFF0288D1), CircleShape)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. Card 2: تصفية الحالة (Apple Card Grouped Style)
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = Color(0xFF171E29),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .background(Color(0xFF10B981).copy(alpha = 0.15f), shape = RoundedCornerShape(8.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = null,
+                                tint = Color(0xFF10B981),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        Text(
+                            text = "تصفية حسب حالة المشترك",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White
+                        )
+                    }
+
+                    // 4 Modern Status Pills (2x2 Grid)
+                    val statusFilters = listOf(
+                        Pair("الكل", Color(0xFF94A3B8)),
+                        Pair("فعال", Color(0xFF10B981)),
+                        Pair("قريب من الانتهاء", Color(0xFFF59E0B)),
+                        Pair("منتهي", Color(0xFFEF4444))
+                    )
+
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            statusFilters.take(2).forEach { (status, dotColor) ->
+                                StatusFilterPill(
+                                    title = status,
+                                    dotColor = dotColor,
+                                    isSelected = selectedStatusFilter == status,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = { onStatusFilterSelected(status) }
+                                )
+                            }
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            statusFilters.drop(2).forEach { (status, dotColor) ->
+                                StatusFilterPill(
+                                    title = status,
+                                    dotColor = dotColor,
+                                    isSelected = selectedStatusFilter == status,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = { onStatusFilterSelected(status) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusFilterPill(
+    title: String,
+    dotColor: Color,
+    isSelected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = if (isSelected) dotColor.copy(alpha = 0.15f) else Color(0xFF121822),
+        border = BorderStroke(
+            1.dp,
+            if (isSelected) dotColor.copy(alpha = 0.55f) else Color.White.copy(alpha = 0.06f)
+        ),
+        modifier = modifier
+            .height(42.dp)
+            .clickable { onClick() }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(dotColor, CircleShape)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = title,
+                fontSize = 12.sp,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                color = if (isSelected) Color.White else Color.White.copy(alpha = 0.75f),
+                maxLines = 1
+            )
+        }
+    }
+}
+
