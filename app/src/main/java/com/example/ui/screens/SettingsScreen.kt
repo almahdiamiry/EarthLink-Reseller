@@ -1447,40 +1447,48 @@ private fun SyncAndBackupSection(
                     }
                 }
 
-                // End side: Status Badge + Action Button
+                // End side: Status Badge (when idle) + Action Button
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = badgeBg
-                    ) {
-                        Text(
-                            text = badgeText,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = badgeTextClr,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
+                    if (!isSyncing) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = badgeBg
+                        ) {
+                            Text(
+                                text = badgeText,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = badgeTextClr,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
                     }
 
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = if (isSyncing) Color(0xFF1E293B) else Color(0xFF0288D1),
-                        border = if (isSyncing) BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)) else null,
+                        color = if (isSyncing) Color(0xFF0288D1).copy(alpha = 0.15f) else Color(0xFF0288D1),
+                        border = if (isSyncing) BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.3f)) else null,
                         modifier = Modifier.clickable(enabled = !isSyncing) { onTriggerSync() }
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
                             if (isSyncing) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(12.dp),
                                     color = Color(0xFF38BDF8),
                                     strokeWidth = 1.5.dp
+                                )
+                                Text(
+                                    text = if (currentLang == "ar") "جاري المزامنة..." else "Syncing...",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF38BDF8)
                                 )
                             } else {
                                 Icon(
@@ -1489,17 +1497,13 @@ private fun SyncAndBackupSection(
                                     tint = Color.White,
                                     modifier = Modifier.size(13.dp)
                                 )
+                                Text(
+                                    text = if (currentLang == "ar") "مزامنة الآن" else "Sync Now",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
                             }
-                            Text(
-                                text = if (currentLang == "ar") {
-                                    if (isSyncing) "مزامنة..." else "مزامنة الآن"
-                                } else {
-                                    if (isSyncing) "Syncing..." else "Sync Now"
-                                },
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isSyncing) Color(0xFF38BDF8) else Color.White
-                            )
                         }
                     }
                 }
