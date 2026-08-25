@@ -39,6 +39,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -1436,17 +1437,24 @@ private fun SyncAndBackupSection(
                         tint = iconTint,
                         modifier = Modifier.size(20.dp)
                     )
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        modifier = Modifier.weight(1f, fill = false)
+                    ) {
                         Text(
                             text = if (currentLang == "ar") "المزامنة السحابية" else "Cloud Sync",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = subtitleText,
                             fontSize = 10.sp,
-                            color = subtitleColor
+                            color = subtitleColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -1466,7 +1474,9 @@ private fun SyncAndBackupSection(
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = badgeTextClr,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -1488,18 +1498,13 @@ private fun SyncAndBackupSection(
                                     color = Color(0xFF38BDF8),
                                     strokeWidth = 1.5.dp
                                 )
-                                val buttonSyncText = if (syncProgress.totalCount > 0 && syncProgress.phase == SyncPhase.UPLOADING) {
-                                    if (currentLang == "ar") "جاري المزامنة (${syncProgress.processedCount}/${syncProgress.totalCount})"
-                                    else "Syncing (${syncProgress.processedCount}/${syncProgress.totalCount})"
-                                } else {
-                                    if (currentLang == "ar") "جاري المزامنة..."
-                                    else "Syncing..."
-                                }
                                 Text(
-                                    text = buttonSyncText,
+                                    text = if (currentLang == "ar") "جاري المزامنة..." else "Syncing...",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF38BDF8)
+                                    color = Color(0xFF38BDF8),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             } else {
                                 Icon(
@@ -1512,7 +1517,9 @@ private fun SyncAndBackupSection(
                                     text = if (currentLang == "ar") "مزامنة الآن" else "Sync Now",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color.White
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
