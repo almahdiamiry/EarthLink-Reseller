@@ -348,9 +348,9 @@ class UtowerImporter(
                     }
 
                     appDatabase.syncMetadataDao().remove("last_sync_timestamp")
-                    appDatabase.syncMetadataDao().remove("coll_cursor:local_accounts")
-                    appDatabase.syncMetadataDao().remove("coll_cursor:local_ledger_entries")
-                    appDatabase.syncMetadataDao().remove("coll_cursor:import_batches")
+                    appDatabase.syncMetadataDao().remove("last_sync_local_accounts")
+                    appDatabase.syncMetadataDao().remove("last_sync_local_ledger_entries")
+                    appDatabase.syncMetadataDao().remove("last_sync_import_batches")
                     appDatabase.syncMetadataDao().put("replace_all_pending_reconciliation", "true")
                 }
 
@@ -717,9 +717,9 @@ class UtowerImporter(
                         }
 
                         appDatabase.syncMetadataDao().remove("last_sync_timestamp")
-                        appDatabase.syncMetadataDao().remove("coll_cursor:local_accounts")
-                        appDatabase.syncMetadataDao().remove("coll_cursor:local_ledger_entries")
-                        appDatabase.syncMetadataDao().remove("coll_cursor:import_batches")
+                        appDatabase.syncMetadataDao().remove("last_sync_local_accounts")
+                        appDatabase.syncMetadataDao().remove("last_sync_local_ledger_entries")
+                        appDatabase.syncMetadataDao().remove("last_sync_import_batches")
                         appDatabase.syncMetadataDao().put("replace_all_pending_reconciliation", "true")
                     }
 

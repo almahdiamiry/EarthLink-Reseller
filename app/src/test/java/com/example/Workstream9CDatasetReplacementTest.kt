@@ -172,9 +172,9 @@ class Workstream9CDatasetReplacementTest {
     @Test
     fun testReplacementResetsSyncCursors() = runBlocking {
         db.syncMetadataDao().put("last_sync_timestamp", "1700000000000")
-        db.syncMetadataDao().put("coll_cursor:local_accounts", "cursor_acc_123")
-        db.syncMetadataDao().put("coll_cursor:local_ledger_entries", "cursor_ledger_123")
-        db.syncMetadataDao().put("coll_cursor:import_batches", "cursor_batch_123")
+        db.syncMetadataDao().put("last_sync_local_accounts", "cursor_acc_123")
+        db.syncMetadataDao().put("last_sync_local_ledger_entries", "cursor_ledger_123")
+        db.syncMetadataDao().put("last_sync_import_batches", "cursor_batch_123")
 
         val subJson = JSONObject().apply {
             put("id", "ext_cursor_1")
@@ -199,9 +199,10 @@ class Workstream9CDatasetReplacementTest {
 
         // Sync cursors should be removed so subsequent sync starts fresh
         assertNull(db.syncMetadataDao().get("last_sync_timestamp"))
-        assertNull(db.syncMetadataDao().get("coll_cursor:local_accounts"))
-        assertNull(db.syncMetadataDao().get("coll_cursor:local_ledger_entries"))
-        assertNull(db.syncMetadataDao().get("coll_cursor:import_batches"))
+        assertNull(db.syncMetadataDao().get("last_sync_local_accounts"))
+        assertNull(db.syncMetadataDao().get("last_sync_local_ledger_entries"))
+        assertNull(db.syncMetadataDao().get("last_sync_import_batches"))
+        assertEquals("true", db.syncMetadataDao().get("replace_all_pending_reconciliation"))
     }
 
     @Test

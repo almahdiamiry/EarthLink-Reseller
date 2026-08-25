@@ -19,7 +19,8 @@ class LocalAccountsViewModel(
     private val utowerRepo: com.example.domain.repository.UtowerImportRepository,
     private val audit: com.example.domain.repository.AuditRepository,
     private val syncRepo: com.example.domain.repository.SyncRepository,
-    private val appDatabase: com.example.core.database.AppDatabase
+    private val appDatabase: com.example.core.database.AppDatabase,
+    private val prefs: com.example.core.security.PreferenceManager? = null
 ) : ViewModel() {
 
     private val _searchQuery = MutableStateFlow("")
@@ -37,7 +38,7 @@ class LocalAccountsViewModel(
     private val _filterCoordinates = MutableStateFlow(false)
     val filterCoordinates = _filterCoordinates.asStateFlow()
 
-    private val _sortOption = MutableStateFlow("name") // "name", "debt", "price"
+    private val _sortOption = MutableStateFlow(prefs?.getLocalAccountsSortOption() ?: "name") // "name", "debt", "price"
     val sortOption = _sortOption.asStateFlow()
 
     private val _displayLimit = MutableStateFlow(50)
@@ -103,7 +104,7 @@ class LocalAccountsViewModel(
     fun toggleFilterAdvance() { _displayLimit.value = 50; _filterAdvance.value = !_filterAdvance.value }
     fun toggleFilterNoUsername() { _displayLimit.value = 50; _filterNoUsername.value = !_filterNoUsername.value }
     fun toggleFilterCoordinates() { _displayLimit.value = 50; _filterCoordinates.value = !_filterCoordinates.value }
-    fun setSortOption(value: String) { _displayLimit.value = 50; _sortOption.value = value }
+    fun setSortOption(value: String) { _displayLimit.value = 50; _sortOption.value = value; prefs?.setLocalAccountsSortOption(value) }
 
     fun loadMore() {
         _displayLimit.value += 50

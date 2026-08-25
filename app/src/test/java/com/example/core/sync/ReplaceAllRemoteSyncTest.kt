@@ -315,4 +315,131 @@ class ReplaceAllRemoteSyncTest {
             assertTrue(retrievedTx!!.isSnapshotHistory)
         }
     }
+
+    private fun writeTarEntry(out: java.io.OutputStream, name: String, content: ByteArray) {
+        val header = ByteArray(512)
+        val nameBytes = name.toByteArray(Charsets.US_ASCII)
+        System.arraycopy(nameBytes, 0, header, 0, minOf(nameBytes.size, 100))
+        System.arraycopy("0000644\u0000".toByteArray(Charsets.US_ASCII), 0, header, 100, 8)
+        System.arraycopy("0000000\u0000".toByteArray(Charsets.US_ASCII), 0, header, 108, 8)
+        System.arraycopy("0000000\u0000".toByteArray(Charsets.US_ASCII), 0, header, 116, 8)
+        val sizeOctal = String.format("%011o ", content.size)
+        System.arraycopy(sizeOctal.toByteArray(Charsets.US_ASCII), 0, header, 124, 12)
+        val mtimeOctal = String.format("%011o ", System.currentTimeMillis() / 1000)
+        System.arraycopy(mtimeOctal.toByteArray(Charsets.US_ASCII), 0, header, 136, 12)
+        for (i in 148 until 156) header[i] = ' '.code.toByte()
+        header[156] = '0'.code.toByte()
+        System.arraycopy("ustar\u000000".toByteArray(Charsets.US_ASCII), 0, header, 257, 8)
+        var sum = 0
+        for (b in header) {
+            sum += (b.toInt() and 0xFF)
+        }
+        val checksumOctal = String.format("%06o\u0000 ", sum)
+        System.arraycopy(checksumOctal.toByteArray(Charsets.US_ASCII), 0, header, 148, 8)
+
+        out.write(header)
+        out.write(content)
+        val remainder = content.size % 512
+        if (remainder != 0) {
+            out.write(ByteArray(512 - remainder))
+        }
+    }
+
+    private fun createSampleTgzFile(fileName: String, jsonContent: String): java.io.File {
+        val tgzFile = java.io.File(context.cacheDir, fileName)
+        java.io.FileOutputStream(tgzFile).use { fos ->
+            java.util.zip.GZIPOutputStream(fos).use { gzos ->
+                val bytes = jsonContent.toByteArray(Charsets.UTF_8)
+                writeTarEntry(gzos, "utower_backup.json", bytes)
+                gzos.write(ByteArray(1024))
+            }
+        }
+        return tgzFile
+    }
+
+    // TEST 7 — JSON REPLACE-ALL CURSOR RESET REGRESSION
+    @Test
+    fun testJsonReplaceAll_clearsCanonicalSyncCursors_andSetsReconciliationMarker() {
+        runBlocking {
+            // Seed stale canonical cursor keys
+            db.syncMetadataDao().put("last_sync_timestamp", "old-global")
+            db.syncMetadataDao().put("last_sync_local_accounts", "old-account-cursor")
+            db.syncMetadataDao().put("last_sync_local_ledger_entries", "old-ledger-cursor")
+            db.syncMetadataDao().put("last_sync_import_batches", "old-batch-cursor")
+
+            val subJson = org.json.JSONObject().apply {
+                put("id", "ext_json_1")
+                put("name", "JSON Sub")
+                put("debt_iqd", 10000.0)
+            }.toString()
+
+            val preview = com.example.domain.repository.UtowerImportPreview(
+                parsedSubscribers = listOf(
+                    LocalAccount(id = "acc_json_1", displayName = "JSON Sub", debtIqd = 10000.0, rawJson = subJson)
+                ),
+                parsedTransactions = emptyList(),
+                totalCurrentDebtIqd = 10000.0
+            )
+
+            importer.importFromPreview(
+                preview = preview,
+                fileName = "replace_test.json",
+                fileHash = "hash_replace_test_json_001",
+                shouldReplace = true
+            )
+
+            // Assert canonical cursors are explicitly cleared
+            assertNull("last_sync_timestamp must be null", db.syncMetadataDao().get("last_sync_timestamp"))
+            assertNull("last_sync_local_accounts must be null", db.syncMetadataDao().get("last_sync_local_accounts"))
+            assertNull("last_sync_local_ledger_entries must be null", db.syncMetadataDao().get("last_sync_local_ledger_entries"))
+            assertNull("last_sync_import_batches must be null", db.syncMetadataDao().get("last_sync_import_batches"))
+
+            // Assert replace_all_pending_reconciliation is true
+            assertEquals("true", db.syncMetadataDao().get("replace_all_pending_reconciliation"))
+        }
+    }
+
+    // TEST 8 — TGZ REPLACE-ALL CURSOR RESET REGRESSION
+    @Test
+    fun testTgzReplaceAll_clearsCanonicalSyncCursors_andSetsReconciliationMarker() {
+        runBlocking {
+            // Seed stale canonical cursor keys
+            db.syncMetadataDao().put("last_sync_timestamp", "old-global")
+            db.syncMetadataDao().put("last_sync_local_accounts", "old-account-cursor")
+            db.syncMetadataDao().put("last_sync_local_ledger_entries", "old-ledger-cursor")
+            db.syncMetadataDao().put("last_sync_import_batches", "old-batch-cursor")
+
+            val sampleJson = org.json.JSONObject().apply {
+                put("subscribers", org.json.JSONArray().apply {
+                    put(org.json.JSONObject().apply {
+                        put("source_key", "sub_tgz_001")
+                        put("raw", org.json.JSONObject().apply {
+                            put("name", "TGZ Sub")
+                            put("debt", 15000.0)
+                        })
+                    })
+                })
+            }.toString()
+
+            val tgzFile = createSampleTgzFile("replace_test.tgz", sampleJson)
+
+            val result = importer.importFromFile(
+                sourceFile = tgzFile,
+                shouldReplace = true
+            )
+
+            assertTrue("TGZ import must succeed", result.success)
+
+            // Assert canonical cursors are explicitly cleared
+            assertNull("last_sync_timestamp must be null", db.syncMetadataDao().get("last_sync_timestamp"))
+            assertNull("last_sync_local_accounts must be null", db.syncMetadataDao().get("last_sync_local_accounts"))
+            assertNull("last_sync_local_ledger_entries must be null", db.syncMetadataDao().get("last_sync_local_ledger_entries"))
+            assertNull("last_sync_import_batches must be null", db.syncMetadataDao().get("last_sync_import_batches"))
+
+            // Assert replace_all_pending_reconciliation is true
+            assertEquals("true", db.syncMetadataDao().get("replace_all_pending_reconciliation"))
+
+            tgzFile.delete()
+        }
+    }
 }

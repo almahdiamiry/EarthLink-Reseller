@@ -46,6 +46,14 @@ class DashboardViewModel(
     private val _subscribersList = MutableStateFlow<List<UserListItem>>(emptyList())
     val subscribersList = _subscribersList.asStateFlow()
 
+    private val _selectedSort = MutableStateFlow(prefs.getDashboardSortOption())
+    val selectedSort = _selectedSort.asStateFlow()
+
+    fun setDashboardSortOption(sort: String) {
+        _selectedSort.value = sort
+        prefs.setDashboardSortOption(sort)
+    }
+
     init {
         loadDashboardData()
     }

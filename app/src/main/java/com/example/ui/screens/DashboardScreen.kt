@@ -242,7 +242,7 @@ fun DashboardScreen(
     }
     var showSortSheet by rememberSaveable { mutableStateOf(false) }
     var pendingSortOpen by rememberSaveable { mutableStateOf(false) }
-    var selectedSort by rememberSaveable { mutableStateOf("نهاية الاشتراك") } // Options: "نهاية الاشتراك", "الاسم", "الدين"
+    val selectedSort by viewModel.selectedSort.collectAsStateWithLifecycle()
     var selectedStatusFilter by rememberSaveable { mutableStateOf("الكل") } // Options: "الكل", "فعال", "قريب من الانتهاء", "منتهي"
 
     var isSearchActive by rememberSaveable { mutableStateOf(false) }
@@ -787,11 +787,11 @@ fun DashboardScreen(
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                 SortAndFilterBottomSheet(
                     selectedSort = selectedSort,
-                    onSortSelected = { selectedSort = it },
+                    onSortSelected = { viewModel.setDashboardSortOption(it) },
                     selectedStatusFilter = selectedStatusFilter,
                     onStatusFilterSelected = { selectedStatusFilter = it },
                     onResetDefaults = {
-                        selectedSort = "نهاية الاشتراك"
+                        viewModel.setDashboardSortOption("الاسم")
                         selectedStatusFilter = "الكل"
                     },
                     onDismissRequest = { showSortSheet = false }
@@ -1270,7 +1270,7 @@ fun SortAndFilterBottomSheet(
                     )
                 }
 
-                val isCustomized = selectedSort != "نهاية الاشتراك" || selectedStatusFilter != "الكل"
+                val isCustomized = selectedSort != "الاسم" || selectedStatusFilter != "الكل"
                 if (isCustomized) {
                     Surface(
                         shape = RoundedCornerShape(12.dp),
@@ -1340,9 +1340,9 @@ fun SortAndFilterBottomSheet(
 
                     // 3 Sort Option Tiles
                     val sortItems = listOf(
+                        Triple("الاسم", "الاسم أبجدياً", "ترتيب تصاعدي من أ إلى ي"),
                         Triple("نهاية الاشتراك", "تاريخ نهاية الاشتراك", "الأقرب انتهاءً أولاً لمتابعة التجديدات"),
-                        Triple("الدين", "حجم الدين والمستحقات", "المشتركون أصحاب الديون الأعلى أولاً"),
-                        Triple("الاسم", "الاسم أبجدياً", "ترتيب تصاعدي من أ إلى ي")
+                        Triple("الدين", "حجم الدين والمستحقات", "المشتركون أصحاب الديون الأعلى أولاً")
                     )
 
                     sortItems.forEach { (key, title, subtitle) ->
