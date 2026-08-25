@@ -351,6 +351,7 @@ class UtowerImporter(
                     appDatabase.syncMetadataDao().remove("coll_cursor:local_accounts")
                     appDatabase.syncMetadataDao().remove("coll_cursor:local_ledger_entries")
                     appDatabase.syncMetadataDao().remove("coll_cursor:import_batches")
+                    appDatabase.syncMetadataDao().put("replace_all_pending_reconciliation", "true")
                 }
 
                 val freshAccounts = appDatabase.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE)
@@ -719,6 +720,7 @@ class UtowerImporter(
                         appDatabase.syncMetadataDao().remove("coll_cursor:local_accounts")
                         appDatabase.syncMetadataDao().remove("coll_cursor:local_ledger_entries")
                         appDatabase.syncMetadataDao().remove("coll_cursor:import_batches")
+                        appDatabase.syncMetadataDao().put("replace_all_pending_reconciliation", "true")
                     }
 
                     val freshAccounts = appDatabase.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE)

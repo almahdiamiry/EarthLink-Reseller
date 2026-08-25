@@ -257,6 +257,83 @@ class SyncRepositoryImpl(
         }
     }
 
+    @androidx.annotation.VisibleForTesting
+    internal suspend fun executeRemoteReplaceAllReconciliation(): Boolean {
+        val fbAuth = auth
+        val fbFirestore = firestore
+        if (fbAuth == null || fbFirestore == null) {
+            Log.w("SyncRepository", "Firebase auth or firestore null during remote replace-all reconciliation.")
+            return false
+        }
+        val currentUid = fbAuth.currentUser?.uid
+        if (currentUid.isNullOrEmpty()) {
+            Log.w("SyncRepository", "User UID null during remote replace-all reconciliation.")
+            return false
+        }
+
+        return try {
+            val canonicalAccountIds = accountDao.getAllOneShot(limit = Int.MAX_VALUE).map { it.id }.toSet()
+            val canonicalLedgerIds = ledgerDao.getAllOneShot(limit = Int.MAX_VALUE).map { it.id }.toSet()
+            val canonicalBatchIds = batchDao.getAllOneShot().map { it.id }.toSet()
+
+            val collectionsToReconcile = listOf(
+                Pair("local_accounts", canonicalAccountIds),
+                Pair("local_ledger_entries", canonicalLedgerIds),
+                Pair("import_batches", canonicalBatchIds)
+            )
+
+            val deviceId = prefManager.getDeviceId()
+            val tombstonesToWrite = mutableListOf<Pair<com.google.firebase.firestore.DocumentReference, Map<String, Any?>>>()
+
+            for (coll in collectionsToReconcile) {
+                val collName = coll.first
+                val canonicalIds = coll.second
+
+                val collRef = fbFirestore.collection("users").document(currentUid).collection(collName)
+                val querySnapshot = collRef.get(Source.SERVER).await()
+
+                for (doc in querySnapshot.documents) {
+                    val data = doc.data ?: continue
+                    val docId = doc.id
+                    val deletedAt = RemoteSyncCursor.parseRemoteTimestamp(data["deletedAt"])
+                    val isDeleted = (deletedAt != null && deletedAt > 0L)
+
+                    if (!isDeleted && docId !in canonicalIds) {
+                        val tombstoneMap = mapOf<String, Any?>(
+                            "deletedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+                            "localUpdatedAt" to System.currentTimeMillis(),
+                            "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+                            "schemaVersion" to 1,
+                            "deviceId" to deviceId,
+                            "lastModifiedByDeviceId" to deviceId
+                        )
+                        tombstonesToWrite.add(Pair(doc.reference, tombstoneMap))
+                    }
+                }
+            }
+
+            if (tombstonesToWrite.isNotEmpty()) {
+                val chunks = tombstonesToWrite.chunked(500)
+                for (chunk in chunks) {
+                    val batch = fbFirestore.batch()
+                    for (item in chunk) {
+                        batch.set(item.first, item.second, SetOptions.merge())
+                    }
+                    batch.commit().await()
+                }
+                Log.i("SyncRepository", "Remote replace-all reconciliation wrote ${tombstonesToWrite.size} remote tombstones.")
+            } else {
+                Log.i("SyncRepository", "Remote replace-all reconciliation found zero remote-only active documents.")
+            }
+
+            true
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Log.e("SyncRepository", "Remote replace-all reconciliation failed", e)
+            false
+        }
+    }
+
     private suspend fun executeSyncPassInternal(): Boolean {
         _syncState.value = SyncStatusState.SYNCING
 
@@ -302,6 +379,17 @@ class SyncRepositoryImpl(
             if (appDatabase.importBatchDao().getIncompleteCount() > 0) {
                 Log.w("SyncRepository", "Sync paused because import is incomplete.")
                 return false
+            }
+
+            // Check for durable Replace-All remote reconciliation pending marker
+            if (metadataDao.get("replace_all_pending_reconciliation") == "true") {
+                val reconciliationSuccess = executeRemoteReplaceAllReconciliation()
+                if (!reconciliationSuccess) {
+                    Log.w("SyncRepository", "Replace-All remote reconciliation failed. Pausing sync until reconciliation succeeds.")
+                    _syncState.value = SyncStatusState.ERROR
+                    return false
+                }
+                metadataDao.remove("replace_all_pending_reconciliation")
             }
 
             // 1. Process local outbox changes and upload to Firestore
