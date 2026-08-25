@@ -1372,12 +1372,16 @@ private fun SyncAndBackupSection(
                     else "Uploading records (${syncProgress.processedCount}/${syncProgress.totalCount})"
                 }
                 syncProgress.phase == SyncPhase.DOWNLOADING -> {
-                    if (currentLang == "ar") "جاري جلب التحديثات..."
-                    else "Downloading updates..."
+                    if (currentLang == "ar") "جاري جلب التحديثات السحابية..."
+                    else "Downloading cloud updates..."
+                }
+                syncProgress.phase == SyncPhase.PREPARING -> {
+                    if (currentLang == "ar") "جاري فحص وتجهيز البيانات..."
+                    else "Preparing sync pass..."
                 }
                 else -> {
-                    if (currentLang == "ar") "جاري مزامنة قاعدة البيانات..."
-                    else "Syncing database..."
+                    if (currentLang == "ar") "بانتظار بدء المزامنة..."
+                    else "Waiting for sync to start..."
                 }
             }
         }
@@ -1484,8 +1488,15 @@ private fun SyncAndBackupSection(
                                     color = Color(0xFF38BDF8),
                                     strokeWidth = 1.5.dp
                                 )
+                                val buttonSyncText = if (syncProgress.totalCount > 0 && syncProgress.phase == SyncPhase.UPLOADING) {
+                                    if (currentLang == "ar") "جاري المزامنة (${syncProgress.processedCount}/${syncProgress.totalCount})"
+                                    else "Syncing (${syncProgress.processedCount}/${syncProgress.totalCount})"
+                                } else {
+                                    if (currentLang == "ar") "جاري المزامنة..."
+                                    else "Syncing..."
+                                }
                                 Text(
-                                    text = if (currentLang == "ar") "جاري المزامنة..." else "Syncing...",
+                                    text = buttonSyncText,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFF38BDF8)

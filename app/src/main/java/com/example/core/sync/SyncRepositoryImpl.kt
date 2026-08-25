@@ -180,8 +180,6 @@ class SyncRepositoryImpl(
             .setBackoffCriteria(backoffPolicy, backoffDelay, java.util.concurrent.TimeUnit.SECONDS)
             .build()
 
-        _syncState.value = SyncStatusState.SYNCING
-
         try {
             WorkManager.getInstance(context).enqueueUniqueWork(
                 "firebase_local_sync",
@@ -196,7 +194,6 @@ class SyncRepositoryImpl(
     }
 
     override fun triggerSync() {
-        _syncState.value = SyncStatusState.SYNCING
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
@@ -596,7 +593,11 @@ class SyncRepositoryImpl(
                 lastCompletedTime = completedTime
             )
             true
-        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            _syncState.value = SyncStatusState.IDLE
+            _syncProgress.value = _syncProgress.value.copy(isSyncing = false, phase = SyncPhase.IDLE)
+            throw e
+        } catch (e: Exception) {
             Log.e("FirebaseSync", "One shot sync error", e)
             val isAuthError = (e as? com.google.firebase.firestore.FirebaseFirestoreException)?.code == com.google.firebase.firestore.FirebaseFirestoreException.Code.PERMISSION_DENIED ||
                     (e.cause as? com.google.firebase.firestore.FirebaseFirestoreException)?.code == com.google.firebase.firestore.FirebaseFirestoreException.Code.PERMISSION_DENIED ||
@@ -618,6 +619,13 @@ class SyncRepositoryImpl(
                 lastError = e.message
             )
             false
+        } finally {
+            if (_syncState.value == SyncStatusState.SYNCING) {
+                _syncState.value = SyncStatusState.ERROR
+            }
+            if (_syncProgress.value.isSyncing) {
+                _syncProgress.value = _syncProgress.value.copy(isSyncing = false)
+            }
         }
     }
 
