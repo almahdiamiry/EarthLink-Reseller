@@ -108,11 +108,19 @@ android {
     unitTests {
       isIncludeAndroidResources = true
       all { testTask ->
-        testTask.jvmArgs(
+        val userHome = System.getProperty("user.home")
+        val bbAgentOpt = file("/opt/gradle/.gradle/caches/modules-2/files-2.1/net.bytebuddy/byte-buddy-agent/1.14.12/be4984cb6fd1ef1d11f218a648889dfda44b8a15/byte-buddy-agent-1.14.12.jar")
+        val bbAgentHome = file("$userHome/.gradle/caches/modules-2/files-2.1/net.bytebuddy/byte-buddy-agent/1.14.12/be4984cb6fd1ef1d11f218a648889dfda44b8a15/byte-buddy-agent-1.14.12.jar")
+        val agentFile = if (bbAgentOpt.exists()) bbAgentOpt else if (bbAgentHome.exists()) bbAgentHome else null
+
+        val jvmArguments = mutableListOf(
           "-XX:+EnableDynamicAgentLoading",
-          "-Dnet.bytebuddy.experimental=true",
-          "-javaagent:/opt/gradle/.gradle/caches/modules-2/files-2.1/net.bytebuddy/byte-buddy-agent/1.14.12/be4984cb6fd1ef1d11f218a648889dfda44b8a15/byte-buddy-agent-1.14.12.jar"
+          "-Dnet.bytebuddy.experimental=true"
         )
+        if (agentFile != null) {
+          jvmArguments.add("-javaagent:${agentFile.absolutePath}")
+        }
+        testTask.jvmArgs(jvmArguments)
       }
     }
   }

@@ -8,7 +8,9 @@ data class AccountBalances(
 
 object BalanceCalculator {
     fun applyTransaction(currentDebt: Double, currentAdvance: Double, currentLoan: Double, txType: String, amount: Double): AccountBalances {
-        return when (txType.lowercase()) {
+        // Optimization: Skip String allocation if txType is already lowercase
+        val lowerType = if (txType.all { !it.isUpperCase() }) txType else txType.lowercase()
+        return when (lowerType) {
             "took", "debt", "debt_added", "renewal", "renew", "sub_renew", "sub_renewal", "debt_renew" -> {
                 val advanceUsed = minOf(currentAdvance, amount)
                 val debtAdded = amount - advanceUsed
@@ -28,7 +30,9 @@ object BalanceCalculator {
     }
 
     fun revertTransaction(currentDebt: Double, currentAdvance: Double, currentLoan: Double, txType: String, amount: Double): AccountBalances {
-        return when (txType.lowercase()) {
+        // Optimization: Skip String allocation if txType is already lowercase
+        val lowerType = if (txType.all { !it.isUpperCase() }) txType else txType.lowercase()
+        return when (lowerType) {
             "gave", "payment", "deposit", "pay" -> {
                 val reversedAdvance = maxOf(0.0, currentAdvance - amount)
                 val remainingPaymentToRevert = maxOf(0.0, amount - currentAdvance)
@@ -86,10 +90,11 @@ object BalanceCalculator {
         val updatedEntries = mutableListOf<com.example.core.model.LocalLedgerEntry>()
 
         for (tx in sortedTxs) {
-            if (!TransactionTypeNormalizer.isRecognizedType(tx.typeRaw)) {
+            // Optimization: Normalize raw transaction type once per entry and reuse canonical type
+            val canonicalType = TransactionTypeNormalizer.normalizeTransactionType(tx.typeRaw)
+            if (!TransactionTypeNormalizer.isRecognizedCanonicalType(canonicalType)) {
                 onUnrecognizedType?.invoke(tx, tx.typeRaw ?: "NULL")
             }
-            val canonicalType = TransactionTypeNormalizer.normalizeTransactionType(tx.typeRaw)
             val updatedBalances = applyTransaction(
                 currentDebt = runningDebt,
                 currentAdvance = runningAdvance,

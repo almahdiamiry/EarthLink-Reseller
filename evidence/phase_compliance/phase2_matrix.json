@@ -12,7 +12,7 @@
       "adversarial_fixture_location": null,
       "registry_location": "contract/invariant_contract.yaml:INV-11,INV-14",
       "evidence_reference": "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase2RestoreTransactionBoundaryTest.xml, app/build/test-results/testDebugUnitTest/TEST-com.example.Phase2RestoreReplaceHardeningTest.xml, app/build/test-results/testDebugUnitTest/TEST-com.example.Phase2UtowerImportHardeningTest.xml",
-      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
+      "source_identity": "3a683b2805748676f267a62863c04909e894bb3b",
       "status": "PASS",
       "failure_reason": null
     },
@@ -27,7 +27,7 @@
       "adversarial_fixture_location": "app/src/test/java/com/example/Phase2RestoreMergeLineageTest.kt",
       "registry_location": "contract/invariant_contract.yaml:INV-01,INV-06,INV-11,INV-14",
       "evidence_reference": "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase2RestoreMergeLineageTest.xml",
-      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
+      "source_identity": "3a683b2805748676f267a62863c04909e894bb3b",
       "status": "PASS",
       "failure_reason": null
     },
@@ -42,7 +42,7 @@
       "adversarial_fixture_location": null,
       "registry_location": "contract/invariant_contract.yaml:INV-11,INV-14",
       "evidence_reference": "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase2RestoreTransactionBoundaryTest.xml",
-      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
+      "source_identity": "3a683b2805748676f267a62863c04909e894bb3b",
       "status": "PASS",
       "failure_reason": null
     },
@@ -57,7 +57,7 @@
       "adversarial_fixture_location": null,
       "registry_location": "contract/invariant_contract.yaml:INV-01,INV-06,INV-11",
       "evidence_reference": "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase2CurrentPositionReconstructionTest.xml",
-      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
+      "source_identity": "3a683b2805748676f267a62863c04909e894bb3b",
       "status": "PASS",
       "failure_reason": null
     },
@@ -72,7 +72,7 @@
       "adversarial_fixture_location": null,
       "registry_location": "contract/invariant_contract.yaml:INV-01,INV-11,INV-13,INV-14",
       "evidence_reference": "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase2TransportReconstructionIntegrationTest.xml, app/build/test-results/testDebugUnitTest/TEST-com.example.Phase2RestoreReplaceHardeningTest.xml, app/build/test-results/testDebugUnitTest/TEST-com.example.Phase2UtowerImportHardeningTest.xml",
-      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
+      "source_identity": "3a683b2805748676f267a62863c04909e894bb3b",
       "status": "PASS",
       "failure_reason": null
     },
@@ -87,7 +87,7 @@
       "adversarial_fixture_location": null,
       "registry_location": "contract/invariant_contract.yaml:INV-11,INV-14",
       "evidence_reference": "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase2RestoreReplaceHardeningTest.xml, app/build/test-results/testDebugUnitTest/TEST-com.example.Phase2UtowerImportHardeningTest.xml",
-      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
+      "source_identity": "3a683b2805748676f267a62863c04909e894bb3b",
       "status": "PASS",
       "failure_reason": null
     }

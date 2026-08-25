@@ -12,7 +12,7 @@
       "adversarial_fixture_location": "contract/forbidden_patterns.yaml:INV-13-no-terminal-dead-letter",
       "registry_location": "contract/invariant_contract.yaml:INV-13",
       "evidence_reference": "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1OutboxDurabilityTest.xml",
-      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
+      "source_identity": "3a683b2805748676f267a62863c04909e894bb3b",
       "status": "PASS",
       "failure_reason": null
     },
@@ -27,7 +27,7 @@
       "adversarial_fixture_location": null,
       "registry_location": null,
       "evidence_reference": "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1ItemIsolationTest.xml",
-      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
+      "source_identity": "3a683b2805748676f267a62863c04909e894bb3b",
       "status": "PASS",
       "failure_reason": null
     },
@@ -42,7 +42,7 @@
       "adversarial_fixture_location": null,
       "registry_location": "contract/invariant_contract.yaml:INV-13",
       "evidence_reference": "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1OrphanHandlingTest.xml",
-      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
+      "source_identity": "3a683b2805748676f267a62863c04909e894bb3b",
       "status": "PASS",
       "failure_reason": null
     },
@@ -57,7 +57,7 @@
       "adversarial_fixture_location": null,
       "registry_location": "contract/invariant_contract.yaml:INV-01,INV-13",
       "evidence_reference": "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1FirestoreDocumentIdentityTest.xml",
-      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
+      "source_identity": "3a683b2805748676f267a62863c04909e894bb3b",
       "status": "PASS",
       "failure_reason": null
     },
@@ -72,7 +72,7 @@
       "adversarial_fixture_location": null,
       "registry_location": "contract/invariant_contract.yaml:INV-01,INV-13",
       "evidence_reference": "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1RestoreTransportReconstructionTest.xml",
-      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
+      "source_identity": "3a683b2805748676f267a62863c04909e894bb3b",
       "status": "PASS",
       "failure_reason": null
     },
@@ -87,7 +87,7 @@
       "adversarial_fixture_location": null,
       "registry_location": "contract/invariant_contract.yaml:INV-11,INV-13",
       "evidence_reference": "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1AtomicityAndLostAckTest.xml, app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1G1PendingOperationDurabilityTest.xml",
-      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
+      "source_identity": "3a683b2805748676f267a62863c04909e894bb3b",
       "status": "PASS",
       "failure_reason": null
     },
@@ -102,7 +102,7 @@
       "adversarial_fixture_location": "app/src/test/java/com/example/Phase1TwoDeviceConvergenceTest.kt, app/src/test/java/com/example/Phase1SameIdDivergentPayloadTest.kt",
       "registry_location": "contract/invariant_contract.yaml:INV-01,INV-06,INV-11,INV-13",
       "evidence_reference": "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1TwoDeviceConvergenceTest.xml, app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1SameIdDivergentPayloadTest.xml, app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1DuplicateInitiationProtectionTest.xml, app/build/test-results/testDebugUnitTest/TEST-com.example.Phase1UnknownOutcomeResolutionTest.xml",
-      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
+      "source_identity": "3a683b2805748676f267a62863c04909e894bb3b",
       "status": "PASS",
       "failure_reason": null
     }
