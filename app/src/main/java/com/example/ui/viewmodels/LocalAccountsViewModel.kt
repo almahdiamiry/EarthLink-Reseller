@@ -305,6 +305,8 @@ class LocalAccountsViewModel(
                 
                 if (!result.success) {
                     _error.value = result.errorMessage ?: "Import failed during extraction or processing."
+                } else {
+                    syncRepo.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
                 }
             } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
                 _error.value = "Failed to process import: ${e.message}"
