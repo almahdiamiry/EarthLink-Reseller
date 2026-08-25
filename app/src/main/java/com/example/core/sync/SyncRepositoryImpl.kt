@@ -505,14 +505,10 @@ class SyncRepositoryImpl(
         dataMap["schemaVersion"] = 1
         if (item.entityType == "local_accounts" || item.entityType == "accounts") {
             dataMap["isFullSnapshot"] = true
-            // Strip ISP-specific diagnostic/meta fields only.
-            // Keep essential fields for multi-device sync, including nanoIp (Custom IP managed by reseller).
+            // Strip local-only source audit data (rawJson) only.
+            // Preserve stateSource, stateConfidence, snapshotCapturedAt, address, latitude, longitude, nanoIp
+            // to satisfy the mandatory minimal snapshot contract across remote round-trips.
             dataMap.remove("rawJson")
-            dataMap.remove("stateSource")
-            dataMap.remove("stateConfidence")
-            dataMap.remove("address")
-            dataMap.remove("latitude")
-            dataMap.remove("longitude")
         } else if (item.entityType == "local_ledger_entries" || item.entityType == "ledger" || item.entityType == "ledger_entries") {
             // LocalLedgerEntry.rawJson is local-only source/import data and must NOT be uploaded to Cloud Firestore.
             dataMap.remove("rawJson")
