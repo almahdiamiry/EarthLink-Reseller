@@ -317,7 +317,8 @@ fun UserDetailScreenV2(
                             BasicTextField(
                                 value = priceInput,
                                 onValueChange = { input ->
-                                    val trimmed = input.trim()
+                                    val cleanInput = input.replace("\n", "").replace("\r", "")
+                                    val trimmed = cleanInput.trim()
                                     if ((trimmed.all { it.isDigit() || it == '.' }) && trimmed.count { it == '.' } <= 1) {
                                         priceInput = trimmed
                                     }
@@ -336,6 +337,7 @@ fun UserDetailScreenV2(
                                             isFocused = false
                                         }
                                     },
+                                singleLine = true,
                                 textStyle = LocalTextStyle.current.copy(
                                     color = Color.White,
                                     fontSize = 24.sp,
@@ -723,7 +725,8 @@ fun UserDetailScreenV2(
                             BasicTextField(
                                 value = priceInput,
                                 onValueChange = { input ->
-                                    val trimmed = input.trim()
+                                    val cleanInput = input.replace("\n", "").replace("\r", "")
+                                    val trimmed = cleanInput.trim()
                                     if ((trimmed.all { it.isDigit() || it == '.' }) && trimmed.count { it == '.' } <= 1) {
                                         priceInput = trimmed
                                     }
@@ -738,6 +741,7 @@ fun UserDetailScreenV2(
                                             isFocused = false
                                         }
                                     },
+                                singleLine = true,
                                 textStyle = LocalTextStyle.current.copy(
                                     color = Color.White,
                                     fontSize = 24.sp,
@@ -1092,8 +1096,9 @@ fun UserDetailScreenV2(
                             BasicTextField(
                                 value = priceInput,
                                 onValueChange = { input ->
-                                    if (input.all { it.isDigit() }) {
-                                        priceInput = input
+                                    val cleanInput = input.replace("\n", "").replace("\r", "")
+                                    if (cleanInput.all { it.isDigit() }) {
+                                        priceInput = cleanInput
                                     }
                                 },
                                 modifier = Modifier
@@ -1102,6 +1107,7 @@ fun UserDetailScreenV2(
                                     .onFocusChanged { focusState ->
                                         isFocused = focusState.isFocused
                                     },
+                                singleLine = true,
                                 textStyle = LocalTextStyle.current.copy(
                                     color = Color.White,
                                     fontSize = 24.sp,
@@ -1562,8 +1568,8 @@ fun UserDetailScreenV2(
                                                 else "Payment: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} IQD"
                                             }
                                             "renew_pay" -> {
-                                                if (currentLang == "ar") "تجديد اشتراك: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} د.ع"
-                                                else "Subscription renewal: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} IQD"
+                                                if (currentLang == "ar") "تجديد اشتراك: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} د.ع — واصل"
+                                                else "Subscription renewal: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} IQD — Paid"
                                             }
                                             else -> { // renew
                                                 if (currentLang == "ar") "تجديد اشتراك: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} د.ع"
@@ -1571,32 +1577,12 @@ fun UserDetailScreenV2(
                                             }
                                         }
                                         
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            Text(
-                                                text = titleText,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 15.sp,
-                                                color = Color.White
-                                            )
-                                            if (resolvedType == "renew_pay") {
-                                                Surface(
-                                                    shape = RoundedCornerShape(6.dp),
-                                                    color = Color(0xFF064E3B),
-                                                    border = BorderStroke(1.dp, Color(0xFF059669))
-                                                ) {
-                                                    Text(
-                                                        text = if (currentLang == "ar") "واصل" else "Received",
-                                                        color = Color(0xFF6EE7B7),
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
+                                        Text(
+                                            text = titleText,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 15.sp,
+                                            color = Color.White
+                                        )
                                         
                                         Text(
                                             text = if (currentLang == "ar") "التاريخ: ${formatLedgerDate(entry.occurredAt)}" else "Date: ${formatLedgerDate(entry.occurredAt)}",
@@ -1610,6 +1596,10 @@ fun UserDetailScreenV2(
                                             postDebt > 0.0 && postAdvance > 0.0 -> {
                                                 if (currentLang == "ar") "الدين المتبقي: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postDebt)} د.ع • رصيد مقدم: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postAdvance)} د.ع"
                                                 else "Remaining debt: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postDebt)} IQD • Advance: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postAdvance)} IQD"
+                                            }
+                                            postDebt == 0.0 && postAdvance > 0.0 -> {
+                                                if (currentLang == "ar") "الدين المتبقي: 0 د.ع • رصيد مقدم: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postAdvance)} د.ع"
+                                                else "Remaining debt: 0 IQD • Advance: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postAdvance)} IQD"
                                             }
                                             postDebt > 0.0 -> {
                                                 if (currentLang == "ar") "الدين المتبقي: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postDebt)} د.ع"

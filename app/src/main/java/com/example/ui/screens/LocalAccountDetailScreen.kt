@@ -108,8 +108,9 @@ fun LocalAccountDetailScreen(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = inputAmt,
-                    onValueChange = { inputAmt = it },
+                    onValueChange = { inputAmt = it.replace("\n", "").replace("\r", "") },
                     label = { Text("Payment in IQD") },
+                    singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = {
                         focusManager.clearFocus(force = true)
@@ -156,8 +157,9 @@ fun LocalAccountDetailScreen(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = inputAmt,
-                    onValueChange = { inputAmt = it },
+                    onValueChange = { inputAmt = it.replace("\n", "").replace("\r", "") },
                     label = { Text("Debt Load in IQD") },
+                    singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = {
                         focusManager.clearFocus(force = true)
