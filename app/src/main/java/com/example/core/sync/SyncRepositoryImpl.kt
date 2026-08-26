@@ -1149,7 +1149,7 @@ class SyncRepositoryImpl(
             // 1. Capture snapshot generation at remote operation start (RED-02)
             val snapshotGen = metadataDao.getGeneration()
 
-            // 2. Identify missing parent IDs & perform Firestore GET(s) OUTSIDE REMOTE_APPLY
+            // 2. Identify missing parent IDs & perform Firestore GET(s) OUTSIDE REMOTE_APPLY (Change 3A)
             val preFetchedParents = mutableMapOf<String, LocalAccount>()
             if (collName == "local_ledger_entries") {
                 val missingParentIds = mutableSetOf<String>()
@@ -1195,116 +1195,130 @@ class SyncRepositoryImpl(
                 }
             }
 
-            // 3. Acquire REMOTE_APPLY lock & apply events with original snapshotGen
-            DataOperationCoordinator.withOperation(DataOperationMode.REMOTE_APPLY) {
-                snapshotMutex.withLock {
-                    val initialCursor = getCollectionCursor(collName)
-                    var snapshotCursor = initialCursor
+            // 3. Chunked REMOTE_APPLY (Change 3B: chunk size 50)
+            val initialCursor = getCollectionCursor(collName)
+            var snapshotCursor = initialCursor
+            var shouldHalt = false
 
-                    for (dc in snapshot.documentChanges) {
-                        val doc = dc.document
-                        // 3A: Skip local echoes per document instead of suppressing entire snapshot
-                        if (doc.metadata.hasPendingWrites()) {
-                            Log.d("FirebaseSync", "Skipping local echo for document ${doc.id} in $collName (hasPendingWrites)")
-                            continue
-                        }
+            val chunks = snapshot.documentChanges.chunked(50)
+            for (chunk in chunks) {
+                if (shouldHalt) break
 
-                        val data = doc.data
-                        val id = doc.id
-
-                        val deletedAt = RemoteSyncCursor.parseRemoteTimestamp(data["deletedAt"])
-                        val remoteUpdatedAt = RemoteSyncCursor.parseRemoteTimestamp(data["updatedAt"])
-                        val isDeleted = (deletedAt != null && deletedAt > 0L)
-                        val effectiveVersion = if (isDeleted) (deletedAt ?: remoteUpdatedAt ?: 0L) else (remoteUpdatedAt ?: 0L)
-
-                        // Re-use pre-fetched parent account candidate
-                        var preFetchedParentAccount: LocalAccount? = null
-                        if (collName == "local_ledger_entries" && !isDeleted) {
-                            val remoteLedger = mapToLocalLedgerEntry(id, data, remoteUpdatedAt ?: 0L)
-                            if (remoteLedger != null) {
-                                preFetchedParentAccount = preFetchedParents[remoteLedger.accountId]
+                DataOperationCoordinator.withOperation(DataOperationMode.REMOTE_APPLY) {
+                    snapshotMutex.withLock {
+                        for (dc in chunk) {
+                            val doc = dc.document
+                            // 3A: Skip local echoes per document instead of suppressing entire snapshot
+                            if (doc.metadata.hasPendingWrites()) {
+                                Log.d("FirebaseSync", "Skipping local echo for document ${doc.id} in $collName (hasPendingWrites)")
+                                continue
                             }
-                        }
 
-                        var syncResult: EventSyncResult
-                        if (effectiveVersion <= 0L) {
-                            val quarantineAudit = AuditLog(
-                                action = "MALFORMED_REMOTE_EVENT",
-                                entityType = collName,
-                                entityId = id,
-                                summary = "Blocked cursor on realtime event with missing/invalid remoteVersion ($effectiveVersion) in $collName (docId: $id)",
-                                createdAt = System.currentTimeMillis(),
-                                severity = "WARNING",
-                                origin = AuditOrigin.SYSTEM_ACTION.name
-                            )
-                            auditDao.insert(quarantineAudit)
-                            syncResult = EventSyncResult.BLOCKED_INVALID_VERSION
-                        } else {
-                            val event = mapToRemoteEvent(
-                                collName = collName,
-                                id = id,
-                                data = data,
-                                source = RemoteEventSource.REALTIME,
-                                dcType = dc.type,
-                                preFetchedParentAccount = preFetchedParentAccount
-                            )
+                            val data = doc.data
+                            val id = doc.id
 
-                            try {
-                                if (event != null) {
-                                    syncResult = remoteSyncCoordinator.processEvent(event, passedCapturedGen = snapshotGen)
-                                } else if (collName == "audit_logs") {
-                                    val remoteAudit = mapToAuditLog(id, data)
-                                    auditDao.insert(remoteAudit)
-                                    syncResult = EventSyncResult.APPLIED
-                                } else {
-                                    val quarantineAudit = AuditLog(
-                                        action = "MALFORMED_REMOTE_EVENT",
-                                        entityType = collName,
-                                        entityId = id,
-                                        summary = "Quarantined malformed realtime event with valid version ($effectiveVersion) in $collName (docId: $id)",
-                                        createdAt = effectiveVersion,
-                                        severity = "WARNING",
-                                        origin = AuditOrigin.SYSTEM_ACTION.name
-                                    )
-                                    auditDao.insert(quarantineAudit)
-                                    syncResult = EventSyncResult.QUARANTINED_MALFORMED
+                            val deletedAt = RemoteSyncCursor.parseRemoteTimestamp(data["deletedAt"])
+                            val remoteUpdatedAt = RemoteSyncCursor.parseRemoteTimestamp(data["updatedAt"])
+                            val isDeleted = (deletedAt != null && deletedAt > 0L)
+                            val effectiveVersion = if (isDeleted) (deletedAt ?: remoteUpdatedAt ?: 0L) else (remoteUpdatedAt ?: 0L)
+
+                            // Re-use pre-fetched parent account candidate
+                            var preFetchedParentAccount: LocalAccount? = null
+                            if (collName == "local_ledger_entries" && !isDeleted) {
+                                val remoteLedger = mapToLocalLedgerEntry(id, data, remoteUpdatedAt ?: 0L)
+                                if (remoteLedger != null) {
+                                    preFetchedParentAccount = preFetchedParents[remoteLedger.accountId]
                                 }
-                            } catch (e: Exception) {
-                                if (e is kotlinx.coroutines.CancellationException) throw e
-                                Log.e("FirebaseSync", "Constraint/DB exception handling realtime event $id in $collName", e)
+                            }
+
+                            var syncResult: EventSyncResult
+                            if (effectiveVersion <= 0L) {
+                                val quarantineAudit = AuditLog(
+                                    action = "MALFORMED_REMOTE_EVENT",
+                                    entityType = collName,
+                                    entityId = id,
+                                    summary = "Blocked cursor on realtime event with missing/invalid remoteVersion ($effectiveVersion) in $collName (docId: $id)",
+                                    createdAt = System.currentTimeMillis(),
+                                    severity = "WARNING",
+                                    origin = AuditOrigin.SYSTEM_ACTION.name
+                                )
+                                auditDao.insert(quarantineAudit)
+                                syncResult = EventSyncResult.BLOCKED_INVALID_VERSION
+                            } else {
+                                val event = mapToRemoteEvent(
+                                    collName = collName,
+                                    id = id,
+                                    data = data,
+                                    source = RemoteEventSource.REALTIME,
+                                    dcType = dc.type,
+                                    preFetchedParentAccount = preFetchedParentAccount
+                                )
+
                                 try {
-                                    val constraintAudit = AuditLog(
-                                        action = "REMOTE_CONSTRAINT_CONFLICT",
-                                        entityType = collName,
-                                        entityId = id,
-                                        summary = "Halted cursor on realtime event due to DB conflict: ${e.message}",
-                                        createdAt = effectiveVersion,
-                                        severity = "ERROR",
-                                        origin = AuditOrigin.SYSTEM_ACTION.name
-                                    )
-                                    auditDao.insert(constraintAudit)
-                                } catch (_: Exception) {}
-                                syncResult = EventSyncResult.FAILED_RETRYABLE
+                                    if (event != null) {
+                                        syncResult = remoteSyncCoordinator.processEvent(event, passedCapturedGen = snapshotGen)
+                                    } else if (collName == "audit_logs") {
+                                        val remoteAudit = mapToAuditLog(id, data)
+                                        auditDao.insert(remoteAudit)
+                                        syncResult = EventSyncResult.APPLIED
+                                    } else {
+                                        val quarantineAudit = AuditLog(
+                                            action = "MALFORMED_REMOTE_EVENT",
+                                            entityType = collName,
+                                            entityId = id,
+                                            summary = "Quarantined malformed realtime event with valid version ($effectiveVersion) in $collName (docId: $id)",
+                                            createdAt = effectiveVersion,
+                                            severity = "WARNING",
+                                            origin = AuditOrigin.SYSTEM_ACTION.name
+                                        )
+                                        auditDao.insert(quarantineAudit)
+                                        syncResult = EventSyncResult.QUARANTINED_MALFORMED
+                                    }
+                                } catch (e: Exception) {
+                                    if (e is kotlinx.coroutines.CancellationException) throw e
+                                    Log.e("FirebaseSync", "Constraint/DB exception handling realtime event $id in $collName", e)
+                                    try {
+                                        val constraintAudit = AuditLog(
+                                            action = "REMOTE_CONSTRAINT_CONFLICT",
+                                            entityType = collName,
+                                            entityId = id,
+                                            summary = "Halted cursor on realtime event due to DB conflict: ${e.message}",
+                                            createdAt = effectiveVersion,
+                                            severity = "ERROR",
+                                            origin = AuditOrigin.SYSTEM_ACTION.name
+                                        )
+                                        auditDao.insert(constraintAudit)
+                                    } catch (_: Exception) {}
+                                    syncResult = EventSyncResult.FAILED_RETRYABLE
+                                }
+                            }
+
+                            if (syncResult.canAdvanceCursor()) {
+                                if (effectiveVersion > 0L) {
+                                    snapshotCursor = snapshotCursor.advanceTo(effectiveVersion, id)
+                                }
+                            } else {
+                                Log.w("FirebaseSync", "Failed or blocked processing realtime event $id in collection $collName ($syncResult). Halting snapshot cursor advancement.")
+                                shouldHalt = true
+                                break
                             }
                         }
 
-                        if (syncResult.canAdvanceCursor()) {
-                            if (effectiveVersion > 0L) {
-                                snapshotCursor = snapshotCursor.advanceTo(effectiveVersion, id)
+                        // Save cursor progress for this chunk if generation has not advanced
+                        if (metadataDao.getGeneration() == snapshotGen) {
+                            if (snapshotCursor.lastServerTimestamp > initialCursor.lastServerTimestamp ||
+                                (snapshotCursor.lastServerTimestamp == initialCursor.lastServerTimestamp && snapshotCursor.lastDocumentId > initialCursor.lastDocumentId)) {
+                                saveCollectionCursor(collName, snapshotCursor)
                             }
-                        } else {
-                            Log.w("FirebaseSync", "Failed or blocked processing realtime event $id in collection $collName ($syncResult). Halting snapshot cursor advancement.")
-                            break
-                        }
-                    }
-
-                    if (metadataDao.getGeneration() == snapshotGen) {
-                        if (snapshotCursor.lastServerTimestamp > initialCursor.lastServerTimestamp ||
-                            (snapshotCursor.lastServerTimestamp == initialCursor.lastServerTimestamp && snapshotCursor.lastDocumentId > initialCursor.lastDocumentId)) {
-                            saveCollectionCursor(collName, snapshotCursor)
                         }
                     }
                 }
+
+                if (shouldHalt) {
+                    break
+                }
+
+                kotlinx.coroutines.yield()
             }
         }
     }
