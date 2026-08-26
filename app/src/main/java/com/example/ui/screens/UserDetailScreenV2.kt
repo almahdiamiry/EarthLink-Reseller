@@ -654,7 +654,15 @@ fun UserDetailScreenV2(
             val currentDebt = matchingAccount?.debtIqd ?: 0.0
             val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(priceInput) ?: 0L).toDouble()
             val currentAdvance = matchingAccount?.advanceIqd ?: 0.0
-            val balanceAfter = currentDebt - currentAdvance - parsedPrice
+            val currentLoan = matchingAccount?.loanIqd ?: 0.0
+
+            val postDepositBalances = com.example.core.ledger.BalanceCalculator.applyTransaction(
+                currentDebt = currentDebt,
+                currentAdvance = currentAdvance,
+                currentLoan = currentLoan,
+                txType = "gave",
+                amount = parsedPrice
+            )
             
             Dialog(
                 onDismissRequest = { 
@@ -810,21 +818,38 @@ fun UserDetailScreenV2(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    val (depositLabel, depositBalanceColor, depositBalanceTextVal) = when {
+                                        postDepositBalances.debtIqd > 0.0 -> {
+                                            Triple(
+                                                if (currentLang == "ar") "الدين المتبقي بعد الإيداع" else "Debt Remaining After",
+                                                Color(0xFFF87171),
+                                                "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postDepositBalances.debtIqd)} د.ع"
+                                            )
+                                        }
+                                        postDepositBalances.advanceIqd > 0.0 -> {
+                                            Triple(
+                                                if (currentLang == "ar") "رصيد مقدم بعد الإيداع" else "Advance Credit After",
+                                                Color(0xFF34D399),
+                                                if (currentLang == "ar") "رصيد مقدم: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postDepositBalances.advanceIqd)} د.ع"
+                                                else "Advance: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postDepositBalances.advanceIqd)} IQD"
+                                            )
+                                        }
+                                        else -> {
+                                            Triple(
+                                                if (currentLang == "ar") "الدين المتبقي بعد الإيداع" else "Debt Remaining After",
+                                                Color(0xFF34D399),
+                                                if (currentLang == "ar") "0 د.ع (مسدد)" else "0 IQD (Settled)"
+                                            )
+                                        }
+                                    }
                                     Text(
-                                        text = if (currentLang == "ar") "الدين المتبقي بعد الإيداع" else "Debt Remaining After",
+                                        text = depositLabel,
                                         color = Color(0xFF9CA3AF),
                                         fontSize = 14.sp
                                     )
-                                    val balanceColor = if (balanceAfter <= 0) Color(0xFF34D399) else Color(0xFFF87171)
-                                    val formattedBalance = if (balanceAfter < 0) {
-                                        if (currentLang == "ar") "رصيد مقدم: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay((-balanceAfter).toDouble())} د.ع"
-                                        else "Advance Credit: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay((-balanceAfter).toDouble())} IQD"
-                                    } else {
-                                        "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(balanceAfter.toDouble())} د.ع"
-                                    }
                                     Text(
-                                        text = formattedBalance,
-                                        color = balanceColor,
+                                        text = depositBalanceTextVal,
+                                        color = depositBalanceColor,
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -998,7 +1023,15 @@ fun UserDetailScreenV2(
             val currentDebt = matchingAccount?.debtIqd ?: 0.0
             val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(priceInput) ?: 0L).toDouble()
             val currentAdvance = matchingAccount?.advanceIqd ?: 0.0
-            val balanceAfter = currentDebt - currentAdvance + parsedPrice
+            val currentLoan = matchingAccount?.loanIqd ?: 0.0
+
+            val postDebtBalances = com.example.core.ledger.BalanceCalculator.applyTransaction(
+                currentDebt = currentDebt,
+                currentAdvance = currentAdvance,
+                currentLoan = currentLoan,
+                txType = "took",
+                amount = parsedPrice
+            )
             
             Dialog(
                 onDismissRequest = { 
@@ -1149,14 +1182,38 @@ fun UserDetailScreenV2(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    val (debtLabel, debtBalanceColor, debtBalanceTextVal) = when {
+                                        postDebtBalances.debtIqd > 0.0 -> {
+                                            Triple(
+                                                if (currentLang == "ar") "الدين الكلي بعد الإضافة" else "Total Debt After",
+                                                Color(0xFFF87171),
+                                                "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postDebtBalances.debtIqd)} د.ع"
+                                            )
+                                        }
+                                        postDebtBalances.advanceIqd > 0.0 -> {
+                                            Triple(
+                                                if (currentLang == "ar") "الرصيد المتبقي للمشترك" else "Advance Credit After",
+                                                Color(0xFF34D399),
+                                                if (currentLang == "ar") "رصيد مقدم: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postDebtBalances.advanceIqd)} د.ع"
+                                                else "Advance: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postDebtBalances.advanceIqd)} IQD"
+                                            )
+                                        }
+                                        else -> {
+                                            Triple(
+                                                if (currentLang == "ar") "الدين الكلي بعد الإضافة" else "Total Debt After",
+                                                Color(0xFF34D399),
+                                                if (currentLang == "ar") "0 د.ع (مسدد)" else "0 IQD (Settled)"
+                                            )
+                                        }
+                                    }
                                     Text(
-                                        text = if (currentLang == "ar") (if (balanceAfter <= 0) "الرصيد المتبقي للمشترك" else "الدين الكلي بعد الإضافة") else (if (balanceAfter <= 0) "Advance Credit After" else "Total Debt After"),
+                                        text = debtLabel,
                                         color = Color(0xFF9CA3AF),
                                         fontSize = 14.sp
                                     )
                                     Text(
-                                        text = if (balanceAfter < 0) (if (currentLang == "ar") "رصيد مقدم: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay((-balanceAfter).toDouble())} د.ع" else "Advance: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay((-balanceAfter).toDouble())} IQD") else "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(balanceAfter.toDouble())} د.ع",
-                                        color = if (balanceAfter <= 0) Color(0xFF34D399) else Color(0xFFF87171),
+                                        text = debtBalanceTextVal,
+                                        color = debtBalanceColor,
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -1329,6 +1386,44 @@ fun UserDetailScreenV2(
             val formatLedgerDate: (Long) -> String = { timestamp ->
                 val sdf = java.text.SimpleDateFormat("yyyy/MM/dd • h:mm a", java.util.Locale.US)
                 sdf.format(java.util.Date(timestamp))
+            }
+            val entryBalancesMap = remember(finalLedgerList, matchingAccount) {
+                val openingDebt = matchingAccount?.openingDebtIqd ?: 0.0
+                val openingAdvance = matchingAccount?.openingAdvanceIqd ?: 0.0
+                val openingLoan = matchingAccount?.openingLoanIqd ?: 0.0
+
+                val eligibleTxs = if (matchingAccount?.stateSource != null) {
+                    finalLedgerList.filter { !it.isSnapshotHistory }
+                } else {
+                    finalLedgerList
+                }
+
+                val sortedTxs = eligibleTxs.sortedWith(
+                    compareBy<com.example.core.model.LocalLedgerEntry> { it.occurredAt }
+                        .thenBy { it.sourceExternalId ?: "" }
+                        .thenBy { it.id }
+                )
+
+                var runningDebt = openingDebt
+                var runningAdvance = openingAdvance
+                var runningLoan = openingLoan
+
+                val map = mutableMapOf<String, Pair<Double, Double>>()
+                for (tx in sortedTxs) {
+                    val canonicalType = com.example.core.ledger.TransactionTypeNormalizer.normalizeTransactionType(tx.typeRaw)
+                    val updatedBalances = com.example.core.ledger.BalanceCalculator.applyTransaction(
+                        currentDebt = runningDebt,
+                        currentAdvance = runningAdvance,
+                        currentLoan = runningLoan,
+                        txType = canonicalType,
+                        amount = tx.amountIqd
+                    )
+                    runningDebt = updatedBalances.debtIqd
+                    runningAdvance = updatedBalances.advanceIqd
+                    runningLoan = updatedBalances.loanIqd
+                    map[tx.id] = Pair(runningDebt, runningAdvance)
+                }
+                map
             }
             CompositionLocalProvider(LocalLayoutDirection provides (if (currentLang == "ar") LayoutDirection.Rtl else LayoutDirection.Ltr)) {
                 Scaffold(
@@ -1509,15 +1604,20 @@ fun UserDetailScreenV2(
                                             color = Color(0xFF8E8E93)
                                         )
                                         
+                                        val (postDebt, postAdvance) = entryBalancesMap[entry.id] ?: Pair(entry.debtAfterIqd.toDouble(), 0.0)
+                                        
                                         val balanceText = when {
-                                            entry.debtAfterIqd > 0.0 -> {
-                                                if (currentLang == "ar") "الدين المتبقي: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.debtAfterIqd.toDouble())} د.ع"
-                                                else "Remaining debt: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.debtAfterIqd.toDouble())} IQD"
+                                            postDebt > 0.0 && postAdvance > 0.0 -> {
+                                                if (currentLang == "ar") "الدين المتبقي: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postDebt)} د.ع • رصيد مقدم: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postAdvance)} د.ع"
+                                                else "Remaining debt: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postDebt)} IQD • Advance: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postAdvance)} IQD"
                                             }
-                                            entry.debtAfterIqd < 0.0 -> {
-                                                val advanceCredit = kotlin.math.abs(entry.debtAfterIqd.toDouble())
-                                                if (currentLang == "ar") "الدين: 0 د.ع • رصيد مقدم: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(advanceCredit)} د.ع"
-                                                else "Debt: 0 IQD • Advance credit: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(advanceCredit)} IQD"
+                                            postDebt > 0.0 -> {
+                                                if (currentLang == "ar") "الدين المتبقي: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postDebt)} د.ع"
+                                                else "Remaining debt: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postDebt)} IQD"
+                                            }
+                                            postAdvance > 0.0 -> {
+                                                if (currentLang == "ar") "رصيد مقدم: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postAdvance)} د.ع"
+                                                else "Advance credit: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postAdvance)} IQD"
                                             }
                                             else -> {
                                                 if (currentLang == "ar") "الدين المتبقي: 0 د.ع (مسدد)"
@@ -2884,6 +2984,12 @@ fun UserDetailScreenV2(
                                     value = newName,
                                     onValueChange = { newName = it },
                                     modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                    keyboardActions = KeyboardActions(onDone = {
+                                        focusManager.clearFocus(force = true)
+                                        keyboardController?.hide()
+                                    }),
                                     placeholder = { Text(if (currentLang == "ar") "الاسم الظاهر" else "Display Name") }
                                 )
                             }
@@ -2968,6 +3074,12 @@ fun UserDetailScreenV2(
                                     value = newIp,
                                     onValueChange = { newIp = it },
                                     modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                    keyboardActions = KeyboardActions(onDone = {
+                                        focusManager.clearFocus(force = true)
+                                        keyboardController?.hide()
+                                    }),
                                     placeholder = { Text("e.g. 192.168.10.25") }
                                 )
                             }
