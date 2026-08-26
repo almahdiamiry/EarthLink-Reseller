@@ -775,7 +775,6 @@ class SyncRepositoryImpl(
                     OutboxManager.markSucceeded(outboxDao, allForEntity.map { it.id })
                 }
 
-                confirmRemoteVersionReadBack(item, currentUid, fbFirestore)
                 true
             } else {
                 false
