@@ -1132,7 +1132,7 @@ class SyncRepositoryImpl(
         }
     }
 
-    private fun handleSnapshot(snapshot: QuerySnapshot?, error: Exception?, collName: String, uid: String? = null) {
+    internal fun handleSnapshot(snapshot: QuerySnapshot?, error: Exception?, collName: String, uid: String? = null): kotlinx.coroutines.Job? {
         if (error != null) {
             Log.w("FirebaseSync", "Listen failed for $collName: ${error.message}")
             val code = (error as? com.google.firebase.firestore.FirebaseFirestoreException)?.code
@@ -1141,14 +1141,63 @@ class SyncRepositoryImpl(
                 _syncState.value = SyncStatusState.AUTH_REQUIRED
                 stopRealtimeSync()
             }
-            return
+            return null
         }
-        if (snapshot == null || snapshot.isEmpty) return
+        if (snapshot == null || snapshot.isEmpty) return null
 
-        syncScope.launch {
+        return syncScope.launch {
+            // 1. Capture snapshot generation at remote operation start (RED-02)
+            val snapshotGen = metadataDao.getGeneration()
+
+            // 2. Identify missing parent IDs & perform Firestore GET(s) OUTSIDE REMOTE_APPLY
+            val preFetchedParents = mutableMapOf<String, LocalAccount>()
+            if (collName == "local_ledger_entries") {
+                val missingParentIds = mutableSetOf<String>()
+                for (dc in snapshot.documentChanges) {
+                    val doc = dc.document
+                    if (doc.metadata.hasPendingWrites()) continue
+                    val data = doc.data
+                    val deletedAt = RemoteSyncCursor.parseRemoteTimestamp(data["deletedAt"])
+                    val isDeleted = (deletedAt != null && deletedAt > 0L)
+                    if (!isDeleted) {
+                        val remoteUpdatedAt = RemoteSyncCursor.parseRemoteTimestamp(data["updatedAt"])
+                        val remoteLedger = mapToLocalLedgerEntry(doc.id, data, remoteUpdatedAt ?: 0L)
+                        if (remoteLedger != null && accountDao.getByIdOneShot(remoteLedger.accountId) == null) {
+                            missingParentIds.add(remoteLedger.accountId)
+                        }
+                    }
+                }
+
+                if (missingParentIds.isNotEmpty() && uid != null && firestore != null) {
+                    for (parentId in missingParentIds) {
+                        try {
+                            val parentDoc = firestore?.collection("users")?.document(uid)?.collection("local_accounts")?.document(parentId)?.get(com.google.firebase.firestore.Source.SERVER)?.await()
+                            if (parentDoc != null && parentDoc.exists() && !parentDoc.metadata.hasPendingWrites() && !parentDoc.metadata.isFromCache) {
+                                val parentData = parentDoc.data
+                                if (parentData != null) {
+                                    val parentDeletedAt = RemoteSyncCursor.parseRemoteTimestamp(parentData["deletedAt"])
+                                    if (parentDeletedAt == null || parentDeletedAt <= 0L) {
+                                        val parentUpdatedAt = RemoteSyncCursor.parseRemoteTimestamp(parentData["updatedAt"]) ?: 0L
+                                        val parentAccount = mapToLocalAccount(parentId, parentData, parentUpdatedAt)
+                                        if (parentAccount != null) {
+                                            preFetchedParents[parentId] = parentAccount
+                                        }
+                                    } else {
+                                        Log.w("FirebaseSync", "Parent account $parentId was deleted remotely. Skipping zombie resurrection.")
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            if (e is kotlinx.coroutines.CancellationException) throw e
+                            Log.w("FirebaseSync", "Could not fetch parent account $parentId from Firestore on demand", e)
+                        }
+                    }
+                }
+            }
+
+            // 3. Acquire REMOTE_APPLY lock & apply events with original snapshotGen
             DataOperationCoordinator.withOperation(DataOperationMode.REMOTE_APPLY) {
                 snapshotMutex.withLock {
-                    val snapshotGen = metadataDao.getGeneration()
                     val initialCursor = getCollectionCursor(collName)
                     var snapshotCursor = initialCursor
 
@@ -1168,29 +1217,12 @@ class SyncRepositoryImpl(
                         val isDeleted = (deletedAt != null && deletedAt > 0L)
                         val effectiveVersion = if (isDeleted) (deletedAt ?: remoteUpdatedAt ?: 0L) else (remoteUpdatedAt ?: 0L)
 
-                        // Pre-fetch missing parent account from network OUTSIDE database transaction block
+                        // Re-use pre-fetched parent account candidate
                         var preFetchedParentAccount: LocalAccount? = null
                         if (collName == "local_ledger_entries" && !isDeleted) {
                             val remoteLedger = mapToLocalLedgerEntry(id, data, remoteUpdatedAt ?: 0L)
-                            if (remoteLedger != null && accountDao.getByIdOneShot(remoteLedger.accountId) == null && uid != null && firestore != null) {
-                                try {
-                                    val parentDoc = firestore?.collection("users")?.document(uid)?.collection("local_accounts")?.document(remoteLedger.accountId)?.get(Source.SERVER)?.await()
-                                    if (parentDoc != null && parentDoc.exists() && !parentDoc.metadata.hasPendingWrites() && !parentDoc.metadata.isFromCache) {
-                                        val parentData = parentDoc.data
-                                        if (parentData != null) {
-                                            val parentDeletedAt = RemoteSyncCursor.parseRemoteTimestamp(parentData["deletedAt"])
-                                            if (parentDeletedAt == null || parentDeletedAt <= 0L) {
-                                                val parentUpdatedAt = RemoteSyncCursor.parseRemoteTimestamp(parentData["updatedAt"]) ?: 0L
-                                                preFetchedParentAccount = mapToLocalAccount(remoteLedger.accountId, parentData, parentUpdatedAt)
-                                            } else {
-                                                Log.w("FirebaseSync", "Parent account ${remoteLedger.accountId} was deleted remotely. Skipping zombie resurrection.")
-                                            }
-                                        }
-                                    }
-                                } catch (e: Exception) {
-                                    if (e is kotlinx.coroutines.CancellationException) throw e
-                                    Log.w("FirebaseSync", "Could not fetch parent account ${remoteLedger.accountId} from Firestore on demand", e)
-                                }
+                            if (remoteLedger != null) {
+                                preFetchedParentAccount = preFetchedParents[remoteLedger.accountId]
                             }
                         }
 
