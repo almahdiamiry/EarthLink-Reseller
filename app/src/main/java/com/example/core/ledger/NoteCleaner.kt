@@ -23,20 +23,53 @@ object NoteCleaner {
         "إضافة دين",
         "اضافة دين",
         "تسديد مبلغ",
-        "إيداع مبلغ",
-        "ايداع مبلغ",
-        "دفع اشتراك",
         "تسديد نقدي",
         "تسديد كاش",
+        "تسديد",
+        "تسديدة",
+        "إيداع مبلغ",
+        "ايداع مبلغ",
+        "إيداع رصيد",
+        "ايداع رصيد",
+        "إيداع",
+        "ايداع",
+        "دفع اشتراك",
+        "دفع نقدي",
+        "دفع كاش",
+        "دفع",
+        "دفعة",
+        "واصل كاش",
+        "واصل نقداً",
+        "واصل نقدا",
+        "واصل يدوي",
+        "واصل",
+        "واصلة",
+        "مدفوع كاش",
+        "مدفوع نقداً",
+        "مدفوع نقدا",
+        "مدفوع",
+        "مسدد كاش",
+        "مسدد نقداً",
+        "مسدد",
+        "مقبوض",
+        "تحصيل",
         "Subscription renewal",
         "Added debt",
         "Payment of",
-        "Deposit of"
+        "Payment",
+        "Deposit of",
+        "Deposit",
+        "Received",
+        "Paid",
+        "Cash"
     )
 
     private val NOISE_WORDS = setOf(
         "iqd", "usd", "id", "dinar", "dollar", "null",
-        "د.ع", "دينار", "دولار", "د", "ع", "بقيمة", "قيمة", "مبلغ"
+        "د.ع", "دينار", "دولار", "د", "ع", "بقيمة", "قيمة", "مبلغ", "رصيد",
+        "واصل", "واصلة", "تسديد", "تسديدة", "مسدد", "مدفوع", "نقدا", "نقداً", "كاش",
+        "دين", "تجديد", "اشتراك", "دفع", "دفعة", "ايداع", "إيداع", "مقبوض", "تحصيل",
+        "paid", "received", "renew", "renewal", "sub", "cash", "debt", "payment", "deposit"
     )
 
     /**
@@ -114,7 +147,8 @@ object NoteCleaner {
         // Check if remaining words are only noise words
         val words = afterBoilerplate.split(Regex("""\s+""")).map { it.trim().lowercase() }.filter { it.isNotEmpty() }
         val nonNoiseWords = words.filterNot { word ->
-            NOISE_WORDS.contains(word) || extractLettersOnly(word).isEmpty() || NOISE_WORDS.contains(extractLettersOnly(word))
+            val letters = extractLettersOnly(word)
+            letters.isEmpty() || NOISE_WORDS.contains(word) || NOISE_WORDS.contains(letters)
         }
 
         return nonNoiseWords.isEmpty()
@@ -130,3 +164,4 @@ object NoteCleaner {
         return sb.toString()
     }
 }
+

@@ -15,6 +15,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.StickyNote2
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowDropUp
@@ -1439,17 +1441,18 @@ fun UserDetailScreenV2(
                                         }
                                     }
 
+                                    // Two Primary Visual States: Paid / Received vs Debt / Unpaid
+                                    val isPaidState = resolvedType == "renew_pay" || resolvedType == "payment" || resolvedType == "deposit"
+                                    val stateColor = if (isPaidState) Color(0xFF10B981) else Color(0xFFEF4444)
+                                    val stateIcon = if (isPaidState) Icons.Default.CheckCircle else Icons.AutoMirrored.Filled.TrendingUp
+
                                     val cleanNote = com.example.core.ledger.NoteCleaner.extractGenuineNote(entry.note, entry.amountIqd.toDouble())
-                                    val isWasel = resolvedType == "renew_pay" ||
-                                            noteNonNull.contains("واصل") ||
-                                            entry.rawJson?.contains("واصل") == true
 
                                     Column(
                                         modifier = Modifier.weight(1f),
                                         horizontalAlignment = Alignment.Start,
-                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-
                                         val titleText = when (resolvedType) {
                                             "debt" -> {
                                                 if (currentLang == "ar") "إضافة دين: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} د.ع"
@@ -1464,8 +1467,8 @@ fun UserDetailScreenV2(
                                                 else "Payment: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} IQD"
                                             }
                                             "renew_pay" -> {
-                                                if (currentLang == "ar") "تسديد تجديد: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} د.ع"
-                                                else "Paid renewal: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} IQD"
+                                                if (currentLang == "ar") "تجديد اشتراك: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} د.ع"
+                                                else "Subscription renewal: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} IQD"
                                             }
                                             else -> { // renew
                                                 if (currentLang == "ar") "تجديد اشتراك: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} د.ع"
@@ -1480,18 +1483,18 @@ fun UserDetailScreenV2(
                                             Text(
                                                 text = titleText,
                                                 fontWeight = FontWeight.Bold,
-                                                fontSize = 16.sp,
+                                                fontSize = 15.sp,
                                                 color = Color.White
                                             )
-                                            if (isWasel) {
+                                            if (resolvedType == "renew_pay") {
                                                 Surface(
                                                     shape = RoundedCornerShape(6.dp),
-                                                    color = Color(0xFF1E3A8A),
-                                                    border = BorderStroke(1.dp, Color(0xFF3B82F6))
+                                                    color = Color(0xFF064E3B),
+                                                    border = BorderStroke(1.dp, Color(0xFF059669))
                                                 ) {
                                                     Text(
                                                         text = if (currentLang == "ar") "واصل" else "Received",
-                                                        color = Color(0xFF93C5FD),
+                                                        color = Color(0xFF6EE7B7),
                                                         fontSize = 11.sp,
                                                         fontWeight = FontWeight.Bold,
                                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -1506,53 +1509,51 @@ fun UserDetailScreenV2(
                                             color = Color(0xFF8E8E93)
                                         )
                                         
-                                        val balanceText = if (currentLang == "ar") {
-                                            "الدين المتبقي بعد الحركة: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.debtAfterIqd.toDouble())} د.ع"
-                                        } else {
-                                            "Remaining Debt After: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.debtAfterIqd.toDouble())} IQD"
+                                        val balanceText = when {
+                                            entry.debtAfterIqd > 0.0 -> {
+                                                if (currentLang == "ar") "الدين المتبقي: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.debtAfterIqd.toDouble())} د.ع"
+                                                else "Remaining debt: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.debtAfterIqd.toDouble())} IQD"
+                                            }
+                                            entry.debtAfterIqd < 0.0 -> {
+                                                val advanceCredit = kotlin.math.abs(entry.debtAfterIqd.toDouble())
+                                                if (currentLang == "ar") "الدين: 0 د.ع • رصيد مقدم: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(advanceCredit)} د.ع"
+                                                else "Debt: 0 IQD • Advance credit: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(advanceCredit)} IQD"
+                                            }
+                                            else -> {
+                                                if (currentLang == "ar") "الدين المتبقي: 0 د.ع (مسدد)"
+                                                else "Remaining debt: 0 IQD (Settled)"
+                                            }
                                         }
                                         
                                         Text(
                                             text = balanceText,
                                             fontSize = 12.sp,
-                                            color = Color(0xFF8E8E93)
+                                            color = Color(0xFFA1A1AA)
                                         )
                                         
                                         if (cleanNote.isNotBlank()) {
                                             Text(
                                                 text = if (currentLang == "ar") "ملاحظة: $cleanNote" else "Note: $cleanNote",
                                                 fontSize = 12.sp,
-                                                color = Color(0xFF90CAF9),
+                                                color = Color(0xFF93C5FD),
                                                 fontWeight = FontWeight.Medium
                                             )
                                         }
                                     }
                                     
-                                    Spacer(modifier = Modifier.width(16.dp))
+                                    Spacer(modifier = Modifier.width(12.dp))
                                     
                                     Box(
                                         modifier = Modifier
-                                            .size(44.dp)
-                                            .background(
-                                                when (resolvedType) {
-                                                    "debt" -> Color(0xFFEF4444)
-                                                    "deposit" -> Color(0xFF10B981)
-                                                    else -> Color(0xFF2563EB)
-                                                }, 
-                                                CircleShape
-                                            ),
+                                            .size(42.dp)
+                                            .background(stateColor, CircleShape),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        val iconVector = when (resolvedType) {
-                                            "debt" -> Icons.Default.AttachMoney
-                                            "deposit" -> Icons.Default.Payment
-                                            else -> Icons.Default.Refresh
-                                        }
                                         Icon(
-                                            imageVector = iconVector,
-                                            contentDescription = null,
+                                            imageVector = stateIcon,
+                                            contentDescription = if (isPaidState) "Paid" else "Debt",
                                             tint = Color.White,
-                                            modifier = Modifier.size(20.dp)
+                                            modifier = Modifier.size(22.dp)
                                         )
                                     }
                                 }
