@@ -40,6 +40,10 @@ class NoteCleanerTest {
         assertEquals("دفعة اولى والباقي الاسبوع القادم", NoteCleaner.extractGenuineNote("[PAYMENT] دفعة اولى والباقي الاسبوع القادم"))
         assertEquals("وصل رقم 1234", NoteCleaner.extractGenuineNote("وصل رقم 1234"))
         assertEquals("تحويل زين كاش", NoteCleaner.extractGenuineNote("[DEPOSIT] تحويل زين كاش"))
+        assertEquals("واصل مشتاق", NoteCleaner.extractGenuineNote("واصل مشتاق", 40000.0))
+        assertEquals("على نجم والي قبله مشتاق", NoteCleaner.extractGenuineNote("على نجم والي قبله مشتاق", 40000.0))
+        assertEquals("مشتاق", NoteCleaner.extractGenuineNote("[RENEW_PAY] مشتاق", 40000.0))
+        assertEquals("مشتاق", NoteCleaner.extractGenuineNote("[RENEW] مشتاق", 40000.0))
     }
 
     @Test

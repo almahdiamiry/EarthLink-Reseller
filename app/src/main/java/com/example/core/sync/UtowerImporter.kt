@@ -1384,11 +1384,15 @@ private class ImportSession(
                 return
             }
 
-            var note = txJson.optString("comment").takeIf { it.isNotEmpty() }
-                ?: txJson.optString("message").takeIf { it.isNotEmpty() }
-                ?: txJson.optString("note").takeIf { it.isNotEmpty() }
+            val genuineNote = txJson.optString("note").takeIf { !it.isNullOrBlank() && it != "null" }
+                ?: txJson.optString("comment").takeIf { !it.isNullOrBlank() && it != "null" }
+                ?: txJson.optString("user_note").takeIf { !it.isNullOrBlank() && it != "null" }
+                ?: txJson.optString("memo").takeIf { !it.isNullOrBlank() && it != "null" }
 
-            if (!note.isNullOrBlank() && note != "null") {
+            val fallbackMsg = txJson.optString("message").takeIf { !it.isNullOrBlank() && it != "null" }
+            val note = genuineNote ?: fallbackMsg
+
+            if (!genuineNote.isNullOrBlank()) {
                 txNotesImported++
             }
 
@@ -1488,8 +1492,6 @@ private class ImportSession(
                     com.example.core.ledger.MoneyParser.parseUtowerAmount(debtAfterUnit)
                 }
 
-                val combinedNote = listOf(note ?: "", txJson.optString("message", "")).filter { it.isNotEmpty() && it != "null" }.joinToString(" | ")
-
                 val sourceExtId = if (sourceKey.isNotEmpty()) {
                     sourceKey
                 } else {
@@ -1504,7 +1506,7 @@ private class ImportSession(
                     typeRaw = typeNormalized,
                     amountIqd = amountIqdVal,
                     debtAfterIqd = debtAfterIqd,
-                    note = combinedNote.takeIf { it.isNotEmpty() },
+                    note = note?.takeIf { it.isNotBlank() },
                     occurredAt = occurredAt,
                     rawJson = txJson.toString(),
                     createdAt = System.currentTimeMillis(),

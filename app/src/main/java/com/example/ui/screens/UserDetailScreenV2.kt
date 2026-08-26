@@ -579,8 +579,8 @@ fun UserDetailScreenV2(
                                             note = noteVal,
                                             onSuccessCallback = { txId ->
                                                 try {
-                                                    val chargeNote = if (noteVal.isNotBlank()) "[RENEW] ${noteVal.trim()}" else ""
-                                                    val payNote = if (isWasil) (if (noteVal.isNotBlank()) "[RENEW_PAY] ${noteVal.trim()}" else null) else null
+                                                    val chargeNote = if (noteVal.isNotBlank()) "[RENEW] ${noteVal.trim()}" else "[RENEW]"
+                                                    val payNote = if (isWasil) (if (noteVal.isNotBlank()) "[RENEW_PAY] ${noteVal.trim()}" else "[RENEW_PAY]") else null
                                                     
                                                     viewModel.localLedgerRepository.recordAccountRenewal(
                                                         account = accToUse,
@@ -1426,23 +1426,27 @@ fun UserDetailScreenV2(
                                         isDeposit -> "deposit"
                                         isPayment -> "payment"
                                         else -> {
-                                            if (entry.typeRaw == "took" || entry.typeRaw == "add" || entry.typeRaw == "renewal") {
-                                                if (noteNonNull.contains("دين") || noteNonNull.contains("Debt")) "debt"
-                                                else "renew"
-                                            } else if (entry.typeRaw == "debt" || entry.typeRaw == "debt_added") {
-                                                "debt"
-                                            } else {
-                                                if (noteNonNull.contains("تجديد")) "renew_pay"
-                                                else "deposit"
+                                            if (entry.typeRaw == "took" || entry.typeRaw == "debt" || entry.typeRaw == "debt_added") {
+                                                if (noteNonNull.contains("تجديد") || noteNonNull.contains("اشتراك") || noteNonNull.contains("Renew")) "renew"
+                                                else "debt"
+                                            } else if (entry.typeRaw == "add" || entry.typeRaw == "renewal") {
+                                                "renew"
+                                            } else { // "gave", "payment", "pay", etc.
+                                                if (noteNonNull.contains("تجديد") || noteNonNull.contains("واصل")) "renew_pay"
+                                                else if (noteNonNull.contains("إيداع") || noteNonNull.contains("ايداع") || noteNonNull.contains("Deposit") || noteNonNull.contains("deposit")) "deposit"
+                                                else "payment"
                                             }
                                         }
                                     }
 
                                     val cleanNote = com.example.core.ledger.NoteCleaner.extractGenuineNote(entry.note, entry.amountIqd.toDouble())
+                                    val isWasel = resolvedType == "renew_pay" ||
+                                            noteNonNull.contains("واصل") ||
+                                            entry.rawJson?.contains("واصل") == true
 
                                     Column(
                                         modifier = Modifier.weight(1f),
-                                        horizontalAlignment = if (currentLang == "ar") Alignment.End else Alignment.Start,
+                                        horizontalAlignment = Alignment.Start,
                                         verticalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
 
@@ -1469,12 +1473,32 @@ fun UserDetailScreenV2(
                                             }
                                         }
                                         
-                                        Text(
-                                            text = titleText,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 16.sp,
-                                            color = Color.White
-                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Text(
+                                                text = titleText,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 16.sp,
+                                                color = Color.White
+                                            )
+                                            if (isWasel) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    color = Color(0xFF1E3A8A),
+                                                    border = BorderStroke(1.dp, Color(0xFF3B82F6))
+                                                ) {
+                                                    Text(
+                                                        text = if (currentLang == "ar") "واصل" else "Received",
+                                                        color = Color(0xFF93C5FD),
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
                                         
                                         Text(
                                             text = if (currentLang == "ar") "التاريخ: ${formatLedgerDate(entry.occurredAt)}" else "Date: ${formatLedgerDate(entry.occurredAt)}",
