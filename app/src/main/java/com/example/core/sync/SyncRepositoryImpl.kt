@@ -110,7 +110,7 @@ class SyncRepositoryImpl(
         if (currentAuth != null) {
             currentAuth.addAuthStateListener { firebaseAuth ->
                 val user = firebaseAuth.currentUser
-                if (user == null) {
+                if (user == null || user.isAnonymous) {
                     _syncState.value = SyncStatusState.AUTH_REQUIRED
                     stopRealtimeSync()
                 } else {
@@ -359,18 +359,14 @@ class SyncRepositoryImpl(
             return false
         }
         return try {
-            val uid = fbAuth.currentUser?.uid
-            if (uid == null) {
-                // Try to sign in anonymously
-                val anonymousUid = anonymousSignIn()
-                if (anonymousUid == null) {
-                    _syncState.value = SyncStatusState.AUTH_REQUIRED
-                    _syncProgress.value = _syncProgress.value.copy(isSyncing = false, phase = SyncPhase.FAILED, lastError = "Auth required")
-                    return false
-                }
+            val currentUser = fbAuth.currentUser
+            if (currentUser == null || currentUser.isAnonymous) {
+                _syncState.value = SyncStatusState.AUTH_REQUIRED
+                _syncProgress.value = _syncProgress.value.copy(isSyncing = false, phase = SyncPhase.FAILED, lastError = "Auth required")
+                return false
             }
 
-            val currentUid = fbAuth.currentUser?.uid ?: return false
+            val currentUid = currentUser.uid
             val syncStartTime = System.currentTimeMillis()
 
             // Sync user settings (ISP credentials & deposit pass) with Firestore only if local changes exist or baseline missing
@@ -889,6 +885,11 @@ class SyncRepositoryImpl(
 
     private fun startRealtimeSync(uid: String) {
         val fbFirestore = firestore ?: return
+        val currentUser = auth?.currentUser
+        if (currentUser == null || currentUser.isAnonymous) {
+            Log.w("FirebaseSync", "Cannot start realtime sync without a valid non-anonymous Firebase session.")
+            return
+        }
 
         syncScope.launch {
             listenersMutex.withLock {
@@ -1596,6 +1597,8 @@ class SyncRepositoryImpl(
     }
 
     override fun triggerSettingsSync(uid: String?, reason: String) {
+        val currentUser = auth?.currentUser
+        if (currentUser == null || currentUser.isAnonymous) return
         syncScope.launch {
             try {
                 Log.d("FirebaseSync", "Settings sync triggered: reason=$reason")
@@ -1608,7 +1611,9 @@ class SyncRepositoryImpl(
     }
 
     internal suspend fun syncUserSettings(uid: String? = null): Boolean {
-        val targetUid = uid ?: auth?.currentUser?.uid ?: return false
+        val currentUser = auth?.currentUser
+        if (currentUser == null || currentUser.isAnonymous) return false
+        val targetUid = uid ?: currentUser.uid
         val fbFirestore = firestore ?: return false
         return settingsSyncMutex.withLock {
             try {

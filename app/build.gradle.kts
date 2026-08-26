@@ -213,3 +213,4 @@ afterEvaluate {
         dependsOn("checkIoUseBlocks")
     }
 }
+// Trigger rebuild for emulator connection issue

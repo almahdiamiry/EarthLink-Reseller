@@ -122,6 +122,11 @@ fun LocalAccountDetailScreen(
                     onValueChange = { inputNote = it },
                     label = { Text("Optional notes") },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = {
+                        focusManager.clearFocus(force = true)
+                        keyboardController?.hide()
+                    }),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -165,6 +170,11 @@ fun LocalAccountDetailScreen(
                     onValueChange = { inputNote = it },
                     label = { Text("Reason/Optional notes") },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = {
+                        focusManager.clearFocus(force = true)
+                        keyboardController?.hide()
+                    }),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -296,8 +306,9 @@ fun LocalAccountDetailScreen(
                                 val color = if (item.typeRaw == "gave" || item.typeRaw == "payment") Color(0xFF2E7D32) else if (item.typeRaw == "took" || item.typeRaw == "debt" || item.typeRaw == "debt_added") Color(0xFFC62828) else Color.DarkGray
 
                                 Text(text = txType, fontWeight = FontWeight.Bold, color = color, fontSize = 12.sp)
-                                if (item.note != null) {
-                                    Text(text = item.note, fontSize = 13.sp)
+                                val cleanNote = com.example.core.ledger.NoteCleaner.extractGenuineNote(item.note, item.amountIqd)
+                                if (cleanNote.isNotBlank()) {
+                                    Text(text = cleanNote, fontSize = 13.sp)
                                 }
                                 Text(
                                     text = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(item.occurredAt)),
@@ -310,7 +321,7 @@ fun LocalAccountDetailScreen(
                                     val sign = if (item.typeRaw == "gave" || item.typeRaw == "payment") "-" else "+"
                                     Text(text = "$sign${formatIqd(item.amountIqd)}", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                 }
-                                Text(text = "Debt After: ${formatIqd(item.debtAfterIqd)}", color = Color.Gray, fontSize = 11.sp)
+                                Text(text = "Remaining Debt: ${formatIqd(item.debtAfterIqd)}", color = Color.Gray, fontSize = 11.sp)
                             }
                         }
                     }

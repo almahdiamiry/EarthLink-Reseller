@@ -209,6 +209,16 @@ fun SettingsScreen(
 
     val isDemoMode by prefs.demoModeFlow.collectAsStateWithLifecycle()
 
+    val currentUser = remember(syncState) {
+        try {
+            com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
+        } catch (_: Throwable) {
+            null
+        }
+    }
+    val isGoogleLinked = (currentUser != null && !currentUser.uid.isNullOrEmpty()) && syncState != SyncStatusState.AUTH_REQUIRED
+    val googleUserEmail = currentUser?.email?.ifBlank { null } ?: (if (isGoogleLinked) prefs.getUsername() else null)
+
     val layoutDir = if (currentLang == "ar") LayoutDirection.Rtl else LayoutDirection.Ltr
 
     CompositionLocalProvider(LocalLayoutDirection provides layoutDir) {
@@ -242,27 +252,6 @@ fun SettingsScreen(
                             authViewModel.saveIspAdminCredentials(u, p)
                             dashboardViewModel.loadDashboardData()
                             onNavigateToSubscribers?.invoke()
-                        },
-                        onLinkGoogle = {
-                            val availability = GoogleApiAvailability.getInstance()
-                            val resultCode = availability.isGooglePlayServicesAvailable(localContext)
-                            if (resultCode != com.google.android.gms.common.ConnectionResult.SUCCESS) {
-                                if (availability.isUserResolvableError(resultCode)) {
-                                    (localContext as? android.app.Activity)?.let { act ->
-                                        availability.getErrorDialog(act, resultCode, 9000)?.show()
-                                    }
-                                } else {
-                                    Toast.makeText(localContext, if (currentLang == "ar") "خدمات Google Play غير متوفرة" else "Google Play Services unavailable", Toast.LENGTH_LONG).show()
-                                }
-                                return@AccountAndIspSection
-                            }
-                            try {
-                                val intent = googleSignInClient.signInIntent
-                                googleSignInLauncher.launch(intent)
-                            } catch (e: Exception) {
-                                if (e is kotlinx.coroutines.CancellationException) throw e
-                                Toast.makeText(localContext, "Google Sign-In Error: ${e.message}", Toast.LENGTH_LONG).show()
-                            }
                         }
                     )
                 }
@@ -282,7 +271,31 @@ fun SettingsScreen(
                         isSyncing = isSyncingProgress || syncState == SyncStatusState.SYNCING || syncProgress.isSyncing,
                         pendingCount = pendingCount,
                         failedCount = failedCount,
+                        isGoogleLinked = isGoogleLinked,
+                        googleUserEmail = googleUserEmail,
+                        onLinkGoogle = {
+                            val availability = GoogleApiAvailability.getInstance()
+                            val resultCode = availability.isGooglePlayServicesAvailable(localContext)
+                            if (resultCode != com.google.android.gms.common.ConnectionResult.SUCCESS) {
+                                if (availability.isUserResolvableError(resultCode)) {
+                                    (localContext as? android.app.Activity)?.let { act ->
+                                        availability.getErrorDialog(act, resultCode, 9000)?.show()
+                                    }
+                                } else {
+                                    Toast.makeText(localContext, if (currentLang == "ar") "خدمات Google Play غير متوفرة" else "Google Play Services unavailable", Toast.LENGTH_LONG).show()
+                                }
+                                return@SyncAndBackupSection
+                            }
+                            try {
+                                val intent = googleSignInClient.signInIntent
+                                googleSignInLauncher.launch(intent)
+                            } catch (e: Exception) {
+                                if (e is kotlinx.coroutines.CancellationException) throw e
+                                Toast.makeText(localContext, "Google Sign-In Error: ${e.message}", Toast.LENGTH_LONG).show()
+                            }
+                        },
                         onTriggerSync = { finalSyncViewModel.triggeredSync() },
+                        onRetryFailed = { finalSyncViewModel.retryFailedItems() },
                         isAutoBackupEnabled = isLocalBackupEnabled,
                         onToggleAutoBackup = { enabled ->
                             prefs.setLocalBackupEnabled(enabled)
@@ -1057,8 +1070,7 @@ private fun AccountAndIspSection(
     username: String,
     prefs: com.example.core.security.PreferenceManager,
     currentLang: String,
-    onSaveIsp: (String, String) -> Unit,
-    onLinkGoogle: () -> Unit
+    onSaveIsp: (String, String) -> Unit
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -1246,53 +1258,6 @@ private fun AccountAndIspSection(
             singleLine = true
         )
     }
-
-    // Google Account Link Row
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = Color(0xFF171E29),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onLinkGoogle() }
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(
-                    imageVector = Icons.Default.AccountCircle,
-                    contentDescription = null,
-                    tint = Color(0xFF38BDF8),
-                    modifier = Modifier.size(20.dp)
-                )
-                Column {
-                    Text(
-                        text = if (currentLang == "ar") "ربط ومزامنة حساب Google" else "Link Google Account",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Text(
-                        text = if (currentLang == "ar") "تأمين المزامنة السحابية الاحتياطية" else "Cloud database authorization",
-                        fontSize = 10.sp,
-                        color = Color.White.copy(alpha = 0.45f)
-                    )
-                }
-            }
-
-            Icon(
-                imageVector = Icons.Default.ChevronLeft,
-                contentDescription = null,
-                tint = Color.White.copy(alpha = 0.4f),
-                modifier = Modifier.size(18.dp)
-            )
-        }
-    }
 }
 
 // 2. SYNC & BACKUP SECTION
@@ -1305,7 +1270,11 @@ private fun SyncAndBackupSection(
     isSyncing: Boolean,
     pendingCount: Int,
     failedCount: Int,
+    isGoogleLinked: Boolean,
+    googleUserEmail: String?,
+    onLinkGoogle: () -> Unit,
     onTriggerSync: () -> Unit,
+    onRetryFailed: () -> Unit,
     isAutoBackupEnabled: Boolean,
     onToggleAutoBackup: (Boolean) -> Unit,
     lastLocalBackupTime: Long,
@@ -1316,237 +1285,442 @@ private fun SyncAndBackupSection(
     onExportZip: () -> Unit,
     onImportUtower: () -> Unit
 ) {
-    // Cloud Sync Status Row (Balanced Single Card with Aligned Status & Actions)
-    val iconTint = when {
-        isSyncing || syncState == SyncStatusState.SYNCING -> Color(0xFF38BDF8)
-        syncState == SyncStatusState.COMPLETE -> Color(0xFF10B981)
-        syncState == SyncStatusState.COMPLETE_WITH_ERRORS || failedCount > 0 -> Color(0xFFF59E0B)
-        syncState == SyncStatusState.ERROR -> Color(0xFFEF4444)
-        syncState == SyncStatusState.AUTH_REQUIRED -> Color(0xFFA855F7)
-        syncState == SyncStatusState.OFFLINE -> Color(0xFF94A3B8)
-        else -> if (lastSyncTime > 0L) Color(0xFF10B981) else Color(0xFF38BDF8)
-    }
-
-    val (badgeText, badgeBg, badgeTextClr) = when {
-        isSyncing || syncState == SyncStatusState.SYNCING -> Triple(
-            if (currentLang == "ar") "جاري المزامنة" else "Syncing",
-            Color(0xFF0288D1).copy(alpha = 0.2f),
-            Color(0xFF38BDF8)
-        )
-        syncState == SyncStatusState.COMPLETE_WITH_ERRORS || (failedCount > 0 && syncState != SyncStatusState.ERROR) -> Triple(
-            if (currentLang == "ar") "أخطاء في المزامنة" else "Sync Errors",
-            Color(0xFFF59E0B).copy(alpha = 0.2f),
-            Color(0xFFF59E0B)
-        )
-        syncState == SyncStatusState.ERROR -> Triple(
-            if (currentLang == "ar") "تعذر المزامنة" else "Failed",
-            Color(0xFFEF4444).copy(alpha = 0.2f),
-            Color(0xFFEF4444)
-        )
-        syncState == SyncStatusState.AUTH_REQUIRED -> Triple(
-            if (currentLang == "ar") "مطلوب تسجيل الدخول" else "Auth Required",
-            Color(0xFFA855F7).copy(alpha = 0.2f),
-            Color(0xFFA855F7)
-        )
-        syncState == SyncStatusState.OFFLINE -> Triple(
-            if (currentLang == "ar") "غير متصل" else "Offline",
-            Color(0xFF64748B).copy(alpha = 0.2f),
-            Color(0xFF94A3B8)
-        )
-        syncState == SyncStatusState.COMPLETE || (syncState == SyncStatusState.IDLE && lastSyncTime > 0L) -> Triple(
-            if (currentLang == "ar") "مكتمل" else "Up to date",
-            Color(0xFF10B981).copy(alpha = 0.2f),
-            Color(0xFF10B981)
-        )
-        else -> Triple(
-            if (currentLang == "ar") "جاهز" else "Ready",
-            Color.White.copy(alpha = 0.1f),
-            Color.White.copy(alpha = 0.7f)
-        )
-    }
-
-    val subtitleText = when {
-        isSyncing -> {
-            when {
-                syncProgress.totalCount > 0 && syncProgress.phase == SyncPhase.UPLOADING -> {
-                    if (currentLang == "ar") "جاري رفع البيانات (${syncProgress.processedCount}/${syncProgress.totalCount})"
-                    else "Uploading records (${syncProgress.processedCount}/${syncProgress.totalCount})"
-                }
-                syncProgress.phase == SyncPhase.DOWNLOADING -> {
-                    if (currentLang == "ar") "جاري جلب التحديثات السحابية..."
-                    else "Downloading cloud updates..."
-                }
-                syncProgress.phase == SyncPhase.PREPARING -> {
-                    if (currentLang == "ar") "جاري فحص وتجهيز البيانات..."
-                    else "Preparing sync pass..."
-                }
-                else -> {
-                    if (currentLang == "ar") "بانتظار بدء المزامنة..."
-                    else "Waiting for sync to start..."
-                }
-            }
-        }
-        lastSyncTime > 0L -> {
-            val locale = if (currentLang == "ar") Locale("ar") else Locale.US
-            val formattedTime = SimpleDateFormat("h:mm a", locale).format(Date(lastSyncTime))
-            val base = if (currentLang == "ar") "آخر مزامنة · $formattedTime" else "Last sync · $formattedTime"
-            when {
-                failedCount > 0 -> if (currentLang == "ar") "$base (فشل $failedCount عناصر)" else "$base ($failedCount failed)"
-                pendingCount > 0 -> if (currentLang == "ar") "$base ($pendingCount معلقة)" else "$base ($pendingCount pending)"
-                else -> base
-            }
-        }
-        syncState == SyncStatusState.ERROR -> if (currentLang == "ar") "تعذر إتمام المزامنة الأخيرة" else "Last sync attempt failed"
-        syncState == SyncStatusState.AUTH_REQUIRED -> if (currentLang == "ar") "سجل الدخول بحساب Google للتفعيل" else "Sign in with Google to enable sync"
-        syncState == SyncStatusState.OFFLINE -> if (currentLang == "ar") "التطبيق في وضع عدم الاتصال" else "App is running offline"
-        else -> if (currentLang == "ar") "لم تتم مزامنة سابقة" else "Never synced"
-    }
-
-    val subtitleColor = when {
-        isSyncing -> Color(0xFF38BDF8)
-        failedCount > 0 || syncState == SyncStatusState.COMPLETE_WITH_ERRORS -> Color(0xFFF59E0B)
-        syncState == SyncStatusState.ERROR -> Color(0xFFEF4444)
-        syncState == SyncStatusState.AUTH_REQUIRED -> Color(0xFFA855F7)
-        lastSyncTime > 0L -> Color.White.copy(alpha = 0.45f)
-        else -> Color.White.copy(alpha = 0.4f)
-    }
-
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = Color(0xFF171E29),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Row(
+    // 1. UNIFIED CLOUD SYNC CARD
+    if (!isGoogleLinked || syncState == SyncStatusState.AUTH_REQUIRED) {
+        // STATE A: Google Account Not Linked / Sign-in Required
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = Color(0xFF171E29),
+            border = BorderStroke(1.dp, Color(0xFF0288D1).copy(alpha = 0.25f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 11.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Start side: Icon + Title & Subtitle Stack
+                // Header Row: Icon + Title + Status Pill
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.weight(1f, fill = false)
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.CloudSync,
-                        contentDescription = null,
-                        tint = iconTint,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.weight(1f, fill = false)
                     ) {
-                        Text(
-                            text = if (currentLang == "ar") "المزامنة السحابية" else "Cloud Sync",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = subtitleText,
-                            fontSize = 10.sp,
-                            color = subtitleColor,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-
-                // End side: Status Badge (when idle) + Action Button
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    if (!isSyncing) {
                         Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = badgeBg
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFF0288D1).copy(alpha = 0.15f),
+                            border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.25f))
                         ) {
+                            Icon(
+                                imageVector = Icons.Default.CloudSync,
+                                contentDescription = null,
+                                tint = Color(0xFF38BDF8),
+                                modifier = Modifier
+                                    .padding(7.dp)
+                                    .size(20.dp)
+                            )
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
-                                text = badgeText,
-                                fontSize = 10.sp,
+                                text = if (currentLang == "ar") "المزامنة السحابية (Google Cloud)" else "Cloud Sync (Google Cloud)",
+                                fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = badgeTextClr,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                color = Color.White
+                            )
+                            Text(
+                                text = if (currentLang == "ar") "تأمين وحفظ البيانات سحابياً بأمان" else "Encrypted real-time cloud backup",
+                                fontSize = 10.sp,
+                                color = Color.White.copy(alpha = 0.45f)
                             )
                         }
                     }
 
                     Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (isSyncing) Color(0xFF0288D1).copy(alpha = 0.15f) else Color(0xFF0288D1),
-                        border = if (isSyncing) BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.3f)) else null,
-                        modifier = Modifier.clickable(enabled = !isSyncing) { onTriggerSync() }
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color(0xFFA855F7).copy(alpha = 0.18f),
+                        border = BorderStroke(1.dp, Color(0xFFA855F7).copy(alpha = 0.35f))
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
-                            if (isSyncing) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(12.dp),
-                                    color = Color(0xFF38BDF8),
-                                    strokeWidth = 1.5.dp
-                                )
-                                Text(
-                                    text = if (currentLang == "ar") "جاري المزامنة..." else "Syncing...",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF38BDF8),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            } else {
-                                Icon(
-                                    Icons.Default.Refresh,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Text(
-                                    text = if (currentLang == "ar") "مزامنة الآن" else "Sync Now",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
+                        Text(
+                            text = if (currentLang == "ar") "يلزم ربط الحساب" else "Link Required",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFC084FC),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+
+                // Explainer Info Box
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFF10161D),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Info,
+                            contentDescription = null,
+                            tint = Color(0xFF38BDF8),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = if (currentLang == "ar")
+                                "قم بتسجيل الدخول بواسطة Google لربط التطبيق بالسحابة وتفعيل المزامنة التلقائية لبيانات المشتركين والحركات المالية والحفاظ عليها عند تغيير الجهاز."
+                            else
+                                "Sign in with Google to enable automatic cloud sync and safely protect your subscribers and financial ledger records.",
+                            fontSize = 11.sp,
+                            color = Color.White.copy(alpha = 0.75f),
+                            lineHeight = 16.sp
+                        )
+                    }
+                }
+
+                // Action CTA: Google Sign-In & Link
+                Button(
+                    onClick = onLinkGoogle,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0288D1)),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(42.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AccountCircle,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (currentLang == "ar") "تسجيل الدخول وربط حساب Google للتفعيل" else "Sign in with Google to Activate Sync",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = Color.White
+                    )
+                }
+            }
+        }
+    } else {
+        // STATE B: Google Account Linked -> Full Operational Cloud Sync Card
+        val iconTint = when {
+            isSyncing || syncState == SyncStatusState.SYNCING -> Color(0xFF38BDF8)
+            syncState == SyncStatusState.COMPLETE || (syncState == SyncStatusState.IDLE && lastSyncTime > 0L && failedCount == 0) -> Color(0xFF10B981)
+            syncState == SyncStatusState.COMPLETE_WITH_ERRORS || failedCount > 0 -> Color(0xFFF59E0B)
+            syncState == SyncStatusState.ERROR -> Color(0xFFEF4444)
+            syncState == SyncStatusState.OFFLINE -> Color(0xFF94A3B8)
+            else -> Color(0xFF38BDF8)
+        }
+
+        val (badgeText, badgeBg, badgeTextClr) = when {
+            isSyncing || syncState == SyncStatusState.SYNCING -> Triple(
+                if (currentLang == "ar") "جاري المزامنة" else "Syncing",
+                Color(0xFF0288D1).copy(alpha = 0.2f),
+                Color(0xFF38BDF8)
+            )
+            syncState == SyncStatusState.COMPLETE_WITH_ERRORS || (failedCount > 0 && syncState != SyncStatusState.ERROR) -> Triple(
+                if (currentLang == "ar") "أخطاء معلقة ($failedCount)" else "Errors ($failedCount)",
+                Color(0xFFF59E0B).copy(alpha = 0.2f),
+                Color(0xFFF59E0B)
+            )
+            syncState == SyncStatusState.ERROR -> Triple(
+                if (currentLang == "ar") "تعذر المزامنة" else "Sync Failed",
+                Color(0xFFEF4444).copy(alpha = 0.2f),
+                Color(0xFFEF4444)
+            )
+            syncState == SyncStatusState.OFFLINE -> Triple(
+                if (currentLang == "ar") "غير متصل" else "Offline",
+                Color(0xFF64748B).copy(alpha = 0.2f),
+                Color(0xFF94A3B8)
+            )
+            syncState == SyncStatusState.COMPLETE || (syncState == SyncStatusState.IDLE && lastSyncTime > 0L) -> Triple(
+                if (currentLang == "ar") "متزامن" else "Up to date",
+                Color(0xFF10B981).copy(alpha = 0.2f),
+                Color(0xFF10B981)
+            )
+            else -> Triple(
+                if (currentLang == "ar") "جاهز" else "Ready",
+                Color.White.copy(alpha = 0.1f),
+                Color.White.copy(alpha = 0.7f)
+            )
+        }
+
+        val subtitleText = when {
+            isSyncing -> {
+                when {
+                    syncProgress.totalCount > 0 && syncProgress.phase == SyncPhase.UPLOADING -> {
+                        if (currentLang == "ar") "جاري رفع البيانات (${syncProgress.processedCount}/${syncProgress.totalCount})"
+                        else "Uploading records (${syncProgress.processedCount}/${syncProgress.totalCount})"
+                    }
+                    syncProgress.phase == SyncPhase.DOWNLOADING -> {
+                        if (currentLang == "ar") "جاري جلب التحديثات السحابية..."
+                        else "Downloading cloud updates..."
+                    }
+                    syncProgress.phase == SyncPhase.PREPARING -> {
+                        if (currentLang == "ar") "جاري فحص وتجهيز البيانات..."
+                        else "Preparing sync pass..."
+                    }
+                    else -> {
+                        if (currentLang == "ar") "بانتظار اكتمال المزامنة..."
+                        else "Sync in progress..."
                     }
                 }
             }
+            lastSyncTime > 0L -> {
+                val locale = if (currentLang == "ar") Locale("ar") else Locale.US
+                val formattedTime = SimpleDateFormat("h:mm a", locale).format(Date(lastSyncTime))
+                val base = if (currentLang == "ar") "آخر مزامنة ناجحة · $formattedTime" else "Last synced · $formattedTime"
+                when {
+                    failedCount > 0 -> if (currentLang == "ar") "$base ($failedCount عمليات معلقة بحاجة للمحاولة)" else "$base ($failedCount pending retries)"
+                    pendingCount > 0 -> if (currentLang == "ar") "$base ($pendingCount حركات قيد المعالجة)" else "$base ($pendingCount pending)"
+                    else -> base
+                }
+            }
+            syncState == SyncStatusState.ERROR -> if (currentLang == "ar") "تعذر إتمام المزامنة الأخيرة · تحقق من الاتصال بالإنترنت" else "Last sync failed · Check your connection"
+            syncState == SyncStatusState.OFFLINE -> if (currentLang == "ar") "التطبيق في وضع عدم الاتصال" else "App is offline"
+            else -> if (currentLang == "ar") "جاهز للمزامنة السحابية الأولى" else "Ready for initial sync"
+        }
 
-            // Bottom Progress Indicator (if syncing)
-            if (isSyncing) {
-                if (syncProgress.totalCount > 0 && syncProgress.phase == SyncPhase.UPLOADING) {
-                    val progressFraction = (syncProgress.processedCount.toFloat() / syncProgress.totalCount.toFloat()).coerceIn(0f, 1f)
-                    LinearProgressIndicator(
-                        progress = { progressFraction },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(2.dp),
-                        color = Color(0xFF38BDF8),
-                        trackColor = Color.White.copy(alpha = 0.08f)
+        val subtitleColor = when {
+            isSyncing -> Color(0xFF38BDF8)
+            failedCount > 0 || syncState == SyncStatusState.COMPLETE_WITH_ERRORS -> Color(0xFFF59E0B)
+            syncState == SyncStatusState.ERROR -> Color(0xFFEF4444)
+            lastSyncTime > 0L -> Color.White.copy(alpha = 0.6f)
+            else -> Color.White.copy(alpha = 0.45f)
+        }
+
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = Color(0xFF171E29),
+            border = BorderStroke(
+                1.dp,
+                if (syncState == SyncStatusState.ERROR) Color(0xFFEF4444).copy(alpha = 0.3f)
+                else Color.White.copy(alpha = 0.06f)
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Row 1: Icon + Title & Account Pill + Status Badge
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.weight(1f, fill = false)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = iconTint.copy(alpha = 0.15f),
+                            border = BorderStroke(1.dp, iconTint.copy(alpha = 0.3f))
+                        ) {
+                            Icon(
+                                imageVector = if (syncState == SyncStatusState.COMPLETE && !isSyncing) Icons.Default.CloudDone else Icons.Default.CloudSync,
+                                contentDescription = null,
+                                tint = iconTint,
+                                modifier = Modifier
+                                    .padding(7.dp)
+                                    .size(20.dp)
+                            )
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = if (currentLang == "ar") "المزامنة السحابية" else "Cloud Sync",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            if (!googleUserEmail.isNullOrBlank()) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = Color(0xFF10B981),
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                    Text(
+                                        text = googleUserEmail,
+                                        fontSize = 10.sp,
+                                        color = Color.White.copy(alpha = 0.5f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Status Badge
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = badgeBg,
+                        border = BorderStroke(1.dp, badgeTextClr.copy(alpha = 0.3f))
+                    ) {
+                        Text(
+                            text = badgeText,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = badgeTextClr,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                // Row 2: Detailed Subtitle Text (full width, clear & readable)
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF10161D),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = subtitleText,
+                        fontSize = 11.sp,
+                        color = subtitleColor,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                        lineHeight = 15.sp
                     )
-                } else {
-                    LinearProgressIndicator(
+                }
+
+                // Progress bar if syncing
+                if (isSyncing) {
+                    if (syncProgress.totalCount > 0 && syncProgress.phase == SyncPhase.UPLOADING) {
+                        val progressFraction = (syncProgress.processedCount.toFloat() / syncProgress.totalCount.toFloat()).coerceIn(0f, 1f)
+                        LinearProgressIndicator(
+                            progress = { progressFraction },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = Color(0xFF38BDF8),
+                            trackColor = Color.White.copy(alpha = 0.08f)
+                        )
+                    } else {
+                        LinearProgressIndicator(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = Color(0xFF38BDF8),
+                            trackColor = Color.White.copy(alpha = 0.08f)
+                        )
+                    }
+                }
+
+                // Row 3: Action Buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Main Sync Action Button
+                    Button(
+                        onClick = onTriggerSync,
+                        enabled = !isSyncing,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF0288D1),
+                            disabledContainerColor = Color(0xFF0288D1).copy(alpha = 0.4f)
+                        ),
+                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(2.dp),
-                        color = Color(0xFF38BDF8),
-                        trackColor = Color.White.copy(alpha = 0.08f)
-                    )
+                            .weight(1f)
+                            .height(38.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        if (isSyncing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (currentLang == "ar") "جاري المزامنة..." else "Syncing...",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (currentLang == "ar") "مزامنة الآن" else "Sync Now",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                    }
+
+                    // Retry Failed Outbox Button (if any failed items exist)
+                    if (failedCount > 0) {
+                        OutlinedButton(
+                            onClick = onRetryFailed,
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Color(0xFFF59E0B)
+                            ),
+                            border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.5f)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.height(38.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Replay,
+                                contentDescription = null,
+                                tint = Color(0xFFF59E0B),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (currentLang == "ar") "إعادة ($failedCount)" else "Retry ($failedCount)",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    // Account Switch / Re-link (Icon button)
+                    IconButton(
+                        onClick = onLinkGoogle,
+                        modifier = Modifier
+                            .size(38.dp)
+                            .background(Color(0xFF10161D), RoundedCornerShape(10.dp))
+                            .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)), RoundedCornerShape(10.dp))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AccountCircle,
+                            contentDescription = if (currentLang == "ar") "تبديل أو إعادة ربط الحساب" else "Switch or Re-link Account",
+                            tint = Color.White.copy(alpha = 0.7f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
         }

@@ -454,7 +454,13 @@ fun UserDetailScreenV2(
                             value = noteInput,
                             onValueChange = { noteInput = it },
                             modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
                             label = { Text(if (currentLang == "ar") "ملاحظة" else "Note", color = Color(0xFF9CA3AF)) },
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = {
+                                focusManager.clearFocus(force = true)
+                                keyboardController?.hide()
+                            }),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = Color.White,
                                 unfocusedTextColor = Color.White,
@@ -828,7 +834,13 @@ fun UserDetailScreenV2(
                             value = noteInput,
                             onValueChange = { noteInput = it },
                             modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
                             label = { Text(if (currentLang == "ar") "ملاحظة" else "Note", color = Color(0xFF9CA3AF)) },
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = {
+                                focusManager.clearFocus(force = true)
+                                keyboardController?.hide()
+                            }),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = Color.White,
                                 unfocusedTextColor = Color.White,
@@ -1154,7 +1166,13 @@ fun UserDetailScreenV2(
                             value = noteInput,
                             onValueChange = { noteInput = it },
                             modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
                             label = { Text(if (currentLang == "ar") "ملاحظة" else "Note", color = Color(0xFF9CA3AF)) },
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = {
+                                focusManager.clearFocus(force = true)
+                                keyboardController?.hide()
+                            }),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = Color.White,
                                 unfocusedTextColor = Color.White,
@@ -1420,49 +1438,7 @@ fun UserDetailScreenV2(
                                         }
                                     }
 
-                                    val cleanNote = when {
-                                        noteNonNull.isEmpty() -> ""
-                                        noteNonNull.startsWith("[RENEW]") -> noteNonNull.removePrefix("[RENEW]").trim()
-                                        noteNonNull.startsWith("[RENEW_PAY]") -> noteNonNull.removePrefix("[RENEW_PAY]").trim()
-                                        noteNonNull.startsWith("[DEBT]") -> noteNonNull.removePrefix("[DEBT]").trim()
-                                        noteNonNull.startsWith("[DEPOSIT]") -> noteNonNull.removePrefix("[DEPOSIT]").trim()
-                                        else -> {
-                                            var temp = noteNonNull
-                                            // Handle various separators
-                                            val separators = listOf(" | ", " - ", " : ")
-                                            var bestTemp = temp
-                                            for (sep in separators) {
-                                                val idx = temp.indexOf(sep)
-                                                if (idx != -1) {
-                                                    val parts = temp.split(sep)
-                                                    // Find a part that doesn't just contain standard keywords
-                                                    for (part in parts) {
-                                                        val trimmed = part.trim()
-                                                        if (trimmed.isNotEmpty() && 
-                                                            !trimmed.contains("تجديد") && 
-                                                            !trimmed.contains("تسديد") && 
-                                                            !trimmed.contains("دين") &&
-                                                            !trimmed.contains("بقيمة")) {
-                                                            bestTemp = trimmed
-                                                            break
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            
-                                            if (bestTemp == temp) {
-                                                if (temp.contains("تجديد") || temp.contains("تسديد") || temp.contains("دين")) {
-                                                    // If it's just a system message like "تجديد اشتراك بقيمة : 40,000"
-                                                    // and we couldn't find a better part, clear it as it's redundant with the title.
-                                                    if (temp.length < 50) "" else temp
-                                                } else {
-                                                    temp
-                                                }
-                                            } else {
-                                                bestTemp
-                                            }
-                                        }
-                                    }
+                                    val cleanNote = com.example.core.ledger.NoteCleaner.extractGenuineNote(entry.note, entry.amountIqd.toDouble())
 
                                     Column(
                                         modifier = Modifier.weight(1f),
@@ -1472,23 +1448,23 @@ fun UserDetailScreenV2(
 
                                         val titleText = when (resolvedType) {
                                             "debt" -> {
-                                                if (currentLang == "ar") "إضافة دين بقيمة : ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} د.ع"
+                                                if (currentLang == "ar") "إضافة دين: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} د.ع"
                                                 else "Added debt: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} IQD"
                                             }
                                             "deposit" -> {
-                                                if (currentLang == "ar") "إيداع مبلغ : ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} د.ع"
-                                                else "Deposit of ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} IQD"
+                                                if (currentLang == "ar") "إيداع رصيد: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} د.ع"
+                                                else "Deposit: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} IQD"
                                             }
                                             "payment" -> {
-                                                if (currentLang == "ar") "تسديد مبلغ : ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} د.ع"
-                                                else "Payment of ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} IQD"
+                                                if (currentLang == "ar") "تسديد مبلغ: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} د.ع"
+                                                else "Payment: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} IQD"
                                             }
                                             "renew_pay" -> {
-                                                if (currentLang == "ar") "تسديد تجديد بقيمة : ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} د.ع"
-                                                else "Paid subscription renewal: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} IQD"
+                                                if (currentLang == "ar") "تسديد تجديد: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} د.ع"
+                                                else "Paid renewal: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} IQD"
                                             }
                                             else -> { // renew
-                                                if (currentLang == "ar") "تجديد اشتراك بقيمة : ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} د.ع"
+                                                if (currentLang == "ar") "تجديد اشتراك: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} د.ع"
                                                 else "Subscription renewal: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.amountIqd.toDouble())} IQD"
                                             }
                                         }
@@ -1506,12 +1482,10 @@ fun UserDetailScreenV2(
                                             color = Color(0xFF8E8E93)
                                         )
                                         
-                                        val balanceText = if (entry.typeRaw == "took") {
-                                            if (currentLang == "ar") "الدين الكلي بعد: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.debtAfterIqd.toDouble())} د.ع"
-                                            else "Total Debt After: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.debtAfterIqd.toDouble())} IQD"
+                                        val balanceText = if (currentLang == "ar") {
+                                            "الدين المتبقي بعد الحركة: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.debtAfterIqd.toDouble())} د.ع"
                                         } else {
-                                            if (currentLang == "ar") "الرصيد الكلي بعد: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.debtAfterIqd.toDouble())} د.ع"
-                                            else "Total Balance After: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.debtAfterIqd.toDouble())} IQD"
+                                            "Remaining Debt After: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(entry.debtAfterIqd.toDouble())} IQD"
                                         }
                                         
                                         Text(
@@ -1520,7 +1494,7 @@ fun UserDetailScreenV2(
                                             color = Color(0xFF8E8E93)
                                         )
                                         
-                                        if (cleanNote.isNotBlank() && cleanNote != "000") {
+                                        if (cleanNote.isNotBlank()) {
                                             Text(
                                                 text = if (currentLang == "ar") "ملاحظة: $cleanNote" else "Note: $cleanNote",
                                                 fontSize = 12.sp,
