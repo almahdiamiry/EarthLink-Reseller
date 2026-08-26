@@ -583,8 +583,8 @@ fun UserDetailScreenV2(
                                             note = noteVal,
                                             onSuccessCallback = { txId ->
                                                 try {
-                                                    val chargeNote = if (noteVal.isNotBlank()) "[RENEW] ${noteVal.trim()}" else "[RENEW]"
-                                                    val payNote = if (isWasil) (if (noteVal.isNotBlank()) "[RENEW_PAY] ${noteVal.trim()}" else "[RENEW_PAY]") else null
+                                                    val chargeNote = noteVal.trim()
+                                                    val payNote = if (isWasil) noteVal.trim() else null
                                                     
                                                     viewModel.localLedgerRepository.recordAccountRenewal(
                                                         account = accToUse,
@@ -1522,9 +1522,12 @@ fun UserDetailScreenV2(
                                     val isDeposit = noteNonNull.startsWith("[DEPOSIT]")
                                     val isPayment = noteNonNull.startsWith("[PAYMENT]")
 
+                                    val isChargeIdRenew = entry.id.startsWith("charge_") || entry.id.startsWith("tx_") || (entry.sourceExternalId != null && (entry.sourceExternalId.startsWith("charge_") || entry.sourceExternalId.startsWith("tx_")))
+                                    val isPayIdRenew = entry.id.startsWith("pay_") || (entry.sourceExternalId != null && entry.sourceExternalId.startsWith("pay_"))
+
                                     val resolvedType = when {
-                                        isRenew -> "renew"
-                                        isRenewPay -> "renew_pay"
+                                        isRenewPay || isPayIdRenew -> "renew_pay"
+                                        isRenew || isChargeIdRenew -> "renew"
                                         isDebt -> "debt"
                                         isDeposit -> "deposit"
                                         isPayment -> "payment"
@@ -1590,7 +1593,8 @@ fun UserDetailScreenV2(
                                             color = Color(0xFF8E8E93)
                                         )
                                         
-                                        val (postDebt, postAdvance) = entryBalancesMap[entry.id] ?: Pair(entry.debtAfterIqd.toDouble(), 0.0)
+                                        val (postDebt, postAdvance) = entryBalancesMap[entry.id]
+                                            ?: if (entry.debtAfterIqd < 0.0) Pair(0.0, -entry.debtAfterIqd.toDouble()) else Pair(entry.debtAfterIqd.toDouble(), 0.0)
                                         
                                         val balanceText = when {
                                             postDebt > 0.0 && postAdvance > 0.0 -> {
