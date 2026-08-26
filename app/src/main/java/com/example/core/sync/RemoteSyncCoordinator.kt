@@ -197,18 +197,18 @@ class RemoteSyncCoordinator(
      * Serialized processing of remote events.
      * Returns an explicit [EventSyncResult] dictating the outcome and cursor advancement behavior.
      */
-    suspend fun processEvent(event: RemoteEvent): EventSyncResult {
+    suspend fun processEvent(event: RemoteEvent, passedCapturedGen: Long? = null): EventSyncResult {
         return coordinatorMutex.withLock {
             val key = event.deduplicationKey
 
             // 1. In-memory LRU deduplication check
             if (processedKeys.containsKey(key)) {
-                Log.d("RemoteSyncCoordinator", "Skipping duplicate event key=$key from source=${event.source}")
+                Log.d("RemoteSyncCoordinator", "TESTDEBUG: Skipping duplicate event key=$key from source=${event.source}")
                 return EventSyncResult.SKIPPED_DUPLICATE
             }
 
             // Capture local generation at remote operation start (P3-G4-REQ-02, INV-05, INV-11)
-            val capturedGen = appDatabase.getGeneration()
+            val capturedGen = passedCapturedGen ?: metadataDao.getGeneration()
 
             var result = EventSyncResult.FAILED_RETRYABLE
             appDatabase.withTransaction {
@@ -219,7 +219,7 @@ class RemoteSyncCoordinator(
                         "RemoteSyncCoordinator",
                         "Lineage generation mismatch during processEvent for ${event.entityType}:${event.entityId}: capturedGen=$capturedGen != currentGen=$currentGen. Rejecting stale remote result."
                     )
-                    result = EventSyncResult.SKIPPED_DUPLICATE
+                    result = EventSyncResult.FAILED_RETRYABLE
                     return@withTransaction
                 }
 
@@ -243,10 +243,10 @@ class RemoteSyncCoordinator(
     /**
      * Batch process multiple remote events sequentially.
      */
-    suspend fun processEvents(events: List<RemoteEvent>): Int {
+    suspend fun processEvents(events: List<RemoteEvent>, passedCapturedGen: Long? = null): Int {
         var count = 0
         for (event in events) {
-            if (processEvent(event).canAdvanceCursor()) {
+            if (processEvent(event, passedCapturedGen).canAdvanceCursor()) {
                 count++
             }
         }
@@ -256,8 +256,8 @@ class RemoteSyncCoordinator(
     private suspend fun applyAccountUpsert(event: RemoteEvent.AccountUpsert, capturedGen: Long): EventSyncResult {
         val currentGen = metadataDao.getGeneration()
         if (currentGen != capturedGen) {
-            Log.w("RemoteSyncCoordinator", "Lineage generation mismatch in applyAccountUpsert: captured=$capturedGen != current=$currentGen")
-            return EventSyncResult.SKIPPED_DUPLICATE
+            Log.w("RemoteSyncCoordinator", "TESTDEBUG: Lineage generation mismatch in applyAccountUpsert: captured=$capturedGen != current=$currentGen")
+            return EventSyncResult.FAILED_RETRYABLE
         }
 
         val account = event.account
@@ -265,7 +265,7 @@ class RemoteSyncCoordinator(
         val tombstoneTs = tombstoneStr?.toLongOrNull()
         if (tombstoneTs != null && tombstoneTs > 0L) {
             if (event.remoteVersion <= tombstoneTs) {
-                Log.d("RemoteSyncCoordinator", "Ignoring stale AccountUpsert for deleted account ${event.entityId}")
+                Log.d("RemoteSyncCoordinator", "TESTDEBUG: Ignoring stale AccountUpsert for deleted account ${event.entityId}")
                 return EventSyncResult.SKIPPED_DUPLICATE
             }
         }
@@ -357,7 +357,7 @@ class RemoteSyncCoordinator(
         val currentGen = metadataDao.getGeneration()
         if (currentGen != capturedGen) {
             Log.w("RemoteSyncCoordinator", "Lineage generation mismatch in applyAccountDelete: captured=$capturedGen != current=$currentGen")
-            return EventSyncResult.SKIPPED_DUPLICATE
+            return EventSyncResult.FAILED_RETRYABLE
         }
 
         val hasActiveMutation = hasConflictingLocalMutation(event.entityId, "local_accounts", event.syncMutationId)
@@ -412,7 +412,7 @@ class RemoteSyncCoordinator(
         val currentGen = metadataDao.getGeneration()
         if (currentGen != capturedGen) {
             Log.w("RemoteSyncCoordinator", "Lineage generation mismatch in applyLedgerUpsert: captured=$capturedGen != current=$currentGen")
-            return EventSyncResult.SKIPPED_DUPLICATE
+            return EventSyncResult.FAILED_RETRYABLE
         }
 
         val entry = event.entry
@@ -558,7 +558,7 @@ class RemoteSyncCoordinator(
         val currentGen = metadataDao.getGeneration()
         if (currentGen != capturedGen) {
             Log.w("RemoteSyncCoordinator", "Lineage generation mismatch in applyLedgerDelete: captured=$capturedGen != current=$currentGen")
-            return EventSyncResult.SKIPPED_DUPLICATE
+            return EventSyncResult.FAILED_RETRYABLE
         }
 
         val hasActiveMutation = hasConflictingLocalMutation(event.entityId, "local_ledger_entries", event.syncMutationId)
@@ -602,7 +602,7 @@ class RemoteSyncCoordinator(
         val currentGen = metadataDao.getGeneration()
         if (currentGen != capturedGen) {
             Log.w("RemoteSyncCoordinator", "Lineage generation mismatch in applyBatchUpsert: captured=$capturedGen != current=$currentGen")
-            return EventSyncResult.SKIPPED_DUPLICATE
+            return EventSyncResult.FAILED_RETRYABLE
         }
 
         val batch = event.batch
@@ -646,7 +646,7 @@ class RemoteSyncCoordinator(
         val currentGen = metadataDao.getGeneration()
         if (currentGen != capturedGen) {
             Log.w("RemoteSyncCoordinator", "Lineage generation mismatch in applyUserSettingsUpdate: captured=$capturedGen != current=$currentGen")
-            return EventSyncResult.SKIPPED_DUPLICATE
+            return EventSyncResult.FAILED_RETRYABLE
         }
 
         val lastVersionStr = metadataDao.get("user_settings_version")

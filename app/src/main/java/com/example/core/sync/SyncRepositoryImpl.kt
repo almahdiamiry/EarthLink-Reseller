@@ -409,6 +409,8 @@ class SyncRepositoryImpl(
                 metadataDao.remove("replace_all_pending_reconciliation")
             }
 
+            val passGeneration = metadataDao.getGeneration()
+
             // 1. Process local outbox changes and upload to Firestore
             val rawPendingItems = OutboxManager.getPending(outboxDao)
             val pendingItems = rawPendingItems.filter { item ->
@@ -566,11 +568,25 @@ class SyncRepositoryImpl(
             val collectionsToSync = listOf("local_accounts", "local_ledger_entries", "import_batches", "audit_logs")
             for (collName in collectionsToSync) {
                 val initialCursor = getCollectionCursor(collName)
-                val updatedCursor = pullRemoteChanges(currentUid, collName, initialCursor, fbFirestore)
-                if (updatedCursor.lastServerTimestamp > initialCursor.lastServerTimestamp ||
-                    (updatedCursor.lastServerTimestamp == initialCursor.lastServerTimestamp && updatedCursor.lastDocumentId > initialCursor.lastDocumentId)) {
-                    saveCollectionCursor(collName, updatedCursor)
+                val updatedCursor = pullRemoteChanges(currentUid, collName, initialCursor, fbFirestore, passGeneration)
+                if (metadataDao.getGeneration() == passGeneration) {
+                    if (updatedCursor.lastServerTimestamp > initialCursor.lastServerTimestamp ||
+                        (updatedCursor.lastServerTimestamp == initialCursor.lastServerTimestamp && updatedCursor.lastDocumentId > initialCursor.lastDocumentId)) {
+                        saveCollectionCursor(collName, updatedCursor)
+                    }
+                } else {
+                    Log.w("FirebaseSync", "Generation changed during sync pass ($passGeneration -> ${metadataDao.getGeneration()}). Aborting cursor persistence for $collName.")
                 }
+            }
+
+            if (metadataDao.getGeneration() != passGeneration) {
+                Log.w("FirebaseSync", "Generation changed during sync pass ($passGeneration -> ${metadataDao.getGeneration()}). Aborting completion timestamp update and marking for retry.")
+                _syncState.value = SyncStatusState.IDLE
+                _syncProgress.value = _syncProgress.value.copy(
+                    isSyncing = false,
+                    phase = SyncPhase.IDLE
+                )
+                return false
             }
 
             val finalFailedOutbox = outboxDao.getFailedCount()
@@ -898,14 +914,17 @@ class SyncRepositoryImpl(
                     val activeCursors = mutableMapOf<String, RemoteSyncCursor>()
 
                     singleFlightMutex.withLock {
+                        val bootstrapGen = metadataDao.getGeneration()
                         for (collName in collectionsToSync) {
                             val initialCursor = getCollectionCursor(collName)
                             var updatedCursor = initialCursor
                             try {
-                                updatedCursor = pullRemoteChanges(uid, collName, initialCursor, fbFirestore)
-                                if (updatedCursor.lastServerTimestamp > initialCursor.lastServerTimestamp ||
-                                    (updatedCursor.lastServerTimestamp == initialCursor.lastServerTimestamp && updatedCursor.lastDocumentId > initialCursor.lastDocumentId)) {
-                                    saveCollectionCursor(collName, updatedCursor)
+                                updatedCursor = pullRemoteChanges(uid, collName, initialCursor, fbFirestore, bootstrapGen)
+                                if (metadataDao.getGeneration() == bootstrapGen) {
+                                    if (updatedCursor.lastServerTimestamp > initialCursor.lastServerTimestamp ||
+                                        (updatedCursor.lastServerTimestamp == initialCursor.lastServerTimestamp && updatedCursor.lastDocumentId > initialCursor.lastDocumentId)) {
+                                        saveCollectionCursor(collName, updatedCursor)
+                                    }
                                 }
                             } catch (e: Exception) {
                                 if (e is kotlinx.coroutines.CancellationException) throw e
@@ -1129,6 +1148,7 @@ class SyncRepositoryImpl(
         syncScope.launch {
             DataOperationCoordinator.withOperation(DataOperationMode.REMOTE_APPLY) {
                 snapshotMutex.withLock {
+                    val snapshotGen = metadataDao.getGeneration()
                     val initialCursor = getCollectionCursor(collName)
                     var snapshotCursor = initialCursor
 
@@ -1199,7 +1219,7 @@ class SyncRepositoryImpl(
 
                             try {
                                 if (event != null) {
-                                    syncResult = remoteSyncCoordinator.processEvent(event)
+                                    syncResult = remoteSyncCoordinator.processEvent(event, passedCapturedGen = snapshotGen)
                                 } else if (collName == "audit_logs") {
                                     val remoteAudit = mapToAuditLog(id, data)
                                     auditDao.insert(remoteAudit)
@@ -1246,9 +1266,11 @@ class SyncRepositoryImpl(
                         }
                     }
 
-                    if (snapshotCursor.lastServerTimestamp > initialCursor.lastServerTimestamp ||
-                        (snapshotCursor.lastServerTimestamp == initialCursor.lastServerTimestamp && snapshotCursor.lastDocumentId > initialCursor.lastDocumentId)) {
-                        saveCollectionCursor(collName, snapshotCursor)
+                    if (metadataDao.getGeneration() == snapshotGen) {
+                        if (snapshotCursor.lastServerTimestamp > initialCursor.lastServerTimestamp ||
+                            (snapshotCursor.lastServerTimestamp == initialCursor.lastServerTimestamp && snapshotCursor.lastDocumentId > initialCursor.lastDocumentId)) {
+                            saveCollectionCursor(collName, snapshotCursor)
+                        }
                     }
                 }
             }
@@ -1259,8 +1281,10 @@ class SyncRepositoryImpl(
         uid: String,
         collName: String,
         currentCursor: RemoteSyncCursor,
-        fbFirestore: FirebaseFirestore
+        fbFirestore: FirebaseFirestore,
+        passGeneration: Long? = null
     ): RemoteSyncCursor {
+        val capturedPassGen = passGeneration ?: metadataDao.getGeneration()
         var lastDoc: com.google.firebase.firestore.DocumentSnapshot? = null
         var hasMore = true
         var updatedCursor = currentCursor
@@ -1351,7 +1375,7 @@ class SyncRepositoryImpl(
 
                     try {
                         if (event != null) {
-                            syncResult = remoteSyncCoordinator.processEvent(event)
+                            syncResult = remoteSyncCoordinator.processEvent(event, passedCapturedGen = capturedPassGen)
                         } else if (collName == "audit_logs") {
                             val remoteAudit = mapToAuditLog(id, data)
                             auditDao.insert(remoteAudit)

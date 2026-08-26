@@ -480,13 +480,8 @@ class Phase3GenerationAdvanceBoundaryTest {
 
         // Coordinator processEvent will check capturedGen vs currentGen and reject stale result
         // Simulating the in-flight remote event captured at Gen 1L arriving at current Gen 2L
-        val currentGen = db.syncMetadataDao().getGeneration()
-        val result = if (currentGen != capturedGen) {
-            EventSyncResult.SKIPPED_DUPLICATE
-        } else {
-            coordinator.processEvent(event)
-        }
-        assertEquals(EventSyncResult.SKIPPED_DUPLICATE, result)
+        val result = coordinator.processEvent(event, passedCapturedGen = capturedGen)
+        assertEquals(EventSyncResult.FAILED_RETRYABLE, result)
 
         // Entity must NOT be in database
         assertNull(db.localAccountDao().getByIdOneShot(account.id))
@@ -512,13 +507,8 @@ class Phase3GenerationAdvanceBoundaryTest {
         assertEquals(2L, db.getGeneration())
 
         // In-flight event captured before clear (capturedGen=1L) evaluated against currentGen=2L
-        val currentGen = db.syncMetadataDao().getGeneration()
-        val result = if (currentGen != capturedGen) {
-            EventSyncResult.SKIPPED_DUPLICATE
-        } else {
-            coordinator.processEvent(event)
-        }
-        assertEquals(EventSyncResult.SKIPPED_DUPLICATE, result)
+        val result = coordinator.processEvent(event, passedCapturedGen = capturedGen)
+        assertEquals(EventSyncResult.FAILED_RETRYABLE, result)
 
         assertNull(db.localAccountDao().getByIdOneShot(account.id))
     }
@@ -548,13 +538,8 @@ class Phase3GenerationAdvanceBoundaryTest {
         assertEquals(2L, db.getGeneration())
 
         // In-flight event captured before import replace evaluated against currentGen=2L
-        val currentGen = db.syncMetadataDao().getGeneration()
-        val result = if (currentGen != capturedGen) {
-            EventSyncResult.SKIPPED_DUPLICATE
-        } else {
-            coordinator.processEvent(event)
-        }
-        assertEquals(EventSyncResult.SKIPPED_DUPLICATE, result)
+        val result = coordinator.processEvent(event, passedCapturedGen = capturedGen)
+        assertEquals(EventSyncResult.FAILED_RETRYABLE, result)
 
         assertNull(db.localAccountDao().getByIdOneShot(account.id))
     }
