@@ -521,12 +521,11 @@ class SyncRepositoryImpl(
                             batch.commit().await()
                             batchSucceeded = true
 
-                            // Batch succeeded: acknowledge and read-back for each item
+                            // Batch succeeded: acknowledge for each item
                             for ((item, allForEntity, _) in preparedItems) {
                                 appDatabase.withTransaction {
                                     OutboxManager.markSucceeded(outboxDao, allForEntity.map { it.id })
                                 }
-                                confirmRemoteVersionReadBack(item, currentUid, fbFirestore)
                             }
                             processedCount += preparedItems.size
                             successCount += preparedItems.size
