@@ -268,28 +268,55 @@ fun DashboardScreen(
         }
     }
 
-    // 1. FILTERING & SORTING VIA DERIVED STATE
+    // 1. FILTERING & SORTING VIA DERIVED STATE: Merge Live ISP Subscribers + Local/Legacy Accounts
     val filteredList by remember(subscribers, localAccounts, localAccountMatcher, selectedStatusFilter, selectedSort, isSearchActive, searchQuery) {
         derivedStateOf {
-            val baseList = if (subscribers.isEmpty() && localAccounts.isNotEmpty()) {
-                localAccounts.map { acc ->
-                    com.example.core.model.UserListItem(
-                        userIndexLower = acc.id.hashCode(),
-                        userIDLower = acc.earthlinkUsername ?: "local_${acc.id}",
-                        customerNameLower = acc.displayName.ifBlank { acc.earthlinkUsername ?: "Unknown" },
-                        mobileNumberLower = acc.phone1,
-                        accountStatusLower = if (acc.expiresAt != null) {
-                            val expTime = parseExpirationTimestamp(acc.expiresAt)
-                            if (expTime != null && expTime < System.currentTimeMillis()) "Expired" else "Active"
-                        } else "Active",
-                        expirationDateLower = acc.expiresAt ?: "",
-                        displayNameLower = acc.displayName,
-                        accountNameLower = acc.packageName
-                    )
+            val mergedList = ArrayList<com.example.core.model.UserListItem>(subscribers.size + localAccounts.size)
+            val seenUsernames = HashSet<String>()
+            val seenAccountIds = HashSet<String>()
+
+            // 1. Add live ISP / demo subscribers
+            for (sub in subscribers) {
+                val matchingAccount = localAccountMatcher.findMatchingByUsername(sub.userID) ?: localAccountMatcher.findMatching(sub)
+                if (matchingAccount?.isHistoryOnlySubscriber == true) {
+                    continue
                 }
-            } else {
-                subscribers
+                mergedList.add(sub)
+                sub.userID?.let { if (it.isNotBlank()) seenUsernames.add(it.lowercase(Locale.US)) }
+                matchingAccount?.let { acc ->
+                    seenAccountIds.add(acc.id)
+                    acc.earthlinkUsername?.let { if (it.isNotBlank()) seenUsernames.add(it.lowercase(Locale.US)) }
+                }
             }
+
+            // 2. Append all Local / Legacy Accounts (uTower + local) not represented in live subscribers
+            for (acc in localAccounts) {
+                if (acc.isHistoryOnlySubscriber) continue
+                if (seenAccountIds.contains(acc.id)) continue
+                val accUserLower = acc.earthlinkUsername?.lowercase(Locale.US)
+                if (accUserLower != null && accUserLower.isNotBlank() && seenUsernames.contains(accUserLower)) {
+                    continue
+                }
+
+                val item = com.example.core.model.UserListItem(
+                    userIndexLower = acc.id.hashCode(),
+                    userIDLower = acc.earthlinkUsername ?: "local_${acc.id}",
+                    customerNameLower = acc.displayName.ifBlank { acc.earthlinkUsername ?: "Unknown" },
+                    mobileNumberLower = acc.phone1,
+                    accountStatusLower = if (acc.expiresAt != null) {
+                        val expTime = parseExpirationTimestamp(acc.expiresAt)
+                        if (expTime != null && expTime < System.currentTimeMillis()) "Expired" else "Active"
+                    } else "Active",
+                    expirationDateLower = acc.expiresAt ?: "",
+                    displayNameLower = acc.displayName,
+                    accountNameLower = acc.packageName
+                )
+                mergedList.add(item)
+                seenAccountIds.add(acc.id)
+                accUserLower?.let { if (it.isNotBlank()) seenUsernames.add(it) }
+            }
+
+            val baseList = mergedList
 
             val now = System.currentTimeMillis()
 
