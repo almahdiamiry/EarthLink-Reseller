@@ -40,6 +40,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.ImeAction
@@ -1106,6 +1111,15 @@ fun UserDetailScreenV2(
                                     .focusRequester(focusRequester)
                                     .onFocusChanged { focusState ->
                                         isFocused = focusState.isFocused
+                                    }
+                                    .onKeyEvent { keyEvent ->
+                                        if (keyEvent.type == KeyEventType.KeyDown && (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter)) {
+                                            focusManager.clearFocus(force = true)
+                                            keyboardController?.hide()
+                                            true
+                                        } else {
+                                            false
+                                        }
                                     },
                                 singleLine = true,
                                 textStyle = LocalTextStyle.current.copy(
@@ -1230,7 +1244,17 @@ fun UserDetailScreenV2(
                         OutlinedTextField(
                             value = noteInput,
                             onValueChange = { noteInput = it },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .onKeyEvent { keyEvent ->
+                                    if (keyEvent.type == KeyEventType.KeyDown && (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter)) {
+                                        focusManager.clearFocus(force = true)
+                                        keyboardController?.hide()
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                },
                             singleLine = true,
                             label = { Text(if (currentLang == "ar") "ملاحظة" else "Note", color = Color(0xFF9CA3AF)) },
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
