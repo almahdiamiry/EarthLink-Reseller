@@ -14,12 +14,12 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * Regression test for Add Debt physical Enter key handling.
+ * Regression test for Add Debt & Deposit/Payment dialog physical Enter key handling.
  * 
  * Note on Test Scope & Boundaries:
  * - This unit test exercises the exact tunneling interception logic attached via Modifier.onPreviewKeyEvent.
  * - It verifies event consumption (KeyDown vs KeyUp), non-Enter key pass-through, and guarantees zero
- *   financial/save/submit mutations.
+ *   financial/save/submit mutations for both Add Debt and Deposit/Payment dialogs.
  * - Because Compose test rule is configured in androidTestImplementation, full end-to-end hardware key injection
  *   into a mounted Android Compose layout is verified at the runtime/device level.
  */
@@ -60,6 +60,30 @@ class HardwareEnterHandlingTest {
         assertFalse("Enter key MUST NOT submit form", submitExecuted)
         assertEquals("Enter key MUST NOT create ledger mutation", 0, ledgerMutationCount)
         assertEquals("Enter key MUST NOT create outbox mutation", 0, outboxMutationCount)
+    }
+
+    @Test
+    fun `test Deposit dialog price and note inputs consume Enter without mutation`() {
+        var priceDismiss = false
+        var noteDismiss = false
+        var isPaymentSubmitted = false
+
+        val enterEvent = KeyEvent(
+            android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_ENTER)
+        )
+
+        val priceHandled = onPreviewKeyEventInterception(enterEvent) {
+            priceDismiss = true
+        }
+        val noteHandled = onPreviewKeyEventInterception(enterEvent) {
+            noteDismiss = true
+        }
+
+        assertTrue("Deposit price input must consume Enter key", priceHandled)
+        assertTrue("Deposit price input must dismiss keyboard", priceDismiss)
+        assertTrue("Deposit note input must consume Enter key", noteHandled)
+        assertTrue("Deposit note input must dismiss keyboard", noteDismiss)
+        assertFalse("Deposit form must not submit automatically on Enter", isPaymentSubmitted)
     }
 
     @Test

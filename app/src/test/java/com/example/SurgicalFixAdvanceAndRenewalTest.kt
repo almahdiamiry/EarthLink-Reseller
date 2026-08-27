@@ -99,9 +99,13 @@ class SurgicalFixAdvanceAndRenewalTest {
 
         val isChargeIdRenew = entry.id.startsWith("charge_") || (entry.sourceExternalId != null && entry.sourceExternalId.startsWith("charge_"))
         val isPayIdRenew = entry.id.startsWith("pay_") || (entry.sourceExternalId != null && entry.sourceExternalId.startsWith("pay_"))
-        val isExplicitRenewalType = entry.typeRaw.lowercase() in TransactionTypeNormalizer.RENEWAL_TYPES
+        val isExplicitRenewalType = entry.typeRaw.uppercase() in TransactionTypeNormalizer.RENEWAL_TYPES || TransactionTypeNormalizer.normalizeTransactionType(entry.typeRaw) == "renewal"
 
-        val isRenewPay = isLegacyRenewPay || isPayIdRenew || entry.typeRaw.equals("renewal_payment", ignoreCase = true)
+        val isUtowerHistoricalWasel = entry.isSnapshotHistory &&
+            (entry.typeRaw.uppercase() in TransactionTypeNormalizer.RENEWAL_TYPES || TransactionTypeNormalizer.normalizeTransactionType(entry.typeRaw) == "renewal" || entry.typeRaw.equals("add", ignoreCase = true)) &&
+            noteNonNull.contains("(واصل)")
+
+        val isRenewPay = isLegacyRenewPay || isPayIdRenew || entry.typeRaw.equals("renewal_payment", ignoreCase = true) || isUtowerHistoricalWasel
         val isRenew = isLegacyRenew || isChargeIdRenew || isExplicitRenewalType
 
         return when {
@@ -403,6 +407,81 @@ class SurgicalFixAdvanceAndRenewalTest {
 
         val clean = NoteCleaner.extractGenuineNote(entry.note, entry.amountIqd)
         assertEquals("مشتاق", clean)
+    }
+
+    @Test
+    fun testR10_UtowerHistoricalRenewalWithWasel_classifiesAsRenewPay() {
+        val entry = LocalLedgerEntry(
+            id = "tx_hist_utower_01",
+            accountId = "acc_r10",
+            typeRaw = "add",
+            amountIqd = 40000.0,
+            debtAfterIqd = 0.0,
+            note = "تجديد اشتراك بقيمة : 40,000 (واصل)",
+            isSnapshotHistory = true
+        )
+
+        val resolvedType = classifyHistoryItem(entry)
+        assertEquals("renew_pay", resolvedType)
+
+        // Also works when typeRaw was normalized to renewal
+        val entryNormalized = entry.copy(typeRaw = "renewal")
+        assertEquals("renew_pay", classifyHistoryItem(entryNormalized))
+    }
+
+    @Test
+    fun testR11_UtowerHistoricalRenewalWithoutWasel_classifiesAsRenew() {
+        val entry = LocalLedgerEntry(
+            id = "tx_hist_utower_02",
+            accountId = "acc_r11",
+            typeRaw = "add",
+            amountIqd = 40000.0,
+            debtAfterIqd = 40000.0,
+            note = "تجديد اشتراك بقيمة : 40,000",
+            isSnapshotHistory = true
+        )
+
+        val resolvedType = classifyHistoryItem(entry)
+        assertEquals("renew", resolvedType)
+    }
+
+    @Test
+    fun testR12_V1NewRecordsPreserveStrictClassification() {
+        // V1 renewal charge (non-snapshot)
+        val v1Charge = LocalLedgerEntry(
+            id = "charge_user1_123",
+            accountId = "acc_r12",
+            typeRaw = "took",
+            amountIqd = 40000.0,
+            debtAfterIqd = 40000.0,
+            note = "[RENEW] Renewal",
+            isSnapshotHistory = false
+        )
+        assertEquals("renew", classifyHistoryItem(v1Charge))
+
+        // V1 renewal payment (non-snapshot)
+        val v1Pay = LocalLedgerEntry(
+            id = "pay_user1_123",
+            accountId = "acc_r12",
+            typeRaw = "gave",
+            amountIqd = 40000.0,
+            debtAfterIqd = 0.0,
+            note = "[RENEW_PAY] Renewal Payment",
+            isSnapshotHistory = false
+        )
+        assertEquals("renew_pay", classifyHistoryItem(v1Pay))
+
+        // V1 ordinary payment with wasel in note is NOT turned into renew_pay
+        val v1OrdinaryPay = LocalLedgerEntry(
+            id = "gen_uuid_pay_999",
+            accountId = "acc_r12",
+            typeRaw = "gave",
+            amountIqd = 30000.0,
+            debtAfterIqd = 0.0,
+            note = "واصل مع احمد",
+            isSnapshotHistory = false
+        )
+        assertEquals("payment", classifyHistoryItem(v1OrdinaryPay))
     }
 
     // =========================================================================

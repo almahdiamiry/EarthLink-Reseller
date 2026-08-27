@@ -745,6 +745,15 @@ fun UserDetailScreenV2(
                                         } else {
                                             isFocused = false
                                         }
+                                    }
+                                    .onPreviewKeyEvent { keyEvent ->
+                                        if (keyEvent.type == KeyEventType.KeyDown && (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter)) {
+                                            focusManager.clearFocus(force = true)
+                                            keyboardController?.hide()
+                                            true
+                                        } else {
+                                            false
+                                        }
                                     },
                                 singleLine = true,
                                 textStyle = LocalTextStyle.current.copy(
@@ -869,7 +878,17 @@ fun UserDetailScreenV2(
                         OutlinedTextField(
                             value = noteInput,
                             onValueChange = { noteInput = it },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .onPreviewKeyEvent { keyEvent ->
+                                    if (keyEvent.type == KeyEventType.KeyDown && (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter)) {
+                                        focusManager.clearFocus(force = true)
+                                        keyboardController?.hide()
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                },
                             singleLine = true,
                             label = { Text(if (currentLang == "ar") "ملاحظة" else "Note", color = Color(0xFF9CA3AF)) },
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -1548,9 +1567,13 @@ fun UserDetailScreenV2(
 
                                     val isChargeIdRenew = entry.id.startsWith("charge_") || (entry.sourceExternalId != null && entry.sourceExternalId.startsWith("charge_"))
                                     val isPayIdRenew = entry.id.startsWith("pay_") || (entry.sourceExternalId != null && entry.sourceExternalId.startsWith("pay_"))
-                                    val isExplicitRenewalType = entry.typeRaw.lowercase() in com.example.core.ledger.TransactionTypeNormalizer.RENEWAL_TYPES
+                                    val isExplicitRenewalType = entry.typeRaw.uppercase() in com.example.core.ledger.TransactionTypeNormalizer.RENEWAL_TYPES || com.example.core.ledger.TransactionTypeNormalizer.normalizeTransactionType(entry.typeRaw) == "renewal"
 
-                                    val isRenewPay = isLegacyRenewPay || isPayIdRenew || entry.typeRaw.equals("renewal_payment", ignoreCase = true)
+                                    val isUtowerHistoricalWasel = entry.isSnapshotHistory &&
+                                        (entry.typeRaw.uppercase() in com.example.core.ledger.TransactionTypeNormalizer.RENEWAL_TYPES || com.example.core.ledger.TransactionTypeNormalizer.normalizeTransactionType(entry.typeRaw) == "renewal" || entry.typeRaw.equals("add", ignoreCase = true)) &&
+                                        noteNonNull.contains("(واصل)")
+
+                                    val isRenewPay = isLegacyRenewPay || isPayIdRenew || entry.typeRaw.equals("renewal_payment", ignoreCase = true) || isUtowerHistoricalWasel
                                     val isRenew = isLegacyRenew || isChargeIdRenew || isExplicitRenewalType
 
                                     val resolvedType = when {
