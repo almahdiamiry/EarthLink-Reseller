@@ -66,6 +66,103 @@ import com.example.ui.viewmodels.EarthlinkSearchViewModel
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 
+object HistoryPresentationManager {
+    fun prepareDisplayLedgerList(rawList: List<com.example.core.model.LocalLedgerEntry>): List<com.example.core.model.LocalLedgerEntry> {
+        if (rawList.isEmpty()) return emptyList()
+
+        val pairedChargeIds = mutableSetOf<String>()
+        for (payment in rawList) {
+            if (payment.isSnapshotHistory) continue
+            val payId = payment.id
+            val isPayPrefixed = payId.startsWith("pay_")
+            val isPayExtPrefixed = payment.sourceExternalId != null && payment.sourceExternalId.startsWith("pay_")
+            if (!isPayPrefixed && !isPayExtPrefixed) continue
+
+            val paymentCanonicalType = com.example.core.ledger.TransactionTypeNormalizer.normalizeTransactionType(payment.typeRaw)
+            if (paymentCanonicalType != "gave" && paymentCanonicalType != "payment" && payment.typeRaw != "gave") continue
+
+            val expectedChargeId = if (isPayPrefixed) payId.removePrefix("pay_") else payment.sourceExternalId!!.removePrefix("pay_")
+            val matchingCharge = rawList.find { charge ->
+                !charge.isSnapshotHistory &&
+                (charge.id == expectedChargeId || charge.sourceExternalId == expectedChargeId) &&
+                charge.accountId == payment.accountId &&
+                kotlin.math.abs(charge.amountIqd - payment.amountIqd) < 0.0001 &&
+                (charge.id.startsWith("charge_") || charge.id.startsWith("tx_") ||
+                 (charge.sourceExternalId != null && (charge.sourceExternalId.startsWith("charge_") || charge.sourceExternalId.startsWith("tx_"))) ||
+                 charge.typeRaw == "took" ||
+                 com.example.core.ledger.TransactionTypeNormalizer.normalizeTransactionType(charge.typeRaw) == "renewal")
+            }
+            if (matchingCharge != null) {
+                pairedChargeIds.add(matchingCharge.id)
+            }
+        }
+
+        return rawList.filterNot { it.id in pairedChargeIds }
+    }
+
+    fun classifyHistoryItem(
+        entry: com.example.core.model.LocalLedgerEntry,
+        fullList: List<com.example.core.model.LocalLedgerEntry> = emptyList()
+    ): String {
+        val noteNonNull = entry.note ?: ""
+        val isLegacyRenew = noteNonNull.startsWith("[RENEW]")
+        val isLegacyRenewPay = noteNonNull.startsWith("[RENEW_PAY]")
+        val isDebt = noteNonNull.startsWith("[DEBT]")
+        val isDeposit = noteNonNull.startsWith("[DEPOSIT]")
+        val isPayment = noteNonNull.startsWith("[PAYMENT]")
+
+        val isChargeIdRenew = entry.id.startsWith("charge_") || (entry.sourceExternalId != null && entry.sourceExternalId.startsWith("charge_"))
+        val isCanonicalRenewal = com.example.core.ledger.TransactionTypeNormalizer.normalizeTransactionType(entry.typeRaw) == "renewal"
+
+        val isUtowerHistoricalRecord = entry.isSnapshotHistory &&
+            (!entry.sourceBatchId.isNullOrBlank() || !entry.sourceExternalId.isNullOrBlank())
+        val isUtowerHistoricalWasel = isUtowerHistoricalRecord &&
+            isCanonicalRenewal &&
+            noteNonNull.contains("(واصل)")
+
+        val isPayPrefixed = entry.id.startsWith("pay_") || (entry.sourceExternalId != null && entry.sourceExternalId.startsWith("pay_"))
+        val isPairedRenewalPayment = if (!entry.isSnapshotHistory && isPayPrefixed) {
+            if (fullList.isNotEmpty()) {
+                val expectedChargeId = if (entry.id.startsWith("pay_")) entry.id.removePrefix("pay_") else entry.sourceExternalId!!.removePrefix("pay_")
+                fullList.any { charge ->
+                    !charge.isSnapshotHistory &&
+                    (charge.id == expectedChargeId || charge.sourceExternalId == expectedChargeId) &&
+                    charge.accountId == entry.accountId &&
+                    kotlin.math.abs(charge.amountIqd - entry.amountIqd) < 0.0001
+                }
+            } else {
+                entry.id.startsWith("pay_charge_") || entry.id.startsWith("pay_tx_") ||
+                (entry.sourceExternalId != null && (entry.sourceExternalId.startsWith("pay_charge_") || entry.sourceExternalId.startsWith("pay_tx_")))
+            }
+        } else {
+            false
+        }
+
+        val isRenewPay = isLegacyRenewPay || entry.typeRaw.equals("renewal_payment", ignoreCase = true) || isUtowerHistoricalWasel || isPairedRenewalPayment
+        val isRenew = isLegacyRenew || isChargeIdRenew || isCanonicalRenewal
+
+        return when {
+            isRenewPay -> "renew_pay"
+            isRenew -> "renew"
+            isDebt -> "debt"
+            isDeposit -> "deposit"
+            isPayment -> "payment"
+            else -> {
+                val normType = com.example.core.ledger.TransactionTypeNormalizer.normalizeTransactionType(entry.typeRaw)
+                when (normType) {
+                    "renewal" -> "renew"
+                    "took" -> "debt"
+                    "gave" -> {
+                        if (noteNonNull.contains("إيداع") || noteNonNull.contains("ايداع") || noteNonNull.contains("Deposit") || noteNonNull.contains("deposit")) "deposit"
+                        else "payment"
+                    }
+                    else -> "payment"
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UserDetailScreenV2(
@@ -1523,7 +1620,10 @@ fun UserDetailScreenV2(
                     },
                     containerColor = Color(0xFF090D10)
                 ) { paddingValues ->
-                    if (finalLedgerList.isEmpty()) {
+                    val displayLedgerList = remember(finalLedgerList) {
+                        HistoryPresentationManager.prepareDisplayLedgerList(finalLedgerList)
+                    }
+                    if (displayLedgerList.isEmpty()) {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -1544,7 +1644,7 @@ fun UserDetailScreenV2(
                                 .padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            items(finalLedgerList, key = { it.id }) { entry ->
+                            items(displayLedgerList, key = { it.id }) { entry ->
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(20.dp),
@@ -1558,45 +1658,7 @@ fun UserDetailScreenV2(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    val noteNonNull = entry.note ?: ""
-                                    val isLegacyRenew = noteNonNull.startsWith("[RENEW]")
-                                    val isLegacyRenewPay = noteNonNull.startsWith("[RENEW_PAY]")
-                                    val isDebt = noteNonNull.startsWith("[DEBT]")
-                                    val isDeposit = noteNonNull.startsWith("[DEPOSIT]")
-                                    val isPayment = noteNonNull.startsWith("[PAYMENT]")
-
-                                    val isChargeIdRenew = entry.id.startsWith("charge_") || (entry.sourceExternalId != null && entry.sourceExternalId.startsWith("charge_"))
-                                    val isPayIdRenew = entry.id.startsWith("pay_") || (entry.sourceExternalId != null && entry.sourceExternalId.startsWith("pay_"))
-                                    val isCanonicalRenewal = com.example.core.ledger.TransactionTypeNormalizer.normalizeTransactionType(entry.typeRaw) == "renewal"
-
-                                    val isUtowerHistoricalRecord = entry.isSnapshotHistory &&
-                                        (!entry.sourceBatchId.isNullOrBlank() || !entry.sourceExternalId.isNullOrBlank())
-                                    val isUtowerHistoricalWasel = isUtowerHistoricalRecord &&
-                                        isCanonicalRenewal &&
-                                        noteNonNull.contains("(واصل)")
-
-                                    val isRenewPay = isLegacyRenewPay || isPayIdRenew || entry.typeRaw.equals("renewal_payment", ignoreCase = true) || isUtowerHistoricalWasel
-                                    val isRenew = isLegacyRenew || isChargeIdRenew || isCanonicalRenewal
-
-                                    val resolvedType = when {
-                                        isRenewPay -> "renew_pay"
-                                        isRenew -> "renew"
-                                        isDebt -> "debt"
-                                        isDeposit -> "deposit"
-                                        isPayment -> "payment"
-                                        else -> {
-                                            val normType = com.example.core.ledger.TransactionTypeNormalizer.normalizeTransactionType(entry.typeRaw)
-                                            when (normType) {
-                                                "renewal" -> "renew"
-                                                "took" -> "debt"
-                                                "gave" -> {
-                                                    if (noteNonNull.contains("إيداع") || noteNonNull.contains("ايداع") || noteNonNull.contains("Deposit") || noteNonNull.contains("deposit")) "deposit"
-                                                    else "payment"
-                                                }
-                                                else -> "payment"
-                                            }
-                                        }
-                                    }
+                                    val resolvedType = HistoryPresentationManager.classifyHistoryItem(entry, finalLedgerList)
 
                                     // Two Primary Visual States: Paid / Received vs Debt / Unpaid
                                     val isPaidState = resolvedType == "renew_pay" || resolvedType == "payment" || resolvedType == "deposit"

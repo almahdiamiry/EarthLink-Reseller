@@ -17,6 +17,7 @@ import com.example.core.model.LocalLedgerEntry
 import com.example.core.model.PendingExternalOperation
 import com.example.data.repository.LocalLedgerRepositoryImpl
 import com.example.domain.repository.LocalLedgerRepository
+import com.example.ui.screens.HistoryPresentationManager
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -89,47 +90,9 @@ class SurgicalFixAdvanceAndRenewalTest {
         return account
     }
 
-    // --- Production Classifier Helper (matches UserDetailScreenV2) ---
-    private fun classifyHistoryItem(entry: LocalLedgerEntry): String {
-        val noteNonNull = entry.note ?: ""
-        val isLegacyRenew = noteNonNull.startsWith("[RENEW]")
-        val isLegacyRenewPay = noteNonNull.startsWith("[RENEW_PAY]")
-        val isDebt = noteNonNull.startsWith("[DEBT]")
-        val isDeposit = noteNonNull.startsWith("[DEPOSIT]")
-        val isPayment = noteNonNull.startsWith("[PAYMENT]")
-
-        val isChargeIdRenew = entry.id.startsWith("charge_") || (entry.sourceExternalId != null && entry.sourceExternalId.startsWith("charge_"))
-        val isPayIdRenew = entry.id.startsWith("pay_") || (entry.sourceExternalId != null && entry.sourceExternalId.startsWith("pay_"))
-        val isCanonicalRenewal = TransactionTypeNormalizer.normalizeTransactionType(entry.typeRaw) == "renewal"
-
-        val isUtowerHistoricalRecord = entry.isSnapshotHistory &&
-            (!entry.sourceBatchId.isNullOrBlank() || !entry.sourceExternalId.isNullOrBlank())
-        val isUtowerHistoricalWasel = isUtowerHistoricalRecord &&
-            isCanonicalRenewal &&
-            noteNonNull.contains("(واصل)")
-
-        val isRenewPay = isLegacyRenewPay || isPayIdRenew || entry.typeRaw.equals("renewal_payment", ignoreCase = true) || isUtowerHistoricalWasel
-        val isRenew = isLegacyRenew || isChargeIdRenew || isCanonicalRenewal
-
-        return when {
-            isRenewPay -> "renew_pay"
-            isRenew -> "renew"
-            isDebt -> "debt"
-            isDeposit -> "deposit"
-            isPayment -> "payment"
-            else -> {
-                val normType = TransactionTypeNormalizer.normalizeTransactionType(entry.typeRaw)
-                when (normType) {
-                    "renewal" -> "renew"
-                    "took" -> "debt"
-                    "gave" -> {
-                        if (noteNonNull.contains("إيداع") || noteNonNull.contains("ايداع") || noteNonNull.contains("Deposit") || noteNonNull.contains("deposit")) "deposit"
-                        else "payment"
-                    }
-                    else -> "payment"
-                }
-            }
-        }
+    // --- Production Classifier Helper (delegates directly to HistoryPresentationManager) ---
+    private fun classifyHistoryItem(entry: LocalLedgerEntry, fullList: List<LocalLedgerEntry> = emptyList()): String {
+        return HistoryPresentationManager.classifyHistoryItem(entry, fullList)
     }
 
     // --- Defective Old Classifier for Counterfactual Proof ---
@@ -741,5 +704,264 @@ class SurgicalFixAdvanceAndRenewalTest {
 
         assertEquals(0.0, postBalance.debtIqd, 0.01)
         assertEquals(5000.0, postBalance.advanceIqd, 0.01)
+    }
+
+    // =========================================================================
+    // SECTION 20: V1 RENEWAL + WASIL VISUAL GROUPING REGRESSION SUITE (R1 - R7)
+    // =========================================================================
+
+    @Test
+    fun testR1_ValidChargeAndPaymentPair_ProducesExactlyOneVisibleMovement() {
+        val charge = LocalLedgerEntry(
+            id = "charge_user_test_r1",
+            accountId = "acc_r1",
+            typeRaw = "took",
+            amountIqd = 50000.0,
+            debtAfterIqd = 50000.0,
+            note = "مشتاق",
+            occurredAt = 1000L,
+            isSnapshotHistory = false
+        )
+        val payment = LocalLedgerEntry(
+            id = "pay_charge_user_test_r1",
+            accountId = "acc_r1",
+            typeRaw = "gave",
+            amountIqd = 50000.0,
+            debtAfterIqd = 0.0,
+            note = "مشتاق",
+            occurredAt = 1001L,
+            isSnapshotHistory = false
+        )
+        val rawList = listOf(charge, payment)
+
+        // The presentation transformation groups the pair into exactly 1 visible movement
+        val displayList = HistoryPresentationManager.prepareDisplayLedgerList(rawList)
+        assertEquals(1, displayList.size)
+        assertEquals("pay_charge_user_test_r1", displayList[0].id)
+
+        // The visible movement classifies as "renew_pay"
+        val resolvedType = HistoryPresentationManager.classifyHistoryItem(displayList[0], rawList)
+        assertEquals("renew_pay", resolvedType)
+    }
+
+    @Test
+    fun testR2_ChargeWithoutPayment_ProducesOneNormalUnpaidRenewal() {
+        val charge = LocalLedgerEntry(
+            id = "charge_user_test_r2",
+            accountId = "acc_r2",
+            typeRaw = "took",
+            amountIqd = 45000.0,
+            debtAfterIqd = 45000.0,
+            note = null,
+            occurredAt = 1000L,
+            isSnapshotHistory = false
+        )
+        val rawList = listOf(charge)
+
+        val displayList = HistoryPresentationManager.prepareDisplayLedgerList(rawList)
+        assertEquals(1, displayList.size)
+        assertEquals("charge_user_test_r2", displayList[0].id)
+
+        val resolvedType = HistoryPresentationManager.classifyHistoryItem(displayList[0], rawList)
+        assertEquals("renew", resolvedType)
+    }
+
+    @Test
+    fun testR3_PaymentWithoutCharge_ProducesOneNormalPaymentMovement() {
+        val orphanPayment = LocalLedgerEntry(
+            id = "pay_charge_missing_charge_r3",
+            accountId = "acc_r3",
+            typeRaw = "gave",
+            amountIqd = 50000.0,
+            debtAfterIqd = 0.0,
+            note = "دفعة حساب",
+            occurredAt = 1000L,
+            isSnapshotHistory = false
+        )
+        val rawList = listOf(orphanPayment)
+
+        val displayList = HistoryPresentationManager.prepareDisplayLedgerList(rawList)
+        assertEquals(1, displayList.size)
+        assertEquals("pay_charge_missing_charge_r3", displayList[0].id)
+
+        // Unmatched payment falls back to ordinary payment safely
+        val resolvedType = HistoryPresentationManager.classifyHistoryItem(displayList[0], rawList)
+        assertEquals("payment", resolvedType)
+    }
+
+    @Test
+    fun testR4_OrdinaryPaymentWithSimilarAmount_NotGrouped() {
+        val ordinaryDebt = LocalLedgerEntry(
+            id = "gen_uuid_debt_r4",
+            accountId = "acc_r4",
+            typeRaw = "took",
+            amountIqd = 40000.0,
+            debtAfterIqd = 40000.0,
+            note = "سعر راوتر",
+            occurredAt = 1000L,
+            isSnapshotHistory = false
+        )
+        val ordinaryPayment = LocalLedgerEntry(
+            id = "gen_uuid_pay_r4",
+            accountId = "acc_r4",
+            typeRaw = "gave",
+            amountIqd = 40000.0,
+            debtAfterIqd = 0.0,
+            note = "تسديد دين",
+            occurredAt = 1001L,
+            isSnapshotHistory = false
+        )
+        val rawList = listOf(ordinaryDebt, ordinaryPayment)
+
+        val displayList = HistoryPresentationManager.prepareDisplayLedgerList(rawList)
+        // Both items remain visible because they are not an exact deterministic renewal pair
+        assertEquals(2, displayList.size)
+        assertEquals("debt", HistoryPresentationManager.classifyHistoryItem(displayList[0], rawList))
+        assertEquals("payment", HistoryPresentationManager.classifyHistoryItem(displayList[1], rawList))
+    }
+
+    @Test
+    fun testR5_HistoricalUtowerRenewalWasel_PreservedUnchanged() {
+        val historicalWasel = LocalLedgerEntry(
+            id = "utower_hist_r5",
+            accountId = "acc_r5",
+            sourceBatchId = "batch_utower_1",
+            sourceExternalId = "utower_ext_1",
+            typeRaw = "add",
+            amountIqd = 40000.0,
+            debtAfterIqd = 0.0,
+            note = "تجديد اشتراك بقيمة : 40,000 (واصل)",
+            occurredAt = 1000L,
+            isSnapshotHistory = true
+        )
+        val rawList = listOf(historicalWasel)
+
+        val displayList = HistoryPresentationManager.prepareDisplayLedgerList(rawList)
+        assertEquals(1, displayList.size)
+        assertEquals("utower_hist_r5", displayList[0].id)
+
+        val resolvedType = HistoryPresentationManager.classifyHistoryItem(displayList[0], rawList)
+        assertEquals("renew_pay", resolvedType)
+    }
+
+    @Test
+    fun testR6_NewV1RenewalWithoutWasel_PreservedAsUnpaidRenewal() {
+        val v1RenewalCharge = LocalLedgerEntry(
+            id = "charge_v1_r6",
+            accountId = "acc_r6",
+            typeRaw = "took",
+            amountIqd = 35000.0,
+            debtAfterIqd = 35000.0,
+            note = "تجديد آجل",
+            occurredAt = 1000L,
+            isSnapshotHistory = false
+        )
+        val rawList = listOf(v1RenewalCharge)
+
+        val displayList = HistoryPresentationManager.prepareDisplayLedgerList(rawList)
+        assertEquals(1, displayList.size)
+
+        val resolvedType = HistoryPresentationManager.classifyHistoryItem(displayList[0], rawList)
+        assertEquals("renew", resolvedType)
+    }
+
+    @Test
+    fun testR7_HumanNoteMushtaq_RenderedOnceWithoutPrefixPollution() {
+        val humanNote = "مشتاق"
+        val charge = LocalLedgerEntry(
+            id = "charge_user_r7",
+            accountId = "acc_r7",
+            typeRaw = "took",
+            amountIqd = 50000.0,
+            debtAfterIqd = 50000.0,
+            note = humanNote,
+            occurredAt = 1000L,
+            isSnapshotHistory = false
+        )
+        val payment = LocalLedgerEntry(
+            id = "pay_charge_user_r7",
+            accountId = "acc_r7",
+            typeRaw = "gave",
+            amountIqd = 50000.0,
+            debtAfterIqd = 0.0,
+            note = humanNote,
+            occurredAt = 1001L,
+            isSnapshotHistory = false
+        )
+        val rawList = listOf(charge, payment)
+
+        val displayList = HistoryPresentationManager.prepareDisplayLedgerList(rawList)
+        assertEquals(1, displayList.size)
+
+        val visibleEntry = displayList[0]
+        val cleanNote = NoteCleaner.extractGenuineNote(visibleEntry.note, visibleEntry.amountIqd)
+
+        // Verified: Note is the genuine human note, without [RENEW] or [RENEW_PAY] pollution
+        assertEquals("مشتاق", cleanNote)
+        assertFalse(cleanNote.contains("[RENEW]"))
+        assertFalse(cleanNote.contains("[RENEW_PAY]"))
+    }
+
+    @Test
+    fun testC1_Counterfactual_RawListWithoutGroupingProducesTwoMovements() {
+        val charge = LocalLedgerEntry(
+            id = "charge_user_c1",
+            accountId = "acc_c1",
+            typeRaw = "took",
+            amountIqd = 50000.0,
+            debtAfterIqd = 50000.0,
+            note = "مشتاق",
+            occurredAt = 1000L,
+            isSnapshotHistory = false
+        )
+        val payment = LocalLedgerEntry(
+            id = "pay_charge_user_c1",
+            accountId = "acc_c1",
+            typeRaw = "gave",
+            amountIqd = 50000.0,
+            debtAfterIqd = 0.0,
+            note = "مشتاق",
+            occurredAt = 1001L,
+            isSnapshotHistory = false
+        )
+        val rawList = listOf(charge, payment)
+
+        // Demonstrates the defect: raw physical list contains 2 movements
+        assertEquals(2, rawList.size)
+
+        // The surgical presentation transformation correctly groups them into 1
+        val groupedList = HistoryPresentationManager.prepareDisplayLedgerList(rawList)
+        assertEquals(1, groupedList.size)
+    }
+
+    @Test
+    fun testC2_Counterfactual_LooseAmountMatchingFailsOrdinaryTransactions() {
+        val debt = LocalLedgerEntry(
+            id = "debt_loose_c2",
+            accountId = "acc_c2",
+            typeRaw = "took",
+            amountIqd = 50000.0,
+            debtAfterIqd = 50000.0,
+            occurredAt = 1000L,
+            isSnapshotHistory = false
+        )
+        val pay = LocalLedgerEntry(
+            id = "pay_other_c2",
+            accountId = "acc_c2",
+            typeRaw = "gave",
+            amountIqd = 50000.0,
+            debtAfterIqd = 0.0,
+            occurredAt = 1001L,
+            isSnapshotHistory = false
+        )
+        val rawList = listOf(debt, pay)
+
+        // Naive amount matching without exact deterministic ID pairing would collapse these:
+        val naiveCollapsingSize = if (debt.amountIqd == pay.amountIqd) 1 else 2
+        assertEquals(1, naiveCollapsingSize)
+
+        // The deterministic pairing correctly keeps both distinct:
+        val displayList = HistoryPresentationManager.prepareDisplayLedgerList(rawList)
+        assertEquals(2, displayList.size)
     }
 }
