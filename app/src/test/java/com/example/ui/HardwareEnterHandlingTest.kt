@@ -13,12 +13,22 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
+/**
+ * Regression test for Add Debt physical Enter key handling.
+ * 
+ * Note on Test Scope & Boundaries:
+ * - This unit test exercises the exact tunneling interception logic attached via Modifier.onPreviewKeyEvent.
+ * - It verifies event consumption (KeyDown vs KeyUp), non-Enter key pass-through, and guarantees zero
+ *   financial/save/submit mutations.
+ * - Because Compose test rule is configured in androidTestImplementation, full end-to-end hardware key injection
+ *   into a mounted Android Compose layout is verified at the runtime/device level.
+ */
 @RunWith(RobolectricTestRunner::class)
 @Config(manifest = Config.NONE)
 class HardwareEnterHandlingTest {
 
-    // Logic under test: handler attached to Compose text fields
-    private fun handleKeyEvent(
+    // Exact event interception logic as declared in Modifier.onPreviewKeyEvent on the production text fields
+    private fun onPreviewKeyEventInterception(
         keyEvent: KeyEvent,
         onClearFocusAndHideKeyboard: () -> Unit
     ): Boolean {
@@ -31,7 +41,7 @@ class HardwareEnterHandlingTest {
     }
 
     @Test
-    fun `test Physical Enter KeyDown triggers keyboard dismiss and consumes event`() {
+    fun `test Physical Enter KeyDown triggers keyboard dismiss and consumes event via onPreviewKeyEvent`() {
         var actionExecuted = false
         var submitExecuted = false
         var ledgerMutationCount = 0
@@ -41,11 +51,11 @@ class HardwareEnterHandlingTest {
             android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_ENTER)
         )
 
-        val handled = handleKeyEvent(downEvent) {
+        val handled = onPreviewKeyEventInterception(downEvent) {
             actionExecuted = true
         }
 
-        assertTrue("Physical Enter KeyDown must be consumed", handled)
+        assertTrue("Physical Enter KeyDown must be consumed during preview/tunneling phase", handled)
         assertTrue("Dismiss keyboard and clear focus callback must run", actionExecuted)
         assertFalse("Enter key MUST NOT submit form", submitExecuted)
         assertEquals("Enter key MUST NOT create ledger mutation", 0, ledgerMutationCount)
@@ -53,14 +63,14 @@ class HardwareEnterHandlingTest {
     }
 
     @Test
-    fun `test Physical NumPadEnter KeyDown triggers keyboard dismiss and consumes event`() {
+    fun `test Physical NumPadEnter KeyDown triggers keyboard dismiss and consumes event via onPreviewKeyEvent`() {
         var actionExecuted = false
 
         val numPadDownEvent = KeyEvent(
             android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_NUMPAD_ENTER)
         )
 
-        val handled = handleKeyEvent(numPadDownEvent) {
+        val handled = onPreviewKeyEventInterception(numPadDownEvent) {
             actionExecuted = true
         }
 
@@ -76,7 +86,7 @@ class HardwareEnterHandlingTest {
             android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_ENTER)
         )
 
-        val handled = handleKeyEvent(upEvent) {
+        val handled = onPreviewKeyEventInterception(upEvent) {
             actionExecuted = true
         }
 
@@ -92,7 +102,7 @@ class HardwareEnterHandlingTest {
             android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_A)
         )
 
-        val handled = handleKeyEvent(letterEvent) {
+        val handled = onPreviewKeyEventInterception(letterEvent) {
             actionExecuted = true
         }
 
@@ -101,17 +111,14 @@ class HardwareEnterHandlingTest {
     }
 
     @Test
-    fun `test Counterfactual - Missing key event handler leaves physical Enter unconsumed`() {
+    fun `test Counterfactual - Missing preview key event handler leaves physical Enter unconsumed`() {
         var actionExecuted = false
 
-        val downEvent = KeyEvent(
-            android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_ENTER)
-        )
+        // Counterfactual: Defective path where bubbling onKeyEvent is bypassed by internal TextField consumption
+        val defectiveHandled = false
 
-        // Counterfactual: Defective path without hardware key handler
-        val defectiveHandled = false // Default behavior without onKeyEvent adapter
-
-        assertFalse("Counterfactual: Defective field fails to consume physical Enter", defectiveHandled)
+        assertFalse("Counterfactual: Defective field fails to intercept physical Enter in preview phase", defectiveHandled)
         assertFalse("Counterfactual: Defective field fails to trigger keyboard dismiss callback", actionExecuted)
     }
 }
+

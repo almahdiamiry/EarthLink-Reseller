@@ -28,7 +28,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.focus.FocusRequester
@@ -172,7 +172,7 @@ fun LocalAccountDetailScreen(
                     }),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .onKeyEvent { keyEvent ->
+                        .onPreviewKeyEvent { keyEvent ->
                             if (keyEvent.type == KeyEventType.KeyDown && (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter)) {
                                 focusManager.clearFocus(force = true)
                                 keyboardController?.hide()
@@ -194,7 +194,7 @@ fun LocalAccountDetailScreen(
                     }),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .onKeyEvent { keyEvent ->
+                        .onPreviewKeyEvent { keyEvent ->
                             if (keyEvent.type == KeyEventType.KeyDown && (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter)) {
                                 focusManager.clearFocus(force = true)
                                 keyboardController?.hide()

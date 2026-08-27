@@ -43,7 +43,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
@@ -1112,7 +1112,7 @@ fun UserDetailScreenV2(
                                     .onFocusChanged { focusState ->
                                         isFocused = focusState.isFocused
                                     }
-                                    .onKeyEvent { keyEvent ->
+                                    .onPreviewKeyEvent { keyEvent ->
                                         if (keyEvent.type == KeyEventType.KeyDown && (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter)) {
                                             focusManager.clearFocus(force = true)
                                             keyboardController?.hide()
@@ -1246,7 +1246,7 @@ fun UserDetailScreenV2(
                             onValueChange = { noteInput = it },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .onKeyEvent { keyEvent ->
+                                .onPreviewKeyEvent { keyEvent ->
                                     if (keyEvent.type == KeyEventType.KeyDown && (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter)) {
                                         focusManager.clearFocus(force = true)
                                         keyboardController?.hide()
