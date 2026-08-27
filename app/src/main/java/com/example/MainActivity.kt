@@ -431,12 +431,12 @@ fun CreateChooserBottomSheet(
             onDismissRequest()
         },
         sheetState = sheetState,
-        containerColor = Color(0xFF11161F),
+        containerColor = Color(0xFF141922),
         contentColor = Color.White,
         dragHandle = {
             BottomSheetDefaults.DragHandle(
-                color = Color.White.copy(alpha = 0.25f),
-                modifier = Modifier.padding(top = 10.dp, bottom = 4.dp)
+                color = Color.White.copy(alpha = 0.2f),
+                modifier = Modifier.padding(top = 10.dp, bottom = 6.dp)
             )
         },
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
@@ -444,191 +444,127 @@ fun CreateChooserBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 32.dp, top = 4.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 28.dp, top = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Header: Title & Subtitle
+            // Header: Title
             Text(
-                text = if (isAr) "إنشاء مشترك جديد" else "Create New Subscriber",
-                fontWeight = FontWeight.Black,
-                fontSize = 20.sp,
+                text = if (isAr) "إنشاء مشترك جديد" else "Create Subscriber",
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
                 color = Color.White,
-                textAlign = TextAlign.Center
+                modifier = Modifier.padding(horizontal = 4.dp)
             )
 
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = if (isAr) "اختر نوع الحساب والمسار المناسب للتفعيل" else "Select the account type and provisioning pathway",
-                color = Color.White.copy(alpha = 0.65f),
-                fontSize = 13.sp,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // Option 1: Trial Account
+            // Apple Inset Grouped Container
             Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        dismissWithAction(onNavigateToTest)
-                    },
                 shape = RoundedCornerShape(16.dp),
-                color = Color(0xFF171E29),
-                border = BorderStroke(1.dp, Color(0xFF0288D1).copy(alpha = 0.25f))
+                color = Color(0xFF0E131B),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    Box(
+                Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                    // Option 1: Trial Account
+                    Row(
                         modifier = Modifier
-                            .size(46.dp)
-                            .background(
-                                color = Color(0xFF0288D1).copy(alpha = 0.15f),
-                                shape = RoundedCornerShape(12.dp)
+                            .fillMaxWidth()
+                            .clickable { dismissWithAction(onNavigateToTest) }
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .background(Color(0xFF0A84FF), shape = RoundedCornerShape(8.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Bolt,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
                             )
-                            .border(1.dp, Color(0xFF0288D1).copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Bolt,
-                            contentDescription = null,
-                            tint = Color(0xFF039BE5),
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
+                        }
 
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(3.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
                             Text(
                                 text = if (isAr) "حساب تجريبي (24 ساعة)" else "Trial User (24 Hours)",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
                                 color = Color.White
                             )
-                            Surface(
-                                color = Color(0xFF0288D1).copy(alpha = 0.15f),
-                                shape = RoundedCornerShape(6.dp),
-                                border = BorderStroke(1.dp, Color(0xFF0288D1).copy(alpha = 0.3f))
-                            ) {
-                                Text(
-                                    text = if (isAr) "مجاني" else "Free",
-                                    color = Color(0xFF039BE5),
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                        Text(
-                            text = if (isAr) "فعال لمدة 24 ساعة لغرض الفحص والربط، بدون أي خصم من رصيدك." else "Active for 24h for line testing. Does not deduct from your reseller balance.",
-                            fontSize = 12.sp,
-                            color = Color.White.copy(alpha = 0.65f),
-                            lineHeight = 16.sp
-                        )
-                    }
-
-                    Icon(
-                        imageVector = if (isAr) Icons.AutoMirrored.Filled.KeyboardArrowLeft else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = null,
-                        tint = Color.White.copy(alpha = 0.4f),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Option 2: Paid Subscriber
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        dismissWithAction(onNavigateToPaid)
-                    },
-                shape = RoundedCornerShape(16.dp),
-                color = Color(0xFF171E29),
-                border = BorderStroke(1.dp, Color(0xFF30D158).copy(alpha = 0.25f))
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(46.dp)
-                            .background(
-                                color = Color(0xFF30D158).copy(alpha = 0.15f),
-                                shape = RoundedCornerShape(12.dp)
+                            Text(
+                                text = if (isAr) "فحص وتجربة الخط بدون خصم من الرصيد" else "Line testing without balance deduction",
+                                fontSize = 11.sp,
+                                color = Color(0xFF8E8E93)
                             )
-                            .border(1.dp, Color(0xFF30D158).copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
+                        }
+
                         Icon(
-                            imageVector = Icons.Default.VerifiedUser,
+                            imageVector = if (isAr) Icons.AutoMirrored.Filled.KeyboardArrowLeft else Icons.AutoMirrored.Filled.KeyboardArrowRight,
                             contentDescription = null,
-                            tint = Color(0xFF30D158),
-                            modifier = Modifier.size(24.dp)
+                            tint = Color(0xFF8E8E93),
+                            modifier = Modifier.size(18.dp)
                         )
                     }
 
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    HorizontalDivider(
+                        color = Color.White.copy(alpha = 0.05f),
+                        modifier = Modifier.padding(horizontal = 14.dp)
+                    )
+
+                    // Option 2: Paid Subscriber
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { dismissWithAction(onNavigateToPaid) }
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .background(Color(0xFF30D158), shape = RoundedCornerShape(8.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PersonAdd,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
                             Text(
-                                text = if (isAr) "مشترك رئيسي (دائم)" else "Paid Subscriber (Permanent)",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp,
+                                text = if (isAr) "مشترك دائم بالرصيد" else "Paid Subscriber",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
                                 color = Color.White
                             )
-                            Surface(
-                                color = Color(0xFF30D158).copy(alpha = 0.15f),
-                                shape = RoundedCornerShape(6.dp),
-                                border = BorderStroke(1.dp, Color(0xFF30D158).copy(alpha = 0.3f))
-                            ) {
-                                Text(
-                                    text = if (isAr) "مدفوع" else "Paid",
-                                    color = Color(0xFF30D158),
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
+                            Text(
+                                text = if (isAr) "تفعيل رسمي مع خصم سعر الباقة من الصندوق" else "Official activation deducting fee from deposit",
+                                fontSize = 11.sp,
+                                color = Color(0xFF8E8E93)
+                            )
                         }
-                        Text(
-                            text = if (isAr) "تفعيل باقة واشتراك رسمي دائم مع خصم سعر الفئة من رصيد الصندوق." else "Activate permanent paid plan. Deducts the tier fee directly from deposit balance.",
-                            fontSize = 12.sp,
-                            color = Color.White.copy(alpha = 0.65f),
-                            lineHeight = 16.sp
+
+                        Icon(
+                            imageVector = if (isAr) Icons.AutoMirrored.Filled.KeyboardArrowLeft else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = Color(0xFF8E8E93),
+                            modifier = Modifier.size(18.dp)
                         )
                     }
-
-                    Icon(
-                        imageVector = if (isAr) Icons.AutoMirrored.Filled.KeyboardArrowLeft else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = null,
-                        tint = Color.White.copy(alpha = 0.4f),
-                        modifier = Modifier.size(20.dp)
-                    )
                 }
             }
         }

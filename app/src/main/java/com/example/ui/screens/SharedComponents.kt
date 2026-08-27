@@ -6,6 +6,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -614,44 +615,42 @@ fun ArabicSubscriberCard(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 2.dp)
+                .padding(vertical = 3.dp)
                 .clickable { onClick() },
-            shape = RoundedCornerShape(12.dp),
-            color = rowBg
+            shape = RoundedCornerShape(14.dp),
+            color = Color(0xFF141922),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 11.dp),
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Avatar spanning both rows
+                // Avatar Squircle with Online/Offline indicator
                 Box(
-                    modifier = Modifier.size(42.dp),
+                    modifier = Modifier.size(40.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(42.dp)
+                            .size(40.dp)
                             .background(
-                                brush = if (isActive) {
-                                    androidx.compose.ui.graphics.Brush.linearGradient(
-                                        listOf(Color(0xFF0288D1), Color(0xFF01579B))
-                                    )
-                                } else {
-                                    androidx.compose.ui.graphics.Brush.linearGradient(
-                                        listOf(Color(0xFF3A3A3C), Color(0xFF2C2C2E))
-                                    )
-                                },
-                                shape = androidx.compose.foundation.shape.CircleShape
+                                color = if (isActive) Color(0xFF0A84FF).copy(alpha = 0.15f) else Color(0xFF1C2430),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            .border(
+                                1.dp,
+                                if (isActive) Color(0xFF0A84FF).copy(alpha = 0.3f) else Color.White.copy(alpha = 0.06f),
+                                RoundedCornerShape(10.dp)
                             ),
                         contentAlignment = Alignment.Center
                     ) {
                         val firstLetter = displayName.trim().firstOrNull()?.toString()?.uppercase(Locale.getDefault()) ?: "?"
                         Text(
                             text = firstLetter,
-                            color = Color.White,
+                            color = if (isActive) Color(0xFF0A84FF) else Color(0xFF8E8E93),
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -663,9 +662,9 @@ fun ArabicSubscriberCard(
                             .size(10.dp)
                             .background(
                                 color = if (isOnline) Color(0xFF30D158) else Color(0xFF8E8E93),
-                                shape = androidx.compose.foundation.shape.CircleShape
+                                shape = CircleShape
                             )
-                            .border(2.dp, rowBg, androidx.compose.foundation.shape.CircleShape)
+                            .border(2.dp, Color(0xFF141922), CircleShape)
                             .align(Alignment.BottomEnd)
                     )
                 }
@@ -690,15 +689,15 @@ fun ArabicSubscriberCard(
                                 Icon(
                                     imageVector = Icons.Default.CheckCircle,
                                     contentDescription = "Verified subscriber",
-                                    tint = Color(0xFF0288D1),
-                                    modifier = Modifier.size(15.dp)
+                                    tint = Color(0xFF0A84FF),
+                                    modifier = Modifier.size(14.dp)
                                 )
                             }
                             Text(
                                 text = displayName,
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface,
+                                color = Color.White,
                                 maxLines = 1,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
@@ -706,19 +705,19 @@ fun ArabicSubscriberCard(
 
                         // Status Badge
                         Surface(
-                            color = if (isActive) Color(0xFF30D158).copy(alpha = 0.15f) else Color(0xFFFF453A).copy(alpha = 0.15f),
+                            color = if (isActive) Color(0xFF30D158).copy(alpha = 0.12f) else Color(0xFFFF453A).copy(alpha = 0.12f),
                             shape = RoundedCornerShape(8.dp),
                             border = BorderStroke(
                                 1.dp,
-                                if (isActive) Color(0xFF30D158).copy(alpha = 0.35f) else Color(0xFFFF453A).copy(alpha = 0.35f)
+                                if (isActive) Color(0xFF30D158).copy(alpha = 0.3f) else Color(0xFFFF453A).copy(alpha = 0.3f)
                             )
                         ) {
                             Text(
                                 text = if (isActive) (if (lang == "ar") "نشط" else "Active") else (if (lang == "ar") "منتهي" else "Expired"),
-                                color = if (isActive) Color(0xFF30D158) else Color(0xFFFF6961),
+                                color = if (isActive) Color(0xFF30D158) else Color(0xFFFF453A),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                             )
                         }
                     }
@@ -737,7 +736,7 @@ fun ArabicSubscriberCard(
                             Text(
                                 text = if (lang == "ar") "الدين:" else "Debt:",
                                 fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                color = Color(0xFF8E8E93)
                             )
                             val debtText = if (debtIqd > 0) {
                                 com.example.core.ledger.MoneyParser.formatIqdForDisplay(debtIqd) + (if (lang == "ar") " د.ع" else " IQD")
@@ -750,7 +749,7 @@ fun ArabicSubscriberCard(
                                 text = debtText,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (debtIqd > 0) Color(0xFFFF6961) else if (advanceIqd > 0) Color(0xFF30D158) else Color(0xFF30D158)
+                                color = if (debtIqd > 0) Color(0xFFFF453A) else if (advanceIqd > 0) Color(0xFF30D158) else Color(0xFF8E8E93)
                             )
                         }
 
@@ -767,7 +766,7 @@ fun ArabicSubscriberCard(
 
                         Text(
                             text = subDateText,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                            color = Color(0xFF8E8E93),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Normal,
                             maxLines = 1,
@@ -1036,12 +1035,13 @@ fun StatGridCard(
     iconBg: Color,
     iconColor: Color
 ) {
-    Card(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .height(100.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A222D)),
-        shape = RoundedCornerShape(12.dp)
+            .height(96.dp),
+        color = Color(0xFF141922),
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
     ) {
         Column(
             modifier = Modifier
@@ -1057,8 +1057,8 @@ fun StatGridCard(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(32.dp)
-                        .background(iconBg, shape = androidx.compose.foundation.shape.CircleShape),
+                        .size(30.dp)
+                        .background(iconColor.copy(alpha = 0.15f), shape = RoundedCornerShape(8.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -1072,7 +1072,7 @@ fun StatGridCard(
                 Text(
                     text = title,
                     fontSize = 12.sp,
-                    color = Color.White.copy(alpha = 0.6f),
+                    color = Color(0xFF8E8E93),
                     fontWeight = FontWeight.Medium,
                     textAlign = TextAlign.Right
                 )
@@ -1080,8 +1080,8 @@ fun StatGridCard(
 
             Text(
                 text = value,
-                fontSize = 26.sp,
-                fontWeight = FontWeight.ExtraBold,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
                 color = Color.White,
                 modifier = Modifier.align(Alignment.Start)
             )

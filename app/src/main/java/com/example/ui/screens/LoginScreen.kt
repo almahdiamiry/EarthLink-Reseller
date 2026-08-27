@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -207,32 +208,15 @@ fun LoginScreen(viewModel: AuthViewModel) {
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(20.dp)
                     ) {
-                        // App Badge & Icon (Glassmorphic Container)
-                        Box(
+                        // App Logo (Pure Transparent Brand Logo)
+                        Image(
+                            painter = painterResource(id = R.drawable.app_logo),
+                            contentDescription = if (currentLang == "ar") "شعار التطبيق" else "App Logo",
+                            contentScale = ContentScale.Fit,
                             modifier = Modifier
-                                .size(80.dp)
-                                .background(
-                                    brush = Brush.linearGradient(
-                                        colors = listOf(
-                                            Color(0xFF0288D1).copy(alpha = 0.18f),
-                                            Color(0xFF38BDF8).copy(alpha = 0.06f)
-                                        )
-                                    ),
-                                    shape = RoundedCornerShape(24.dp)
-                                )
-                                .border(
-                                    1.dp,
-                                    Color(0xFF0288D1).copy(alpha = 0.35f),
-                                    shape = RoundedCornerShape(24.dp)
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Image(
-                                painter = painterResource(id = R.drawable.ic_launcher_foreground),
-                                contentDescription = if (currentLang == "ar") "شعار التطبيق" else "App Logo",
-                                modifier = Modifier.size(60.dp)
-                            )
-                        }
+                                .height(84.dp)
+                                .padding(vertical = 2.dp)
+                        )
 
                         // App Title & Subtitle Header
                         Column(

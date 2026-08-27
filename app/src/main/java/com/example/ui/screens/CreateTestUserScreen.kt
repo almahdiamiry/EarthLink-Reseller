@@ -78,62 +78,28 @@ fun CreateTestUserScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF0B0F14))
+                .background(Color(0xFF090D12))
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 18.dp),
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Header Banner Card
-                Surface(
-                    shape = RoundedCornerShape(24.dp),
-                    color = Color(0xFF11161F),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(50.dp)
-                                .background(Color(0xFF0288D1).copy(alpha = 0.15f), shape = RoundedCornerShape(16.dp))
-                                .border(1.dp, Color(0xFF0288D1).copy(alpha = 0.3f), shape = RoundedCornerShape(16.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Bolt,
-                                contentDescription = null,
-                                tint = Color(0xFF38BDF8),
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
-                        ) {
-                            Text(
-                                text = if (isAr) "إنشاء مشترك تجريبي (24 ساعة)" else "Issue Trial User (24h)",
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                            Text(
-                                text = if (isAr) "حساب تجريبي مجاني لغرض الفحص والربط لا يخصم من رصيد الصندوق" else "Free 24h test account. Does not deduct from deposit balance.",
-                                fontSize = 12.sp,
-                                color = Color.White.copy(alpha = 0.55f),
-                                lineHeight = 16.sp
-                            )
-                        }
-                    }
+                // Header Title
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = if (isAr) "إنشاء مشترك تجريبي (24 ساعة)" else "Issue Trial User (24h)",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = if (isAr) "حساب فحص وربط مجاني فعال لمدة 24 ساعة بدون خصم من الرصيد" else "Free 24h testing account without reseller balance deduction",
+                        fontSize = 12.sp,
+                        color = Color(0xFF8E8E93)
+                    )
                 }
 
                 // Error / Success Feedback Banners
@@ -143,25 +109,25 @@ fun CreateTestUserScreen(
                     exit = fadeOut()
                 ) {
                     Surface(
-                        color = Color(0xFFEF4444).copy(alpha = 0.12f),
-                        border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.3f)),
-                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFFFF453A).copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, Color(0xFFFF453A).copy(alpha = 0.3f)),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
-                            modifier = Modifier.padding(14.dp),
+                            modifier = Modifier.padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ErrorOutline,
                                 contentDescription = null,
-                                tint = Color(0xFFFCA5A5),
-                                modifier = Modifier.size(20.dp)
+                                tint = Color(0xFFFF453A),
+                                modifier = Modifier.size(18.dp)
                             )
                             Text(
                                 text = error ?: "",
-                                color = Color(0xFFFCA5A5),
+                                color = Color(0xFFFF453A),
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium
                             )
@@ -177,11 +143,11 @@ fun CreateTestUserScreen(
                     Surface(
                         color = Color(0xFF30D158).copy(alpha = 0.12f),
                         border = BorderStroke(1.dp, Color(0xFF30D158).copy(alpha = 0.3f)),
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
-                            modifier = Modifier.padding(14.dp),
+                            modifier = Modifier.padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
@@ -189,7 +155,7 @@ fun CreateTestUserScreen(
                                 imageVector = Icons.Default.CheckCircle,
                                 contentDescription = null,
                                 tint = Color(0xFF30D158),
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                             Text(
                                 text = success ?: "",
@@ -201,23 +167,23 @@ fun CreateTestUserScreen(
                     }
                 }
 
-                // Card 1: Subscriber Info Form
+                // Section 1: Subscriber Info Form
                 Surface(
-                    shape = RoundedCornerShape(24.dp),
-                    color = Color(0xFF11161F),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFF141922),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Text(
-                            text = if (isAr) "بيانات المشترك التجريبي" else "Subscriber Information",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
+                            text = if (isAr) "بيانات المشترك" else "Subscriber Information",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
                             color = Color.White
                         )
 
@@ -227,21 +193,21 @@ fun CreateTestUserScreen(
                             onValueChange = { userId = it },
                             label = { Text(if (isAr) "اسم المستخدم (UserID)" else "Username (UserID)") },
                             leadingIcon = {
-                                Icon(imageVector = Icons.Outlined.Person, contentDescription = null, tint = Color(0xFF38BDF8))
+                                Icon(imageVector = Icons.Outlined.Person, contentDescription = null, tint = Color(0xFF8E8E93), modifier = Modifier.size(18.dp))
                             },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(12.dp),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color(0xFF171E29),
-                                unfocusedContainerColor = Color(0xFF171E29),
-                                focusedBorderColor = Color(0xFF0288D1),
-                                unfocusedBorderColor = Color.White.copy(alpha = 0.1f),
-                                focusedLabelColor = Color(0xFF38BDF8),
-                                unfocusedLabelColor = Color.White.copy(alpha = 0.55f),
+                                focusedContainerColor = Color(0xFF0E131B),
+                                unfocusedContainerColor = Color(0xFF0E131B),
+                                focusedBorderColor = Color(0xFF0A84FF),
+                                unfocusedBorderColor = Color.White.copy(alpha = 0.08f),
+                                focusedLabelColor = Color(0xFF0A84FF),
+                                unfocusedLabelColor = Color(0xFF8E8E93),
                                 focusedTextColor = Color.White,
                                 unfocusedTextColor = Color.White,
-                                cursorColor = Color(0xFF38BDF8)
+                                cursorColor = Color(0xFF0A84FF)
                             ),
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -250,23 +216,23 @@ fun CreateTestUserScreen(
                         OutlinedTextField(
                             value = name,
                             onValueChange = { name = it },
-                            label = { Text(if (isAr) "الاسم الكامل للمشترك" else "Subscriber Full Name") },
+                            label = { Text(if (isAr) "الاسم الكامل (اختياري)" else "Subscriber Full Name (Optional)") },
                             leadingIcon = {
-                                Icon(imageVector = Icons.Outlined.Badge, contentDescription = null, tint = Color(0xFF38BDF8))
+                                Icon(imageVector = Icons.Outlined.Badge, contentDescription = null, tint = Color(0xFF8E8E93), modifier = Modifier.size(18.dp))
                             },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(12.dp),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color(0xFF171E29),
-                                unfocusedContainerColor = Color(0xFF171E29),
-                                focusedBorderColor = Color(0xFF0288D1),
-                                unfocusedBorderColor = Color.White.copy(alpha = 0.1f),
-                                focusedLabelColor = Color(0xFF38BDF8),
-                                unfocusedLabelColor = Color.White.copy(alpha = 0.55f),
+                                focusedContainerColor = Color(0xFF0E131B),
+                                unfocusedContainerColor = Color(0xFF0E131B),
+                                focusedBorderColor = Color(0xFF0A84FF),
+                                unfocusedBorderColor = Color.White.copy(alpha = 0.08f),
+                                focusedLabelColor = Color(0xFF0A84FF),
+                                unfocusedLabelColor = Color(0xFF8E8E93),
                                 focusedTextColor = Color.White,
                                 unfocusedTextColor = Color.White,
-                                cursorColor = Color(0xFF38BDF8)
+                                cursorColor = Color(0xFF0A84FF)
                             ),
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -277,76 +243,76 @@ fun CreateTestUserScreen(
                             onValueChange = { phone = it },
                             label = { Text(if (isAr) "رقم الهاتف (اختياري)" else "Phone Number (Optional)") },
                             leadingIcon = {
-                                Icon(imageVector = Icons.Outlined.Phone, contentDescription = null, tint = Color(0xFF38BDF8))
+                                Icon(imageVector = Icons.Outlined.Phone, contentDescription = null, tint = Color(0xFF8E8E93), modifier = Modifier.size(18.dp))
                             },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Done),
                             keyboardActions = KeyboardActions(onDone = {
                                 focusManager.clearFocus(force = true)
                             }),
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(12.dp),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color(0xFF171E29),
-                                unfocusedContainerColor = Color(0xFF171E29),
-                                focusedBorderColor = Color(0xFF0288D1),
-                                unfocusedBorderColor = Color.White.copy(alpha = 0.1f),
-                                focusedLabelColor = Color(0xFF38BDF8),
-                                unfocusedLabelColor = Color.White.copy(alpha = 0.55f),
+                                focusedContainerColor = Color(0xFF0E131B),
+                                unfocusedContainerColor = Color(0xFF0E131B),
+                                focusedBorderColor = Color(0xFF0A84FF),
+                                unfocusedBorderColor = Color.White.copy(alpha = 0.08f),
+                                focusedLabelColor = Color(0xFF0A84FF),
+                                unfocusedLabelColor = Color(0xFF8E8E93),
                                 focusedTextColor = Color.White,
                                 unfocusedTextColor = Color.White,
-                                cursorColor = Color(0xFF38BDF8)
+                                cursorColor = Color(0xFF0A84FF)
                             ),
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
                 }
 
-                // Card 2: Package Selection
+                // Section 2: Package Selection
                 Surface(
-                    shape = RoundedCornerShape(24.dp),
-                    color = Color(0xFF11161F),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFF141922),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Text(
-                            text = if (isAr) "اختيار باقة التجربة" else "Select Test Package",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
+                            text = if (isAr) "باقة التجربة (24 ساعة)" else "Trial Package (24h)",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
                             color = Color.White
                         )
 
                         val testablePkgs = pkgs.filter { it.canTest == true }
                         if (testablePkgs.isEmpty()) {
                             Text(
-                                text = if (isAr) "جاري تحميل الباقات المتاحة..." else "Loading available packages...",
-                                fontSize = 13.sp,
-                                color = Color.White.copy(alpha = 0.5f)
+                                text = if (isAr) "جاري تحميل الباقات المتاحة..." else "Loading packages...",
+                                fontSize = 12.sp,
+                                color = Color(0xFF8E8E93)
                             )
                         } else {
                             testablePkgs.forEach { pkg ->
                                 val isSel = selectedPkgIndex == pkg.accountIndex
                                 Surface(
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = if (isSel) Color(0xFF0288D1).copy(alpha = 0.16f) else Color(0xFF171E29),
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSel) Color(0xFF0A84FF).copy(alpha = 0.12f) else Color(0xFF0E131B),
                                     border = BorderStroke(
                                         1.dp,
-                                        if (isSel) Color(0xFF0288D1) else Color.White.copy(alpha = 0.06f)
+                                        if (isSel) Color(0xFF0A84FF) else Color.White.copy(alpha = 0.06f)
                                     ),
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(16.dp))
+                                        .clip(RoundedCornerShape(12.dp))
                                         .clickable { selectedPkgIndex = pkg.accountIndex }
                                 ) {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                                            .padding(horizontal = 14.dp, vertical = 12.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
@@ -358,7 +324,7 @@ fun CreateTestUserScreen(
                                                 selected = isSel,
                                                 onClick = null,
                                                 colors = RadioButtonDefaults.colors(
-                                                    selectedColor = Color(0xFF38BDF8),
+                                                    selectedColor = Color(0xFF0A84FF),
                                                     unselectedColor = Color.White.copy(alpha = 0.3f)
                                                 )
                                             )
@@ -366,21 +332,21 @@ fun CreateTestUserScreen(
                                                 text = pkg.accountName,
                                                 fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
                                                 fontSize = 14.sp,
-                                                color = if (isSel) Color.White else Color.White.copy(alpha = 0.8f)
+                                                color = if (isSel) Color.White else Color.White.copy(alpha = 0.85f)
                                             )
                                         }
 
                                         Surface(
-                                            color = Color(0xFF30D158).copy(alpha = 0.15f),
-                                            shape = RoundedCornerShape(8.dp),
-                                            border = BorderStroke(1.dp, Color(0xFF30D158).copy(alpha = 0.3f))
+                                            color = Color(0xFF0A84FF).copy(alpha = 0.12f),
+                                            shape = RoundedCornerShape(6.dp),
+                                            border = BorderStroke(1.dp, Color(0xFF0A84FF).copy(alpha = 0.3f))
                                         ) {
                                             Text(
-                                                text = if (isAr) "تجريبي مجاني" else "Free Trial",
-                                                color = Color(0xFF30D158),
+                                                text = if (isAr) "مجاني" else "Free",
+                                                color = Color(0xFF0A84FF),
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                                             )
                                         }
                                     }
@@ -398,25 +364,25 @@ fun CreateTestUserScreen(
                     },
                     enabled = userId.isNotBlank() && selectedPkgIndex != -1 && !isActionLoading,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF0288D1),
-                        disabledContainerColor = Color(0xFF0288D1).copy(alpha = 0.35f)
+                        containerColor = Color(0xFF0A84FF),
+                        disabledContainerColor = Color(0xFF0A84FF).copy(alpha = 0.35f)
                     ),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp)
+                        .height(50.dp)
                 ) {
                     if (isActionLoading) {
                         CircularProgressIndicator(
                             color = Color.White,
-                            modifier = Modifier.size(22.dp),
-                            strokeWidth = 2.5.dp
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = if (isAr) "جاري تفعيل الحساب التجريبي..." else "Issuing trial account...",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
                             color = Color.White
                         )
                     } else {
@@ -424,11 +390,11 @@ fun CreateTestUserScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(imageVector = Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(20.dp))
+                            Icon(imageVector = Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(18.dp))
                             Text(
-                                text = if (isAr) "تفعيل الحساب التجريبي الآن" else "Issue Trial Account Now",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp,
+                                text = if (isAr) "تفعيل الحساب التجريبي (مجاناً)" else "Issue Free Trial Account",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
                                 color = Color.White
                             )
                         }

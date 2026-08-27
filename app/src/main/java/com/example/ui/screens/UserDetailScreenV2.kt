@@ -348,8 +348,82 @@ fun UserDetailScreenV2(
                 }
                 isLoadingApiData = false
             }
-            
+
             val balanceAfter = resellerBalance - packageCost
+
+            val performRefill: () -> Unit = {
+                val depositPass = prefs.getDepositPassword()
+                if (depositPass.isBlank()) {
+                    android.widget.Toast.makeText(
+                        context,
+                        if (currentLang == "ar") "الرجاء ضبط كلمة مرور الصندوق في الإعدادات أولاً!" else "Please set your deposit password in settings first!",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                } else {
+                    val parsedPrice = (com.example.core.ledger.MoneyParser.parseSubscriptionPriceIqd(priceInput) ?: 0L).toDouble()
+                    if (parsedPrice <= 0.0) {
+                        android.widget.Toast.makeText(
+                            context,
+                            if (currentLang == "ar") "الرجاء إدخال مبلغ صحيح للتجديد!" else "Please enter a valid subscription price!",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    } else {
+                        focusManager.clearFocus(force = true)
+                        keyboardController?.hide()
+                        showRefillDialog = false
+                        val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
+                            earthlinkUsername = user.userID,
+                            displayName = user.customerFullName ?: user.userID,
+                            phone1 = user.mobileNumber,
+                            packageName = user.packageName ?: "Default",
+                            currentPriceIqd = parsedPrice,
+                            createdAt = System.currentTimeMillis()
+                        )
+                        
+                        isSubmitting = true
+                        val noteVal = noteInput
+                        val isWasil = isWasilChecked
+                        val accToUse = matchingAccount ?: finalAcc
+
+                        viewModel.refillUser(
+                            userId = user.userID,
+                            depositPass = depositPass,
+                            price = parsedPrice,
+                            note = noteVal,
+                            onSuccessCallback = { txId ->
+                                try {
+                                    val chargeNote = noteVal.trim()
+                                    val payNote = if (isWasil) noteVal.trim() else null
+                                    
+                                    viewModel.localLedgerRepository.recordAccountRenewal(
+                                        account = accToUse,
+                                        newPriceIqd = parsedPrice,
+                                        chargeNote = chargeNote,
+                                        payNote = payNote,
+                                        idempotencyKey = txId
+                                    )
+                                    viewModel.syncRepo?.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
+                                } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+                                    android.util.Log.e("UserDetailScreen", "Failed to add ledger entry", e)
+                                    try {
+                                        audit.logAction(
+                                            action = "RECONCILIATION_REQUIRED",
+                                            entityType = "USER",
+                                            entityId = user.userID,
+                                            summary = "Refill succeeded on API, but local ledger persistence failed: ${e.message}"
+                                        )
+                                    } catch (ex: Exception) { if (ex is kotlinx.coroutines.CancellationException) throw ex; }
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        if (currentLang == "ar") "تم التجديد على النظام ولكن تعذر الحفظ محلياً. يرجى المزامنة." else "Renewed on system, but failed to save locally. Please sync.",
+                                        android.widget.Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            }
+                        )
+                    }
+                }
+            }
             
             Dialog(
                 onDismissRequest = { 
@@ -359,246 +433,297 @@ fun UserDetailScreenV2(
                     showRefillDialog = false 
                 },
                 properties = androidx.compose.ui.window.DialogProperties(
-                    usePlatformDefaultWidth = false
+                    usePlatformDefaultWidth = false,
+                    decorFitsSystemWindows = false
                 )
             ) {
-                Card(
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth(0.95f)
-                        .fillMaxHeight(0.85f)
+                        .fillMaxSize()
                         .imePadding()
-                        .padding(vertical = 12.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF10161D)),
-                    border = BorderStroke(1.dp, Color(0xFF1F2937))
+                        .systemBarsPadding()
+                        .padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 12.dp),
+                    contentAlignment = Alignment.TopCenter
                 ) {
-                    Column(
+                    Card(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            .padding(20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                            .fillMaxWidth()
+                            .heightIn(max = 580.dp),
+                        shape = RoundedCornerShape(24.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF10161D)),
+                        border = BorderStroke(1.dp, Color(0xFF1F2937))
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .width(40.dp)
-                                .height(4.dp)
-                                .background(Color.Gray.copy(alpha = 0.4f), RoundedCornerShape(2.dp))
-                        )
-                        
-                        Text(
-                            text = stringResource(id = R.string.title_subscription_renewal),
-                            color = Color.White,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        
                         Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState())
+                                .padding(horizontal = 20.dp, vertical = 14.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(40.dp)
+                                    .height(4.dp)
+                                    .background(Color.Gray.copy(alpha = 0.4f), RoundedCornerShape(2.dp))
+                            )
+
                             Text(
-                                text = stringResource(id = R.string.label_subscription_price),
-                                color = Color(0xFF8E8E93),
-                                fontSize = 13.sp,
-                                modifier = Modifier.padding(bottom = 4.dp)
+                                text = if (currentLang == "ar") "تجديد الاشتراك" else "Subscription Renewal",
+                                color = Color.White,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
                             )
                             
-                            var isFocused by rememberSaveable { mutableStateOf(false) }
-                            var hasClearedOnFirstFocus by rememberSaveable { mutableStateOf(false) }
-                            
-                            BasicTextField(
-                                value = priceInput,
-                                onValueChange = { input ->
-                                    val cleanInput = input.replace("\n", "").replace("\r", "")
-                                    val trimmed = cleanInput.trim()
-                                    if ((trimmed.all { it.isDigit() || it == '.' }) && trimmed.count { it == '.' } <= 1) {
-                                        priceInput = trimmed
-                                    }
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .focusRequester(focusRequester)
-                                    .onFocusChanged { focusState ->
-                                        if (focusState.isFocused) {
-                                            isFocused = true
-                                            if (!hasClearedOnFirstFocus) {
-                                                hasClearedOnFirstFocus = true
-                                                priceInput = ""
-                                            }
-                                        } else {
-                                            isFocused = false
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = if (currentLang == "ar") "سعر الاشتراك" else "Subscription Price",
+                                    color = Color(0xFF8E8E93),
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.padding(bottom = 2.dp)
+                                )
+                                
+                                var isFocused by rememberSaveable { mutableStateOf(false) }
+                                var hasClearedOnFirstFocus by rememberSaveable { mutableStateOf(false) }
+                                
+                                BasicTextField(
+                                    value = priceInput,
+                                    onValueChange = { input ->
+                                        val cleanInput = input.replace("\n", "").replace("\r", "")
+                                        val trimmed = cleanInput.trim()
+                                        if ((trimmed.all { it.isDigit() || it == '.' }) && trimmed.count { it == '.' } <= 1) {
+                                            priceInput = trimmed
                                         }
                                     },
-                                singleLine = true,
-                                textStyle = LocalTextStyle.current.copy(
-                                    color = Color.White,
-                                    fontSize = 24.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    textAlign = TextAlign.End
-                                ),
-                                cursorBrush = SolidColor(Color(0xFF90CAF9)),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
-                                keyboardActions = KeyboardActions(onDone = {
-                                    focusManager.clearFocus(force = true)
-                                    keyboardController?.hide()
-                                }),
-                                decorationBox = { innerTextField ->
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.Center,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.Center
-                                            ) {
-                                                Box(modifier = Modifier.widthIn(min = 20.dp, max = 120.dp)) {
-                                                    innerTextField()
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .focusRequester(focusRequester)
+                                        .onFocusChanged { focusState ->
+                                            if (focusState.isFocused) {
+                                                isFocused = true
+                                                if (!hasClearedOnFirstFocus) {
+                                                    hasClearedOnFirstFocus = true
+                                                    priceInput = ""
                                                 }
-                                                Text(
-                                                    text = ",000",
-                                                    color = Color(0xFF90CAF9),
-                                                    fontSize = 24.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Text(
-                                                    text = if (currentLang == "ar") "د.ع" else "IQD",
-                                                    color = Color.White.copy(alpha = 0.7f),
-                                                    fontSize = 16.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                )
+                                            } else {
+                                                isFocused = false
+                                            }
+                                        }
+                                        .onPreviewKeyEvent { keyEvent ->
+                                            if (keyEvent.type == KeyEventType.KeyDown && (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter)) {
+                                                if (!isSubmitting) {
+                                                    performRefill()
+                                                }
+                                                true
+                                            } else {
+                                                false
+                                            }
+                                        },
+                                    singleLine = true,
+                                    textStyle = LocalTextStyle.current.copy(
+                                        color = Color.White,
+                                        fontSize = 24.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        textAlign = TextAlign.End
+                                    ),
+                                    cursorBrush = SolidColor(Color(0xFF90CAF9)),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                                    keyboardActions = KeyboardActions(onDone = {
+                                        if (!isSubmitting) {
+                                            performRefill()
+                                        }
+                                    }),
+                                    decorationBox = { innerTextField ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.Center,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.Center
+                                                ) {
+                                                    Box(modifier = Modifier.widthIn(min = 20.dp, max = 120.dp)) {
+                                                        innerTextField()
+                                                    }
+                                                    Text(
+                                                        text = ",000",
+                                                        color = Color(0xFF90CAF9),
+                                                        fontSize = 24.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        text = if (currentLang == "ar") "د.ع" else "IQD",
+                                                        color = Color.White.copy(alpha = 0.7f),
+                                                        fontSize = 16.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
                                             }
                                         }
                                     }
-                                }
-                            )
-                        }
-                        
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A222E)),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                                )
+                            }
+                            
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF161F2C)),
+                                shape = RoundedCornerShape(16.dp)
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                Column(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Text(
-                                        text = if (currentLang == "ar") "تكلفة الاشتراك" else "Package Cost",
-                                        color = Color(0xFF9CA3AF),
-                                        fontSize = 14.sp
-                                    )
-                                    Text(
-                                        text = if (isLoadingApiData) "..." else "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(packageCost.toDouble())} د.ع",
-                                        color = Color.White,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                                
-                                HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-                                
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = if (currentLang == "ar") "رصيد اللوحة الحالي" else "Current Panel Balance",
-                                        color = Color(0xFF9CA3AF),
-                                        fontSize = 14.sp
-                                    )
-                                    Text(
-                                        text = if (isLoadingApiData) "..." else "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(resellerBalance.toDouble())} د.ع",
-                                        color = Color.White,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                                
-                                HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-                                
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = if (currentLang == "ar") "رصيد اللوحة بعد التجديد" else "Balance After Renewal",
-                                        color = Color(0xFF9CA3AF),
-                                        fontSize = 14.sp
-                                    )
-                                    val balanceColor = if (balanceAfter >= 0) Color(0xFF34D399) else Color(0xFFF87171)
-                                    Text(
-                                        text = if (isLoadingApiData) "..." else "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(balanceAfter.toDouble())} د.ع",
-                                        color = balanceColor,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = if (currentLang == "ar") "تكلفة الاشتراك" else "Package Cost",
+                                            color = Color(0xFF9CA3AF),
+                                            fontSize = 13.sp
+                                        )
+                                        Text(
+                                            text = if (isLoadingApiData) "..." else "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(packageCost.toDouble())} د.ع",
+                                            color = Color.White,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    
+                                    HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+                                    
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = if (currentLang == "ar") "رصيد اللوحة الحالي" else "Current Panel Balance",
+                                            color = Color(0xFF9CA3AF),
+                                            fontSize = 13.sp
+                                        )
+                                        Text(
+                                            text = if (isLoadingApiData) "..." else "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(resellerBalance.toDouble())} د.ع",
+                                            color = Color.White,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    
+                                    HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+                                    
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = if (currentLang == "ar") "رصيد اللوحة بعد التجديد" else "Balance After Renewal",
+                                            color = Color(0xFF9CA3AF),
+                                            fontSize = 13.sp
+                                        )
+                                        val balanceColor = if (balanceAfter >= 0) Color(0xFF34D399) else Color(0xFFF87171)
+                                        Text(
+                                            text = if (isLoadingApiData) "..." else "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(balanceAfter.toDouble())} د.ع",
+                                            color = balanceColor,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
                                 }
                             }
-                        }
-                        
-                        OutlinedTextField(
-                            value = noteInput,
-                            onValueChange = { noteInput = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            label = { Text(if (currentLang == "ar") "ملاحظة" else "Note", color = Color(0xFF9CA3AF)) },
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                            keyboardActions = KeyboardActions(onDone = {
-                                focusManager.clearFocus(force = true)
-                                keyboardController?.hide()
-                            }),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
-                                focusedBorderColor = Color(0xFF3B82F6),
-                                unfocusedBorderColor = Color(0xFF374151)
-                            ),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Button(
-                                onClick = { isWasilChecked = !isWasilChecked },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(44.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (isWasilChecked) Color(0xFF1E3A8A) else Color.Transparent
+                            
+                            OutlinedTextField(
+                                value = noteInput,
+                                onValueChange = { noteInput = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                label = { Text(if (currentLang == "ar") "ملاحظة (اختياري)" else "Note (Optional)", color = Color(0xFF9CA3AF), fontSize = 12.sp) },
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                keyboardActions = KeyboardActions(onDone = {
+                                    if (!isSubmitting) {
+                                        performRefill()
+                                    }
+                                }),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White,
+                                    focusedBorderColor = Color(0xFF3B82F6),
+                                    unfocusedBorderColor = Color(0xFF374151)
                                 ),
-                                border = BorderStroke(1.dp, if (isWasilChecked) Color(0xFF3B82F6) else Color(0xFF374151)),
-                                shape = RoundedCornerShape(22.dp)
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
+                                Button(
+                                    onClick = { isWasilChecked = !isWasilChecked },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(40.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (isWasilChecked) Color(0xFF1E3A8A) else Color.Transparent
+                                    ),
+                                    border = BorderStroke(1.dp, if (isWasilChecked) Color(0xFF3B82F6) else Color(0xFF374151)),
+                                    shape = RoundedCornerShape(20.dp)
                                 ) {
-                                    Text(
-                                        text = if (currentLang == "ar") "واصل" else "Received",
-                                        color = if (isWasilChecked) Color.White else Color(0xFF9CA3AF),
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    if (isWasilChecked) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Text(
+                                            text = if (currentLang == "ar") "واصل" else "Received",
+                                            color = if (isWasilChecked) Color.White else Color(0xFF9CA3AF),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        if (isWasilChecked) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                
+                                Button(
+                                    onClick = { isPrintChecked = !isPrintChecked },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(40.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (isPrintChecked) Color(0xFF374151) else Color.Transparent
+                                    ),
+                                    border = BorderStroke(1.dp, if (isPrintChecked) Color(0xFF6B7280) else Color(0xFF374151)),
+                                    shape = RoundedCornerShape(20.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Text(
+                                            text = if (currentLang == "ar") "طباعة" else "Print",
+                                            color = if (isPrintChecked) Color.White else Color(0xFF9CA3AF),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Icon(
-                                            imageVector = Icons.Default.Check,
+                                            imageVector = Icons.Default.Print,
                                             contentDescription = null,
-                                            tint = Color.White,
+                                            tint = if (isPrintChecked) Color.White else Color(0xFF9CA3AF),
                                             modifier = Modifier.size(16.dp)
                                         )
                                     }
@@ -606,122 +731,21 @@ fun UserDetailScreenV2(
                             }
                             
                             Button(
-                                onClick = { isPrintChecked = !isPrintChecked },
+                                onClick = { performRefill() },
+                                enabled = !isSubmitting,
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .height(44.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (isPrintChecked) Color(0xFF374151) else Color.Transparent
-                                ),
-                                border = BorderStroke(1.dp, if (isPrintChecked) Color(0xFF6B7280) else Color(0xFF374151)),
-                                shape = RoundedCornerShape(22.dp)
+                                    .fillMaxWidth()
+                                    .height(48.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF90CAF9)),
+                                shape = RoundedCornerShape(24.dp)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
-                                ) {
-                                    Text(
-                                        text = if (currentLang == "ar") "طباعة" else "Print",
-                                        color = if (isPrintChecked) Color.White else Color(0xFF9CA3AF),
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Icon(
-                                        imageVector = Icons.Default.Print,
-                                        contentDescription = null,
-                                        tint = if (isPrintChecked) Color.White else Color(0xFF9CA3AF),
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
+                                Text(
+                                    text = if (currentLang == "ar") "تجديد" else "Renew",
+                                    color = Color.Black,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
-                        }
-                        
-                        Button(
-                            onClick = {
-                                val depositPass = prefs.getDepositPassword()
-                                if (depositPass.isBlank()) {
-                                    android.widget.Toast.makeText(
-                                        context,
-                                        if (currentLang == "ar") "الرجاء ضبط كلمة مرور الصندوق في الإعدادات أولاً!" else "Please set your deposit password in settings first!",
-                                        android.widget.Toast.LENGTH_LONG
-                                    ).show()
-                                } else {
-                                    val parsedPrice = (com.example.core.ledger.MoneyParser.parseSubscriptionPriceIqd(priceInput) ?: 0L).toDouble()
-                                    if (parsedPrice <= 0.0) {
-                                        android.widget.Toast.makeText(
-                                            context,
-                                            if (currentLang == "ar") "الرجاء إدخال مبلغ صحيح للتجديد!" else "Please enter a valid subscription price!",
-                                            android.widget.Toast.LENGTH_LONG
-                                        ).show()
-                                    } else {
-                                        showRefillDialog = false
-                                        val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
-                                            earthlinkUsername = user.userID,
-                                            displayName = user.customerFullName ?: user.userID,
-                                            phone1 = user.mobileNumber,
-                                            packageName = user.packageName ?: "Default",
-                                            currentPriceIqd = parsedPrice,
-                                            createdAt = System.currentTimeMillis()
-                                        )
-                                        
-                                        isSubmitting = true
-                                        val noteVal = noteInput
-                                        val isWasil = isWasilChecked
-                                        val accToUse = matchingAccount ?: finalAcc
-
-                                        viewModel.refillUser(
-                                            userId = user.userID,
-                                            depositPass = depositPass,
-                                            price = parsedPrice,
-                                            note = noteVal,
-                                            onSuccessCallback = { txId ->
-                                                try {
-                                                    val chargeNote = noteVal.trim()
-                                                    val payNote = if (isWasil) noteVal.trim() else null
-                                                    
-                                                    viewModel.localLedgerRepository.recordAccountRenewal(
-                                                        account = accToUse,
-                                                        newPriceIqd = parsedPrice,
-                                                        chargeNote = chargeNote,
-                                                        payNote = payNote,
-                                                        idempotencyKey = txId
-                                                    )
-                                                    viewModel.syncRepo?.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
-                                                } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                                                    android.util.Log.e("UserDetailScreen", "Failed to add ledger entry", e)
-                                                    try {
-                                                        audit.logAction(
-                                                            action = "RECONCILIATION_REQUIRED",
-                                                            entityType = "USER",
-                                                            entityId = user.userID,
-                                                            summary = "Refill succeeded on API, but local ledger persistence failed: ${e.message}"
-                                                        )
-                                                    } catch (ex: Exception) { if (ex is kotlinx.coroutines.CancellationException) throw ex; }
-                                                    android.widget.Toast.makeText(
-                                                        context,
-                                                        if (currentLang == "ar") "تم التجديد على النظام ولكن تعذر الحفظ محلياً. يرجى المزامنة." else "Renewed on system, but failed to save locally. Please sync.",
-                                                        android.widget.Toast.LENGTH_LONG
-                                                    ).show()
-                                                }
-                                            }
-                                        )
-                                    }
-                                }
-                            },
-                            enabled = !isSubmitting,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(50.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF90CAF9)),
-                            shape = RoundedCornerShape(25.dp)
-                        ) {
-                            Text(
-                                text = if (currentLang == "ar") "تجديد" else "Renew",
-                                color = Color.Black,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold
-                            )
                         }
                     }
                 }
@@ -747,9 +771,72 @@ fun UserDetailScreenV2(
             var isSubmitting by rememberSaveable { mutableStateOf(false) }
             
             val currentDebt = matchingAccount?.debtIqd ?: 0.0
-            val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(priceInput) ?: 0L).toDouble()
+val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(priceInput) ?: 0L).toDouble()
             val currentAdvance = matchingAccount?.advanceIqd ?: 0.0
             val currentLoan = matchingAccount?.loanIqd ?: 0.0
+
+            val performDeposit: () -> Unit = {
+                val parsedPriceVal = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(priceInput) ?: 0L).toDouble()
+                if (parsedPriceVal <= 0.0) {
+                    android.widget.Toast.makeText(
+                        context,
+                        if (currentLang == "ar") "الرجاء إدخال مبلغ صحيح!" else "Please enter a valid amount!",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    focusManager.clearFocus(force = true)
+                    keyboardController?.hide()
+                    val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
+                        earthlinkUsername = user.userID,
+                        displayName = user.customerFullName ?: user.userID,
+                        phone1 = user.mobileNumber,
+                        packageName = user.packageName ?: "Default",
+                        createdAt = System.currentTimeMillis()
+                    )
+                    
+                    isSubmitting = true
+                    val noteVal = noteInput.trim()
+                    val accToUse = matchingAccount ?: finalAcc
+                    val baseNote = if ((matchingAccount?.debtIqd ?: 0.0) > 0) "[PAYMENT]" else "[DEPOSIT]"
+                    val payNote = if (noteVal.isNotBlank()) "$baseNote $noteVal" else null
+                    
+                    coroutineScope.launch {
+                        try {
+                            viewModel.localLedgerRepository.recordAccountPayment(
+                                account = accToUse,
+                                amount = parsedPriceVal,
+                                note = payNote
+                            )
+                            viewModel.syncRepo?.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
+
+                            showDepositDialog = false
+                            android.widget.Toast.makeText(
+                                context,
+                                if (currentLang == "ar") if ((matchingAccount?.debtIqd ?: 0.0) > 0) "تم تسديد المبلغ بنجاح." else "تم إيداع المبلغ بنجاح." else if ((matchingAccount?.debtIqd ?: 0.0) > 0) "Payment completed successfully." else "Deposit completed successfully.",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+
+                            try {
+                                audit.logAction(
+                                    action = "DEPOSIT_PAYMENT",
+                                    entityType = "USER",
+                                    entityId = user.userID,
+                                    summary = "Recorded payment amount $parsedPriceVal. Note: $payNote"
+                                )
+                            } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; }
+                        } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+                            android.util.Log.e("UserDetailScreen", "Failed to add deposit", e)
+                            android.widget.Toast.makeText(
+                                context,
+                                if (currentLang == "ar") "فشلت العملية: ${e.localizedMessage}" else "Operation failed: ${e.localizedMessage}",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        } finally {
+                            isSubmitting = false
+                        }
+                    }
+                }
+            }
 
             val postDepositBalances = com.example.core.ledger.BalanceCalculator.applyTransaction(
                 currentDebt = currentDebt,
@@ -767,306 +854,240 @@ fun UserDetailScreenV2(
                     showDepositDialog = false 
                 },
                 properties = androidx.compose.ui.window.DialogProperties(
-                    usePlatformDefaultWidth = false
+                    usePlatformDefaultWidth = false,
+                    decorFitsSystemWindows = false
                 )
             ) {
-                Card(
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth(0.95f)
-                        .fillMaxHeight(0.85f)
+                        .fillMaxSize()
                         .imePadding()
-                        .padding(vertical = 12.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF10161D)),
-                    border = BorderStroke(1.dp, Color(0xFF1F2937))
+                        .systemBarsPadding()
+                        .padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 12.dp),
+                    contentAlignment = Alignment.TopCenter
                 ) {
-                    Column(
+                    Card(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            .padding(20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                            .fillMaxWidth()
+                            .heightIn(max = 580.dp),
+                        shape = RoundedCornerShape(24.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF10161D)),
+                        border = BorderStroke(1.dp, Color(0xFF1F2937))
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .width(40.dp)
-                                .height(4.dp)
-                                .background(Color.Gray.copy(alpha = 0.4f), RoundedCornerShape(2.dp))
-                        )
-                        
-                        Text(
-                            text = if (currentLang == "ar") if ((matchingAccount?.debtIqd ?: 0.0) > 0) "تسديد مبلغ" else "إيداع مبلغ" else if ((matchingAccount?.debtIqd ?: 0.0) > 0) "Pay Amount" else "Deposit Amount",
-                            color = Color.White,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        
                         Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalAlignment = Alignment.End
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState())
+                                .padding(horizontal = 20.dp, vertical = 14.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(40.dp)
+                                    .height(4.dp)
+                                    .background(Color.Gray.copy(alpha = 0.4f), RoundedCornerShape(2.dp))
+                            )
+
                             Text(
-                                text = if (currentLang == "ar") if ((matchingAccount?.debtIqd ?: 0.0) > 0) "مبلغ التسديد" else "مبلغ الإيداع" else if ((matchingAccount?.debtIqd ?: 0.0) > 0) "Payment Amount" else "Deposit Amount",
-                                color = Color(0xFF8E8E93),
-                                fontSize = 13.sp,
-                                modifier = Modifier.padding(bottom = 4.dp)
+                                text = if (currentLang == "ar") if ((matchingAccount?.debtIqd ?: 0.0) > 0) "تسديد مبلغ" else "إيداع مبلغ" else if ((matchingAccount?.debtIqd ?: 0.0) > 0) "Pay Amount" else "Deposit Amount",
+                                color = Color.White,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
                             )
                             
-                            var isFocused by rememberSaveable { mutableStateOf(false) }
-                            
-                            BasicTextField(
-                                value = priceInput,
-                                onValueChange = { input ->
-                                    val cleanInput = input.replace("\n", "").replace("\r", "")
-                                    val trimmed = cleanInput.trim()
-                                    if ((trimmed.all { it.isDigit() || it == '.' }) && trimmed.count { it == '.' } <= 1) {
-                                        priceInput = trimmed
-                                    }
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .focusRequester(focusRequester)
-                                    .onFocusChanged { focusState ->
-                                        if (focusState.isFocused) {
-                                            isFocused = true
-                                        } else {
-                                            isFocused = false
-                                        }
-                                    }
-                                    .onPreviewKeyEvent { keyEvent ->
-                                        if (keyEvent.type == KeyEventType.KeyDown && (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter)) {
-                                            focusManager.clearFocus(force = true)
-                                            keyboardController?.hide()
-                                            true
-                                        } else {
-                                            false
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = if (currentLang == "ar") if ((matchingAccount?.debtIqd ?: 0.0) > 0) "مبلغ التسديد" else "مبلغ الإيداع" else if ((matchingAccount?.debtIqd ?: 0.0) > 0) "Payment Amount" else "Deposit Amount",
+                                    color = Color(0xFF8E8E93),
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.padding(bottom = 2.dp)
+                                )
+                                
+                                var isFocused by rememberSaveable { mutableStateOf(false) }
+                                
+                                BasicTextField(
+                                    value = priceInput,
+                                    onValueChange = { input ->
+                                        val cleanInput = input.replace("\n", "").replace("\r", "")
+                                        val trimmed = cleanInput.trim()
+                                        if ((trimmed.all { it.isDigit() || it == '.' }) && trimmed.count { it == '.' } <= 1) {
+                                            priceInput = trimmed
                                         }
                                     },
-                                singleLine = true,
-                                textStyle = LocalTextStyle.current.copy(
-                                    color = Color.White,
-                                    fontSize = 24.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    textAlign = TextAlign.End
-                                ),
-                                cursorBrush = SolidColor(Color(0xFF90CAF9)),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
-                                keyboardActions = KeyboardActions(onDone = {
-                                    focusManager.clearFocus(force = true)
-                                    keyboardController?.hide()
-                                }),
-                                decorationBox = { innerTextField ->
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.Center,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.Center
-                                            ) {
-                                                Box(modifier = Modifier.widthIn(min = 20.dp, max = 120.dp)) {
-                                                    innerTextField()
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .focusRequester(focusRequester)
+                                        .onFocusChanged { focusState ->
+                                            if (focusState.isFocused) {
+                                                isFocused = true
+                                            } else {
+                                                isFocused = false
+                                            }
+                                        }
+                                        .onPreviewKeyEvent { keyEvent ->
+                                            if (keyEvent.type == KeyEventType.KeyDown && (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter)) {
+                                                if (!isSubmitting) {
+                                                    performDeposit()
                                                 }
-                                                Text(
-                                                    text = ",000",
-                                                    color = Color(0xFF90CAF9),
-                                                    fontSize = 24.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Text(
-                                                    text = if (currentLang == "ar") "د.ع" else "IQD",
-                                                    color = Color.White.copy(alpha = 0.7f),
-                                                    fontSize = 16.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                )
+                                                true
+                                            } else {
+                                                false
+                                            }
+                                        },
+                                    singleLine = true,
+                                    textStyle = LocalTextStyle.current.copy(
+                                        color = Color.White,
+                                        fontSize = 24.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        textAlign = TextAlign.End
+                                    ),
+                                    cursorBrush = SolidColor(Color(0xFF90CAF9)),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                                    keyboardActions = KeyboardActions(onDone = {
+                                        if (!isSubmitting) {
+                                            performDeposit()
+                                        }
+                                    }),
+                                    decorationBox = { innerTextField ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.Center,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.Center
+                                                ) {
+                                                    Box(modifier = Modifier.widthIn(min = 20.dp, max = 120.dp)) {
+                                                        innerTextField()
+                                                    }
+                                                    Text(
+                                                        text = ",000",
+                                                        color = Color(0xFF90CAF9),
+                                                        fontSize = 24.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        text = if (currentLang == "ar") "د.ع" else "IQD",
+                                                        color = Color.White.copy(alpha = 0.7f),
+                                                        fontSize = 16.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
                                             }
                                         }
                                     }
-                                }
-                            )
-                        }
-                        
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A222E)),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                                )
+                            }
+                            
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF161F2C)),
+                                shape = RoundedCornerShape(16.dp)
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                Column(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Text(
-                                        text = if (currentLang == "ar") "الدين الحالي للمشترك" else "Current Debt",
-                                        color = Color(0xFF9CA3AF),
-                                        fontSize = 14.sp
-                                    )
-                                    Text(
-                                        text = "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(currentDebt.toDouble())} د.ع",
-                                        color = Color.White,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                                
-                                HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-                                
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    val (depositLabel, depositBalanceColor, depositBalanceTextVal) = when {
-                                        postDepositBalances.debtIqd > 0.0 -> {
-                                            Triple(
-                                                if (currentLang == "ar") "الدين المتبقي بعد الإيداع" else "Debt Remaining After",
-                                                Color(0xFFF87171),
-                                                "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postDepositBalances.debtIqd)} د.ع"
-                                            )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = if (currentLang == "ar") "الرصيد المالي الحالي" else "Current Position",
+                                            color = Color(0xFF9CA3AF),
+                                            fontSize = 13.sp
+                                        )
+                                        val displayStr = if (currentDebt > 0) {
+                                            "مطلوب: \u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(currentDebt)} د.ع"
+                                        } else if (currentAdvance > 0) {
+                                            "واصل: \u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(currentAdvance)} د.ع"
+                                        } else {
+                                            "خالص: 0 د.ع"
                                         }
-                                        postDepositBalances.advanceIqd > 0.0 -> {
-                                            Triple(
-                                                if (currentLang == "ar") "رصيد مقدم بعد الإيداع" else "Advance Credit After",
-                                                Color(0xFF34D399),
-                                                if (currentLang == "ar") "رصيد مقدم: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postDepositBalances.advanceIqd)} د.ع"
-                                                else "Advance: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postDepositBalances.advanceIqd)} IQD"
-                                            )
-                                        }
-                                        else -> {
-                                            Triple(
-                                                if (currentLang == "ar") "الدين المتبقي بعد الإيداع" else "Debt Remaining After",
-                                                Color(0xFF34D399),
-                                                if (currentLang == "ar") "0 د.ع (مسدد)" else "0 IQD (Settled)"
-                                            )
-                                        }
+                                        val curColor = if (currentDebt > 0) Color(0xFFF87171) else if (currentAdvance > 0) Color(0xFF34D399) else Color.White
+                                        Text(
+                                            text = displayStr,
+                                            color = curColor,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
                                     }
-                                    Text(
-                                        text = depositLabel,
-                                        color = Color(0xFF9CA3AF),
-                                        fontSize = 14.sp
-                                    )
-                                    Text(
-                                        text = depositBalanceTextVal,
-                                        color = depositBalanceColor,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                                    
+                                    HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+                                    
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = if (currentLang == "ar") "الرصيد المالي بعد العملية" else "Position After",
+                                            color = Color(0xFF9CA3AF),
+                                            fontSize = 13.sp
+                                        )
+                                        val displayStr = if (postDepositBalances.debtIqd > 0) {
+                                            "مطلوب: \u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postDepositBalances.debtIqd)} د.ع"
+                                        } else if (postDepositBalances.advanceIqd > 0) {
+                                            "واصل: \u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postDepositBalances.advanceIqd)} د.ع"
+                                        } else {
+                                            "خالص: 0 د.ع"
+                                        }
+                                        val curColor = if (postDepositBalances.debtIqd > 0) Color(0xFFF87171) else if (postDepositBalances.advanceIqd > 0) Color(0xFF34D399) else Color.White
+                                        Text(
+                                            text = displayStr,
+                                            color = curColor,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
                                 }
                             }
-                        }
-                        
-                        OutlinedTextField(
-                            value = noteInput,
-                            onValueChange = { noteInput = it },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .onPreviewKeyEvent { keyEvent ->
-                                    if (keyEvent.type == KeyEventType.KeyDown && (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter)) {
-                                        focusManager.clearFocus(force = true)
-                                        keyboardController?.hide()
-                                        true
-                                    } else {
-                                        false
+                            
+                            OutlinedTextField(
+                                value = noteInput,
+                                onValueChange = { noteInput = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                label = { Text(if (currentLang == "ar") "ملاحظة (اختياري)" else "Note (Optional)", color = Color(0xFF9CA3AF), fontSize = 12.sp) },
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                keyboardActions = KeyboardActions(onDone = {
+                                    if (!isSubmitting) {
+                                        performDeposit()
                                     }
-                                },
-                            singleLine = true,
-                            label = { Text(if (currentLang == "ar") "ملاحظة" else "Note", color = Color(0xFF9CA3AF)) },
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                            keyboardActions = KeyboardActions(onDone = {
-                                focusManager.clearFocus(force = true)
-                                keyboardController?.hide()
-                            }),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
-                                focusedBorderColor = Color(0xFF3B82F6),
-                                unfocusedBorderColor = Color(0xFF374151)
-                            ),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        
-                        Button(
-                            onClick = {
-                                val parsedPriceVal = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(priceInput) ?: 0L).toDouble()
-                                if (parsedPriceVal <= 0.0) {
-                                    android.widget.Toast.makeText(
-                                        context,
-                                        if (currentLang == "ar") if ((matchingAccount?.debtIqd ?: 0.0) > 0) "الرجاء إدخال مبلغ تسديد صحيح!" else "الرجاء إدخال مبلغ إيداع صحيح!" else if ((matchingAccount?.debtIqd ?: 0.0) > 0) "Please enter a valid payment amount!" else "Please enter a valid deposit amount!",
-                                        android.widget.Toast.LENGTH_LONG
-                                    ).show()
-                                } else {
-                                    isSubmitting = true
-                                    val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
-                                        earthlinkUsername = user.userID,
-                                        displayName = user.customerFullName ?: user.userID,
-                                        phone1 = user.mobileNumber,
-                                        packageName = user.packageName ?: "Default",
-                                        currentPriceIqd = 40000.0,
-                                        createdAt = System.currentTimeMillis()
-                                    )
-                                    
-                                    coroutineScope.launch {
-                                        try {
-                                            val accToUse = matchingAccount ?: finalAcc
-                                            val baseNote = if ((matchingAccount?.debtIqd ?: 0.0) > 0) "[PAYMENT]" else "[DEPOSIT]"
-                                            val payNote = if (noteInput.isNotBlank()) "$baseNote ${noteInput.trim()}" else null
-                                            
-                                            viewModel.localLedgerRepository.recordAccountPayment(
-                                                account = accToUse,
-                                                amount = parsedPriceVal,
-                                                note = payNote
-                                            )
-                                            viewModel.syncRepo?.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
-
-                                            showDepositDialog = false
-                                            android.widget.Toast.makeText(
-                                                context,
-                                                if (currentLang == "ar") if ((matchingAccount?.debtIqd ?: 0.0) > 0) "تم تسديد المبلغ بنجاح." else "تم إيداع المبلغ بنجاح." else if ((matchingAccount?.debtIqd ?: 0.0) > 0) "Payment completed successfully." else "Deposit completed successfully.",
-                                                android.widget.Toast.LENGTH_SHORT
-                                            ).show()
-
-                                            try {
-                                                audit.logAction(
-                                                    action = "DEPOSIT_USER",
-                                                    entityType = "USER",
-                                                    entityId = user.userID,
-                                                    summary = "Deposited amount $parsedPriceVal. Note: $noteInput"
-                                                )
-                                            } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; }
-                                        } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                                            android.util.Log.e("UserDetailScreen", "Failed to add payment", e)
-                                            android.widget.Toast.makeText(
-                                                context,
-                                                if (currentLang == "ar") "فشلت العملية: ${e.localizedMessage}" else "Operation failed: ${e.localizedMessage}",
-                                                android.widget.Toast.LENGTH_LONG
-                                            ).show()
-                                        } finally {
-                                            isSubmitting = false
-                                        }
-                                    }
-                                }
-                            },
-                            enabled = !isSubmitting,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(50.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF90CAF9)),
-                            shape = RoundedCornerShape(25.dp)
-                        ) {
-                            Text(
-                                text = if (currentLang == "ar") if ((matchingAccount?.debtIqd ?: 0.0) > 0) "تسديد" else "إيداع" else if ((matchingAccount?.debtIqd ?: 0.0) > 0) "Payment" else "Deposit",
-                                color = Color.Black,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold
+                                }),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White,
+                                    focusedBorderColor = Color(0xFF3B82F6),
+                                    unfocusedBorderColor = Color(0xFF374151)
+                                ),
+                                shape = RoundedCornerShape(12.dp)
                             )
+                            
+                            Button(
+                                onClick = { performDeposit() },
+                                enabled = !isSubmitting,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF90CAF9)),
+                                shape = RoundedCornerShape(24.dp)
+                            ) {
+                                Text(
+                                    text = if (currentLang == "ar") if ((matchingAccount?.debtIqd ?: 0.0) > 0) "تسديد" else "إيداع" else if ((matchingAccount?.debtIqd ?: 0.0) > 0) "Payment" else "Deposit",
+                                    color = Color.Black,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
                 }
@@ -1117,6 +1138,68 @@ fun UserDetailScreenV2(
                 amount = parsedPrice
             )
             
+            val performAddDebt: () -> Unit = {
+                val parsedPriceVal = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(priceInput) ?: 0L).toDouble()
+                if (parsedPriceVal <= 0.0) {
+                    android.widget.Toast.makeText(
+                        context,
+                        if (currentLang == "ar") "الرجاء إدخال مبلغ صحيح!" else "Please enter a valid amount!",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    focusManager.clearFocus(force = true)
+                    keyboardController?.hide()
+                    val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
+                        earthlinkUsername = user.userID,
+                        displayName = user.customerFullName ?: user.userID,
+                        phone1 = user.mobileNumber,
+                        packageName = user.packageName ?: "Default",
+                        createdAt = System.currentTimeMillis()
+                    )
+                    
+                    isSubmitting = true
+                    val noteVal = noteInput.trim()
+                    val accToUse = matchingAccount ?: finalAcc
+                    val debtNote = if (noteVal.isNotBlank()) "[DEBT] $noteVal" else null
+                    
+                    coroutineScope.launch {
+                        try {
+                            viewModel.localLedgerRepository.recordAccountDebt(
+                                account = accToUse,
+                                amount = parsedPriceVal,
+                                note = debtNote
+                            )
+                            viewModel.syncRepo?.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
+
+                            showDebtDialog = false
+                            android.widget.Toast.makeText(
+                                context,
+                                if (currentLang == "ar") "تم إضافة الدين بنجاح." else "Debt added successfully.",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+
+                            try {
+                                audit.logAction(
+                                    action = "ADD_DEBT",
+                                    entityType = "USER",
+                                    entityId = user.userID,
+                                    summary = "Added debt amount $parsedPriceVal. Note: $debtNote"
+                                )
+                            } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; }
+                        } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+                            android.util.Log.e("UserDetailScreen", "Failed to add debt", e)
+                            android.widget.Toast.makeText(
+                                context,
+                                if (currentLang == "ar") "فشلت العملية: ${e.localizedMessage}" else "Operation failed: ${e.localizedMessage}",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        } finally {
+                            isSubmitting = false
+                        }
+                    }
+                }
+            }
+
             Dialog(
                 onDismissRequest = { 
                     focusManager.clearFocus(force = true)
@@ -1125,313 +1208,213 @@ fun UserDetailScreenV2(
                     showDebtDialog = false 
                 },
                 properties = androidx.compose.ui.window.DialogProperties(
-                    usePlatformDefaultWidth = false
+                    usePlatformDefaultWidth = false,
+                    decorFitsSystemWindows = false
                 )
             ) {
-                Card(
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth(0.95f)
-                        .fillMaxHeight(0.85f)
+                        .fillMaxSize()
                         .imePadding()
-                        .padding(vertical = 12.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF10161D)),
-                    border = BorderStroke(1.dp, Color(0xFF1F2937))
+                        .systemBarsPadding()
+                        .padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 12.dp),
+                    contentAlignment = Alignment.TopCenter
                 ) {
-                    Column(
+                    Card(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            .padding(20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                            .fillMaxWidth()
+                            .heightIn(max = 580.dp),
+                        shape = RoundedCornerShape(24.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF10161D)),
+                        border = BorderStroke(1.dp, Color(0xFF1F2937))
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .width(40.dp)
-                                .height(4.dp)
-                                .background(Color.Gray.copy(alpha = 0.4f), RoundedCornerShape(2.dp))
-                        )
-                        
-                        Text(
-                            text = if (currentLang == "ar") "إضافة دين" else "Add Debt",
-                            color = Color.White,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        
                         Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalAlignment = Alignment.End
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState())
+                                .padding(horizontal = 20.dp, vertical = 14.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(40.dp)
+                                    .height(4.dp)
+                                    .background(Color.Gray.copy(alpha = 0.4f), RoundedCornerShape(2.dp))
+                            )
+
                             Text(
-                                text = if (currentLang == "ar") "مبلغ الدين" else "Debt Amount",
-                                color = Color(0xFF8E8E93),
-                                fontSize = 13.sp,
-                                modifier = Modifier.padding(bottom = 4.dp)
+                                text = if (currentLang == "ar") "إضافة دين" else "Add Debt",
+                                color = Color.White,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
                             )
                             
-                            var isFocused by rememberSaveable { mutableStateOf(false) }
-                            
-                            BasicTextField(
-                                value = priceInput,
-                                onValueChange = { input ->
-                                    val cleanInput = input.replace("\n", "").replace("\r", "")
-                                    if (cleanInput.all { it.isDigit() }) {
-                                        priceInput = cleanInput
-                                    }
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .focusRequester(focusRequester)
-                                    .onFocusChanged { focusState ->
-                                        isFocused = focusState.isFocused
-                                    }
-                                    .onPreviewKeyEvent { keyEvent ->
-                                        if (keyEvent.type == KeyEventType.KeyDown && (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter)) {
-                                            focusManager.clearFocus(force = true)
-                                            keyboardController?.hide()
-                                            true
-                                        } else {
-                                            false
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = if (currentLang == "ar") "مبلغ الدين" else "Debt Amount",
+                                    color = Color(0xFF8E8E93),
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.padding(bottom = 2.dp)
+                                )
+                                
+                                var isFocused by rememberSaveable { mutableStateOf(false) }
+                                
+                                BasicTextField(
+                                    value = priceInput,
+                                    onValueChange = { input ->
+                                        val cleanInput = input.replace("\n", "").replace("\r", "")
+                                        val trimmed = cleanInput.trim()
+                                        if ((trimmed.all { it.isDigit() || it == '.' }) && trimmed.count { it == '.' } <= 1) {
+                                            priceInput = trimmed
                                         }
                                     },
-                                singleLine = true,
-                                textStyle = LocalTextStyle.current.copy(
-                                    color = Color.White,
-                                    fontSize = 24.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    textAlign = TextAlign.End
-                                ),
-                                cursorBrush = SolidColor(Color(0xFF90CAF9)),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                                keyboardActions = KeyboardActions(onDone = {
-                                    focusManager.clearFocus(force = true)
-                                    keyboardController?.hide()
-                                }),
-                                decorationBox = { innerTextField ->
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.Center,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.Center
-                                            ) {
-                                                Box(modifier = Modifier.widthIn(min = 20.dp, max = 120.dp)) {
-                                                    innerTextField()
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .focusRequester(focusRequester)
+                                        .onFocusChanged { focusState ->
+                                            if (focusState.isFocused) {
+                                                isFocused = true
+                                            } else {
+                                                isFocused = false
+                                            }
+                                        }
+                                        .onPreviewKeyEvent { keyEvent ->
+                                            if (keyEvent.type == KeyEventType.KeyDown && (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter)) {
+                                                if (!isSubmitting) {
+                                                    performAddDebt()
                                                 }
-                                                Text(
-                                                    text = ",000",
-                                                    color = Color(0xFF90CAF9),
-                                                    fontSize = 24.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Text(
-                                                    text = if (currentLang == "ar") "د.ع" else "IQD",
-                                                    color = Color.White.copy(alpha = 0.7f),
-                                                    fontSize = 16.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                )
+                                                true
+                                            } else {
+                                                false
+                                            }
+                                        },
+                                    singleLine = true,
+                                    textStyle = LocalTextStyle.current.copy(
+                                        color = Color.White,
+                                        fontSize = 24.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        textAlign = TextAlign.End
+                                    ),
+                                    cursorBrush = SolidColor(Color(0xFF90CAF9)),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                                    keyboardActions = KeyboardActions(onDone = {
+                                        if (!isSubmitting) {
+                                            performAddDebt()
+                                        }
+                                    }),
+                                    decorationBox = { innerTextField ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.Center,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.Center
+                                                ) {
+                                                    Box(modifier = Modifier.widthIn(min = 20.dp, max = 120.dp)) {
+                                                        innerTextField()
+                                                    }
+                                                    Text(
+                                                        text = ",000",
+                                                        color = Color(0xFF90CAF9),
+                                                        fontSize = 24.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        text = if (currentLang == "ar") "د.ع" else "IQD",
+                                                        color = Color.White.copy(alpha = 0.7f),
+                                                        fontSize = 16.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
                                             }
                                         }
                                     }
-                                }
-                            )
-                        }
-                        
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A222E)),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = if (currentLang == "ar") "الدين الحالي للمشترك" else "Current Debt",
-                                        color = Color(0xFF9CA3AF),
-                                        fontSize = 14.sp
-                                    )
-                                    Text(
-                                        text = "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(currentDebt.toDouble())} د.ع",
-                                        color = Color.White,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                                
-                                HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-                                
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    val (debtLabel, debtBalanceColor, debtBalanceTextVal) = when {
-                                        postDebtBalances.debtIqd > 0.0 -> {
-                                            Triple(
-                                                if (currentLang == "ar") "الدين الكلي بعد الإضافة" else "Total Debt After",
-                                                Color(0xFFF87171),
-                                                "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postDebtBalances.debtIqd)} د.ع"
-                                            )
-                                        }
-                                        postDebtBalances.advanceIqd > 0.0 -> {
-                                            Triple(
-                                                if (currentLang == "ar") "الرصيد المتبقي للمشترك" else "Advance Credit After",
-                                                Color(0xFF34D399),
-                                                if (currentLang == "ar") "رصيد مقدم: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postDebtBalances.advanceIqd)} د.ع"
-                                                else "Advance: ${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postDebtBalances.advanceIqd)} IQD"
-                                            )
-                                        }
-                                        else -> {
-                                            Triple(
-                                                if (currentLang == "ar") "الدين الكلي بعد الإضافة" else "Total Debt After",
-                                                Color(0xFF34D399),
-                                                if (currentLang == "ar") "0 د.ع (مسدد)" else "0 IQD (Settled)"
-                                            )
-                                        }
-                                    }
-                                    Text(
-                                        text = debtLabel,
-                                        color = Color(0xFF9CA3AF),
-                                        fontSize = 14.sp
-                                    )
-                                    Text(
-                                        text = debtBalanceTextVal,
-                                        color = debtBalanceColor,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                        }
-                        
-                        OutlinedTextField(
-                            value = noteInput,
-                            onValueChange = { noteInput = it },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .onPreviewKeyEvent { keyEvent ->
-                                    if (keyEvent.type == KeyEventType.KeyDown && (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter)) {
-                                        focusManager.clearFocus(force = true)
-                                        keyboardController?.hide()
-                                        true
-                                    } else {
-                                        false
-                                    }
-                                },
-                            singleLine = true,
-                            label = { Text(if (currentLang == "ar") "ملاحظة" else "Note", color = Color(0xFF9CA3AF)) },
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                            keyboardActions = KeyboardActions(onDone = {
-                                focusManager.clearFocus(force = true)
-                                keyboardController?.hide()
-                            }),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
-                                focusedBorderColor = Color(0xFF3B82F6),
-                                unfocusedBorderColor = Color(0xFF374151)
-                             ),
-                             shape = RoundedCornerShape(12.dp)
-                        )
-                        
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Button(
-                                onClick = { 
-                                    isSubmitting = false
-                                    showDebtDialog = false 
-                                },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1F2937)),
-                                shape = RoundedCornerShape(24.dp)
-                            ) {
-                                Text(
-                                    text = if (currentLang == "ar") "إلغاء" else "Cancel",
-                                    color = Color.White,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold
                                 )
                             }
                             
-                            Button(
-                                onClick = {
-                                    val parsedPriceVal = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(priceInput) ?: 0L).toDouble()
-                                    if (parsedPriceVal <= 0.0) {
-                                        android.widget.Toast.makeText(
-                                            context,
-                                            if (currentLang == "ar") "الرجاء إدخال مبلغ دين صحيح!" else "Please enter a valid debt amount!",
-                                            android.widget.Toast.LENGTH_LONG
-                                        ).show()
-                                    } else {
-                                        isSubmitting = true
-                                        val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
-                                            earthlinkUsername = user.userID,
-                                            displayName = user.customerFullName ?: user.userID,
-                                            phone1 = user.mobileNumber,
-                                            packageName = user.packageName ?: "Default",
-                                            currentPriceIqd = 40000.0,
-                                            createdAt = System.currentTimeMillis()
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF161F2C)),
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = if (currentLang == "ar") "الدين الحالي للمشترك" else "Current Debt",
+                                            color = Color(0xFF9CA3AF),
+                                            fontSize = 13.sp
                                         )
-                                        
-                                        coroutineScope.launch {
-                                            try {
-                                                val accToUse = matchingAccount ?: finalAcc
-                                                val debtNote = if (noteInput.isNotBlank()) "[DEBT] ${noteInput.trim()}" else null
-                                                
-                                                viewModel.localLedgerRepository.recordAccountDebt(
-                                                    account = accToUse,
-                                                    amount = parsedPriceVal,
-                                                    note = debtNote
-                                                )
-                                                viewModel.syncRepo?.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
-
-                                                showDebtDialog = false
-                                                android.widget.Toast.makeText(
-                                                    context,
-                                                    if (currentLang == "ar") "تم إضافة الدين بنجاح." else "Debt added successfully.",
-                                                    android.widget.Toast.LENGTH_SHORT
-                                                ).show()
-
-                                                try {
-                                                    audit.logAction(
-                                                        action = "ADD_DEBT",
-                                                        entityType = "USER",
-                                                        entityId = user.userID,
-                                                        summary = "Added debt amount $parsedPriceVal. Note: $noteInput"
-                                                    )
-                                                } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; }
-                                            } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                                                android.util.Log.e("UserDetailScreen", "Failed to add debt", e)
-                                                android.widget.Toast.makeText(
-                                                    context,
-                                                    if (currentLang == "ar") "فشلت العملية: ${e.localizedMessage}" else "Operation failed: ${e.localizedMessage}",
-                                                    android.widget.Toast.LENGTH_LONG
-                                                ).show()
-                                            } finally {
-                                                isSubmitting = false
-                                            }
-                                        }
+                                        Text(
+                                            text = "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(currentDebt.toDouble())} د.ع",
+                                            color = Color.White,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
                                     }
-                                },
+                                    
+                                    HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+                                    
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = if (currentLang == "ar") "الدين بعد الإضافة" else "Debt After",
+                                            color = Color(0xFF9CA3AF),
+                                            fontSize = 13.sp
+                                        )
+                                        Text(
+                                            text = "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(postDebtBalances.debtIqd)} د.ع",
+                                            color = Color(0xFFF87171),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                            
+                            OutlinedTextField(
+                                value = noteInput,
+                                onValueChange = { noteInput = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                label = { Text(if (currentLang == "ar") "ملاحظة (اختياري)" else "Note (Optional)", color = Color(0xFF9CA3AF), fontSize = 12.sp) },
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                keyboardActions = KeyboardActions(onDone = {
+                                    if (!isSubmitting) {
+                                        performAddDebt()
+                                    }
+                                }),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White,
+                                    focusedBorderColor = Color(0xFF3B82F6),
+                                    unfocusedBorderColor = Color(0xFF374151)
+                                ),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            
+                            Button(
+                                onClick = { performAddDebt() },
                                 enabled = !isSubmitting,
                                 modifier = Modifier
-                                    .weight(1f)
+                                    .fillMaxWidth()
                                     .height(48.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF87171)),
                                 shape = RoundedCornerShape(24.dp)
