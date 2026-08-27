@@ -743,7 +743,6 @@ fun UserDetailScreenV2(
             }
 
             var priceInput by rememberSaveable { mutableStateOf("") }
-            var isPrintChecked by rememberSaveable { mutableStateOf(false) }
             var noteInput by rememberSaveable { mutableStateOf("") }
             var isSubmitting by rememberSaveable { mutableStateOf(false) }
             
@@ -995,37 +994,6 @@ fun UserDetailScreenV2(
                         )
                         
                         Button(
-                            onClick = { isPrintChecked = !isPrintChecked },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(44.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isPrintChecked) Color(0xFF374151) else Color.Transparent
-                            ),
-                            border = BorderStroke(1.dp, if (isPrintChecked) Color(0xFF6B7280) else Color(0xFF374151)),
-                            shape = RoundedCornerShape(22.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Text(
-                                    text = if (currentLang == "ar") "طباعة" else "Print",
-                                    color = if (isPrintChecked) Color.White else Color(0xFF9CA3AF),
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Icon(
-                                    imageVector = Icons.Default.Print,
-                                    contentDescription = null,
-                                    tint = if (isPrintChecked) Color.White else Color(0xFF9CA3AF),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
-                        
-                        Button(
                             onClick = {
                                 val parsedPriceVal = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(priceInput) ?: 0L).toDouble()
                                 if (parsedPriceVal <= 0.0) {
@@ -1133,7 +1101,6 @@ fun UserDetailScreenV2(
             }
 
             var priceInput by rememberSaveable { mutableStateOf("") }
-            var isPrintChecked by rememberSaveable { mutableStateOf(false) }
             var noteInput by rememberSaveable { mutableStateOf("") }
             var isSubmitting by rememberSaveable { mutableStateOf(false) }
             
@@ -1376,39 +1343,8 @@ fun UserDetailScreenV2(
                                 focusedBorderColor = Color(0xFF3B82F6),
                                 unfocusedBorderColor = Color(0xFF374151)
                              ),
-                            shape = RoundedCornerShape(12.dp)
+                             shape = RoundedCornerShape(12.dp)
                         )
-                        
-                        Button(
-                            onClick = { isPrintChecked = !isPrintChecked },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(44.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isPrintChecked) Color(0xFF374151) else Color.Transparent
-                            ),
-                            border = BorderStroke(1.dp, if (isPrintChecked) Color(0xFF6B7280) else Color(0xFF374151)),
-                            shape = RoundedCornerShape(22.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Text(
-                                    text = if (currentLang == "ar") "طباعة" else "Print",
-                                    color = if (isPrintChecked) Color.White else Color(0xFF9CA3AF),
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Icon(
-                                    imageVector = Icons.Default.Print,
-                                    contentDescription = null,
-                                    tint = if (isPrintChecked) Color.White else Color(0xFF9CA3AF),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
                         
                         Row(
                             modifier = Modifier.fillMaxWidth(),
