@@ -2,6 +2,10 @@ package com.example.core.ledger
 
 object NoteCleaner {
 
+    // Pre-compiled regex patterns to avoid repeated object allocations on every ledger entry cleanup in UI list renderings.
+    private val SEGMENT_SPLIT_REGEX = Regex("""\s*\|\s*|\s+-\s+|\s*:\s*""")
+    private val WHITESPACE_SPLIT_REGEX = Regex("""\s+""")
+
     private val PREFIXES = listOf(
         "[RENEW_PAY]",
         "[RENEW]",
@@ -90,7 +94,7 @@ object NoteCleaner {
         if (cleaned.isEmpty() || cleaned.equals("null", ignoreCase = true)) return ""
 
         // If the note has multiple segments separated by | or - or :
-        val segments = cleaned.split(Regex("""\s*\|\s*|\s+-\s+|\s*:\s*"""))
+        val segments = cleaned.split(SEGMENT_SPLIT_REGEX)
             .map { it.trim() }
             .filter { it.isNotEmpty() }
 
@@ -145,7 +149,7 @@ object NoteCleaner {
         }
 
         // Check if remaining words are only noise words
-        val words = afterBoilerplate.split(Regex("""\s+""")).map { it.trim().lowercase() }.filter { it.isNotEmpty() }
+        val words = afterBoilerplate.split(WHITESPACE_SPLIT_REGEX).map { it.trim().lowercase() }.filter { it.isNotEmpty() }
         val nonNoiseWords = words.filterNot { word ->
             val letters = extractLettersOnly(word)
             letters.isEmpty() || NOISE_WORDS.contains(word) || NOISE_WORDS.contains(letters)
