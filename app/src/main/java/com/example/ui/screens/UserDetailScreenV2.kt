@@ -1567,14 +1567,16 @@ fun UserDetailScreenV2(
 
                                     val isChargeIdRenew = entry.id.startsWith("charge_") || (entry.sourceExternalId != null && entry.sourceExternalId.startsWith("charge_"))
                                     val isPayIdRenew = entry.id.startsWith("pay_") || (entry.sourceExternalId != null && entry.sourceExternalId.startsWith("pay_"))
-                                    val isExplicitRenewalType = entry.typeRaw.uppercase() in com.example.core.ledger.TransactionTypeNormalizer.RENEWAL_TYPES || com.example.core.ledger.TransactionTypeNormalizer.normalizeTransactionType(entry.typeRaw) == "renewal"
+                                    val isCanonicalRenewal = com.example.core.ledger.TransactionTypeNormalizer.normalizeTransactionType(entry.typeRaw) == "renewal"
 
-                                    val isUtowerHistoricalWasel = entry.isSnapshotHistory &&
-                                        (entry.typeRaw.uppercase() in com.example.core.ledger.TransactionTypeNormalizer.RENEWAL_TYPES || com.example.core.ledger.TransactionTypeNormalizer.normalizeTransactionType(entry.typeRaw) == "renewal" || entry.typeRaw.equals("add", ignoreCase = true)) &&
+                                    val isUtowerHistoricalRecord = entry.isSnapshotHistory &&
+                                        (!entry.sourceBatchId.isNullOrBlank() || !entry.sourceExternalId.isNullOrBlank())
+                                    val isUtowerHistoricalWasel = isUtowerHistoricalRecord &&
+                                        isCanonicalRenewal &&
                                         noteNonNull.contains("(واصل)")
 
                                     val isRenewPay = isLegacyRenewPay || isPayIdRenew || entry.typeRaw.equals("renewal_payment", ignoreCase = true) || isUtowerHistoricalWasel
-                                    val isRenew = isLegacyRenew || isChargeIdRenew || isExplicitRenewalType
+                                    val isRenew = isLegacyRenew || isChargeIdRenew || isCanonicalRenewal
 
                                     val resolvedType = when {
                                         isRenewPay -> "renew_pay"
