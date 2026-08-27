@@ -39,6 +39,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -51,6 +52,8 @@ import com.example.core.backup.LocalAutoBackupWorker
 import com.example.core.ledger.MoneyParser
 import com.example.core.util.AppBuildConfig
 import com.example.domain.repository.SyncStatusState
+import com.example.domain.repository.SyncProgress
+import com.example.domain.repository.SyncPhase
 import com.example.ui.viewmodels.AuthViewModel
 import com.example.ui.viewmodels.DashboardViewModel
 import com.example.ui.viewmodels.SyncStatusViewModel
@@ -94,8 +97,11 @@ fun SettingsScreen(
     }
 
     val syncState by finalSyncViewModel.syncState.collectAsStateWithLifecycle(SyncStatusState.IDLE)
+    val syncProgress by finalSyncViewModel.syncProgress.collectAsStateWithLifecycle()
     val lastSyncTime by finalSyncViewModel.lastSyncTime.collectAsStateWithLifecycle()
     val isSyncingProgress by finalSyncViewModel.isSyncingProgress.collectAsStateWithLifecycle()
+    val pendingCount by finalSyncViewModel.pendingCount.collectAsStateWithLifecycle()
+    val failedCount by finalSyncViewModel.failedCount.collectAsStateWithLifecycle()
 
     val username by authViewModel.username.collectAsStateWithLifecycle()
     val prefs = authViewModel.prefs
@@ -203,177 +209,189 @@ fun SettingsScreen(
 
     val isDemoMode by prefs.demoModeFlow.collectAsStateWithLifecycle()
 
+    val currentUser = remember(syncState) {
+        try {
+            com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
+        } catch (_: Throwable) {
+            null
+        }
+    }
+    val isGoogleLinked = (currentUser != null && !currentUser.uid.isNullOrEmpty()) && syncState != SyncStatusState.AUTH_REQUIRED
+    val googleUserEmail = currentUser?.email?.ifBlank { null } ?: (if (isGoogleLinked) prefs.getUsername() else null)
+
     val layoutDir = if (currentLang == "ar") LayoutDirection.Rtl else LayoutDirection.Ltr
 
     CompositionLocalProvider(LocalLayoutDirection provides layoutDir) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF0B0F14))
+                .background(Color(0xFF090D12))
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
+                    .systemBarsPadding()
                     .padding(horizontal = 16.dp, vertical = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
-                // Header Bar
-                SettingsHeader(currentLang = currentLang)
+                // 1. Clean Title (No bloated subtitle, no redundant gear icon)
+                Text(
+                    text = if (currentLang == "ar") "الإعدادات" else "Settings",
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                )
 
-                // 1. GROUP 1: ACCOUNT & ISP GATEWAY
-                SettingsGroupCard(
-                    title = if (currentLang == "ar") "بيانات الموزع وبوابة إيرثلنك" else "Affiliate & ISP Gateway",
-                    subtitle = if (currentLang == "ar") "حساب الوكيل، البوابة، وتراخيص التجديد" else "ISP Admin credentials and auto-renewal box",
-                    icon = Icons.Default.AdminPanelSettings,
-                    accentColor = Color(0xFF0288D1)
-                ) {
-                    AccountAndIspSection(
-                        username = username,
-                        prefs = prefs,
-                        currentLang = currentLang,
-                        onSaveIsp = { u, p ->
-                            authViewModel.saveIspAdminCredentials(u, p)
-                            dashboardViewModel.loadDashboardData()
-                            onNavigateToSubscribers?.invoke()
-                        },
-                        onLinkGoogle = {
-                            val availability = GoogleApiAvailability.getInstance()
-                            val resultCode = availability.isGooglePlayServicesAvailable(localContext)
-                            if (resultCode != com.google.android.gms.common.ConnectionResult.SUCCESS) {
-                                if (availability.isUserResolvableError(resultCode)) {
-                                    (localContext as? android.app.Activity)?.let { act ->
-                                        availability.getErrorDialog(act, resultCode, 9000)?.show()
-                                    }
-                                } else {
-                                    Toast.makeText(localContext, if (currentLang == "ar") "خدمات Google Play غير متوفرة" else "Google Play Services unavailable", Toast.LENGTH_LONG).show()
-                                }
-                                return@AccountAndIspSection
+                // 2. ISP GATEWAY CREDENTIALS (بوابة إيرثلنك)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SettingsSectionTitle(text = if (currentLang == "ar") "بوابة إيرثلنك" else "EARTHLINK GATEWAY")
+
+                    SettingsCardGroup {
+                        AccountAndIspSection(
+                            username = username,
+                            prefs = prefs,
+                            currentLang = currentLang,
+                            onSaveIsp = { u, p ->
+                                authViewModel.saveIspAdminCredentials(u, p)
+                                dashboardViewModel.loadDashboardData()
+                                onNavigateToSubscribers?.invoke()
                             }
-                            try {
-                                val intent = googleSignInClient.signInIntent
-                                googleSignInLauncher.launch(intent)
-                            } catch (e: Exception) {
-                                if (e is kotlinx.coroutines.CancellationException) throw e
-                                Toast.makeText(localContext, "Google Sign-In Error: ${e.message}", Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    )
-                }
-
-                // 2. GROUP 2: SYNC, BACKUPS & DATA TRANSFER
-                SettingsGroupCard(
-                    title = if (currentLang == "ar") "المزامنة والنسخ الاحتياطي" else "Sync & Backup Engine",
-                    subtitle = if (currentLang == "ar") "حماية قواعد البيانات والاسترجاع المحلي ونقل البيانات" else "Cloud sync status, daily rolling backups and uTower",
-                    icon = Icons.Default.CloudSync,
-                    accentColor = Color(0xFF10B981)
-                ) {
-                    SyncAndBackupSection(
-                        currentLang = currentLang,
-                        syncState = syncState,
-                        lastSyncTime = lastSyncTime,
-                        isSyncing = isSyncingProgress,
-                        onTriggerSync = { finalSyncViewModel.triggeredSync() },
-                        isAutoBackupEnabled = isLocalBackupEnabled,
-                        onToggleAutoBackup = { enabled ->
-                            prefs.setLocalBackupEnabled(enabled)
-                            LocalAutoBackupWorker.schedule(localContext, enabled)
-                        },
-                        lastLocalBackupTime = lastLocalBackupTime,
-                        isPerformingBackup = isPerformingLocalBackup,
-                        onStartManualBackup = {
-                            isBackupOperationExport = false
-                            backupPasswordInput = ""
-                            backupPasswordError = null
-                            selectedEncryptionModePassword = false
-                            showBackupPasswordOptionsDialog = true
-                        },
-                        isFetchingBackups = isFetchingLocalBackups,
-                        onListBackups = {
-                            coroutineScope.launch {
-                                isFetchingLocalBackups = true
-                                try {
-                                    val list = BackupManager.listDailyBackups(localContext)
-                                    if (list.isEmpty()) {
-                                        Toast.makeText(localContext, if (currentLang == "ar") "لا توجد نسخ احتياطية سابقة" else "No backups found", Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        availableLocalBackups = list
-                                    }
-                                } catch (e: Exception) {
-                                    if (e is kotlinx.coroutines.CancellationException) throw e
-                                    Toast.makeText(localContext, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                                } finally {
-                                    isFetchingLocalBackups = false
-                                }
-                            }
-                        },
-                        onExportZip = {
-                            isBackupOperationExport = true
-                            backupPasswordInput = ""
-                            backupPasswordError = null
-                            selectedEncryptionModePassword = false
-                            showBackupPasswordOptionsDialog = true
-                        },
-                        onImportUtower = onNavigateToImport
-                    )
-                }
-
-                // 3. GROUP 3: DISPLAY & PRICING
-                SettingsGroupCard(
-                    title = if (currentLang == "ar") "تخصيص الواجهة والأسعار" else "Display & Pricing",
-                    subtitle = if (currentLang == "ar") "فلاتر العرض الرئيسية وأسعار بيع الباقات والربح" else "Dashboard filters and retail pricing model",
-                    icon = Icons.Default.Tune,
-                    accentColor = Color(0xFFF59E0B)
-                ) {
-                    DisplayAndPricingSection(
-                        prefs = prefs,
-                        currentLang = currentLang,
-                        onOpenPricingDialog = { showPricingDialog = true }
-                    )
-                }
-
-                // 4. GROUP 4: GENERAL & PRIVACY
-                SettingsGroupCard(
-                    title = if (currentLang == "ar") "التفضيلات العامة والنظام" else "General Preferences",
-                    subtitle = if (currentLang == "ar") "لغة التطبيق وسياسة الخصوصية" else "Language selection and legal terms",
-                    icon = Icons.Default.Language,
-                    accentColor = Color(0xFFA78BFA)
-                ) {
-                    GeneralSection(
-                        currentLang = currentLang,
-                        onSelectLang = { prefs.setLanguage(it) }
-                    )
-                }
-
-                // --- DEV MODE (DEBUG BUILD ONLY) ---
-                if (AppBuildConfig.DEBUG) {
-                    SettingsGroupCard(
-                        title = if (currentLang == "ar") "أدوات المطور والتجريب" else "Developer & Sandbox",
-                        subtitle = if (currentLang == "ar") "محاكاة البيانات ومسح الجداول المحلية (Debug Only)" else "Mock data simulator and local database purge",
-                        icon = Icons.Default.Terminal,
-                        accentColor = Color(0xFFEF4444)
-                    ) {
-                        DeveloperSection(
-                            isDemoMode = isDemoMode,
-                            onToggleDemo = { prefs.setDemoMode(it) },
-                            dashboardViewModel = dashboardViewModel,
-                            currentLang = currentLang
                         )
                     }
                 }
 
-                // 6. LOGOUT BUTTON
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = Color(0xFFEF4444).copy(alpha = 0.12f),
-                    border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.35f)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { showLogoutConfirmDialog = true }
-                ) {
+                // 3. CLOUD SYNC & DATA MANAGEMENT (المزامنة والبيانات)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SettingsSectionTitle(text = if (currentLang == "ar") "المزامنة والبيانات" else "SYNC & DATA")
+
+                    SettingsCardGroup {
+                        SyncAndBackupSection(
+                            currentLang = currentLang,
+                            syncState = syncState,
+                            syncProgress = syncProgress,
+                            lastSyncTime = lastSyncTime,
+                            isSyncing = isSyncingProgress || syncState == SyncStatusState.SYNCING || syncProgress.isSyncing,
+                            pendingCount = pendingCount,
+                            failedCount = failedCount,
+                            isGoogleLinked = isGoogleLinked,
+                            googleUserEmail = googleUserEmail,
+                            onLinkGoogle = {
+                                val availability = GoogleApiAvailability.getInstance()
+                                val resultCode = availability.isGooglePlayServicesAvailable(localContext)
+                                if (resultCode != com.google.android.gms.common.ConnectionResult.SUCCESS) {
+                                    if (availability.isUserResolvableError(resultCode)) {
+                                        (localContext as? android.app.Activity)?.let { act ->
+                                            availability.getErrorDialog(act, resultCode, 9000)?.show()
+                                        }
+                                    } else {
+                                        Toast.makeText(localContext, if (currentLang == "ar") "خدمات Google Play غير متوفرة" else "Google Play Services unavailable", Toast.LENGTH_LONG).show()
+                                    }
+                                    return@SyncAndBackupSection
+                                }
+                                try {
+                                    val intent = googleSignInClient.signInIntent
+                                    googleSignInLauncher.launch(intent)
+                                } catch (e: Exception) {
+                                    if (e is kotlinx.coroutines.CancellationException) throw e
+                                    Toast.makeText(localContext, "Google Sign-In Error: ${e.message}", Toast.LENGTH_LONG).show()
+                                }
+                            },
+                            onTriggerSync = { finalSyncViewModel.triggeredSync() },
+                            onRetryFailed = { finalSyncViewModel.retryFailedItems() },
+                            isAutoBackupEnabled = isLocalBackupEnabled,
+                            onToggleAutoBackup = { enabled ->
+                                prefs.setLocalBackupEnabled(enabled)
+                                LocalAutoBackupWorker.schedule(localContext, enabled)
+                            },
+                            lastLocalBackupTime = lastLocalBackupTime,
+                            isPerformingBackup = isPerformingLocalBackup,
+                            onStartManualBackup = {
+                                isBackupOperationExport = false
+                                backupPasswordInput = ""
+                                backupPasswordError = null
+                                selectedEncryptionModePassword = false
+                                showBackupPasswordOptionsDialog = true
+                            },
+                            isFetchingBackups = isFetchingLocalBackups,
+                            onListBackups = {
+                                coroutineScope.launch {
+                                    isFetchingLocalBackups = true
+                                    try {
+                                        val list = BackupManager.listDailyBackups(localContext)
+                                        if (list.isEmpty()) {
+                                            Toast.makeText(localContext, if (currentLang == "ar") "لا توجد نسخ احتياطية سابقة" else "No backups found", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            availableLocalBackups = list
+                                        }
+                                    } catch (e: Exception) {
+                                        if (e is kotlinx.coroutines.CancellationException) throw e
+                                        Toast.makeText(localContext, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                                    } finally {
+                                        isFetchingLocalBackups = false
+                                    }
+                                }
+                            },
+                            onExportZip = {
+                                isBackupOperationExport = true
+                                backupPasswordInput = ""
+                                backupPasswordError = null
+                                selectedEncryptionModePassword = false
+                                showBackupPasswordOptionsDialog = true
+                            },
+                            onImportUtower = onNavigateToImport
+                        )
+                    }
+                }
+
+                // 4. DISPLAY & PRICING (التخصيص والأسعار)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SettingsSectionTitle(text = if (currentLang == "ar") "التخصيص والأسعار" else "PREFERENCES & PRICING")
+
+                    SettingsCardGroup {
+                        DisplayAndPricingSection(
+                            prefs = prefs,
+                            currentLang = currentLang,
+                            onOpenPricingDialog = { showPricingDialog = true }
+                        )
+                    }
+                }
+
+                // 5. GENERAL & SYSTEM (عام)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SettingsSectionTitle(text = if (currentLang == "ar") "عام" else "GENERAL")
+
+                    SettingsCardGroup {
+                        GeneralSection(
+                            currentLang = currentLang,
+                            onSelectLang = { prefs.setLanguage(it) }
+                        )
+                    }
+                }
+
+                // 6. DEVELOPER MODE (DEBUG BUILD ONLY)
+                if (AppBuildConfig.DEBUG) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SettingsSectionTitle(text = if (currentLang == "ar") "أدوات المطور (DEBUG)" else "DEVELOPER")
+
+                        SettingsCardGroup {
+                            DeveloperSection(
+                                isDemoMode = isDemoMode,
+                                onToggleDemo = { prefs.setDemoMode(it) },
+                                dashboardViewModel = dashboardViewModel,
+                                currentLang = currentLang
+                            )
+                        }
+                    }
+                }
+
+                // 7. SIGN OUT (Apple-Style Destructive Row)
+                SettingsCardGroup {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .clickable { showLogoutConfirmDialog = true }
                             .padding(horizontal = 16.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
@@ -381,20 +399,20 @@ fun SettingsScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ExitToApp,
                             contentDescription = null,
-                            tint = Color(0xFFEF4444),
+                            tint = Color(0xFFFF453A),
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (currentLang == "ar") "تسجيل الخروج الآمن" else "Secure Sign Out",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = Color(0xFFEF4444)
+                            text = if (currentLang == "ar") "تسجيل الخروج" else "Sign Out",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 15.sp,
+                            color = Color(0xFFFF453A)
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(24.dp))
             }
         }
     }
@@ -980,65 +998,60 @@ private fun SettingsHeader(currentLang: String) {
     }
 }
 
+// ==========================================
+// APPLE-STYLE SUB-COMPOSABLES & MODULAR UI
+// ==========================================
+
 @Composable
-private fun SettingsGroupCard(
-    title: String,
-    subtitle: String,
-    icon: ImageVector,
-    accentColor: Color,
+private fun SettingsSectionTitle(text: String) {
+    Text(
+        text = text,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = Color(0xFF8E8E93),
+        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+    )
+}
+
+@Composable
+private fun SettingsCardGroup(
+    modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = Color(0xFF11161F),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
-        modifier = Modifier.fillMaxWidth()
+        shape = RoundedCornerShape(16.dp),
+        color = Color(0xFF141922),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
+        modifier = modifier.fillMaxWidth()
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            // Group Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .background(accentColor.copy(alpha = 0.15f), RoundedCornerShape(10.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = accentColor,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            content = content
+        )
+    }
+}
 
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                    Text(
-                        text = title,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color.White
-                    )
-                    Text(
-                        text = subtitle,
-                        fontSize = 11.sp,
-                        color = Color.White.copy(alpha = 0.45f)
-                    )
-                }
-            }
-
-            HorizontalDivider(color = Color.White.copy(alpha = 0.06f))
-
-            content()
-        }
+@Composable
+private fun SettingsIconSquircle(
+    icon: ImageVector,
+    backgroundColor: Color,
+    iconTint: Color = Color.White
+) {
+    Box(
+        modifier = Modifier
+            .size(30.dp)
+            .background(backgroundColor, RoundedCornerShape(8.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = iconTint,
+            modifier = Modifier.size(17.dp)
+        )
     }
 }
 
@@ -1048,68 +1061,37 @@ private fun AccountAndIspSection(
     username: String,
     prefs: com.example.core.security.PreferenceManager,
     currentLang: String,
-    onSaveIsp: (String, String) -> Unit,
-    onLinkGoogle: () -> Unit
+    onSaveIsp: (String, String) -> Unit
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
 
-    // Affiliate Details Pill
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = Color(0xFF171E29),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = if (currentLang == "ar") "المستخدم النشط: $username" else "User: $username",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-                Text(
-                    text = "rapi.earthlink.iq",
-                    fontSize = 10.sp,
-                    color = Color.White.copy(alpha = 0.4f)
-                )
-            }
-
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = Color(0xFF10B981).copy(alpha = 0.15f)
-            ) {
-                Text(
-                    text = if (currentLang == "ar") "تشفير نشط" else "Encrypted",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF10B981),
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                )
-            }
-        }
-    }
-
-    // ISP Admin Username & Password
     var ispAdminUserText by rememberSaveable { mutableStateOf(prefs.getIspAdminUsername() ?: "") }
     var ispAdminPassText by rememberSaveable { mutableStateOf(prefs.getIspAdminPassword() ?: "") }
     var isIspPasswordVisible by rememberSaveable { mutableStateOf(false) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = if (currentLang == "ar") "بيانات بوابة إيرثلنك (ISP Admin)" else "ISP Admin Credentials",
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color.White.copy(alpha = 0.9f)
-        )
+    var depositPassText by rememberSaveable { mutableStateOf(prefs.getDepositPassword()) }
+    var isDepositPassVisible by rememberSaveable { mutableStateOf(false) }
 
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Section Row Header
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            SettingsIconSquircle(
+                icon = Icons.Default.AdminPanelSettings,
+                backgroundColor = Color(0xFF0A84FF)
+            )
+            Text(
+                text = if (currentLang == "ar") "بيانات الوكيل (ISP Admin)" else "ISP Admin Credentials",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White
+            )
+        }
+
+        // ISP Username
         OutlinedTextField(
             value = ispAdminUserText,
             onValueChange = {
@@ -1117,20 +1099,21 @@ private fun AccountAndIspSection(
                 prefs.saveIspAdminUsername(it)
             },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(if (currentLang == "ar") "اسم المستخدم للوكيل" else "ISP Admin Username", fontSize = 12.sp) },
+            label = { Text(if (currentLang == "ar") "اسم المستخدم" else "Username", fontSize = 12.sp) },
             colors = OutlinedTextFieldDefaults.colors(
                 focusedTextColor = Color.White,
                 unfocusedTextColor = Color.White,
-                focusedBorderColor = Color(0xFF0288D1),
+                focusedBorderColor = Color(0xFF0A84FF),
                 unfocusedBorderColor = Color.White.copy(alpha = 0.12f),
-                focusedContainerColor = Color(0xFF171E29),
-                unfocusedContainerColor = Color(0xFF171E29)
+                focusedContainerColor = Color(0xFF0E131B),
+                unfocusedContainerColor = Color(0xFF0E131B)
             ),
             shape = RoundedCornerShape(12.dp),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
             singleLine = true
         )
 
+        // ISP Password
         OutlinedTextField(
             value = ispAdminPassText,
             onValueChange = {
@@ -1138,7 +1121,7 @@ private fun AccountAndIspSection(
                 prefs.saveIspAdminPassword(it)
             },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(if (currentLang == "ar") "كلمة المرور للوكيل" else "ISP Admin Password", fontSize = 12.sp) },
+            label = { Text(if (currentLang == "ar") "كلمة المرور" else "Password", fontSize = 12.sp) },
             visualTransformation = if (isIspPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
             trailingIcon = {
                 IconButton(onClick = { isIspPasswordVisible = !isIspPasswordVisible }) {
@@ -1153,53 +1136,34 @@ private fun AccountAndIspSection(
             colors = OutlinedTextFieldDefaults.colors(
                 focusedTextColor = Color.White,
                 unfocusedTextColor = Color.White,
-                focusedBorderColor = Color(0xFF0288D1),
+                focusedBorderColor = Color(0xFF0A84FF),
                 unfocusedBorderColor = Color.White.copy(alpha = 0.12f),
-                focusedContainerColor = Color(0xFF171E29),
-                unfocusedContainerColor = Color(0xFF171E29)
+                focusedContainerColor = Color(0xFF0E131B),
+                unfocusedContainerColor = Color(0xFF0E131B)
             ),
             shape = RoundedCornerShape(12.dp),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = {
-                focusManager.clearFocus()
-                if (ispAdminUserText.isNotBlank() && ispAdminPassText.isNotBlank()) {
-                    onSaveIsp(ispAdminUserText, ispAdminPassText)
-                }
-            }),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
             singleLine = true
         )
 
-        Button(
-            onClick = {
-                focusManager.clearFocus()
-                if (ispAdminUserText.isBlank() || ispAdminPassText.isBlank()) {
-                    Toast.makeText(context, if (currentLang == "ar") "يرجى ملء اسم المستخدم وكلمة المرور" else "Please fill ISP credentials", Toast.LENGTH_SHORT).show()
-                } else {
-                    onSaveIsp(ispAdminUserText, ispAdminPassText)
-                    Toast.makeText(context, if (currentLang == "ar") "تم الحفظ والتحميل بنجاح" else "Saved successfully!", Toast.LENGTH_SHORT).show()
-                }
-            },
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0288D1)),
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth().height(42.dp)
+        HorizontalDivider(color = Color.White.copy(alpha = 0.06f), modifier = Modifier.padding(vertical = 4.dp))
+
+        // Box / Deposit Password
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Icon(Icons.Default.Save, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(if (currentLang == "ar") "حفظ الحساب والتوجه للمشتركين" else "Save & Go to Subscribers", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            SettingsIconSquircle(
+                icon = Icons.Default.Lock,
+                backgroundColor = Color(0xFF5856D6)
+            )
+            Text(
+                text = if (currentLang == "ar") "كلمة مرور الصندوق (التجديد السريع)" else "Box / Deposit Password",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White
+            )
         }
-    }
-
-    // Box / Deposit Password
-    var depositPassText by rememberSaveable { mutableStateOf(prefs.getDepositPassword()) }
-    var isDepositPassVisible by rememberSaveable { mutableStateOf(false) }
-
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(
-            text = if (currentLang == "ar") "كلمة مرور الصندوق الافتراضية (التجديد السريع)" else "Default Box / Deposit Password",
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color.White.copy(alpha = 0.9f)
-        )
 
         OutlinedTextField(
             value = depositPassText,
@@ -1223,65 +1187,47 @@ private fun AccountAndIspSection(
             colors = OutlinedTextFieldDefaults.colors(
                 focusedTextColor = Color.White,
                 unfocusedTextColor = Color.White,
-                focusedBorderColor = Color(0xFF0288D1),
+                focusedBorderColor = Color(0xFF5856D6),
                 unfocusedBorderColor = Color.White.copy(alpha = 0.12f),
-                focusedContainerColor = Color(0xFF171E29),
-                unfocusedContainerColor = Color(0xFF171E29)
+                focusedContainerColor = Color(0xFF0E131B),
+                unfocusedContainerColor = Color(0xFF0E131B)
             ),
             shape = RoundedCornerShape(12.dp),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = {
                 focusManager.clearFocus()
-                Toast.makeText(context, if (currentLang == "ar") "تم حفظ كلمة مرور الصندوق" else "Box password saved", Toast.LENGTH_SHORT).show()
+                if (ispAdminUserText.isNotBlank() && ispAdminPassText.isNotBlank()) {
+                    onSaveIsp(ispAdminUserText, ispAdminPassText)
+                }
+                prefs.saveDepositPassword(depositPassText)
+                Toast.makeText(context, if (currentLang == "ar") "تم الحفظ بنجاح" else "Saved successfully!", Toast.LENGTH_SHORT).show()
             }),
             singleLine = true
         )
-    }
 
-    // Google Account Link Row
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = Color(0xFF171E29),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onLinkGoogle() }
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(
-                    imageVector = Icons.Default.AccountCircle,
-                    contentDescription = null,
-                    tint = Color(0xFF38BDF8),
-                    modifier = Modifier.size(20.dp)
-                )
-                Column {
-                    Text(
-                        text = if (currentLang == "ar") "ربط ومزامنة حساب Google" else "Link Google Account",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Text(
-                        text = if (currentLang == "ar") "تأمين المزامنة السحابية الاحتياطية" else "Cloud database authorization",
-                        fontSize = 10.sp,
-                        color = Color.White.copy(alpha = 0.45f)
-                    )
+        Spacer(modifier = Modifier.height(2.dp))
+
+        // Save All Gateway Settings Button
+        Button(
+            onClick = {
+                focusManager.clearFocus()
+                if (ispAdminUserText.isNotBlank() || ispAdminPassText.isNotBlank()) {
+                    if (ispAdminUserText.isBlank() || ispAdminPassText.isBlank()) {
+                        Toast.makeText(context, if (currentLang == "ar") "يرجى ملء اسم المستخدم وكلمة المرور للوكيل" else "Please fill ISP credentials", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+                    onSaveIsp(ispAdminUserText, ispAdminPassText)
                 }
-            }
-
-            Icon(
-                imageVector = Icons.Default.ChevronLeft,
-                contentDescription = null,
-                tint = Color.White.copy(alpha = 0.4f),
-                modifier = Modifier.size(18.dp)
-            )
+                prefs.saveDepositPassword(depositPassText)
+                Toast.makeText(context, if (currentLang == "ar") "تم حفظ إعدادات البوابة بنجاح" else "Gateway settings saved successfully!", Toast.LENGTH_SHORT).show()
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0A84FF)),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth().height(44.dp)
+        ) {
+            Icon(Icons.Default.Save, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(if (currentLang == "ar") "حفظ الإعدادات" else "Save Settings", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
         }
     }
 }
@@ -1291,9 +1237,16 @@ private fun AccountAndIspSection(
 private fun SyncAndBackupSection(
     currentLang: String,
     syncState: SyncStatusState,
+    syncProgress: SyncProgress,
     lastSyncTime: Long,
     isSyncing: Boolean,
+    pendingCount: Int,
+    failedCount: Int,
+    isGoogleLinked: Boolean,
+    googleUserEmail: String?,
+    onLinkGoogle: () -> Unit,
     onTriggerSync: () -> Unit,
+    onRetryFailed: () -> Unit,
     isAutoBackupEnabled: Boolean,
     onToggleAutoBackup: (Boolean) -> Unit,
     lastLocalBackupTime: Long,
@@ -1304,246 +1257,305 @@ private fun SyncAndBackupSection(
     onExportZip: () -> Unit,
     onImportUtower: () -> Unit
 ) {
-    // Cloud Sync Status Row
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = Color(0xFF171E29),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
+    // 1. CLOUD SYNC ROW
+    if (!isGoogleLinked || syncState == SyncStatusState.AUTH_REQUIRED) {
+        // Unlinked State
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(
-                        imageVector = Icons.Default.Sync,
-                        contentDescription = null,
-                        tint = Color(0xFF38BDF8),
-                        modifier = Modifier.size(18.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    SettingsIconSquircle(
+                        icon = Icons.Default.CloudOff,
+                        backgroundColor = Color(0xFFAF52DE)
                     )
+                    Column {
+                        Text(
+                            text = if (currentLang == "ar") "المزامنة السحابية" else "Cloud Sync",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = if (currentLang == "ar") "Google Cloud غير متصل" else "Google Cloud not linked",
+                            fontSize = 11.sp,
+                            color = Color(0xFFFF9F0A)
+                        )
+                    }
+                }
+
+                Button(
+                    onClick = onLinkGoogle,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0A84FF)),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                    modifier = Modifier.height(34.dp)
+                ) {
                     Text(
-                        text = if (currentLang == "ar") "المزامنة السحابية" else "Cloud Sync",
+                        text = if (currentLang == "ar") "ربط الحساب" else "Link Account",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
                 }
-
-                val (badgeText, badgeBg, badgeTextClr) = when {
-                    isSyncing || syncState == SyncStatusState.SYNCING -> Triple(if (currentLang == "ar") "جاري المزامنة" else "Syncing", Color(0xFF0288D1).copy(alpha = 0.2f), Color(0xFF38BDF8))
-                    syncState == SyncStatusState.COMPLETE || syncState == SyncStatusState.IDLE -> Triple(if (currentLang == "ar") "مكتمل" else "Up to date", Color(0xFF10B981).copy(alpha = 0.2f), Color(0xFF10B981))
-                    else -> Triple(if (currentLang == "ar") "غير معروف" else "Unknown", Color.White.copy(alpha = 0.1f), Color.White.copy(alpha = 0.6f))
-                }
-
-                Surface(shape = RoundedCornerShape(6.dp), color = badgeBg) {
-                    Text(text = badgeText, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = badgeTextClr, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
-                }
             }
+        }
+    } else {
+        // Linked State
+        val (badgeText, badgeBg, badgeTextClr) = when {
+            isSyncing || syncState == SyncStatusState.SYNCING -> Triple(
+                if (currentLang == "ar") "جاري المزامنة" else "Syncing",
+                Color(0xFF0A84FF).copy(alpha = 0.2f),
+                Color(0xFF0A84FF)
+            )
+            syncState == SyncStatusState.COMPLETE_WITH_ERRORS || (failedCount > 0 && syncState != SyncStatusState.ERROR) -> Triple(
+                if (currentLang == "ar") "أخطاء ($failedCount)" else "Errors ($failedCount)",
+                Color(0xFFFF9F0A).copy(alpha = 0.2f),
+                Color(0xFFFF9F0A)
+            )
+            syncState == SyncStatusState.ERROR -> Triple(
+                if (currentLang == "ar") "تعذر المزامنة" else "Sync Failed",
+                Color(0xFFFF453A).copy(alpha = 0.2f),
+                Color(0xFFFF453A)
+            )
+            syncState == SyncStatusState.OFFLINE -> Triple(
+                if (currentLang == "ar") "غير متصل" else "Offline",
+                Color(0xFF8E8E93).copy(alpha = 0.2f),
+                Color(0xFF8E8E93)
+            )
+            else -> Triple(
+                if (currentLang == "ar") "متزامن" else "Up to date",
+                Color(0xFF30D158).copy(alpha = 0.2f),
+                Color(0xFF30D158)
+            )
+        }
 
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = if (lastSyncTime <= 0L) (if (currentLang == "ar") "لم تتم مزامنة سابقة" else "Never synced")
-                    else "${if (currentLang == "ar") "آخر مزامنة:" else "Last sync:"} ${SimpleDateFormat("HH:mm", Locale.US).format(Date(lastSyncTime))}",
-                    fontSize = 11.sp,
-                    color = Color.White.copy(alpha = 0.45f)
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
+                    SettingsIconSquircle(
+                        icon = Icons.Default.CloudSync,
+                        backgroundColor = Color(0xFF30D158)
+                    )
+                    Column {
+                        Text(
+                            text = if (currentLang == "ar") "المزامنة السحابية" else "Cloud Sync",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = googleUserEmail ?: if (currentLang == "ar") "متصل" else "Connected",
+                            fontSize = 11.sp,
+                            color = Color(0xFF8E8E93),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
 
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFF0288D1),
-                    modifier = Modifier.clickable(enabled = !isSyncing) { onTriggerSync() }
+                    shape = RoundedCornerShape(6.dp),
+                    color = badgeBg
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    Text(
+                        text = badgeText,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = badgeTextClr,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+            }
+
+            // Sync Action Button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onTriggerSync,
+                    enabled = !isSyncing,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0A84FF)),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.weight(1f).height(36.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                ) {
+                    if (isSyncing) {
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), color = Color.White, strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(if (currentLang == "ar") "جاري المزامنة..." else "Syncing...", fontSize = 12.sp, color = Color.White)
+                    } else {
+                        Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(if (currentLang == "ar") "مزامنة الآن" else "Sync Now", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                    }
+                }
+
+                if (failedCount > 0) {
+                    OutlinedButton(
+                        onClick = onRetryFailed,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF9F0A)),
+                        border = BorderStroke(1.dp, Color(0xFFFF9F0A).copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.height(36.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                     ) {
-                        if (isSyncing) {
-                            CircularProgressIndicator(modifier = Modifier.size(12.dp), color = Color.White, strokeWidth = 1.5.dp)
-                        } else {
-                            Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
-                        }
-                        Text(text = if (currentLang == "ar") "مزامنة الآن" else "Sync Now", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text(text = if (currentLang == "ar") "إعادة ($failedCount)" else "Retry ($failedCount)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
         }
     }
 
-    // Daily Auto Backup Switch
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = Color(0xFF171E29),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
-        modifier = Modifier.fillMaxWidth()
+    HorizontalDivider(color = Color.White.copy(alpha = 0.06f), modifier = Modifier.padding(vertical = 2.dp))
+
+    // 2. DAILY AUTO BACKUP SWITCH
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.weight(1f)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            SettingsIconSquircle(
+                icon = Icons.Default.Backup,
+                backgroundColor = Color(0xFF64D2FF)
+            )
+            Column {
+                Text(
+                    text = if (currentLang == "ar") "نسخ احتياطي يومي تلقائي" else "Daily Auto Backup",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White
+                )
+                if (lastLocalBackupTime > 0L) {
                     Text(
-                        text = if (currentLang == "ar") "نسخ احتياطي يومي تلقائي (30 يوم)" else "Daily Rolling Backup (30 Days)",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Text(
-                        text = if (currentLang == "ar") "حفظ نسخة محلية مشفرة يومياً وحذف ما زاد عن 30 يوم" else "Saves rolling backup daily to Documents/EarthlinkBackups",
-                        fontSize = 10.sp,
-                        color = Color.White.copy(alpha = 0.45f)
+                        text = "${if (currentLang == "ar") "آخر نسخة:" else "Last:"} ${SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(lastLocalBackupTime))}",
+                        fontSize = 11.sp,
+                        color = Color(0xFF8E8E93)
                     )
                 }
-                Switch(
-                    checked = isAutoBackupEnabled,
-                    onCheckedChange = { onToggleAutoBackup(it) }
-                )
-            }
-
-            if (lastLocalBackupTime > 0L) {
-                Text(
-                    text = "${if (currentLang == "ar") "آخر نسخة محلية:" else "Last Local Backup:"} ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(lastLocalBackupTime))}",
-                    fontSize = 10.sp,
-                    color = Color(0xFF10B981)
-                )
             }
         }
+
+        Switch(
+            checked = isAutoBackupEnabled,
+            onCheckedChange = { onToggleAutoBackup(it) },
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = Color(0xFF30D158)
+            )
+        )
     }
 
-    // Backup Action Tools Grid (3 Buttons)
+    HorizontalDivider(color = Color.White.copy(alpha = 0.06f), modifier = Modifier.padding(vertical = 2.dp))
+
+    // 3. BACKUP ACTIONS (3 Clean Pill Tiles)
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // Backup Now
+        // Backup
         Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = Color(0xFF171E29),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+            shape = RoundedCornerShape(10.dp),
+            color = Color(0xFF0E131B),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
             modifier = Modifier
                 .weight(1f)
                 .clickable(enabled = !isPerformingBackup) { onStartManualBackup() }
         ) {
             Column(
-                modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
+                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Icon(Icons.Default.CloudUpload, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(18.dp))
-                Text(
-                    text = if (currentLang == "ar") "نسخ الآن" else "Backup Now",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 1
-                )
+                Icon(Icons.Default.CloudUpload, contentDescription = null, tint = Color(0xFF0A84FF), modifier = Modifier.size(18.dp))
+                Text(if (currentLang == "ar") "نسخ الآن" else "Backup", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
             }
         }
 
-        // Restore Local
+        // Restore
         Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = Color(0xFF171E29),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+            shape = RoundedCornerShape(10.dp),
+            color = Color(0xFF0E131B),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
             modifier = Modifier
                 .weight(1f)
                 .clickable(enabled = !isFetchingBackups) { onListBackups() }
         ) {
             Column(
-                modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
+                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Icon(Icons.Default.CloudDownload, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(18.dp))
-                Text(
-                    text = if (currentLang == "ar") "استرجاع محلي" else "Restore",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 1
-                )
+                Icon(Icons.Default.CloudDownload, contentDescription = null, tint = Color(0xFF30D158), modifier = Modifier.size(18.dp))
+                Text(if (currentLang == "ar") "استرجاع" else "Restore", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
             }
         }
 
-        // Share / Export Zip
+        // Export Zip
         Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = Color(0xFF171E29),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+            shape = RoundedCornerShape(10.dp),
+            color = Color(0xFF0E131B),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
             modifier = Modifier
                 .weight(1f)
                 .clickable { onExportZip() }
         ) {
             Column(
-                modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
+                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Icon(Icons.Default.FolderZip, contentDescription = null, tint = Color(0xFFF59E0B), modifier = Modifier.size(18.dp))
-                Text(
-                    text = if (currentLang == "ar") "مشاركة (.zip)" else "Export (.zip)",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 1
-                )
+                Icon(Icons.Default.FolderZip, contentDescription = null, tint = Color(0xFFFF9F0A), modifier = Modifier.size(18.dp))
+                Text(if (currentLang == "ar") "مشاركة (.zip)" else "Export", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
             }
         }
     }
 
-    // uTower Data Import Button
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = Color(0xFF171E29),
-        border = BorderStroke(1.dp, Color(0xFF0288D1).copy(alpha = 0.3f)),
+    HorizontalDivider(color = Color.White.copy(alpha = 0.06f), modifier = Modifier.padding(vertical = 2.dp))
+
+    // 4. UTOWER IMPORT ROW
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onImportUtower() }
+            .clickable { onImportUtower() },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Default.Download, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(18.dp))
-                Column {
-                    Text(
-                        text = if (currentLang == "ar") "استيراد وترحيل بيانات uTower" else "Import uTower Database",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Text(
-                        text = if (currentLang == "ar") "استيراد المشتركين وسجل الحركات من ملف uTower القديم" else "Migrate subscribers and historical ledger from uTower",
-                        fontSize = 10.sp,
-                        color = Color.White.copy(alpha = 0.45f)
-                    )
-                }
-            }
-            Icon(Icons.Default.ChevronLeft, contentDescription = null, tint = Color.White.copy(alpha = 0.4f), modifier = Modifier.size(18.dp))
+            SettingsIconSquircle(
+                icon = Icons.Default.Download,
+                backgroundColor = Color(0xFFBF5AF2)
+            )
+            Text(
+                text = if (currentLang == "ar") "استيراد بيانات uTower" else "Import uTower Database",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White
+            )
         }
+        Icon(Icons.Default.ChevronLeft, contentDescription = null, tint = Color(0xFF8E8E93), modifier = Modifier.size(18.dp))
     }
 }
 
@@ -1558,24 +1570,54 @@ private fun DisplayAndPricingSection(
     var showExpired by rememberSaveable { mutableStateOf(prefs.getShowExpired()) }
     var maxItems by rememberSaveable { mutableStateOf(prefs.getMaxDashboardItems()) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        // Switch: Active Users
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Retail Pricing Row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onOpenPricingDialog() },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                SettingsIconSquircle(
+                    icon = Icons.Default.Sell,
+                    backgroundColor = Color(0xFFFF9F0A)
+                )
+                Text(
+                    text = if (currentLang == "ar") "أسعار بيع الباقات والأرباح" else "Package Retail Prices & Profit",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White
+                )
+            }
+            Icon(Icons.Default.ChevronLeft, contentDescription = null, tint = Color(0xFF8E8E93), modifier = Modifier.size(18.dp))
+        }
+
+        HorizontalDivider(color = Color.White.copy(alpha = 0.06f), modifier = Modifier.padding(vertical = 2.dp))
+
+        // Switch: Active Subscribers
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = if (currentLang == "ar") "عرض المشتركين النشطين" else "Show Active Subscribers",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                SettingsIconSquircle(
+                    icon = Icons.Default.Person,
+                    backgroundColor = Color(0xFF30D158)
                 )
                 Text(
-                    text = if (currentLang == "ar") "إظهار قائمة الحسابات الفعالة في الواجهة الرئيسية" else "Display active accounts on home dashboard",
-                    fontSize = 10.sp,
-                    color = Color.White.copy(alpha = 0.45f)
+                    text = if (currentLang == "ar") "عرض المشتركين النشطين" else "Show Active Subscribers",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White
                 )
             }
             Switch(
@@ -1583,27 +1625,35 @@ private fun DisplayAndPricingSection(
                 onCheckedChange = {
                     prefs.setShowActive(it)
                     showActive = it
-                }
+                },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = Color(0xFF30D158)
+                )
             )
         }
 
-        // Switch: Expired Users
+        HorizontalDivider(color = Color.White.copy(alpha = 0.06f), modifier = Modifier.padding(vertical = 2.dp))
+
+        // Switch: Expired Subscribers
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = if (currentLang == "ar") "عرض الاشتراكات المنتهية" else "Show Expired Subscribers",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                SettingsIconSquircle(
+                    icon = Icons.Default.PersonOff,
+                    backgroundColor = Color(0xFFFF453A)
                 )
                 Text(
-                    text = if (currentLang == "ar") "إظهار الحسابات المنتهية صلاحيتها مؤخراً" else "Display expired accounts on home dashboard",
-                    fontSize = 10.sp,
-                    color = Color.White.copy(alpha = 0.45f)
+                    text = if (currentLang == "ar") "عرض المشتركين المنتهين" else "Show Expired Subscribers",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White
                 )
             }
             Switch(
@@ -1611,37 +1661,45 @@ private fun DisplayAndPricingSection(
                 onCheckedChange = {
                     prefs.setShowExpired(it)
                     showExpired = it
-                }
+                },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = Color(0xFF30D158)
+                )
             )
         }
 
-        // Counter: Max Items
+        HorizontalDivider(color = Color.White.copy(alpha = 0.06f), modifier = Modifier.padding(vertical = 2.dp))
+
+        // Stepper: Max Dashboard Items
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = if (currentLang == "ar") "الحد الأقصى للعرض في الرئيسية" else "Max Dashboard Items",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                SettingsIconSquircle(
+                    icon = Icons.Default.FormatListNumbered,
+                    backgroundColor = Color(0xFF5E5CE6)
                 )
                 Text(
-                    text = "${if (currentLang == "ar") "العدد الحالي:" else "Current limit:"} $maxItems",
-                    fontSize = 10.sp,
-                    color = Color.White.copy(alpha = 0.45f)
+                    text = if (currentLang == "ar") "عدد عناصر الرئيسية" else "Max Dashboard Items",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White
                 )
             }
 
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Surface(
                     shape = CircleShape,
-                    color = Color(0xFF171E29),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                    color = Color(0xFF0E131B),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
                     modifier = Modifier
-                        .size(32.dp)
+                        .size(28.dp)
                         .clickable {
                             if (maxItems > 5) {
                                 val newVal = maxItems - 5
@@ -1651,13 +1709,13 @@ private fun DisplayAndPricingSection(
                         }
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Remove, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Remove, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
                     }
                 }
 
                 Text(
                     text = "$maxItems",
-                    fontSize = 13.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
                     modifier = Modifier.padding(horizontal = 4.dp)
@@ -1665,10 +1723,10 @@ private fun DisplayAndPricingSection(
 
                 Surface(
                     shape = CircleShape,
-                    color = Color(0xFF171E29),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                    color = Color(0xFF0E131B),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
                     modifier = Modifier
-                        .size(32.dp)
+                        .size(28.dp)
                         .clickable {
                             if (maxItems < 100) {
                                 val newVal = maxItems + 5
@@ -1678,47 +1736,9 @@ private fun DisplayAndPricingSection(
                         }
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
                     }
                 }
-            }
-        }
-
-        HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-
-        // Subscription Pricing Tile
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = Color(0xFF171E29),
-            border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.3f)),
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onOpenPricingDialog() }
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Default.Sell, contentDescription = null, tint = Color(0xFFF59E0B), modifier = Modifier.size(18.dp))
-                    Column {
-                        Text(
-                            text = if (currentLang == "ar") "ضبط أسعار بيع الاشتراكات" else "Package Retail Selling Prices",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                        Text(
-                            text = if (currentLang == "ar") "تحديد سعر البيع لكل باقة لحساب الأرباح تلقائياً" else "Set selling prices to calculate profits automatically",
-                            fontSize = 10.sp,
-                            color = Color.White.copy(alpha = 0.45f)
-                        )
-                    }
-                }
-                Icon(Icons.Default.ChevronLeft, contentDescription = null, tint = Color.White.copy(alpha = 0.4f), modifier = Modifier.size(18.dp))
             }
         }
     }
@@ -1732,64 +1752,79 @@ private fun GeneralSection(
 ) {
     val uriHandler = LocalUriHandler.current
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         // Language Selector Row
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            listOf("ar" to "العربية 🇮🇶", "en" to "English 🇺🇸").forEach { (code, label) ->
-                val isSelected = currentLang == code
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = if (isSelected) Color(0xFF0288D1).copy(alpha = 0.2f) else Color(0xFF171E29),
-                    border = BorderStroke(1.dp, if (isSelected) Color(0xFF0288D1) else Color.White.copy(alpha = 0.05f)),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(38.dp)
-                        .clickable { onSelectLang(code) }
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                SettingsIconSquircle(
+                    icon = Icons.Default.Language,
+                    backgroundColor = Color(0xFF0A84FF)
+                )
+                Text(
+                    text = if (currentLang == "ar") "اللغة" else "Language",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White
+                )
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("ar" to "العربية", "en" to "English").forEach { (code, label) ->
+                    val isSelected = currentLang == code
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isSelected) Color(0xFF0A84FF) else Color(0xFF0E131B),
+                        border = BorderStroke(1.dp, if (isSelected) Color(0xFF0A84FF) else Color.White.copy(alpha = 0.08f)),
+                        modifier = Modifier
+                            .clickable { onSelectLang(code) }
+                    ) {
                         Text(
                             text = label,
                             fontSize = 12.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (isSelected) Color(0xFF38BDF8) else Color.White.copy(alpha = 0.7f)
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) Color.White else Color(0xFF8E8E93),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                         )
                     }
                 }
             }
         }
 
+        HorizontalDivider(color = Color.White.copy(alpha = 0.06f), modifier = Modifier.padding(vertical = 2.dp))
+
         // Privacy Policy Link
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = Color(0xFF171E29),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable {
                     uriHandler.openUri("https://docs.google.com/document/d/1e7gm4KkC1jjhwlm0YPQMVmwnJXP6eeWeKKJTWlzKg7w/edit?usp=sharing")
-                }
+                },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Default.Policy, contentDescription = null, tint = Color(0xFFA78BFA), modifier = Modifier.size(18.dp))
-                    Text(
-                        text = if (currentLang == "ar") "سياسة الخصوصية وشروط الاستخدام" else "Privacy Policy & Terms",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                }
-                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = Color.White.copy(alpha = 0.4f), modifier = Modifier.size(16.dp))
+                SettingsIconSquircle(
+                    icon = Icons.Default.Policy,
+                    backgroundColor = Color(0xFF8E8E93)
+                )
+                Text(
+                    text = if (currentLang == "ar") "الخصوصية والشروط" else "Privacy & Terms",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White
+                )
             }
+            Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = Color(0xFF8E8E93), modifier = Modifier.size(16.dp))
         }
     }
 }
@@ -1806,57 +1841,58 @@ private fun DeveloperSection(
     var unsyncedWarningClearDataDialog by rememberSaveable { mutableStateOf(false) }
     var pendingClearDataCountState by rememberSaveable { mutableStateOf(0) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         // Demo Mode Switch
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = if (currentLang == "ar") "وضع التجريب المحلي (Demo Sandbox)" else "Demo Sandbox Mode",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                SettingsIconSquircle(
+                    icon = Icons.Default.Science,
+                    backgroundColor = Color(0xFFFF9F0A)
                 )
                 Text(
-                    text = if (currentLang == "ar") "توليد بيانات وهمية دون إرسال طلبات حقيقية للبوابة" else "Uses local mock dataset without hitting live gateway",
-                    fontSize = 10.sp,
-                    color = Color.White.copy(alpha = 0.45f)
+                    text = if (currentLang == "ar") "وضع التجريب المحلي (Demo)" else "Demo Sandbox Mode",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White
                 )
             }
             Switch(
                 checked = isDemoMode,
-                onCheckedChange = { onToggleDemo(it) }
+                onCheckedChange = { onToggleDemo(it) },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = Color(0xFF30D158)
+                )
             )
         }
 
+        HorizontalDivider(color = Color.White.copy(alpha = 0.06f), modifier = Modifier.padding(vertical = 2.dp))
+
         // Clear All Data Action
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = Color(0xFFEF4444).copy(alpha = 0.1f),
-            border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.3f)),
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { showConfirmDelete = true }
+                .clickable { showConfirmDelete = true },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Icon(Icons.Default.DeleteForever, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = if (currentLang == "ar") "مسح جميع البيانات المحلية (Clear Local DB)" else "Purge All Local DB Data",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFFEF4444)
-                )
-            }
+            SettingsIconSquircle(
+                icon = Icons.Default.DeleteForever,
+                backgroundColor = Color(0xFFFF453A)
+            )
+            Text(
+                text = if (currentLang == "ar") "مسح قاعدة البيانات المحلية" else "Purge Local Database",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFFFF453A)
+            )
         }
     }
 

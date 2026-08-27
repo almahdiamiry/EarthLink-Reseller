@@ -177,7 +177,6 @@ patterns:
     allowed_in_functions:
       - "clearLocalData"
       - "SettingsScreen"
-      - "DeveloperSection"
     forbidden_regexes:
       - "\\.clearLocalData\\("
     explanation: "INV-15 / RC-07 mandates that destructive clearLocalData must never be reachable in release builds and must only exist inside debug-gated SettingsScreen."

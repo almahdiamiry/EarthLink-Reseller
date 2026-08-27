@@ -55,6 +55,21 @@ object RemoteEntityValidator {
             ?: existingLocalAccount?.createdAt
             ?: remoteUpdatedAt
 
+        val stateSource = d["stateSource"] as? String ?: existingLocalAccount?.stateSource
+        val stateConfidence = d["stateConfidence"] as? String ?: existingLocalAccount?.stateConfidence
+        val snapshotCapturedAt = (d["snapshotCapturedAt"] as? Number)?.toLong() ?: existingLocalAccount?.snapshotCapturedAt
+
+        // Fail-Closed Validation for Snapshot Semantics
+        if (stateSource.isNullOrBlank()) {
+            val hasExplicitSnapshotOpeningDebt = (openingDebt != 0.0)
+            val hasSnapshotCapturedAt = (snapshotCapturedAt != null && snapshotCapturedAt > 0)
+            if (isFullSnapshot && (hasExplicitSnapshotOpeningDebt || hasSnapshotCapturedAt)) {
+                return RemoteEntityValidationResult.Malformed(
+                    "Incomplete snapshot contract for account $id: opening baseline or snapshot capture timestamp present but 'stateSource' is missing"
+                )
+            }
+        }
+
         val account = LocalAccount(
             id = id,
             sourceExternalId = d["sourceExternalId"] as? String ?: existingLocalAccount?.sourceExternalId,
@@ -83,9 +98,9 @@ object RemoteEntityValidator {
             openingDebtIqd = openingDebt,
             openingAdvanceIqd = openingAdvance,
             openingLoanIqd = openingLoan,
-            stateSource = d["stateSource"] as? String ?: existingLocalAccount?.stateSource,
-            stateConfidence = d["stateConfidence"] as? String ?: existingLocalAccount?.stateConfidence,
-            snapshotCapturedAt = (d["snapshotCapturedAt"] as? Number)?.toLong() ?: existingLocalAccount?.snapshotCapturedAt,
+            stateSource = stateSource,
+            stateConfidence = stateConfidence,
+            snapshotCapturedAt = snapshotCapturedAt,
             createdAt = createdAt,
             updatedAt = remoteUpdatedAt
         )

@@ -121,12 +121,8 @@ class Phase3G4LineageStaleResultTest {
         assertEquals(2L, db.getGeneration())
 
         // Execute check simulating in-flight write with captured generation 1L vs DB generation 2L
-        var txResult: EventSyncResult = EventSyncResult.FAILED_RETRYABLE
-        val currentGen = db.syncMetadataDao().getGeneration()
-        if (currentGen != capturedGen) {
-            txResult = EventSyncResult.SKIPPED_DUPLICATE
-        }
-        assertEquals("Stale generation must produce SKIPPED_DUPLICATE", EventSyncResult.SKIPPED_DUPLICATE, txResult)
+        val txResult = coordinator.processEvent(event, passedCapturedGen = capturedGen)
+        assertEquals("Stale generation must produce FAILED_RETRYABLE", EventSyncResult.FAILED_RETRYABLE, txResult)
 
         // Database entity must NOT exist
         val accountInDb = db.localAccountDao().getByIdOneShot("acc_stale_upsert")
@@ -196,8 +192,8 @@ class Phase3G4LineageStaleResultTest {
         )
 
         // When generation changed, the stale remote delete must NOT delete the restored account
-        val currentGen = db.syncMetadataDao().getGeneration()
-        assertTrue("Generation mismatch detected", currentGen != capturedGen)
+        val deleteResult = coordinator.processEvent(staleDeleteEvent, passedCapturedGen = capturedGen)
+        assertEquals("Stale generation must produce FAILED_RETRYABLE", EventSyncResult.FAILED_RETRYABLE, deleteResult)
 
         // The account remains in Room
         val existing = db.localAccountDao().getByIdOneShot(account.id)
@@ -277,9 +273,14 @@ class Phase3G4LineageStaleResultTest {
             occurredAt = 1710000000000L
         )
 
-        // Verify that stale generation mismatch prevents any write
-        val currentGen = db.syncMetadataDao().getGeneration()
-        assertNotEquals(capturedGen, currentGen)
+        val staleEvent = RemoteEvent.LedgerUpsert(
+            entityId = staleLedger.id,
+            remoteVersion = 3000L,
+            source = RemoteEventSource.PULL,
+            entry = staleLedger
+        )
+        val result = coordinator.processEvent(staleEvent, passedCapturedGen = capturedGen)
+        assertEquals("Stale generation must produce FAILED_RETRYABLE", EventSyncResult.FAILED_RETRYABLE, result)
 
         // Ledger must NOT be inserted
         val ledgerInDb = db.localLedgerEntryDao().getByIdOneShot(staleLedger.id)
@@ -381,8 +382,14 @@ class Phase3G4LineageStaleResultTest {
             totalDebtIqd = 100000.0
         )
 
-        val currentGen = db.syncMetadataDao().getGeneration()
-        assertNotEquals(capturedGen, currentGen)
+        val event = RemoteEvent.BatchUpsert(
+            entityId = batch.id,
+            remoteVersion = 3000L,
+            source = RemoteEventSource.PULL,
+            batch = batch
+        )
+        val result = coordinator.processEvent(event, passedCapturedGen = capturedGen)
+        assertEquals("Stale generation must produce FAILED_RETRYABLE", EventSyncResult.FAILED_RETRYABLE, result)
 
         val inDb = db.importBatchDao().getById(batch.id)
         assertNull("Stale batch must not be saved", inDb)
@@ -416,8 +423,14 @@ class Phase3G4LineageStaleResultTest {
         val capturedGen = db.getGeneration() // 1L
         db.incrementGeneration() // 2L
 
-        val currentGen = db.syncMetadataDao().getGeneration()
-        assertNotEquals(capturedGen, currentGen)
+        val event = RemoteEvent.UserSettingsUpdate(
+            entityId = "user_settings_doc",
+            remoteVersion = 6000L,
+            source = RemoteEventSource.PULL,
+            settingsJson = """{"theme":"SYSTEM"}"""
+        )
+        val result = coordinator.processEvent(event, passedCapturedGen = capturedGen)
+        assertEquals("Stale generation must produce FAILED_RETRYABLE", EventSyncResult.FAILED_RETRYABLE, result)
 
         // Settings JSON remains intact
         val currentSettings = db.syncMetadataDao().get("user_settings_json")
@@ -460,18 +473,14 @@ class Phase3G4LineageStaleResultTest {
             displayName = "Stale In Flight",
             phone1 = "07700000009"
         )
-        var secondResult: EventSyncResult = EventSyncResult.FAILED_RETRYABLE
-        db.run {
-            val currentGen = syncMetadataDao().getGeneration()
-            if (currentGen != capturedGen) {
-                // Lineage changed! Stale result rejected
-                secondResult = EventSyncResult.SKIPPED_DUPLICATE
-            } else {
-                localAccountDao().upsert(secondAccount)
-                secondResult = EventSyncResult.APPLIED
-            }
-        }
-        assertEquals("Stale event must be rejected", EventSyncResult.SKIPPED_DUPLICATE, secondResult)
+        val secondEvent = RemoteEvent.AccountUpsert(
+            entityId = secondAccount.id,
+            remoteVersion = 5000L,
+            source = RemoteEventSource.PULL,
+            account = secondAccount
+        )
+        val secondResult = coordinator.processEvent(secondEvent, passedCapturedGen = capturedGen)
+        assertEquals("Stale event must be rejected", EventSyncResult.FAILED_RETRYABLE, secondResult)
 
         // Verify that second account was NOT written to database
         val secondInDb = db.localAccountDao().getByIdOneShot(secondAccount.id)

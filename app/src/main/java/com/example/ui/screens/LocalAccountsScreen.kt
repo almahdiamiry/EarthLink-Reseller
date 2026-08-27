@@ -71,6 +71,18 @@ fun LocalAccountsScreen(
     val hasCoords by viewModel.filterCoordinates.collectAsStateWithLifecycle()
     val sortOption by viewModel.sortOption.collectAsStateWithLifecycle()
 
+    val context = LocalContext.current
+    val prefs = remember(context) { (context.applicationContext as EarthlinkApp).preferenceManager }
+    val currentLang by prefs.languageFlow.collectAsStateWithLifecycle()
+    val isAr = currentLang == "ar"
+
+    val sortLabel = if (isAr) "ترتيب حسب:" else "Sorted by:"
+    val sortOptionsList = if (isAr) {
+        listOf("name" to "الاسم", "debt" to "الدين", "price" to "السعر")
+    } else {
+        listOf("name" to "Name", "debt" to "Debt", "price" to "Price")
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -142,9 +154,9 @@ fun LocalAccountsScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(text = "Sorted by:", fontSize = 13.sp, color = Color.Gray)
+            Text(text = sortLabel, fontSize = 13.sp, color = Color.Gray)
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                listOf("name" to "Name", "debt" to "Debt", "price" to "Price").forEach { (key, label) ->
+                sortOptionsList.forEach { (key, label) ->
                     val isSel = sortOption == key
                     ElevatedAssistChip(
                         onClick = { viewModel.setSortOption(key) },

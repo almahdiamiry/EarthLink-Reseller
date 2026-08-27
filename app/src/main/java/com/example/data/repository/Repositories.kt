@@ -153,10 +153,10 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
             }
             throw EarthlinkBusinessException(
                 statusCode = response.statusCode ?: 200,
-                errorMessage = response.responseMessage ?: response.error ?: "API returned null payload without explicit data."
+                errorMessage = response.responseMessage ?: response.errorString ?: "API returned null payload without explicit data."
             )
         } else {
-            val msg = response.responseMessage ?: response.error ?: "Earthlink rejected this action."
+            val msg = response.responseMessage ?: response.errorString ?: "Earthlink rejected this action."
             if (response.statusCode == 401 || msg.contains("Unauthorized", ignoreCase = true) || msg.contains("expired", ignoreCase = true)) {
                 val isGoogle = prefs.getAuthToken()?.startsWith("google_oauth_session_") == true
                 if (isGoogle) {
@@ -1320,7 +1320,7 @@ class LocalLedgerRepositoryImpl(
                         }
                     }
 
-                    val defaultNote = if (op.operationType.equals("ACTIVATION", ignoreCase = true)) "[VERIFIED ACTIVATION]" else "[VERIFIED RENEW]"
+                    val defaultNote = if (op.operationType.equals("ACTIVATION", ignoreCase = true)) "[VERIFIED ACTIVATION]" else null
                     val finalNote = if (!chargeNote.isNullOrBlank()) chargeNote else defaultNote
                     val accountWithPrice = localAcc.copy(currentPriceIqd = operationPrice)
                     val savedAcc = saveAccountInternal(accountWithPrice)

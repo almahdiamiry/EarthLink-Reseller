@@ -25,6 +25,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -108,8 +113,9 @@ fun LocalAccountDetailScreen(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = inputAmt,
-                    onValueChange = { inputAmt = it },
+                    onValueChange = { inputAmt = it.replace("\n", "").replace("\r", "") },
                     label = { Text("Payment in IQD") },
+                    singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = {
                         focusManager.clearFocus(force = true)
@@ -122,6 +128,11 @@ fun LocalAccountDetailScreen(
                     onValueChange = { inputNote = it },
                     label = { Text("Optional notes") },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = {
+                        focusManager.clearFocus(force = true)
+                        keyboardController?.hide()
+                    }),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -151,21 +162,47 @@ fun LocalAccountDetailScreen(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = inputAmt,
-                    onValueChange = { inputAmt = it },
+                    onValueChange = { inputAmt = it.replace("\n", "").replace("\r", "") },
                     label = { Text("Debt Load in IQD") },
+                    singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = {
                         focusManager.clearFocus(force = true)
                         keyboardController?.hide()
                     }),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onPreviewKeyEvent { keyEvent ->
+                            if (keyEvent.type == KeyEventType.KeyDown && (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter)) {
+                                focusManager.clearFocus(force = true)
+                                keyboardController?.hide()
+                                true
+                            } else {
+                                false
+                            }
+                        }
                 )
                 OutlinedTextField(
                     value = inputNote,
                     onValueChange = { inputNote = it },
                     label = { Text("Reason/Optional notes") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = {
+                        focusManager.clearFocus(force = true)
+                        keyboardController?.hide()
+                    }),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onPreviewKeyEvent { keyEvent ->
+                            if (keyEvent.type == KeyEventType.KeyDown && (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter)) {
+                                focusManager.clearFocus(force = true)
+                                keyboardController?.hide()
+                                true
+                            } else {
+                                false
+                            }
+                        }
                 )
             }
         }
@@ -296,8 +333,9 @@ fun LocalAccountDetailScreen(
                                 val color = if (item.typeRaw == "gave" || item.typeRaw == "payment") Color(0xFF2E7D32) else if (item.typeRaw == "took" || item.typeRaw == "debt" || item.typeRaw == "debt_added") Color(0xFFC62828) else Color.DarkGray
 
                                 Text(text = txType, fontWeight = FontWeight.Bold, color = color, fontSize = 12.sp)
-                                if (item.note != null) {
-                                    Text(text = item.note, fontSize = 13.sp)
+                                val cleanNote = com.example.core.ledger.NoteCleaner.extractGenuineNote(item.note, item.amountIqd)
+                                if (cleanNote.isNotBlank()) {
+                                    Text(text = cleanNote, fontSize = 13.sp)
                                 }
                                 Text(
                                     text = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(item.occurredAt)),
@@ -310,7 +348,7 @@ fun LocalAccountDetailScreen(
                                     val sign = if (item.typeRaw == "gave" || item.typeRaw == "payment") "-" else "+"
                                     Text(text = "$sign${formatIqd(item.amountIqd)}", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                 }
-                                Text(text = "Debt After: ${formatIqd(item.debtAfterIqd)}", color = Color.Gray, fontSize = 11.sp)
+                                Text(text = "Remaining Debt: ${formatIqd(item.debtAfterIqd)}", color = Color.Gray, fontSize = 11.sp)
                             }
                         }
                     }

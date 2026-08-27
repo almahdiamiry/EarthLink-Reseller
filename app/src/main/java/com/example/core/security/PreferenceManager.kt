@@ -620,6 +620,24 @@ open class PreferenceManager(private val context: Context) {
         private const val KEY_SETTINGS_LOCAL_MUTATED_AT = "user_settings_local_mutated_at"
         private const val KEY_SETTINGS_HAS_LOCAL_MUTATION = "user_settings_has_local_mutation"
         private const val KEY_SETTINGS_SYNCED_TIMESTAMP = "user_settings_last_synced_timestamp"
+        private const val KEY_DASHBOARD_SORT_OPTION = "dashboard_sort_option"
+        private const val KEY_LOCAL_ACCOUNTS_SORT_OPTION = "local_accounts_sort_option"
+    }
+
+    fun getDashboardSortOption(): String {
+        return prefs.getString(KEY_DASHBOARD_SORT_OPTION, "الاسم") ?: "الاسم"
+    }
+
+    fun setDashboardSortOption(sort: String) {
+        prefs.edit().putString(KEY_DASHBOARD_SORT_OPTION, sort).apply()
+    }
+
+    fun getLocalAccountsSortOption(): String {
+        return prefs.getString(KEY_LOCAL_ACCOUNTS_SORT_OPTION, "name") ?: "name"
+    }
+
+    fun setLocalAccountsSortOption(sort: String) {
+        prefs.edit().putString(KEY_LOCAL_ACCOUNTS_SORT_OPTION, sort).apply()
     }
 
     private val _isLoggedInFlow by lazy { MutableStateFlow(!getAuthToken().isNullOrEmpty()) }

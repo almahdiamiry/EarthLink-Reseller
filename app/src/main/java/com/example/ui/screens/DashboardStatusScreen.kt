@@ -88,12 +88,13 @@ fun DashboardStatusScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(Color(0xFF090D12))
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
+                .systemBarsPadding()
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -101,7 +102,7 @@ fun DashboardStatusScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 10.dp),
+                    .padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -114,8 +115,8 @@ fun DashboardStatusScreen(
                 }
                 
                 Text(
-                    text = "اللوحات",
-                    fontWeight = FontWeight.ExtraBold,
+                    text = "الحالة واللوحات",
+                    fontWeight = FontWeight.Bold,
                     fontSize = 18.sp,
                     color = Color.White
                 )
@@ -123,83 +124,52 @@ fun DashboardStatusScreen(
                 Spacer(modifier = Modifier.width(48.dp))
             }
 
-            // Top Gradient Account Box
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(180.dp),
+            // Top Account Card (Apple Inset Card)
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                color = Color(0xFF141922),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f))
             ) {
-                Box(
+                Column(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            brush = androidx.compose.ui.graphics.Brush.linearGradient(
-                                colors = listOf(
-                                    Color(0xFF01579B),
-                                    Color(0xFF039BE5),
-                                    Color(0xFF00ACC1)
-                                )
-                            )
-                        )
-                        .padding(16.dp)
+                        .fillMaxWidth()
+                        .padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.MoreHoriz,
-                            contentDescription = "More options",
-                            tint = Color.White.copy(alpha = 0.8f)
-                        )
-                        
-                        Box(
-                            modifier = Modifier
-                                .size(34.dp)
-                                .background(Color.White.copy(alpha = 0.2f), shape = RoundedCornerShape(8.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
-                                text = "E",
-                                color = Color.White,
-                                fontSize = 21.sp,
-                                fontWeight = FontWeight.Bold
+                                text = "رصيد الصندوق المتاح",
+                                fontSize = 12.sp,
+                                color = Color(0xFF8E8E93),
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = formattedBalance,
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF0A84FF)
                             )
                         }
-                    }
 
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                    ) {
-                        Text(
-                            text = formattedBalance,
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color.White
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .background(Color.White.copy(alpha = 0.15f), shape = RoundedCornerShape(16.dp))
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(
-                                text = "EarthLink",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                            Text(
-                                text = "admin@sacx",
-                                fontSize = 9.sp,
-                                color = Color.White.copy(alpha = 0.8f)
+                        // App Logo Squircle
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .background(Color(0xFF0E131B), shape = RoundedCornerShape(12.dp))
+                                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                painter = androidx.compose.ui.res.painterResource(id = R.drawable.app_logo),
+                                contentDescription = "EarthLink Logo",
+                                contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                                modifier = Modifier.size(32.dp)
                             )
                         }
                     }
@@ -219,8 +189,8 @@ fun DashboardStatusScreen(
                             title = stringResource(id = R.string.label_all),
                             value = totalCount.toString(),
                             icon = Icons.Default.People,
-                            iconBg = Color.White.copy(alpha = 0.1f),
-                            iconColor = Color.White
+                            iconBg = Color(0xFF0A84FF),
+                            iconColor = Color(0xFF0A84FF)
                         )
                     }
                     
@@ -229,8 +199,8 @@ fun DashboardStatusScreen(
                             title = stringResource(id = R.string.label_connected),
                             value = connectedCount.toString(),
                             icon = Icons.Default.Wifi,
-                            iconBg = Color(0xFF1E88E5).copy(alpha = 0.2f),
-                            iconColor = Color(0xFF1E88E5)
+                            iconBg = Color(0xFF30D158),
+                            iconColor = Color(0xFF30D158)
                         )
                     }
                 }
@@ -244,8 +214,8 @@ fun DashboardStatusScreen(
                             title = stringResource(id = R.string.label_active),
                             value = activeCount.toString(),
                             icon = Icons.Default.Check,
-                            iconBg = Color(0xFF2E7D32).copy(alpha = 0.2f),
-                            iconColor = Color(0xFF2E7D32)
+                            iconBg = Color(0xFF30D158),
+                            iconColor = Color(0xFF30D158)
                         )
                     }
                     
@@ -254,8 +224,8 @@ fun DashboardStatusScreen(
                             title = stringResource(id = R.string.label_disconnected),
                             value = disconnectedCount.toString(),
                             icon = Icons.Default.WifiOff,
-                            iconBg = Color(0xFFD81B60).copy(alpha = 0.2f),
-                            iconColor = Color(0xFFD81B60)
+                            iconBg = Color(0xFFFF9F0A),
+                            iconColor = Color(0xFFFF9F0A)
                         )
                     }
                 }
@@ -269,8 +239,8 @@ fun DashboardStatusScreen(
                             title = stringResource(id = R.string.label_near_expiry),
                             value = nearExpiryCount.toString(),
                             icon = Icons.Default.HourglassEmpty,
-                            iconBg = Color(0xFFFDD835).copy(alpha = 0.2f),
-                            iconColor = Color(0xFFFDD835)
+                            iconBg = Color(0xFFFF9F0A),
+                            iconColor = Color(0xFFFF9F0A)
                         )
                     }
                     
@@ -279,46 +249,10 @@ fun DashboardStatusScreen(
                             title = stringResource(id = R.string.label_expired),
                             value = expiredCount.toString(),
                             icon = Icons.Default.Cancel,
-                            iconBg = Color(0xFFC62828).copy(alpha = 0.2f),
-                            iconColor = Color(0xFFC62828)
+                            iconBg = Color(0xFFFF453A),
+                            iconColor = Color(0xFFFF453A)
                         )
                     }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Buttons: الاشتراكات & الابراج
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                OutlinedButton(
-                    onClick = { },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(48.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
-                ) {
-                    Icon(imageVector = Icons.Default.People, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = "الاشتراكات", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                }
-
-                OutlinedButton(
-                    onClick = { },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(48.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
-                ) {
-                    Icon(imageVector = Icons.Default.Wifi, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = "الابراج", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -332,15 +266,15 @@ fun DashboardStatusScreen(
         ) {
             FloatingActionButton(
                 onClick = onPlusClick,
-                containerColor = Color.White,
-                contentColor = Color.Black,
+                containerColor = Color(0xFF0A84FF),
+                contentColor = Color.White,
                 shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.size(56.dp)
+                modifier = Modifier.size(54.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
                     contentDescription = "Add Subscriber",
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(26.dp)
                 )
             }
         }

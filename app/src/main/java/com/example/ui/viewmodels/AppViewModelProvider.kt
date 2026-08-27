@@ -47,7 +47,8 @@ object AppViewModelProvider {
                 utowerRepo = app.utowerImportRepository,
                 audit = app.auditRepository,
                 syncRepo = app.syncRepository,
-                appDatabase = app.database
+                appDatabase = app.database,
+                prefs = app.preferenceManager
             )
         }
         initializer {

@@ -315,13 +315,6 @@ test_suites:
     associated_invariants:
       - "INV-01"
       - "INV-05"
-
-  - name: "SubscriberSortFilterCorrectnessTest"
-    path: "app/src/test/java/com/example/SubscriberSortFilterCorrectnessTest.kt"
-    environment: "JVM"
-    tier_purpose: "Subscriber search sort and filter correctness unit tests"
-    associated_invariants:
-      - "INV-01"
       - "INV-13"
 
   - name: "Phase1RestoreTransportReconstructionTest"

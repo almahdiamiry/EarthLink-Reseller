@@ -10,12 +10,20 @@ import com.squareup.moshi.JsonClass
 data class ApiEnvelope<T>(
     @Json(name = "value") val value: T?,
     @Json(name = "responseMessage") val responseMessage: String?,
-    @Json(name = "error") val error: String?,
+    @Json(name = "error") val error: Any? = null,
     @Json(name = "statusCode") val statusCode: Int?,
     @Json(name = "isSuccessful") val isSuccessful: Boolean?,
     @Json(name = "totalRecords") val totalRecords: Int? = null,
     @Json(name = "TotalRecords") val totalRecordsAlt: Int? = null
-)
+) {
+    val errorString: String?
+        get() = when (val e = error) {
+            null -> null
+            is String -> e
+            is Map<*, *> -> e["message"]?.toString() ?: e.toString()
+            else -> e.toString()
+        }
+}
 
 @JsonClass(generateAdapter = true)
 data class LoginResponse(

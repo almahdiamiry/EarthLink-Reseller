@@ -89,6 +89,7 @@ fun SyncStatusScreen(
                     SyncStatusState.ERROR -> "SYNC ERROR REACHED"
                     SyncStatusState.AUTH_REQUIRED -> "AUTHENTICATION NEEDED"
                     SyncStatusState.COMPLETE -> "LEDGER COMPLETELY SYNCED"
+                    SyncStatusState.COMPLETE_WITH_ERRORS -> "SYNC COMPLETED WITH ERRORS"
                 }
                 Text(text = "Sync Status: $statusTextStr", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 

@@ -8,9 +8,7 @@ data class AccountBalances(
 
 object BalanceCalculator {
     fun applyTransaction(currentDebt: Double, currentAdvance: Double, currentLoan: Double, txType: String, amount: Double): AccountBalances {
-        // Optimization: Skip String allocation if txType is already lowercase
-        val lowerType = if (txType.all { !it.isUpperCase() }) txType else txType.lowercase()
-        return when (lowerType) {
+        return when (txType.lowercase()) {
             "took", "debt", "debt_added", "renewal", "renew", "sub_renew", "sub_renewal", "debt_renew" -> {
                 val advanceUsed = minOf(currentAdvance, amount)
                 val debtAdded = amount - advanceUsed
@@ -30,9 +28,7 @@ object BalanceCalculator {
     }
 
     fun revertTransaction(currentDebt: Double, currentAdvance: Double, currentLoan: Double, txType: String, amount: Double): AccountBalances {
-        // Optimization: Skip String allocation if txType is already lowercase
-        val lowerType = if (txType.all { !it.isUpperCase() }) txType else txType.lowercase()
-        return when (lowerType) {
+        return when (txType.lowercase()) {
             "gave", "payment", "deposit", "pay" -> {
                 val reversedAdvance = maxOf(0.0, currentAdvance - amount)
                 val remainingPaymentToRevert = maxOf(0.0, amount - currentAdvance)

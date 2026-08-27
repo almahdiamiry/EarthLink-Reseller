@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -24,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -242,7 +244,7 @@ fun DashboardScreen(
     }
     var showSortSheet by rememberSaveable { mutableStateOf(false) }
     var pendingSortOpen by rememberSaveable { mutableStateOf(false) }
-    var selectedSort by rememberSaveable { mutableStateOf("نهاية الاشتراك") } // Options: "نهاية الاشتراك", "الاسم", "الدين"
+    val selectedSort by viewModel.selectedSort.collectAsStateWithLifecycle()
     var selectedStatusFilter by rememberSaveable { mutableStateOf("الكل") } // Options: "الكل", "فعال", "قريب من الانتهاء", "منتهي"
 
     var isSearchActive by rememberSaveable { mutableStateOf(false) }
@@ -268,28 +270,55 @@ fun DashboardScreen(
         }
     }
 
-    // 1. FILTERING & SORTING VIA DERIVED STATE
+    // 1. FILTERING & SORTING VIA DERIVED STATE: Merge Live ISP Subscribers + Local/Legacy Accounts
     val filteredList by remember(subscribers, localAccounts, localAccountMatcher, selectedStatusFilter, selectedSort, isSearchActive, searchQuery) {
         derivedStateOf {
-            val baseList = if (subscribers.isEmpty() && localAccounts.isNotEmpty()) {
-                localAccounts.map { acc ->
-                    com.example.core.model.UserListItem(
-                        userIndexLower = acc.id.hashCode(),
-                        userIDLower = acc.earthlinkUsername ?: "local_${acc.id}",
-                        customerNameLower = acc.displayName.ifBlank { acc.earthlinkUsername ?: "Unknown" },
-                        mobileNumberLower = acc.phone1,
-                        accountStatusLower = if (acc.expiresAt != null) {
-                            val expTime = parseExpirationTimestamp(acc.expiresAt)
-                            if (expTime != null && expTime < System.currentTimeMillis()) "Expired" else "Active"
-                        } else "Active",
-                        expirationDateLower = acc.expiresAt ?: "",
-                        displayNameLower = acc.displayName,
-                        accountNameLower = acc.packageName
-                    )
+            val mergedList = ArrayList<com.example.core.model.UserListItem>(subscribers.size + localAccounts.size)
+            val seenUsernames = HashSet<String>()
+            val seenAccountIds = HashSet<String>()
+
+            // 1. Add live ISP / demo subscribers
+            for (sub in subscribers) {
+                val matchingAccount = localAccountMatcher.findMatchingByUsername(sub.userID) ?: localAccountMatcher.findMatching(sub)
+                if (matchingAccount?.isHistoryOnlySubscriber == true) {
+                    continue
                 }
-            } else {
-                subscribers
+                mergedList.add(sub)
+                sub.userID?.let { if (it.isNotBlank()) seenUsernames.add(it.lowercase(Locale.US)) }
+                matchingAccount?.let { acc ->
+                    seenAccountIds.add(acc.id)
+                    acc.earthlinkUsername?.let { if (it.isNotBlank()) seenUsernames.add(it.lowercase(Locale.US)) }
+                }
             }
+
+            // 2. Append all Local / Legacy Accounts (uTower + local) not represented in live subscribers
+            for (acc in localAccounts) {
+                if (acc.isHistoryOnlySubscriber) continue
+                if (seenAccountIds.contains(acc.id)) continue
+                val accUserLower = acc.earthlinkUsername?.lowercase(Locale.US)
+                if (accUserLower != null && accUserLower.isNotBlank() && seenUsernames.contains(accUserLower)) {
+                    continue
+                }
+
+                val item = com.example.core.model.UserListItem(
+                    userIndexLower = acc.id.hashCode(),
+                    userIDLower = acc.earthlinkUsername ?: "local_${acc.id}",
+                    customerNameLower = acc.displayName.ifBlank { acc.earthlinkUsername ?: "Unknown" },
+                    mobileNumberLower = acc.phone1,
+                    accountStatusLower = if (acc.expiresAt != null) {
+                        val expTime = parseExpirationTimestamp(acc.expiresAt)
+                        if (expTime != null && expTime < System.currentTimeMillis()) "Expired" else "Active"
+                    } else "Active",
+                    expirationDateLower = acc.expiresAt ?: "",
+                    displayNameLower = acc.displayName,
+                    accountNameLower = acc.packageName
+                )
+                mergedList.add(item)
+                seenAccountIds.add(acc.id)
+                accUserLower?.let { if (it.isNotBlank()) seenUsernames.add(it) }
+            }
+
+            val baseList = mergedList
 
             val now = System.currentTimeMillis()
 
@@ -404,7 +433,7 @@ fun DashboardScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(Color(0xFF090D12))
     ) {
         LazyColumn(
             modifier = Modifier
@@ -414,7 +443,7 @@ fun DashboardScreen(
         ) {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    // Compact Earthlink Header Row: [ E Logo ] <---> [ Balance Capsule + Filter Action ]
+                    // Compact Header Row: [ App Logo ] <---> [ Balance Capsule + Filter Action ]
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -422,22 +451,22 @@ fun DashboardScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        // Clickable E Logo Box (Opens status portal)
+                        // Clickable App Logo (Pure Transparent Brand Logo - Opens status portal)
                         Box(
+                            contentAlignment = Alignment.Center,
                             modifier = Modifier
-                                .size(38.dp)
-                                .background(
-                                    color = Color(0xFF0288D1),
-                                    shape = RoundedCornerShape(10.dp)
+                                .height(38.dp)
+                                .clickable(
+                                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = { onEClick() }
                                 )
-                                .clickable { onEClick() },
-                            contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = "E",
-                                color = Color.White,
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.Black
+                            Image(
+                                painter = androidx.compose.ui.res.painterResource(id = R.drawable.app_logo),
+                                contentDescription = "EarthLink Logo",
+                                contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                                modifier = Modifier.height(38.dp)
                             )
                         }
 
@@ -448,9 +477,9 @@ fun DashboardScreen(
                         ) {
                             // Remaining Balance Capsule Promoted to Header (Clickable for Financial Breakdown)
                             Surface(
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                color = Color(0xFF141922),
                                 shape = RoundedCornerShape(10.dp),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
                                 modifier = Modifier
                                     .height(38.dp)
                                     .clickable {
@@ -470,14 +499,14 @@ fun DashboardScreen(
                                     Icon(
                                         imageVector = Icons.Default.AccountBalanceWallet,
                                         contentDescription = "Balance summary",
-                                        tint = Color(0xFF039BE5),
+                                        tint = Color(0xFF0A84FF),
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Text(
                                         text = formatIqd(balance),
-                                        fontWeight = FontWeight.ExtraBold,
+                                        fontWeight = FontWeight.Bold,
                                         fontSize = 13.sp,
-                                        color = Color(0xFF039BE5)
+                                        color = Color(0xFF0A84FF)
                                     )
                                 }
                             }
@@ -487,14 +516,15 @@ fun DashboardScreen(
                                 modifier = Modifier
                                     .size(38.dp)
                                     .background(
-                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                        Color(0xFF141922),
                                         shape = RoundedCornerShape(10.dp)
                                     )
                                     .border(
                                         1.dp,
-                                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                        Color.White.copy(alpha = 0.08f),
                                         RoundedCornerShape(10.dp)
                                     )
+                                    .clip(RoundedCornerShape(10.dp))
                                     .clickable {
                                         val hadFocusOrKeyboard = isSearchActive || isImeVisible || imeInsets.getBottom(density) > 0
                                         focusManager.clearFocus(force = true)
@@ -510,36 +540,43 @@ fun DashboardScreen(
                                 Icon(
                                     imageVector = Icons.Default.Tune,
                                     contentDescription = stringResource(id = R.string.action_sort_filter),
-                                    tint = MaterialTheme.colorScheme.onSurface,
+                                    tint = Color.White,
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
                     }
 
-                    // Network/Offline Alert Banner if applicable
+                    // Network/Offline Alert Banner if applicable (Apple Inset Card)
                     if (syncState == SyncStatusState.OFFLINE || syncState == SyncStatusState.ERROR) {
-                        Card(
+                        Surface(
                             modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
-                            border = BorderStroke(1.dp, Color(0xFFFF9800)),
-                            shape = RoundedCornerShape(12.dp)
+                            color = Color(0xFF141922),
+                            border = BorderStroke(1.dp, Color(0xFFFF9F0A).copy(alpha = 0.25f)),
+                            shape = RoundedCornerShape(14.dp)
                         ) {
                             Row(
-                                modifier = Modifier.padding(12.dp),
+                                modifier = Modifier.padding(14.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.CloudOff,
-                                    contentDescription = "Offline",
-                                    tint = Color(0xFFF57C00),
-                                    modifier = Modifier.size(24.dp)
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .background(Color(0xFFFF9F0A).copy(alpha = 0.15f), shape = RoundedCornerShape(8.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CloudOff,
+                                        contentDescription = "Offline",
+                                        tint = Color(0xFFFF9F0A),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                                 Text(
                                     text = if (lang == "ar") "أنت تعمل الآن في وضع عدم الاتصال (بيانات مخزنة مؤقتاً)." else "You are operating offline (cached data).",
-                                    color = Color(0xFFE65100),
-                                    fontSize = 13.sp,
+                                    color = Color.White.copy(alpha = 0.85f),
+                                    fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium
                                 )
                             }
@@ -547,55 +584,61 @@ fun DashboardScreen(
                     }
                     
                     if (isCredentialsEmpty && !isDemoOn) {
-                        Card(
+                        Surface(
                             modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE)),
-                            border = BorderStroke(1.dp, Color(0xFFEF5350)),
-                            shape = RoundedCornerShape(12.dp)
+                            color = Color(0xFF141922),
+                            border = BorderStroke(1.dp, Color(0xFFFF453A).copy(alpha = 0.25f)),
+                            shape = RoundedCornerShape(14.dp)
                         ) {
                             Column(
                                 modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                                horizontalAlignment = Alignment.Start
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = androidx.compose.material.icons.Icons.Default.Warning,
-                                        contentDescription = "Warning",
-                                        tint = Color(0xFFC62828),
-                                        modifier = Modifier.size(24.dp)
-                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .background(Color(0xFFFF453A).copy(alpha = 0.15f), shape = RoundedCornerShape(8.dp)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = androidx.compose.material.icons.Icons.Default.Warning,
+                                            contentDescription = "Warning",
+                                            tint = Color(0xFFFF453A),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                     Text(
-                                        text = if (lang == "ar") "تنبيه: معلومات الحساب فارغة!" else "Warning: Account Credentials Empty!",
+                                        text = if (lang == "ar") "معلومات حساب ISP غير مكتملة" else "ISP Credentials Missing",
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 16.sp,
-                                        color = Color(0xFFC62828)
+                                        fontSize = 15.sp,
+                                        color = Color.White
                                     )
                                 }
                                 Text(
                                     text = if (lang == "ar") {
-                                        "الرجاء إضافة معلومات مسؤول ISP (اسم المستخدم وكلمة المرور) في الإعدادات للاتصال بـ Earthlink وعرض الحسابات والبيانات الحية."
+                                        "الرجاء إضافة اسم المستخدم وكلمة مرور ISP في الإعدادات لعرض البيانات الحية والاتصال بالبوابة."
                                     } else {
-                                        "Please add your Earthlink ISP Admin credentials (username and password) in Settings to load live accounts and connect."
+                                        "Please enter your ISP credentials in Settings to connect and load live subscriber data."
                                     },
-                                    fontSize = 13.sp,
-                                    color = Color(0xFF333333),
-                                    textAlign = TextAlign.Center
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF8E8E93)
                                 )
                                 Button(
                                     onClick = { onNavigateToSettings() },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828)),
-                                    shape = RoundedCornerShape(20.dp),
-                                    modifier = Modifier.height(38.dp)
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0A84FF)),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.height(36.dp)
                                 ) {
                                     Text(
-                                        text = if (lang == "ar") "الذهاب إلى الإعدادات الآن" else "Go to Settings Now",
+                                        text = if (lang == "ar") "فتح الإعدادات" else "Open Settings",
                                         color = Color.White,
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp
+                                        fontSize = 12.sp
                                     )
                                 }
                             }
@@ -659,83 +702,104 @@ fun DashboardScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        placeholder = {
-                            Text(
-                                text = if (lang == "ar") "ابحث عن الاسم، اليوزر، أو الهاتف..." else "Search name, user, phone...",
-                                fontSize = 13.sp,
-                                color = Color.Gray
-                            )
-                        },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(
-                            imeAction = ImeAction.Search,
-                            keyboardType = KeyboardType.Text
-                        ),
-                        keyboardActions = KeyboardActions(
-                            onSearch = {
-                                // Keep search results visible
-                            }
-                        ),
-                        leadingIcon = {
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        color = Color(0xFF141922),
+                        shape = RoundedCornerShape(24.dp),
+                        border = BorderStroke(1.5.dp, Color(0xFF0A84FF))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.Search,
                                 contentDescription = null,
-                                tint = Color.Gray,
+                                tint = Color(0xFF0A84FF),
                                 modifier = Modifier.size(18.dp)
                             )
-                        },
-                        trailingIcon = {
+
+                            Box(
+                                modifier = Modifier.weight(1f),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                if (searchQuery.isEmpty()) {
+                                    Text(
+                                        text = if (lang == "ar") "بحث بالاسم، اليوزر، أو الهاتف..." else "Search name, user, phone...",
+                                        fontSize = 13.sp,
+                                        color = Color(0xFF8E8E93),
+                                        maxLines = 1
+                                    )
+                                }
+                                BasicTextField(
+                                    value = searchQuery,
+                                    onValueChange = { searchQuery = it },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(
+                                        imeAction = ImeAction.Search,
+                                        keyboardType = KeyboardType.Text
+                                    ),
+                                    keyboardActions = KeyboardActions(
+                                        onSearch = {
+                                            keyboardController?.hide()
+                                        }
+                                    ),
+                                    textStyle = TextStyle(
+                                        fontSize = 13.5.sp,
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Medium
+                                    ),
+                                    cursorBrush = SolidColor(Color(0xFF0A84FF)),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .focusRequester(focusRequester)
+                                )
+                            }
+
                             if (searchQuery.isNotEmpty()) {
-                                IconButton(onClick = { searchQuery = "" }) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .clip(CircleShape)
+                                        .clickable { searchQuery = "" },
+                                    contentAlignment = Alignment.Center
+                                ) {
                                     Icon(
-                                        imageVector = Icons.Default.Clear,
+                                        imageVector = Icons.Default.Cancel,
                                         contentDescription = "Clear",
-                                        tint = Color.Gray,
-                                        modifier = Modifier.size(18.dp)
+                                        tint = Color(0xFF8E8E93),
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
                             }
-                        },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color(0xFF0288D1),
-                            unfocusedBorderColor = Color.White.copy(alpha = 0.15f),
-                            focusedContainerColor = Color(0xFF1E2830),
-                            unfocusedContainerColor = Color(0xFF1E2830),
-                            focusedLabelColor = Color(0xFF0288D1),
-                            unfocusedLabelColor = Color.Gray,
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(24.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(max = 48.dp)
-                            .focusRequester(focusRequester),
-                        textStyle = TextStyle(fontSize = 13.sp)
-                    )
+                        }
+                    }
 
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .background(Color.White.copy(alpha = 0.08f), shape = CircleShape)
-                            .clip(CircleShape)
-                            .clickable {
-                                focusManager.clearFocus(force = true)
-                                keyboardController?.hide()
-                                isSearchActive = false
-                                searchQuery = ""
-                            },
-                        contentAlignment = Alignment.Center
+                    Surface(
+                        onClick = {
+                            focusManager.clearFocus(force = true)
+                            keyboardController?.hide()
+                            isSearchActive = false
+                            searchQuery = ""
+                        },
+                        shape = CircleShape,
+                        color = Color(0xFF141922),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                        modifier = Modifier.size(44.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Cancel",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Cancel",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
 
@@ -749,30 +813,30 @@ fun DashboardScreen(
                         .padding(horizontal = 16.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Button(
+                    Surface(
                         onClick = { isSearchActive = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E2830)),
-                        shape = RoundedCornerShape(24.dp),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                        color = Color(0xFF141922),
+                        shape = RoundedCornerShape(22.dp),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
                         modifier = Modifier
-                            .fillMaxWidth(0.42f)
-                            .height(44.dp),
-                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp)
+                            .fillMaxWidth(0.38f)
+                            .height(44.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.fillMaxSize()
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Search,
                                 contentDescription = null,
-                                tint = Color.White,
+                                tint = Color(0xFF0A84FF),
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "بــحــث",
-                                fontWeight = FontWeight.ExtraBold,
+                                fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp,
                                 color = Color.White
                             )
@@ -787,11 +851,11 @@ fun DashboardScreen(
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                 SortAndFilterBottomSheet(
                     selectedSort = selectedSort,
-                    onSortSelected = { selectedSort = it },
+                    onSortSelected = { viewModel.setDashboardSortOption(it) },
                     selectedStatusFilter = selectedStatusFilter,
                     onStatusFilterSelected = { selectedStatusFilter = it },
                     onResetDefaults = {
-                        selectedSort = "نهاية الاشتراك"
+                        viewModel.setDashboardSortOption("الاسم")
                         selectedStatusFilter = "الكل"
                     },
                     onDismissRequest = { showSortSheet = false }
@@ -830,7 +894,6 @@ fun FinancialSummaryBottomSheet(
     onDismissRequest: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
@@ -849,7 +912,7 @@ fun FinancialSummaryBottomSheet(
             onDismissRequest()
         },
         sheetState = sheetState,
-        containerColor = Color(0xFF11161F),
+        containerColor = Color(0xFF141922),
         contentColor = Color.White,
         dragHandle = {
             BottomSheetDefaults.DragHandle(
@@ -857,18 +920,18 @@ fun FinancialSummaryBottomSheet(
                 color = Color.White.copy(alpha = 0.25f)
             )
         },
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
     ) {
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
+                    .padding(horizontal = 16.dp)
                     .padding(bottom = 28.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
                 horizontalAlignment = Alignment.Start
             ) {
-                // 1. Top Bar: Title on Right, Refresh Action on Left
+                // 1. Top Bar: Title & Subtitle + Refresh Button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -880,14 +943,14 @@ fun FinancialSummaryBottomSheet(
                     ) {
                         Text(
                             text = "تحليل الصندوق وتوقعات 7 أيام",
-                            fontWeight = FontWeight.Black,
+                            fontWeight = FontWeight.Bold,
                             fontSize = 17.sp,
                             color = Color.White
                         )
                         Text(
                             text = "نظرة فورية على كفاية الرصيد للتجديدات القادمة",
                             fontSize = 12.sp,
-                            color = Color.White.copy(alpha = 0.55f)
+                            color = Color(0xFF8E8E93)
                         )
                     }
 
@@ -895,47 +958,47 @@ fun FinancialSummaryBottomSheet(
                     Surface(
                         onClick = onRefresh,
                         shape = CircleShape,
-                        color = Color.White.copy(alpha = 0.08f),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
-                        modifier = Modifier.size(38.dp)
+                        color = Color(0xFF1C2430),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                        modifier = Modifier.size(36.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             if (isLoading) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(16.dp),
-                                    color = Color(0xFF38BDF8),
+                                    color = Color(0xFF0A84FF),
                                     strokeWidth = 2.dp
                                 )
                             } else {
                                 Icon(
                                     imageVector = Icons.Default.Refresh,
                                     contentDescription = "تحديث",
-                                    tint = Color.White.copy(alpha = 0.85f),
-                                    modifier = Modifier.size(18.dp)
+                                    tint = Color.White,
+                                    modifier = Modifier.size(17.dp)
                                 )
                             }
                         }
                     }
                 }
 
-                // 2. HERO CARD: Smart Decision & Forecast
+                // 2. HERO CARD: Smart Decision & Forecast (Apple Inset Card)
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(22.dp),
-                    color = Color(0xFF171E29),
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFF0E131B),
                     border = BorderStroke(
                         1.dp,
-                        if (isSufficient) Color(0xFF10B981).copy(alpha = 0.35f) else Color(0xFFEF4444).copy(alpha = 0.35f)
+                        if (isSufficient) Color(0xFF30D158).copy(alpha = 0.25f) else Color(0xFFFF453A).copy(alpha = 0.25f)
                     )
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                         horizontalAlignment = Alignment.Start
                     ) {
-                        // Top Header inside Hero: Title on Right, Status Pill on Left
+                        // Top Header inside Hero: Title & Status Pill
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -944,37 +1007,37 @@ fun FinancialSummaryBottomSheet(
                             Text(
                                 text = "الهامش المتوقع بعد 7 أيام",
                                 fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
+                                fontWeight = FontWeight.SemiBold,
                                 color = Color.White.copy(alpha = 0.8f)
                             )
 
                             // Status Pill
                             Surface(
-                                shape = RoundedCornerShape(20.dp),
-                                color = if (isSufficient) Color(0xFF10B981).copy(alpha = 0.15f) else Color(0xFFEF4444).copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isSufficient) Color(0xFF30D158).copy(alpha = 0.12f) else Color(0xFFFF453A).copy(alpha = 0.12f),
                                 border = BorderStroke(
                                     1.dp,
-                                    if (isSufficient) Color(0xFF10B981).copy(alpha = 0.4f) else Color(0xFFEF4444).copy(alpha = 0.4f)
+                                    if (isSufficient) Color(0xFF30D158).copy(alpha = 0.3f) else Color(0xFFFF453A).copy(alpha = 0.3f)
                                 )
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .size(7.dp)
+                                            .size(6.dp)
                                             .background(
-                                                if (isSufficient) Color(0xFF10B981) else Color(0xFFEF4444),
+                                                if (isSufficient) Color(0xFF30D158) else Color(0xFFFF453A),
                                                 shape = CircleShape
                                             )
                                     )
                                     Text(
                                         text = if (isSufficient) "الرصيد كافٍ ومغطى" else "تحتاج تعبئة رصيد",
                                         fontSize = 11.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = if (isSufficient) Color(0xFF10B981) else Color(0xFFEF4444)
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSufficient) Color(0xFF30D158) else Color(0xFFFF453A)
                                     )
                                 }
                             }
@@ -982,26 +1045,26 @@ fun FinancialSummaryBottomSheet(
 
                         // Big Net Figure
                         Column(
-                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
                             horizontalAlignment = Alignment.Start
                         ) {
                             Text(
                                 text = if (isSufficient) "+${formatIqd(forecastAfter)}" else "-${formatIqd(deficitAmount)}",
-                                fontSize = 30.sp,
-                                fontWeight = FontWeight.Black,
-                                color = if (isSufficient) Color(0xFF10B981) else Color(0xFFEF4444),
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSufficient) Color(0xFF30D158) else Color(0xFFFF453A),
                                 letterSpacing = (-0.5).sp
                             )
                             Text(
                                 text = if (isSufficient) "فائض نقدي متاح بعد تغطية تجديدات الأسبوع" else "المبلغ المطلوب إيداعه لتغطية تجديدات الأسبوع",
                                 fontSize = 11.sp,
-                                color = Color.White.copy(alpha = 0.5f)
+                                color = Color(0xFF8E8E93)
                             )
                         }
 
                         // Subtle Divider
                         HorizontalDivider(
-                            color = Color.White.copy(alpha = 0.08f),
+                            color = Color.White.copy(alpha = 0.05f),
                             thickness = 1.dp
                         )
 
@@ -1011,10 +1074,10 @@ fun FinancialSummaryBottomSheet(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Current Balance (Right in RTL)
+                            // Current Balance
                             Column(
                                 horizontalAlignment = Alignment.Start,
-                                verticalArrangement = Arrangement.spacedBy(3.dp)
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
@@ -1023,26 +1086,26 @@ fun FinancialSummaryBottomSheet(
                                     Box(
                                         modifier = Modifier
                                             .size(6.dp)
-                                            .background(Color(0xFF38BDF8), shape = CircleShape)
+                                            .background(Color(0xFF0A84FF), shape = CircleShape)
                                     )
                                     Text(
                                         text = "رصيد الصندوق الحالي",
                                         fontSize = 11.sp,
-                                        color = Color.White.copy(alpha = 0.6f)
+                                        color = Color(0xFF8E8E93)
                                     )
                                 }
                                 Text(
                                     text = formatIqd(balance),
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFF38BDF8)
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF0A84FF)
                                 )
                             }
 
-                            // 7-Day Needed (Left in RTL)
+                            // 7-Day Needed
                             Column(
                                 horizontalAlignment = Alignment.End,
-                                verticalArrangement = Arrangement.spacedBy(3.dp)
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
@@ -1051,18 +1114,18 @@ fun FinancialSummaryBottomSheet(
                                     Box(
                                         modifier = Modifier
                                             .size(6.dp)
-                                            .background(Color(0xFF818CF8), shape = CircleShape)
+                                            .background(Color(0xFF94A3B8), shape = CircleShape)
                                     )
                                     Text(
                                         text = "المطلوب للتجديد (7 أيام)",
                                         fontSize = 11.sp,
-                                        color = Color.White.copy(alpha = 0.6f)
+                                        color = Color(0xFF8E8E93)
                                     )
                                 }
                                 Text(
                                     text = formatIqd(prepaidNeeded),
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
                                     color = Color(0xFFE2E8F0)
                                 )
                             }
@@ -1073,19 +1136,19 @@ fun FinancialSummaryBottomSheet(
                 // 3. SECONDARY CARDS (Trial Users & Total Debts)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Card 1: Active 24h Trial Users (Right in RTL)
+                    // Card 1: Active 24h Trial Users
                     Surface(
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(18.dp),
-                        color = Color(0xFF171E29),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFF0E131B),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f))
                     ) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(14.dp),
+                                .padding(12.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp),
                             horizontalAlignment = Alignment.Start
                         ) {
@@ -1097,51 +1160,51 @@ fun FinancialSummaryBottomSheet(
                                 Text(
                                     text = "مستخدمي التجربة",
                                     fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    fontWeight = FontWeight.SemiBold,
                                     color = Color.White.copy(alpha = 0.75f)
                                 )
 
                                 Box(
                                     modifier = Modifier
-                                        .size(32.dp)
-                                        .background(Color(0xFF8B5CF6).copy(alpha = 0.15f), shape = RoundedCornerShape(10.dp)),
+                                        .size(28.dp)
+                                        .background(Color(0xFFBF5AF2).copy(alpha = 0.15f), shape = RoundedCornerShape(8.dp)),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Bolt,
                                         contentDescription = null,
-                                        tint = Color(0xFFA78BFA),
-                                        modifier = Modifier.size(18.dp)
+                                        tint = Color(0xFFBF5AF2),
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
                             }
 
                             Text(
                                 text = "$testCount مستخدم",
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Black,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
 
                             Text(
                                 text = "24 ساعة بدون خصم",
                                 fontSize = 10.sp,
-                                color = Color.White.copy(alpha = 0.45f)
+                                color = Color(0xFF8E8E93)
                             )
                         }
                     }
 
-                    // Card 2: Total Subscriber Debts (Left in RTL)
+                    // Card 2: Total Subscriber Debts
                     Surface(
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(18.dp),
-                        color = Color(0xFF171E29),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFF0E131B),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f))
                     ) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(14.dp),
+                                .padding(12.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp),
                             horizontalAlignment = Alignment.Start
                         ) {
@@ -1153,29 +1216,29 @@ fun FinancialSummaryBottomSheet(
                                 Text(
                                     text = "إجمالي الديون",
                                     fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    fontWeight = FontWeight.SemiBold,
                                     color = Color.White.copy(alpha = 0.75f)
                                 )
 
                                 Box(
                                     modifier = Modifier
-                                        .size(32.dp)
-                                        .background(Color(0xFFF59E0B).copy(alpha = 0.15f), shape = RoundedCornerShape(10.dp)),
+                                        .size(28.dp)
+                                        .background(Color(0xFFFF9F0A).copy(alpha = 0.15f), shape = RoundedCornerShape(8.dp)),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.ReceiptLong,
                                         contentDescription = null,
-                                        tint = Color(0xFFFBBF24),
-                                        modifier = Modifier.size(18.dp)
+                                        tint = Color(0xFFFF9F0A),
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
                             }
 
                             Text(
                                 text = formatIqd(totalDebt),
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Black,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
                                 color = Color.White,
                                 maxLines = 1
                             )
@@ -1183,7 +1246,7 @@ fun FinancialSummaryBottomSheet(
                             Text(
                                 text = "مستحقات بذمة المشتركين",
                                 fontSize = 10.sp,
-                                color = Color.White.copy(alpha = 0.45f)
+                                color = Color(0xFF8E8E93)
                             )
                         }
                     }
@@ -1204,26 +1267,12 @@ fun SortAndFilterBottomSheet(
     onDismissRequest: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
     LaunchedEffect(Unit) {
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
-    }
-
-    val dismissWithAction: (action: () -> Unit) -> Unit = { action ->
-        focusManager.clearFocus(force = true)
-        keyboardController?.hide()
-        scope.launch {
-            sheetState.hide()
-        }.invokeOnCompletion {
-            if (!sheetState.isVisible) {
-                onDismissRequest()
-                action()
-            }
-        }
     }
 
     ModalBottomSheet(
@@ -1233,7 +1282,7 @@ fun SortAndFilterBottomSheet(
             onDismissRequest()
         },
         sheetState = sheetState,
-        containerColor = Color(0xFF11161F),
+        containerColor = Color(0xFF141922),
         contentColor = Color.White,
         dragHandle = {
             BottomSheetDefaults.DragHandle(
@@ -1241,7 +1290,7 @@ fun SortAndFilterBottomSheet(
                 color = Color.White.copy(alpha = 0.25f)
             )
         },
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
     ) {
         Column(
             modifier = Modifier
@@ -1250,7 +1299,7 @@ fun SortAndFilterBottomSheet(
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // 1. Top Header Bar: Title & Subtitle (Right in RTL) + Reset Action (Left in RTL)
+            // 1. Top Header Bar: Title & Reset Action
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1258,28 +1307,28 @@ fun SortAndFilterBottomSheet(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
-                        text = "فرز وتصفية المشتركين",
-                        fontWeight = FontWeight.Black,
+                        text = "الفرز والتصفية",
+                        fontWeight = FontWeight.Bold,
                         fontSize = 17.sp,
                         color = Color.White
                     )
                     Text(
-                        text = "تخصيص أولوية الترتيب وحالات الحسابات",
+                        text = "تخصيص ترتيب وحالات الحسابات",
                         fontSize = 11.sp,
-                        color = Color.White.copy(alpha = 0.5f)
+                        color = Color(0xFF8E8E93)
                     )
                 }
 
-                val isCustomized = selectedSort != "نهاية الاشتراك" || selectedStatusFilter != "الكل"
+                val isCustomized = selectedSort != "الاسم" || selectedStatusFilter != "الكل"
                 if (isCustomized) {
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color(0xFF1E293B),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF1C2430),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
                         modifier = Modifier.clickable { onResetDefaults() }
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
@@ -1287,7 +1336,7 @@ fun SortAndFilterBottomSheet(
                                 imageVector = Icons.Default.RestartAlt,
                                 contentDescription = "إعادة ضبط",
                                 tint = Color(0xFF94A3B8),
-                                modifier = Modifier.size(15.dp)
+                                modifier = Modifier.size(14.dp)
                             )
                             Text(
                                 text = "إعادة ضبط",
@@ -1300,17 +1349,17 @@ fun SortAndFilterBottomSheet(
                 }
             }
 
-            // 2. Card 1: معيار الترتيب (Apple Card Grouped Style)
+            // 2. Card 1: معيار الترتيب (Apple Inset Grouped Style)
             Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = Color(0xFF171E29),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+                shape = RoundedCornerShape(16.dp),
+                color = Color(0xFF0E131B),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f))
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -1320,40 +1369,40 @@ fun SortAndFilterBottomSheet(
                         Box(
                             modifier = Modifier
                                 .size(28.dp)
-                                .background(Color(0xFF0288D1).copy(alpha = 0.15f), shape = RoundedCornerShape(8.dp)),
+                                .background(Color(0xFF0A84FF).copy(alpha = 0.15f), shape = RoundedCornerShape(8.dp)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.SwapVert,
                                 contentDescription = null,
-                                tint = Color(0xFF38BDF8),
+                                tint = Color(0xFF0A84FF),
                                 modifier = Modifier.size(16.dp)
                             )
                         }
                         Text(
                             text = "ترتيب القائمة حسب",
                             fontSize = 13.sp,
-                            fontWeight = FontWeight.ExtraBold,
+                            fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
                     }
 
                     // 3 Sort Option Tiles
                     val sortItems = listOf(
+                        Triple("الاسم", "الاسم أبجدياً", "ترتيب تصاعدي من أ إلى ي"),
                         Triple("نهاية الاشتراك", "تاريخ نهاية الاشتراك", "الأقرب انتهاءً أولاً لمتابعة التجديدات"),
-                        Triple("الدين", "حجم الدين والمستحقات", "المشتركون أصحاب الديون الأعلى أولاً"),
-                        Triple("الاسم", "الاسم أبجدياً", "ترتيب تصاعدي من أ إلى ي")
+                        Triple("الدين", "حجم الدين والمستحقات", "المشتركون أصحاب الديون الأعلى أولاً")
                     )
 
                     sortItems.forEach { (key, title, subtitle) ->
                         val isSelected = selectedSort == key || (key == "الدين" && selectedSort == "دين المشترك")
 
                         Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = if (isSelected) Color(0xFF0288D1).copy(alpha = 0.12f) else Color(0xFF121822),
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSelected) Color(0xFF0A84FF).copy(alpha = 0.12f) else Color(0xFF141922),
                             border = BorderStroke(
                                 1.dp,
-                                if (isSelected) Color(0xFF0288D1).copy(alpha = 0.5f) else Color.White.copy(alpha = 0.05f)
+                                if (isSelected) Color(0xFF0A84FF).copy(alpha = 0.4f) else Color.White.copy(alpha = 0.04f)
                             ),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1373,14 +1422,14 @@ fun SortAndFilterBottomSheet(
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .size(32.dp)
+                                            .size(30.dp)
                                             .background(
                                                 when (key) {
-                                                    "نهاية الاشتراك" -> Color(0xFF38BDF8).copy(alpha = 0.15f)
-                                                    "الدين" -> Color(0xFFF59E0B).copy(alpha = 0.15f)
-                                                    else -> Color(0xFFA78BFA).copy(alpha = 0.15f)
+                                                    "نهاية الاشتراك" -> Color(0xFF64D2FF).copy(alpha = 0.15f)
+                                                    "الدين" -> Color(0xFFFF9F0A).copy(alpha = 0.15f)
+                                                    else -> Color(0xFF0A84FF).copy(alpha = 0.15f)
                                                 },
-                                                shape = RoundedCornerShape(10.dp)
+                                                shape = RoundedCornerShape(8.dp)
                                             ),
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -1392,11 +1441,11 @@ fun SortAndFilterBottomSheet(
                                             },
                                             contentDescription = null,
                                             tint = when (key) {
-                                                "نهاية الاشتراك" -> Color(0xFF38BDF8)
-                                                "الدين" -> Color(0xFFFBBF24)
-                                                else -> Color(0xFFA78BFA)
+                                                "نهاية الاشتراك" -> Color(0xFF64D2FF)
+                                                "الدين" -> Color(0xFFFF9F0A)
+                                                else -> Color(0xFF0A84FF)
                                             },
-                                            modifier = Modifier.size(17.dp)
+                                            modifier = Modifier.size(16.dp)
                                         )
                                     }
 
@@ -1404,13 +1453,13 @@ fun SortAndFilterBottomSheet(
                                         Text(
                                             text = title,
                                             fontSize = 13.sp,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (isSelected) Color.White else Color.White.copy(alpha = 0.85f)
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                                            color = Color.White
                                         )
                                         Text(
                                             text = subtitle,
                                             fontSize = 10.sp,
-                                            color = Color.White.copy(alpha = 0.45f)
+                                            color = Color(0xFF8E8E93)
                                         )
                                     }
                                 }
@@ -1418,10 +1467,10 @@ fun SortAndFilterBottomSheet(
                                 // Selection Indicator Circle
                                 Box(
                                     modifier = Modifier
-                                        .size(20.dp)
+                                        .size(18.dp)
                                         .border(
                                             1.5.dp,
-                                            if (isSelected) Color(0xFF0288D1) else Color.White.copy(alpha = 0.25f),
+                                            if (isSelected) Color(0xFF0A84FF) else Color.White.copy(alpha = 0.2f),
                                             CircleShape
                                         ),
                                     contentAlignment = Alignment.Center
@@ -1429,8 +1478,8 @@ fun SortAndFilterBottomSheet(
                                     if (isSelected) {
                                         Box(
                                             modifier = Modifier
-                                                .size(10.dp)
-                                                .background(Color(0xFF0288D1), CircleShape)
+                                                .size(9.dp)
+                                                .background(Color(0xFF0A84FF), CircleShape)
                                         )
                                     }
                                 }
@@ -1440,17 +1489,17 @@ fun SortAndFilterBottomSheet(
                 }
             }
 
-            // 3. Card 2: تصفية الحالة (Apple Card Grouped Style)
+            // 3. Card 2: تصفية الحالة (Apple Inset Grouped Style)
             Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = Color(0xFF171E29),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+                shape = RoundedCornerShape(16.dp),
+                color = Color(0xFF0E131B),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f))
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -1460,30 +1509,30 @@ fun SortAndFilterBottomSheet(
                         Box(
                             modifier = Modifier
                                 .size(28.dp)
-                                .background(Color(0xFF10B981).copy(alpha = 0.15f), shape = RoundedCornerShape(8.dp)),
+                                .background(Color(0xFF30D158).copy(alpha = 0.15f), shape = RoundedCornerShape(8.dp)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Tune,
                                 contentDescription = null,
-                                tint = Color(0xFF10B981),
+                                tint = Color(0xFF30D158),
                                 modifier = Modifier.size(16.dp)
                             )
                         }
                         Text(
                             text = "تصفية حسب حالة المشترك",
                             fontSize = 13.sp,
-                            fontWeight = FontWeight.ExtraBold,
+                            fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
                     }
 
-                    // 4 Modern Status Pills (2x2 Grid)
+                    // 4 Status Pills
                     val statusFilters = listOf(
-                        Pair("الكل", Color(0xFF94A3B8)),
-                        Pair("فعال", Color(0xFF10B981)),
-                        Pair("قريب من الانتهاء", Color(0xFFF59E0B)),
-                        Pair("منتهي", Color(0xFFEF4444))
+                        Pair("الكل", Color(0xFF8E8E93)),
+                        Pair("فعال", Color(0xFF30D158)),
+                        Pair("قريب من الانتهاء", Color(0xFFFF9F0A)),
+                        Pair("منتهي", Color(0xFFFF453A))
                     )
 
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1531,14 +1580,14 @@ private fun StatusFilterPill(
     onClick: () -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = if (isSelected) dotColor.copy(alpha = 0.15f) else Color(0xFF121822),
+        shape = RoundedCornerShape(12.dp),
+        color = if (isSelected) dotColor.copy(alpha = 0.12f) else Color(0xFF141922),
         border = BorderStroke(
             1.dp,
-            if (isSelected) dotColor.copy(alpha = 0.55f) else Color.White.copy(alpha = 0.06f)
+            if (isSelected) dotColor.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.05f)
         ),
         modifier = modifier
-            .height(42.dp)
+            .height(40.dp)
             .clickable { onClick() }
     ) {
         Row(
@@ -1550,7 +1599,7 @@ private fun StatusFilterPill(
         ) {
             Box(
                 modifier = Modifier
-                    .size(8.dp)
+                    .size(7.dp)
                     .background(dotColor, CircleShape)
             )
             Spacer(modifier = Modifier.width(6.dp))
@@ -1558,7 +1607,7 @@ private fun StatusFilterPill(
                 text = title,
                 fontSize = 12.sp,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                color = if (isSelected) Color.White else Color.White.copy(alpha = 0.75f),
+                color = if (isSelected) Color.White else Color(0xFF8E8E93),
                 maxLines = 1
             )
         }

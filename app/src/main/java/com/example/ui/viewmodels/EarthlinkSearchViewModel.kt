@@ -509,7 +509,7 @@ class EarthlinkSearchViewModel(
                 return@launch
             }
             val opIntentId = intentId ?: java.util.UUID.randomUUID().toString()
-            val businessTxId = "tx_" + opIntentId
+            val businessTxId = "charge_" + opIntentId
             val finalNote = note ?: ""
 
             try {
@@ -556,7 +556,7 @@ class EarthlinkSearchViewModel(
                 val success = gateway.refillUserDeposit(userId, depositPass)
                 if (success) {
                     try {
-                        val chargeNote = if (finalNote.isNotBlank()) "[RENEW] ${finalNote.trim()}" else "[RENEW]"
+                        val chargeNote = finalNote.trim().ifEmpty { null }
                         localLedgerRepository.resolvePendingOperationVerifiedSuccess(businessTxId, chargeNote)
                         onSuccessCallback?.invoke(businessTxId)
 

@@ -18,6 +18,8 @@ import com.example.core.security.CloudSecretEncryptor
 import com.example.core.security.PreferenceManager
 import com.example.domain.repository.SyncRepository
 import com.example.domain.repository.SyncStatusState
+import com.example.domain.repository.SyncProgress
+import com.example.domain.repository.SyncPhase
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
@@ -99,13 +101,16 @@ class SyncRepositoryImpl(
     private val _syncState = MutableStateFlow(SyncStatusState.IDLE)
     override val syncState: StateFlow<SyncStatusState> = _syncState.asStateFlow()
 
+    private val _syncProgress = MutableStateFlow(SyncProgress(lastCompletedTime = prefManager.getLastSyncTime()))
+    override val syncProgress: StateFlow<SyncProgress> = _syncProgress.asStateFlow()
+
     init {
         // If there is an auth state listener, we can update status
         val currentAuth = auth
         if (currentAuth != null) {
             currentAuth.addAuthStateListener { firebaseAuth ->
                 val user = firebaseAuth.currentUser
-                if (user == null) {
+                if (user == null || user.isAnonymous) {
                     _syncState.value = SyncStatusState.AUTH_REQUIRED
                     stopRealtimeSync()
                 } else {
@@ -175,8 +180,6 @@ class SyncRepositoryImpl(
             .setBackoffCriteria(backoffPolicy, backoffDelay, java.util.concurrent.TimeUnit.SECONDS)
             .build()
 
-        _syncState.value = SyncStatusState.SYNCING
-
         try {
             WorkManager.getInstance(context).enqueueUniqueWork(
                 "firebase_local_sync",
@@ -191,7 +194,6 @@ class SyncRepositoryImpl(
     }
 
     override fun triggerSync() {
-        _syncState.value = SyncStatusState.SYNCING
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
@@ -257,12 +259,95 @@ class SyncRepositoryImpl(
         }
     }
 
+    @androidx.annotation.VisibleForTesting
+    internal suspend fun executeRemoteReplaceAllReconciliation(): Boolean {
+        val fbAuth = auth
+        val fbFirestore = firestore
+        if (fbAuth == null || fbFirestore == null) {
+            Log.w("SyncRepository", "Firebase auth or firestore null during remote replace-all reconciliation.")
+            return false
+        }
+        val currentUid = fbAuth.currentUser?.uid
+        if (currentUid.isNullOrEmpty()) {
+            Log.w("SyncRepository", "User UID null during remote replace-all reconciliation.")
+            return false
+        }
+
+        return try {
+            val canonicalAccountIds = accountDao.getAllOneShot(limit = Int.MAX_VALUE).map { it.id }.toSet()
+            val canonicalLedgerIds = ledgerDao.getAllOneShot(limit = Int.MAX_VALUE).map { it.id }.toSet()
+            val canonicalBatchIds = batchDao.getAllOneShot().map { it.id }.toSet()
+
+            val collectionsToReconcile = listOf(
+                Pair("local_accounts", canonicalAccountIds),
+                Pair("local_ledger_entries", canonicalLedgerIds),
+                Pair("import_batches", canonicalBatchIds)
+            )
+
+            val deviceId = prefManager.getDeviceId()
+            val tombstonesToWrite = mutableListOf<Pair<com.google.firebase.firestore.DocumentReference, Map<String, Any?>>>()
+
+            for (coll in collectionsToReconcile) {
+                val collName = coll.first
+                val canonicalIds = coll.second
+
+                val collRef = fbFirestore.collection("users").document(currentUid).collection(collName)
+                val querySnapshot = collRef.get(Source.SERVER).await()
+
+                for (doc in querySnapshot.documents) {
+                    val data = doc.data ?: continue
+                    val docId = doc.id
+                    val deletedAt = RemoteSyncCursor.parseRemoteTimestamp(data["deletedAt"])
+                    val isDeleted = (deletedAt != null && deletedAt > 0L)
+
+                    if (!isDeleted && docId !in canonicalIds) {
+                        val tombstoneMap = mapOf<String, Any?>(
+                            "deletedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+                            "localUpdatedAt" to System.currentTimeMillis(),
+                            "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+                            "schemaVersion" to 1,
+                            "deviceId" to deviceId,
+                            "lastModifiedByDeviceId" to deviceId
+                        )
+                        tombstonesToWrite.add(Pair(doc.reference, tombstoneMap))
+                    }
+                }
+            }
+
+            if (tombstonesToWrite.isNotEmpty()) {
+                val chunks = tombstonesToWrite.chunked(500)
+                for (chunk in chunks) {
+                    val batch = fbFirestore.batch()
+                    for (item in chunk) {
+                        batch.set(item.first, item.second, SetOptions.merge())
+                    }
+                    batch.commit().await()
+                }
+                Log.i("SyncRepository", "Remote replace-all reconciliation wrote ${tombstonesToWrite.size} remote tombstones.")
+            } else {
+                Log.i("SyncRepository", "Remote replace-all reconciliation found zero remote-only active documents.")
+            }
+
+            true
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Log.e("SyncRepository", "Remote replace-all reconciliation failed", e)
+            false
+        }
+    }
+
     private suspend fun executeSyncPassInternal(): Boolean {
         _syncState.value = SyncStatusState.SYNCING
+        _syncProgress.value = SyncProgress(
+            isSyncing = true,
+            phase = SyncPhase.PREPARING,
+            lastCompletedTime = prefManager.getLastSyncTime()
+        )
 
         if (prefManager.getAuthToken().isNullOrEmpty()) {
             Log.w("FirebaseSync", "No active session auth token in PreferenceManager. Sync requires authentication.")
             _syncState.value = SyncStatusState.AUTH_REQUIRED
+            _syncProgress.value = _syncProgress.value.copy(isSyncing = false, phase = SyncPhase.FAILED, lastError = "Auth required")
             return false
         }
 
@@ -270,24 +355,24 @@ class SyncRepositoryImpl(
         val fbFirestore = firestore
         if (fbAuth == null || fbFirestore == null) {
             _syncState.value = SyncStatusState.OFFLINE
+            _syncProgress.value = _syncProgress.value.copy(isSyncing = false, phase = SyncPhase.FAILED, lastError = "Offline")
             return false
         }
         return try {
-            val uid = fbAuth.currentUser?.uid
-            if (uid == null) {
-                // Try to sign in anonymously
-                val anonymousUid = anonymousSignIn()
-                if (anonymousUid == null) {
-                    _syncState.value = SyncStatusState.AUTH_REQUIRED
-                    return false
-                }
+            val currentUser = fbAuth.currentUser
+            if (currentUser == null || currentUser.isAnonymous) {
+                _syncState.value = SyncStatusState.AUTH_REQUIRED
+                _syncProgress.value = _syncProgress.value.copy(isSyncing = false, phase = SyncPhase.FAILED, lastError = "Auth required")
+                return false
             }
 
-            val currentUid = fbAuth.currentUser?.uid ?: return false
+            val currentUid = currentUser.uid
             val syncStartTime = System.currentTimeMillis()
 
-            // Sync user settings (ISP credentials & deposit pass) with Firestore
-            triggerSettingsSync(currentUid, "pull_remote_changes")
+            // Sync user settings (ISP credentials & deposit pass) with Firestore only if local changes exist or baseline missing
+            if (prefManager.hasSettingsLocalMutation() || prefManager.getSettingsLastSyncedTimestamp() == 0L) {
+                triggerSettingsSync(currentUid, "pull_remote_changes")
+            }
 
             // Reset any items stuck in 'syncing' status from a previous interrupted sync run
             OutboxManager.resetSyncingToPending(outboxDao)
@@ -295,14 +380,32 @@ class SyncRepositoryImpl(
             // Critical Maintenance rule: pause sync if global data maintenance (restore/import/signout) is in progress
             if (DataOperationCoordinator.isMaintenanceActive) {
                 Log.w("SyncRepository", "Sync paused because global data maintenance is active.")
+                _syncState.value = SyncStatusState.IDLE
+                _syncProgress.value = _syncProgress.value.copy(isSyncing = false, phase = SyncPhase.IDLE)
                 return false
             }
 
             // Critical Outbox rule: pause sync if an import is running or incomplete (running or failed/resumable)
             if (appDatabase.importBatchDao().getIncompleteCount() > 0) {
                 Log.w("SyncRepository", "Sync paused because import is incomplete.")
+                _syncState.value = SyncStatusState.IDLE
+                _syncProgress.value = _syncProgress.value.copy(isSyncing = false, phase = SyncPhase.IDLE)
                 return false
             }
+
+            // Check for durable Replace-All remote reconciliation pending marker
+            if (metadataDao.get("replace_all_pending_reconciliation") == "true") {
+                val reconciliationSuccess = executeRemoteReplaceAllReconciliation()
+                if (!reconciliationSuccess) {
+                    Log.w("SyncRepository", "Replace-All remote reconciliation failed. Pausing sync until reconciliation succeeds.")
+                    _syncState.value = SyncStatusState.ERROR
+                    _syncProgress.value = _syncProgress.value.copy(isSyncing = false, phase = SyncPhase.FAILED, lastError = "Reconciliation failed")
+                    return false
+                }
+                metadataDao.remove("replace_all_pending_reconciliation")
+            }
+
+            val passGeneration = metadataDao.getGeneration()
 
             // 1. Process local outbox changes and upload to Firestore
             val rawPendingItems = OutboxManager.getPending(outboxDao)
@@ -336,6 +439,19 @@ class SyncRepositoryImpl(
                 deduplicatedItems.add(Pair(item, listOf(item)))
             }
 
+            val totalToUpload = deduplicatedItems.size
+            var processedCount = 0
+            var successCount = 0
+            var failureCount = 0
+
+            _syncProgress.value = SyncProgress(
+                isSyncing = true,
+                phase = if (totalToUpload > 0) SyncPhase.UPLOADING else SyncPhase.DOWNLOADING,
+                processedCount = 0,
+                totalCount = totalToUpload,
+                lastCompletedTime = prefManager.getLastSyncTime()
+            )
+
             val chunkedItems = deduplicatedItems.chunked(500)
 
             for (chunk in chunkedItems) {
@@ -358,6 +474,13 @@ class SyncRepositoryImpl(
                         appDatabase.withTransaction {
                             OutboxManager.markOrphanFailure(outboxDao, allForEntity, orphanReason)
                         }
+                        processedCount++
+                        failureCount++
+                        _syncProgress.value = _syncProgress.value.copy(
+                            processedCount = processedCount,
+                            successCount = successCount,
+                            failureCount = failureCount
+                        )
                         continue
                     }
 
@@ -371,6 +494,13 @@ class SyncRepositoryImpl(
                             val errReason = "Malformed payload error: ${e.message ?: "Invalid JSON"}"
                             OutboxManager.markRetryableFailure(outboxDao, allForEntity, errReason)
                         }
+                        processedCount++
+                        failureCount++
+                        _syncProgress.value = _syncProgress.value.copy(
+                            processedCount = processedCount,
+                            successCount = successCount,
+                            failureCount = failureCount
+                        )
                     }
                 }
 
@@ -389,13 +519,19 @@ class SyncRepositoryImpl(
                             batch.commit().await()
                             batchSucceeded = true
 
-                            // Batch succeeded: acknowledge and read-back for each item
+                            // Batch succeeded: acknowledge for each item
                             for ((item, allForEntity, _) in preparedItems) {
                                 appDatabase.withTransaction {
                                     OutboxManager.markSucceeded(outboxDao, allForEntity.map { it.id })
                                 }
-                                confirmRemoteVersionReadBack(item, currentUid, fbFirestore)
                             }
+                            processedCount += preparedItems.size
+                            successCount += preparedItems.size
+                            _syncProgress.value = _syncProgress.value.copy(
+                                processedCount = processedCount,
+                                successCount = successCount,
+                                failureCount = failureCount
+                            )
                         } catch (e: Exception) {
                             if (e is kotlinx.coroutines.CancellationException) throw e
                             Log.w("FirebaseSync", "Batch push commit failed; falling back to per-item isolation push", e)
@@ -405,26 +541,76 @@ class SyncRepositoryImpl(
                     // Fallback to per-item isolation if batch failed or single item
                     if (!batchSucceeded) {
                         for ((item, allForEntity, dataMap) in preparedItems) {
-                            executeSingleItemPush(item, allForEntity, dataMap, currentUid, fbFirestore)
+                            val itemPushed = executeSingleItemPush(item, allForEntity, dataMap, currentUid, fbFirestore)
+                            processedCount++
+                            if (itemPushed) {
+                                successCount++
+                            } else {
+                                failureCount++
+                            }
+                            _syncProgress.value = _syncProgress.value.copy(
+                                processedCount = processedCount,
+                                successCount = successCount,
+                                failureCount = failureCount
+                            )
                         }
                     }
                 }
             }
 
+            _syncProgress.value = _syncProgress.value.copy(phase = SyncPhase.DOWNLOADING)
+
             // 2. Downward sync (pull remote changes per collection)
             val collectionsToSync = listOf("local_accounts", "local_ledger_entries", "import_batches", "audit_logs")
             for (collName in collectionsToSync) {
                 val initialCursor = getCollectionCursor(collName)
-                val updatedCursor = pullRemoteChanges(currentUid, collName, initialCursor, fbFirestore)
-                if (updatedCursor.lastServerTimestamp > initialCursor.lastServerTimestamp ||
-                    (updatedCursor.lastServerTimestamp == initialCursor.lastServerTimestamp && updatedCursor.lastDocumentId > initialCursor.lastDocumentId)) {
-                    saveCollectionCursor(collName, updatedCursor)
+                val updatedCursor = pullRemoteChanges(currentUid, collName, initialCursor, fbFirestore, passGeneration)
+                if (metadataDao.getGeneration() == passGeneration) {
+                    if (updatedCursor.lastServerTimestamp > initialCursor.lastServerTimestamp ||
+                        (updatedCursor.lastServerTimestamp == initialCursor.lastServerTimestamp && updatedCursor.lastDocumentId > initialCursor.lastDocumentId)) {
+                        saveCollectionCursor(collName, updatedCursor)
+                    }
+                } else {
+                    Log.w("FirebaseSync", "Generation changed during sync pass ($passGeneration -> ${metadataDao.getGeneration()}). Aborting cursor persistence for $collName.")
                 }
             }
 
-            _syncState.value = SyncStatusState.COMPLETE
+            if (metadataDao.getGeneration() != passGeneration) {
+                Log.w("FirebaseSync", "Generation changed during sync pass ($passGeneration -> ${metadataDao.getGeneration()}). Aborting completion timestamp update and marking for retry.")
+                _syncState.value = SyncStatusState.IDLE
+                _syncProgress.value = _syncProgress.value.copy(
+                    isSyncing = false,
+                    phase = SyncPhase.IDLE
+                )
+                return false
+            }
+
+            val finalFailedOutbox = outboxDao.getFailedCount()
+            val finalState = if (failureCount > 0 || finalFailedOutbox > 0) {
+                SyncStatusState.COMPLETE_WITH_ERRORS
+            } else {
+                SyncStatusState.COMPLETE
+            }
+            val completedTime = System.currentTimeMillis()
+            prefManager.saveLastSyncTime(completedTime)
+            metadataDao.put("last_sync_timestamp", completedTime.toString())
+
+            _syncState.value = finalState
+            _syncProgress.value = SyncProgress(
+                isSyncing = false,
+                phase = SyncPhase.COMPLETED,
+                processedCount = processedCount,
+                totalCount = totalToUpload,
+                successCount = successCount,
+                failureCount = failureCount + finalFailedOutbox,
+                lastCompletedTime = completedTime
+            )
             true
-        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            _syncState.value = SyncStatusState.IDLE
+            _syncProgress.value = _syncProgress.value.copy(isSyncing = false, phase = SyncPhase.IDLE)
+            throw e
+        } catch (e: Exception) {
             Log.e("FirebaseSync", "One shot sync error", e)
             val isAuthError = (e as? com.google.firebase.firestore.FirebaseFirestoreException)?.code == com.google.firebase.firestore.FirebaseFirestoreException.Code.PERMISSION_DENIED ||
                     (e.cause as? com.google.firebase.firestore.FirebaseFirestoreException)?.code == com.google.firebase.firestore.FirebaseFirestoreException.Code.PERMISSION_DENIED ||
@@ -439,7 +625,20 @@ class SyncRepositoryImpl(
             } else {
                 _syncState.value = SyncStatusState.ERROR
             }
+            _syncProgress.value = SyncProgress(
+                isSyncing = false,
+                phase = SyncPhase.FAILED,
+                lastCompletedTime = prefManager.getLastSyncTime(),
+                lastError = e.message
+            )
             false
+        } finally {
+            if (_syncState.value == SyncStatusState.SYNCING) {
+                _syncState.value = SyncStatusState.ERROR
+            }
+            if (_syncProgress.value.isSyncing) {
+                _syncProgress.value = _syncProgress.value.copy(isSyncing = false)
+            }
         }
     }
 
@@ -505,14 +704,10 @@ class SyncRepositoryImpl(
         dataMap["schemaVersion"] = 1
         if (item.entityType == "local_accounts" || item.entityType == "accounts") {
             dataMap["isFullSnapshot"] = true
-            // Strip ISP-specific diagnostic/meta fields only.
-            // Keep essential fields for multi-device sync, including nanoIp (Custom IP managed by reseller).
+            // Strip local-only source audit data (rawJson) only.
+            // Preserve stateSource, stateConfidence, snapshotCapturedAt, address, latitude, longitude, nanoIp
+            // to satisfy the mandatory minimal snapshot contract across remote round-trips.
             dataMap.remove("rawJson")
-            dataMap.remove("stateSource")
-            dataMap.remove("stateConfidence")
-            dataMap.remove("address")
-            dataMap.remove("latitude")
-            dataMap.remove("longitude")
         } else if (item.entityType == "local_ledger_entries" || item.entityType == "ledger" || item.entityType == "ledger_entries") {
             // LocalLedgerEntry.rawJson is local-only source/import data and must NOT be uploaded to Cloud Firestore.
             dataMap.remove("rawJson")
@@ -565,8 +760,8 @@ class SyncRepositoryImpl(
         dataMap: Map<String, Any?>,
         currentUid: String,
         fbFirestore: FirebaseFirestore
-    ) {
-        try {
+    ): Boolean {
+        return try {
             val collRef = getCollectionRef(item.entityType, currentUid, fbFirestore)
             if (collRef != null) {
                 val docRef = collRef.document(item.entityId)
@@ -576,7 +771,9 @@ class SyncRepositoryImpl(
                     OutboxManager.markSucceeded(outboxDao, allForEntity.map { it.id })
                 }
 
-                confirmRemoteVersionReadBack(item, currentUid, fbFirestore)
+                true
+            } else {
+                false
             }
         } catch (itemError: Exception) {
             if (itemError is kotlinx.coroutines.CancellationException) throw itemError
@@ -585,6 +782,7 @@ class SyncRepositoryImpl(
                 val errReason = itemError.localizedMessage ?: "Sync error"
                 OutboxManager.markRetryableFailure(outboxDao, allForEntity, errReason)
             }
+            false
         }
     }
 
@@ -687,6 +885,11 @@ class SyncRepositoryImpl(
 
     private fun startRealtimeSync(uid: String) {
         val fbFirestore = firestore ?: return
+        val currentUser = auth?.currentUser
+        if (currentUser == null || currentUser.isAnonymous) {
+            Log.w("FirebaseSync", "Cannot start realtime sync without a valid non-anonymous Firebase session.")
+            return
+        }
 
         syncScope.launch {
             listenersMutex.withLock {
@@ -711,14 +914,17 @@ class SyncRepositoryImpl(
                     val activeCursors = mutableMapOf<String, RemoteSyncCursor>()
 
                     singleFlightMutex.withLock {
+                        val bootstrapGen = metadataDao.getGeneration()
                         for (collName in collectionsToSync) {
                             val initialCursor = getCollectionCursor(collName)
                             var updatedCursor = initialCursor
                             try {
-                                updatedCursor = pullRemoteChanges(uid, collName, initialCursor, fbFirestore)
-                                if (updatedCursor.lastServerTimestamp > initialCursor.lastServerTimestamp ||
-                                    (updatedCursor.lastServerTimestamp == initialCursor.lastServerTimestamp && updatedCursor.lastDocumentId > initialCursor.lastDocumentId)) {
-                                    saveCollectionCursor(collName, updatedCursor)
+                                updatedCursor = pullRemoteChanges(uid, collName, initialCursor, fbFirestore, bootstrapGen)
+                                if (metadataDao.getGeneration() == bootstrapGen) {
+                                    if (updatedCursor.lastServerTimestamp > initialCursor.lastServerTimestamp ||
+                                        (updatedCursor.lastServerTimestamp == initialCursor.lastServerTimestamp && updatedCursor.lastDocumentId > initialCursor.lastDocumentId)) {
+                                        saveCollectionCursor(collName, updatedCursor)
+                                    }
                                 }
                             } catch (e: Exception) {
                                 if (e is kotlinx.coroutines.CancellationException) throw e
@@ -926,7 +1132,7 @@ class SyncRepositoryImpl(
         }
     }
 
-    private fun handleSnapshot(snapshot: QuerySnapshot?, error: Exception?, collName: String, uid: String? = null) {
+    internal fun handleSnapshot(snapshot: QuerySnapshot?, error: Exception?, collName: String, uid: String? = null): kotlinx.coroutines.Job? {
         if (error != null) {
             Log.w("FirebaseSync", "Listen failed for $collName: ${error.message}")
             val code = (error as? com.google.firebase.firestore.FirebaseFirestoreException)?.code
@@ -935,135 +1141,184 @@ class SyncRepositoryImpl(
                 _syncState.value = SyncStatusState.AUTH_REQUIRED
                 stopRealtimeSync()
             }
-            return
+            return null
         }
-        if (snapshot == null || snapshot.isEmpty) return
+        if (snapshot == null || snapshot.isEmpty) return null
 
-        syncScope.launch {
-            DataOperationCoordinator.withOperation(DataOperationMode.REMOTE_APPLY) {
-                snapshotMutex.withLock {
-                    val initialCursor = getCollectionCursor(collName)
-                    var snapshotCursor = initialCursor
+        return syncScope.launch {
+            // 1. Capture snapshot generation at remote operation start (RED-02)
+            val snapshotGen = metadataDao.getGeneration()
 
-                    for (dc in snapshot.documentChanges) {
-                        val doc = dc.document
-                        // 3A: Skip local echoes per document instead of suppressing entire snapshot
-                        if (doc.metadata.hasPendingWrites()) {
-                            Log.d("FirebaseSync", "Skipping local echo for document ${doc.id} in $collName (hasPendingWrites)")
-                            continue
-                        }
-
-                        val data = doc.data
-                        val id = doc.id
-
-                        val deletedAt = RemoteSyncCursor.parseRemoteTimestamp(data["deletedAt"])
+            // 2. Identify missing parent IDs & perform Firestore GET(s) OUTSIDE REMOTE_APPLY (Change 3A)
+            val preFetchedParents = mutableMapOf<String, LocalAccount>()
+            if (collName == "local_ledger_entries") {
+                val missingParentIds = mutableSetOf<String>()
+                for (dc in snapshot.documentChanges) {
+                    val doc = dc.document
+                    if (doc.metadata.hasPendingWrites()) continue
+                    val data = doc.data
+                    val deletedAt = RemoteSyncCursor.parseRemoteTimestamp(data["deletedAt"])
+                    val isDeleted = (deletedAt != null && deletedAt > 0L)
+                    if (!isDeleted) {
                         val remoteUpdatedAt = RemoteSyncCursor.parseRemoteTimestamp(data["updatedAt"])
-                        val isDeleted = (deletedAt != null && deletedAt > 0L)
-                        val effectiveVersion = if (isDeleted) (deletedAt ?: remoteUpdatedAt ?: 0L) else (remoteUpdatedAt ?: 0L)
+                        val remoteLedger = mapToLocalLedgerEntry(doc.id, data, remoteUpdatedAt ?: 0L)
+                        if (remoteLedger != null && accountDao.getByIdOneShot(remoteLedger.accountId) == null) {
+                            missingParentIds.add(remoteLedger.accountId)
+                        }
+                    }
+                }
 
-                        // Pre-fetch missing parent account from network OUTSIDE database transaction block
-                        var preFetchedParentAccount: LocalAccount? = null
-                        if (collName == "local_ledger_entries" && !isDeleted) {
-                            val remoteLedger = mapToLocalLedgerEntry(id, data, remoteUpdatedAt ?: 0L)
-                            if (remoteLedger != null && accountDao.getByIdOneShot(remoteLedger.accountId) == null && uid != null && firestore != null) {
-                                try {
-                                    val parentDoc = firestore?.collection("users")?.document(uid)?.collection("local_accounts")?.document(remoteLedger.accountId)?.get(Source.SERVER)?.await()
-                                    if (parentDoc != null && parentDoc.exists() && !parentDoc.metadata.hasPendingWrites() && !parentDoc.metadata.isFromCache) {
-                                        val parentData = parentDoc.data
-                                        if (parentData != null) {
-                                            val parentDeletedAt = RemoteSyncCursor.parseRemoteTimestamp(parentData["deletedAt"])
-                                            if (parentDeletedAt == null || parentDeletedAt <= 0L) {
-                                                val parentUpdatedAt = RemoteSyncCursor.parseRemoteTimestamp(parentData["updatedAt"]) ?: 0L
-                                                preFetchedParentAccount = mapToLocalAccount(remoteLedger.accountId, parentData, parentUpdatedAt)
-                                            } else {
-                                                Log.w("FirebaseSync", "Parent account ${remoteLedger.accountId} was deleted remotely. Skipping zombie resurrection.")
-                                            }
+                if (missingParentIds.isNotEmpty() && uid != null && firestore != null) {
+                    for (parentId in missingParentIds) {
+                        try {
+                            val parentDoc = firestore?.collection("users")?.document(uid)?.collection("local_accounts")?.document(parentId)?.get(com.google.firebase.firestore.Source.SERVER)?.await()
+                            if (parentDoc != null && parentDoc.exists() && !parentDoc.metadata.hasPendingWrites() && !parentDoc.metadata.isFromCache) {
+                                val parentData = parentDoc.data
+                                if (parentData != null) {
+                                    val parentDeletedAt = RemoteSyncCursor.parseRemoteTimestamp(parentData["deletedAt"])
+                                    if (parentDeletedAt == null || parentDeletedAt <= 0L) {
+                                        val parentUpdatedAt = RemoteSyncCursor.parseRemoteTimestamp(parentData["updatedAt"]) ?: 0L
+                                        val parentAccount = mapToLocalAccount(parentId, parentData, parentUpdatedAt)
+                                        if (parentAccount != null) {
+                                            preFetchedParents[parentId] = parentAccount
                                         }
+                                    } else {
+                                        Log.w("FirebaseSync", "Parent account $parentId was deleted remotely. Skipping zombie resurrection.")
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            if (e is kotlinx.coroutines.CancellationException) throw e
+                            Log.w("FirebaseSync", "Could not fetch parent account $parentId from Firestore on demand", e)
+                        }
+                    }
+                }
+            }
+
+            // 3. Chunked REMOTE_APPLY (Change 3B: chunk size 50)
+            val initialCursor = getCollectionCursor(collName)
+            var snapshotCursor = initialCursor
+            var shouldHalt = false
+
+            val chunks = snapshot.documentChanges.chunked(50)
+            for (chunk in chunks) {
+                if (shouldHalt) break
+
+                DataOperationCoordinator.withOperation(DataOperationMode.REMOTE_APPLY) {
+                    snapshotMutex.withLock {
+                        for (dc in chunk) {
+                            val doc = dc.document
+                            // 3A: Skip local echoes per document instead of suppressing entire snapshot
+                            if (doc.metadata.hasPendingWrites()) {
+                                Log.d("FirebaseSync", "Skipping local echo for document ${doc.id} in $collName (hasPendingWrites)")
+                                continue
+                            }
+
+                            val data = doc.data
+                            val id = doc.id
+
+                            val deletedAt = RemoteSyncCursor.parseRemoteTimestamp(data["deletedAt"])
+                            val remoteUpdatedAt = RemoteSyncCursor.parseRemoteTimestamp(data["updatedAt"])
+                            val isDeleted = (deletedAt != null && deletedAt > 0L)
+                            val effectiveVersion = if (isDeleted) (deletedAt ?: remoteUpdatedAt ?: 0L) else (remoteUpdatedAt ?: 0L)
+
+                            // Re-use pre-fetched parent account candidate
+                            var preFetchedParentAccount: LocalAccount? = null
+                            if (collName == "local_ledger_entries" && !isDeleted) {
+                                val remoteLedger = mapToLocalLedgerEntry(id, data, remoteUpdatedAt ?: 0L)
+                                if (remoteLedger != null) {
+                                    preFetchedParentAccount = preFetchedParents[remoteLedger.accountId]
+                                }
+                            }
+
+                            var syncResult: EventSyncResult
+                            if (effectiveVersion <= 0L) {
+                                val quarantineAudit = AuditLog(
+                                    action = "MALFORMED_REMOTE_EVENT",
+                                    entityType = collName,
+                                    entityId = id,
+                                    summary = "Blocked cursor on realtime event with missing/invalid remoteVersion ($effectiveVersion) in $collName (docId: $id)",
+                                    createdAt = System.currentTimeMillis(),
+                                    severity = "WARNING",
+                                    origin = AuditOrigin.SYSTEM_ACTION.name
+                                )
+                                auditDao.insert(quarantineAudit)
+                                syncResult = EventSyncResult.BLOCKED_INVALID_VERSION
+                            } else {
+                                val event = mapToRemoteEvent(
+                                    collName = collName,
+                                    id = id,
+                                    data = data,
+                                    source = RemoteEventSource.REALTIME,
+                                    dcType = dc.type,
+                                    preFetchedParentAccount = preFetchedParentAccount
+                                )
+
+                                try {
+                                    if (event != null) {
+                                        syncResult = remoteSyncCoordinator.processEvent(event, passedCapturedGen = snapshotGen)
+                                    } else if (collName == "audit_logs") {
+                                        val remoteAudit = mapToAuditLog(id, data)
+                                        auditDao.insert(remoteAudit)
+                                        syncResult = EventSyncResult.APPLIED
+                                    } else {
+                                        val quarantineAudit = AuditLog(
+                                            action = "MALFORMED_REMOTE_EVENT",
+                                            entityType = collName,
+                                            entityId = id,
+                                            summary = "Quarantined malformed realtime event with valid version ($effectiveVersion) in $collName (docId: $id)",
+                                            createdAt = effectiveVersion,
+                                            severity = "WARNING",
+                                            origin = AuditOrigin.SYSTEM_ACTION.name
+                                        )
+                                        auditDao.insert(quarantineAudit)
+                                        syncResult = EventSyncResult.QUARANTINED_MALFORMED
                                     }
                                 } catch (e: Exception) {
                                     if (e is kotlinx.coroutines.CancellationException) throw e
-                                    Log.w("FirebaseSync", "Could not fetch parent account ${remoteLedger.accountId} from Firestore on demand", e)
+                                    Log.e("FirebaseSync", "Constraint/DB exception handling realtime event $id in $collName", e)
+                                    try {
+                                        val constraintAudit = AuditLog(
+                                            action = "REMOTE_CONSTRAINT_CONFLICT",
+                                            entityType = collName,
+                                            entityId = id,
+                                            summary = "Halted cursor on realtime event due to DB conflict: ${e.message}",
+                                            createdAt = effectiveVersion,
+                                            severity = "ERROR",
+                                            origin = AuditOrigin.SYSTEM_ACTION.name
+                                        )
+                                        auditDao.insert(constraintAudit)
+                                    } catch (_: Exception) {}
+                                    syncResult = EventSyncResult.FAILED_RETRYABLE
                                 }
                             }
-                        }
 
-                        var syncResult: EventSyncResult
-                        if (effectiveVersion <= 0L) {
-                            val quarantineAudit = AuditLog(
-                                action = "MALFORMED_REMOTE_EVENT",
-                                entityType = collName,
-                                entityId = id,
-                                summary = "Blocked cursor on realtime event with missing/invalid remoteVersion ($effectiveVersion) in $collName (docId: $id)",
-                                createdAt = System.currentTimeMillis(),
-                                severity = "WARNING",
-                                origin = AuditOrigin.SYSTEM_ACTION.name
-                            )
-                            auditDao.insert(quarantineAudit)
-                            syncResult = EventSyncResult.BLOCKED_INVALID_VERSION
-                        } else {
-                            val event = mapToRemoteEvent(
-                                collName = collName,
-                                id = id,
-                                data = data,
-                                source = RemoteEventSource.REALTIME,
-                                dcType = dc.type,
-                                preFetchedParentAccount = preFetchedParentAccount
-                            )
-
-                            try {
-                                if (event != null) {
-                                    syncResult = remoteSyncCoordinator.processEvent(event)
-                                } else if (collName == "audit_logs") {
-                                    val remoteAudit = mapToAuditLog(id, data)
-                                    auditDao.insert(remoteAudit)
-                                    syncResult = EventSyncResult.APPLIED
-                                } else {
-                                    val quarantineAudit = AuditLog(
-                                        action = "MALFORMED_REMOTE_EVENT",
-                                        entityType = collName,
-                                        entityId = id,
-                                        summary = "Quarantined malformed realtime event with valid version ($effectiveVersion) in $collName (docId: $id)",
-                                        createdAt = effectiveVersion,
-                                        severity = "WARNING",
-                                        origin = AuditOrigin.SYSTEM_ACTION.name
-                                    )
-                                    auditDao.insert(quarantineAudit)
-                                    syncResult = EventSyncResult.QUARANTINED_MALFORMED
+                            if (syncResult.canAdvanceCursor()) {
+                                if (effectiveVersion > 0L) {
+                                    snapshotCursor = snapshotCursor.advanceTo(effectiveVersion, id)
                                 }
-                            } catch (e: Exception) {
-                                if (e is kotlinx.coroutines.CancellationException) throw e
-                                Log.e("FirebaseSync", "Constraint/DB exception handling realtime event $id in $collName", e)
-                                try {
-                                    val constraintAudit = AuditLog(
-                                        action = "REMOTE_CONSTRAINT_CONFLICT",
-                                        entityType = collName,
-                                        entityId = id,
-                                        summary = "Halted cursor on realtime event due to DB conflict: ${e.message}",
-                                        createdAt = effectiveVersion,
-                                        severity = "ERROR",
-                                        origin = AuditOrigin.SYSTEM_ACTION.name
-                                    )
-                                    auditDao.insert(constraintAudit)
-                                } catch (_: Exception) {}
-                                syncResult = EventSyncResult.FAILED_RETRYABLE
+                            } else {
+                                Log.w("FirebaseSync", "Failed or blocked processing realtime event $id in collection $collName ($syncResult). Halting snapshot cursor advancement.")
+                                shouldHalt = true
+                                break
                             }
                         }
 
-                        if (syncResult.canAdvanceCursor()) {
-                            if (effectiveVersion > 0L) {
-                                snapshotCursor = snapshotCursor.advanceTo(effectiveVersion, id)
+                        // Save cursor progress for this chunk if generation has not advanced
+                        if (metadataDao.getGeneration() == snapshotGen) {
+                            if (snapshotCursor.lastServerTimestamp > initialCursor.lastServerTimestamp ||
+                                (snapshotCursor.lastServerTimestamp == initialCursor.lastServerTimestamp && snapshotCursor.lastDocumentId > initialCursor.lastDocumentId)) {
+                                saveCollectionCursor(collName, snapshotCursor)
                             }
-                        } else {
-                            Log.w("FirebaseSync", "Failed or blocked processing realtime event $id in collection $collName ($syncResult). Halting snapshot cursor advancement.")
-                            break
                         }
-                    }
-
-                    if (snapshotCursor.lastServerTimestamp > initialCursor.lastServerTimestamp ||
-                        (snapshotCursor.lastServerTimestamp == initialCursor.lastServerTimestamp && snapshotCursor.lastDocumentId > initialCursor.lastDocumentId)) {
-                        saveCollectionCursor(collName, snapshotCursor)
                     }
                 }
+
+                if (shouldHalt) {
+                    break
+                }
+
+                kotlinx.coroutines.yield()
             }
         }
     }
@@ -1072,8 +1327,10 @@ class SyncRepositoryImpl(
         uid: String,
         collName: String,
         currentCursor: RemoteSyncCursor,
-        fbFirestore: FirebaseFirestore
+        fbFirestore: FirebaseFirestore,
+        passGeneration: Long? = null
     ): RemoteSyncCursor {
+        val capturedPassGen = passGeneration ?: metadataDao.getGeneration()
         var lastDoc: com.google.firebase.firestore.DocumentSnapshot? = null
         var hasMore = true
         var updatedCursor = currentCursor
@@ -1164,7 +1421,7 @@ class SyncRepositoryImpl(
 
                     try {
                         if (event != null) {
-                            syncResult = remoteSyncCoordinator.processEvent(event)
+                            syncResult = remoteSyncCoordinator.processEvent(event, passedCapturedGen = capturedPassGen)
                         } else if (collName == "audit_logs") {
                             val remoteAudit = mapToAuditLog(id, data)
                             auditDao.insert(remoteAudit)
@@ -1340,6 +1597,8 @@ class SyncRepositoryImpl(
     }
 
     override fun triggerSettingsSync(uid: String?, reason: String) {
+        val currentUser = auth?.currentUser
+        if (currentUser == null || currentUser.isAnonymous) return
         syncScope.launch {
             try {
                 Log.d("FirebaseSync", "Settings sync triggered: reason=$reason")
@@ -1352,7 +1611,9 @@ class SyncRepositoryImpl(
     }
 
     internal suspend fun syncUserSettings(uid: String? = null): Boolean {
-        val targetUid = uid ?: auth?.currentUser?.uid ?: return false
+        val currentUser = auth?.currentUser
+        if (currentUser == null || currentUser.isAnonymous) return false
+        val targetUid = uid ?: currentUser.uid
         val fbFirestore = firestore ?: return false
         return settingsSyncMutex.withLock {
             try {

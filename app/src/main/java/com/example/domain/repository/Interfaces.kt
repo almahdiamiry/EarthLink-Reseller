@@ -137,6 +137,8 @@ enum class SyncReason {
 
 interface SyncRepository {
     val syncState: kotlinx.coroutines.flow.StateFlow<SyncStatusState>
+    val syncProgress: kotlinx.coroutines.flow.StateFlow<SyncProgress>
+        get() = kotlinx.coroutines.flow.MutableStateFlow(SyncProgress())
     fun triggerSync()
     fun setupPeriodicSync()
     suspend fun triggerSyncOneShot(): Boolean
@@ -152,8 +154,23 @@ interface SyncRepository {
     suspend fun signOut(force: Boolean = false, clearData: Boolean = true)
 }
 
+data class SyncProgress(
+    val isSyncing: Boolean = false,
+    val phase: SyncPhase = SyncPhase.IDLE,
+    val processedCount: Int = 0,
+    val totalCount: Int = 0,
+    val successCount: Int = 0,
+    val failureCount: Int = 0,
+    val lastCompletedTime: Long = 0L,
+    val lastError: String? = null
+)
+
+enum class SyncPhase {
+    IDLE, PREPARING, UPLOADING, DOWNLOADING, COMPLETED, FAILED
+}
+
 enum class SyncStatusState {
-    IDLE, SYNCING, OFFLINE, ERROR, AUTH_REQUIRED, COMPLETE
+    IDLE, SYNCING, OFFLINE, ERROR, AUTH_REQUIRED, COMPLETE, COMPLETE_WITH_ERRORS
 }
 
 interface AuditRepository {

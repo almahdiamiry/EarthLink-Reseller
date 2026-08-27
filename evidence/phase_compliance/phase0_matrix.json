@@ -12,7 +12,7 @@
       "adversarial_fixture_location": "scripts/test_meta_gate_fixtures.py",
       "registry_location": "contract/invariant_contract.yaml",
       "evidence_reference": "evidence/baseline_manifest.json",
-      "source_identity": "3a683b2805748676f267a62863c04909e894bb3b",
+      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
       "status": "PASS",
       "failure_reason": null
     },
@@ -27,7 +27,7 @@
       "adversarial_fixture_location": "scripts/test_meta_gate_fixtures.py",
       "registry_location": "contract/forbidden_patterns.yaml",
       "evidence_reference": "AGENTS.md",
-      "source_identity": "3a683b2805748676f267a62863c04909e894bb3b",
+      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
       "status": "PASS",
       "failure_reason": null
     },
@@ -42,7 +42,7 @@
       "adversarial_fixture_location": "scripts/test_verified_runner_fixtures.py",
       "registry_location": null,
       "evidence_reference": "scripts/test_verified_runner_fixtures.py",
-      "source_identity": "3a683b2805748676f267a62863c04909e894bb3b",
+      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
       "status": "PASS",
       "failure_reason": null
     },
@@ -57,7 +57,7 @@
       "adversarial_fixture_location": null,
       "registry_location": null,
       "evidence_reference": "docs/authority/G1-G8 Consolidated Architecture Summary.md",
-      "source_identity": "3a683b2805748676f267a62863c04909e894bb3b",
+      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
       "status": "PASS",
       "failure_reason": null
     },
@@ -72,7 +72,7 @@
       "adversarial_fixture_location": "scripts/test_meta_gate_fixtures.py",
       "registry_location": "contract/test_environment_matrix.yaml",
       "evidence_reference": "evidence/baseline_test_manifest.json",
-      "source_identity": "3a683b2805748676f267a62863c04909e894bb3b",
+      "source_identity": "ba1761ffa8b0cb62fb744e03aef429175831af7a",
       "status": "PASS",
       "failure_reason": null
     }

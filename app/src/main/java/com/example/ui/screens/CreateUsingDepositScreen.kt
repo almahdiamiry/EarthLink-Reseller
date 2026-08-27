@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -84,62 +85,28 @@ fun CreateUsingDepositScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF0B0F14))
+                .background(Color(0xFF090D12))
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 18.dp),
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Header Banner Card
-                Surface(
-                    shape = RoundedCornerShape(24.dp),
-                    color = Color(0xFF11161F),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(50.dp)
-                                .background(Color(0xFF30D158).copy(alpha = 0.15f), shape = RoundedCornerShape(16.dp))
-                                .border(1.dp, Color(0xFF30D158).copy(alpha = 0.3f), shape = RoundedCornerShape(16.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.VerifiedUser,
-                                contentDescription = null,
-                                tint = Color(0xFF30D158),
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
-                        ) {
-                            Text(
-                                text = if (isAr) "إنشاء مشترك دائم بالرصيد" else "Issue Paid Subscriber",
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                            Text(
-                                text = if (isAr) "تفعيل باقة واشتراك شهري رسمي يخصم سعر الفئة من رصيد الصندوق" else "Activate permanent paid plan. Deducts the tier fee directly from deposit.",
-                                fontSize = 12.sp,
-                                color = Color.White.copy(alpha = 0.55f),
-                                lineHeight = 16.sp
-                            )
-                        }
-                    }
+                // Header Title
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = if (isAr) "إنشاء مشترك دائم بالرصيد" else "Issue Paid Subscriber",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = if (isAr) "تفعيل باقة واشتراك شهري رسمي مع خصم القيمة من الصندوق" else "Official monthly plan activation deducting fee from deposit",
+                        fontSize = 12.sp,
+                        color = Color(0xFF8E8E93)
+                    )
                 }
 
                 // Error / Success Feedback Banners
@@ -149,25 +116,25 @@ fun CreateUsingDepositScreen(
                     exit = fadeOut()
                 ) {
                     Surface(
-                        color = Color(0xFFEF4444).copy(alpha = 0.12f),
-                        border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.3f)),
-                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFFFF453A).copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, Color(0xFFFF453A).copy(alpha = 0.3f)),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
-                            modifier = Modifier.padding(14.dp),
+                            modifier = Modifier.padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ErrorOutline,
                                 contentDescription = null,
-                                tint = Color(0xFFFCA5A5),
-                                modifier = Modifier.size(20.dp)
+                                tint = Color(0xFFFF453A),
+                                modifier = Modifier.size(18.dp)
                             )
                             Text(
                                 text = error ?: "",
-                                color = Color(0xFFFCA5A5),
+                                color = Color(0xFFFF453A),
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium
                             )
@@ -183,11 +150,11 @@ fun CreateUsingDepositScreen(
                     Surface(
                         color = Color(0xFF30D158).copy(alpha = 0.12f),
                         border = BorderStroke(1.dp, Color(0xFF30D158).copy(alpha = 0.3f)),
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
-                            modifier = Modifier.padding(14.dp),
+                            modifier = Modifier.padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
@@ -195,7 +162,7 @@ fun CreateUsingDepositScreen(
                                 imageVector = Icons.Default.CheckCircle,
                                 contentDescription = null,
                                 tint = Color(0xFF30D158),
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                             Text(
                                 text = success ?: "",
@@ -207,23 +174,23 @@ fun CreateUsingDepositScreen(
                     }
                 }
 
-                // Card 1: Subscriber Profile Info
+                // Section 1: Subscriber Profile Info
                 Surface(
-                    shape = RoundedCornerShape(24.dp),
-                    color = Color(0xFF11161F),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFF141922),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Text(
-                            text = if (isAr) "بيانات المشترك الجديد" else "New Subscriber Information",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
+                            text = if (isAr) "بيانات المشترك" else "Subscriber Information",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
                             color = Color.White
                         )
 
@@ -233,21 +200,21 @@ fun CreateUsingDepositScreen(
                             onValueChange = { userId = it },
                             label = { Text(if (isAr) "اسم المستخدم (UserID)" else "Username (UserID)") },
                             leadingIcon = {
-                                Icon(imageVector = Icons.Outlined.Person, contentDescription = null, tint = Color(0xFF38BDF8))
+                                Icon(imageVector = Icons.Outlined.Person, contentDescription = null, tint = Color(0xFF8E8E93), modifier = Modifier.size(18.dp))
                             },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(12.dp),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color(0xFF171E29),
-                                unfocusedContainerColor = Color(0xFF171E29),
-                                focusedBorderColor = Color(0xFF0288D1),
-                                unfocusedBorderColor = Color.White.copy(alpha = 0.1f),
-                                focusedLabelColor = Color(0xFF38BDF8),
-                                unfocusedLabelColor = Color.White.copy(alpha = 0.55f),
+                                focusedContainerColor = Color(0xFF0E131B),
+                                unfocusedContainerColor = Color(0xFF0E131B),
+                                focusedBorderColor = Color(0xFF0A84FF),
+                                unfocusedBorderColor = Color.White.copy(alpha = 0.08f),
+                                focusedLabelColor = Color(0xFF0A84FF),
+                                unfocusedLabelColor = Color(0xFF8E8E93),
                                 focusedTextColor = Color.White,
                                 unfocusedTextColor = Color.White,
-                                cursorColor = Color(0xFF38BDF8)
+                                cursorColor = Color(0xFF0A84FF)
                             ),
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -256,23 +223,23 @@ fun CreateUsingDepositScreen(
                         OutlinedTextField(
                             value = name,
                             onValueChange = { name = it },
-                            label = { Text(if (isAr) "الاسم الكامل للعميل" else "Customer Full Name") },
+                            label = { Text(if (isAr) "الاسم الكامل" else "Full Name") },
                             leadingIcon = {
-                                Icon(imageVector = Icons.Outlined.Badge, contentDescription = null, tint = Color(0xFF38BDF8))
+                                Icon(imageVector = Icons.Outlined.Badge, contentDescription = null, tint = Color(0xFF8E8E93), modifier = Modifier.size(18.dp))
                             },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(12.dp),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color(0xFF171E29),
-                                unfocusedContainerColor = Color(0xFF171E29),
-                                focusedBorderColor = Color(0xFF0288D1),
-                                unfocusedBorderColor = Color.White.copy(alpha = 0.1f),
-                                focusedLabelColor = Color(0xFF38BDF8),
-                                unfocusedLabelColor = Color.White.copy(alpha = 0.55f),
+                                focusedContainerColor = Color(0xFF0E131B),
+                                unfocusedContainerColor = Color(0xFF0E131B),
+                                focusedBorderColor = Color(0xFF0A84FF),
+                                unfocusedBorderColor = Color.White.copy(alpha = 0.08f),
+                                focusedLabelColor = Color(0xFF0A84FF),
+                                unfocusedLabelColor = Color(0xFF8E8E93),
                                 focusedTextColor = Color.White,
                                 unfocusedTextColor = Color.White,
-                                cursorColor = Color(0xFF38BDF8)
+                                cursorColor = Color(0xFF0A84FF)
                             ),
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -281,74 +248,77 @@ fun CreateUsingDepositScreen(
                         OutlinedTextField(
                             value = phone,
                             onValueChange = { phone = it },
-                            label = { Text(if (isAr) "رقم هاتف العميل" else "Customer Phone Number") },
+                            label = { Text(if (isAr) "رقم الهاتف" else "Phone Number") },
                             leadingIcon = {
-                                Icon(imageVector = Icons.Outlined.Phone, contentDescription = null, tint = Color(0xFF38BDF8))
+                                Icon(imageVector = Icons.Outlined.Phone, contentDescription = null, tint = Color(0xFF8E8E93), modifier = Modifier.size(18.dp))
                             },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Done),
-                            shape = RoundedCornerShape(16.dp),
+                            keyboardActions = KeyboardActions(onDone = {
+                                focusManager.clearFocus(force = true)
+                            }),
+                            shape = RoundedCornerShape(12.dp),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color(0xFF171E29),
-                                unfocusedContainerColor = Color(0xFF171E29),
-                                focusedBorderColor = Color(0xFF0288D1),
-                                unfocusedBorderColor = Color.White.copy(alpha = 0.1f),
-                                focusedLabelColor = Color(0xFF38BDF8),
-                                unfocusedLabelColor = Color.White.copy(alpha = 0.55f),
+                                focusedContainerColor = Color(0xFF0E131B),
+                                unfocusedContainerColor = Color(0xFF0E131B),
+                                focusedBorderColor = Color(0xFF0A84FF),
+                                unfocusedBorderColor = Color.White.copy(alpha = 0.08f),
+                                focusedLabelColor = Color(0xFF0A84FF),
+                                unfocusedLabelColor = Color(0xFF8E8E93),
                                 focusedTextColor = Color.White,
                                 unfocusedTextColor = Color.White,
-                                cursorColor = Color(0xFF38BDF8)
+                                cursorColor = Color(0xFF0A84FF)
                             ),
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
                 }
 
-                // Card 2: Package Selection & Cost preview
+                // Section 2: Package Selection & Cost preview
                 Surface(
-                    shape = RoundedCornerShape(24.dp),
-                    color = Color(0xFF11161F),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFF141922),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Text(
-                            text = if (isAr) "اختيار باقة الاشتراك" else "Select Subscription Plan",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
+                            text = if (isAr) "باقة الاشتراك" else "Subscription Package",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
                             color = Color.White
                         )
 
                         if (pkgs.isEmpty()) {
                             Text(
-                                text = if (isAr) "جاري تحميل الباقات المتاحة..." else "Loading available packages...",
-                                fontSize = 13.sp,
-                                color = Color.White.copy(alpha = 0.5f)
+                                text = if (isAr) "جاري تحميل الباقات المتاحة..." else "Loading packages...",
+                                fontSize = 12.sp,
+                                color = Color(0xFF8E8E93)
                             )
                         } else {
                             pkgs.forEach { pkg ->
                                 val isSel = selectedPkgIndex == pkg.accountIndex
                                 Surface(
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = if (isSel) Color(0xFF0288D1).copy(alpha = 0.16f) else Color(0xFF171E29),
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSel) Color(0xFF0A84FF).copy(alpha = 0.12f) else Color(0xFF0E131B),
                                     border = BorderStroke(
                                         1.dp,
-                                        if (isSel) Color(0xFF0288D1) else Color.White.copy(alpha = 0.06f)
+                                        if (isSel) Color(0xFF0A84FF) else Color.White.copy(alpha = 0.06f)
                                     ),
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(16.dp))
+                                        .clip(RoundedCornerShape(12.dp))
                                         .clickable { selectedPkgIndex = pkg.accountIndex }
                                 ) {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                                            .padding(horizontal = 14.dp, vertical = 12.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
@@ -360,7 +330,7 @@ fun CreateUsingDepositScreen(
                                                 selected = isSel,
                                                 onClick = null,
                                                 colors = RadioButtonDefaults.colors(
-                                                    selectedColor = Color(0xFF38BDF8),
+                                                    selectedColor = Color(0xFF0A84FF),
                                                     unselectedColor = Color.White.copy(alpha = 0.3f)
                                                 )
                                             )
@@ -368,14 +338,14 @@ fun CreateUsingDepositScreen(
                                                 text = pkg.accountName,
                                                 fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
                                                 fontSize = 14.sp,
-                                                color = if (isSel) Color.White else Color.White.copy(alpha = 0.8f)
+                                                color = if (isSel) Color.White else Color.White.copy(alpha = 0.85f)
                                             )
                                         }
 
                                         if (pkg.price != null && pkg.price > 0.0) {
                                             Text(
                                                 text = formatIqd(pkg.price),
-                                                color = Color(0xFF38BDF8),
+                                                color = Color(0xFF0A84FF),
                                                 fontWeight = FontWeight.Bold,
                                                 fontSize = 13.sp
                                             )
@@ -385,32 +355,32 @@ fun CreateUsingDepositScreen(
                             }
                         }
 
-                        // Cost Estimation Card
+                        // Cost Estimation
                         if (costPreview != null && selectedPkgIndex != -1) {
                             Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = Color(0xFF0288D1).copy(alpha = 0.12f),
-                                border = BorderStroke(1.dp, Color(0xFF0288D1).copy(alpha = 0.3f)),
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFF0A84FF).copy(alpha = 0.08f),
+                                border = BorderStroke(1.dp, Color(0xFF0A84FF).copy(alpha = 0.25f)),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = if (isAr) "تكلفة التفعيل من الرصيد:" else "Deduction from Deposit:",
-                                        fontSize = 13.sp,
+                                        text = if (isAr) "تكلفة التفعيل من الصندوق:" else "Deduction from Deposit:",
+                                        fontSize = 12.sp,
                                         color = Color.White.copy(alpha = 0.8f),
                                         fontWeight = FontWeight.Medium
                                     )
                                     Text(
                                         text = formatIqd(costPreview!!),
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = Color(0xFF38BDF8)
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF0A84FF)
                                     )
                                 }
                             }
@@ -429,22 +399,22 @@ fun CreateUsingDepositScreen(
                         containerColor = Color(0xFF30D158),
                         disabledContainerColor = Color(0xFF30D158).copy(alpha = 0.35f)
                     ),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp)
+                        .height(50.dp)
                 ) {
                     if (isActionLoading) {
                         CircularProgressIndicator(
                             color = Color.White,
-                            modifier = Modifier.size(22.dp),
-                            strokeWidth = 2.5.dp
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (isAr) "جاري تفعيل الاشتراك الدائم..." else "Issuing paid subscriber...",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
+                            text = if (isAr) "جاري تفعيل المشترك..." else "Issuing paid subscriber...",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
                             color = Color.White
                         )
                     } else {
@@ -452,11 +422,11 @@ fun CreateUsingDepositScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(imageVector = Icons.Default.VerifiedUser, contentDescription = null, modifier = Modifier.size(20.dp))
+                            Icon(imageVector = Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(18.dp))
                             Text(
-                                text = if (isAr) "تفعيل المشترك بالرصيد الآن" else "Issue Paid Subscriber Now",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp,
+                                text = if (isAr) "تفعيل المشترك بالرصيد" else "Issue Paid Subscriber",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
                                 color = Color.White
                             )
                         }
