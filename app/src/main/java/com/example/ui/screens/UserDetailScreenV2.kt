@@ -1516,31 +1516,35 @@ fun UserDetailScreenV2(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     val noteNonNull = entry.note ?: ""
-                                    val isRenew = noteNonNull.startsWith("[RENEW]")
-                                    val isRenewPay = noteNonNull.startsWith("[RENEW_PAY]")
+                                    val isLegacyRenew = noteNonNull.startsWith("[RENEW]")
+                                    val isLegacyRenewPay = noteNonNull.startsWith("[RENEW_PAY]")
                                     val isDebt = noteNonNull.startsWith("[DEBT]")
                                     val isDeposit = noteNonNull.startsWith("[DEPOSIT]")
                                     val isPayment = noteNonNull.startsWith("[PAYMENT]")
 
-                                    val isChargeIdRenew = entry.id.startsWith("charge_") || entry.id.startsWith("tx_") || (entry.sourceExternalId != null && (entry.sourceExternalId.startsWith("charge_") || entry.sourceExternalId.startsWith("tx_")))
+                                    val isChargeIdRenew = entry.id.startsWith("charge_") || (entry.sourceExternalId != null && entry.sourceExternalId.startsWith("charge_"))
                                     val isPayIdRenew = entry.id.startsWith("pay_") || (entry.sourceExternalId != null && entry.sourceExternalId.startsWith("pay_"))
+                                    val isExplicitRenewalType = entry.typeRaw.lowercase() in com.example.core.ledger.TransactionTypeNormalizer.RENEWAL_TYPES
+
+                                    val isRenewPay = isLegacyRenewPay || isPayIdRenew || entry.typeRaw.equals("renewal_payment", ignoreCase = true)
+                                    val isRenew = isLegacyRenew || isChargeIdRenew || isExplicitRenewalType
 
                                     val resolvedType = when {
-                                        isRenewPay || isPayIdRenew -> "renew_pay"
-                                        isRenew || isChargeIdRenew -> "renew"
+                                        isRenewPay -> "renew_pay"
+                                        isRenew -> "renew"
                                         isDebt -> "debt"
                                         isDeposit -> "deposit"
                                         isPayment -> "payment"
                                         else -> {
-                                            if (entry.typeRaw == "took" || entry.typeRaw == "debt" || entry.typeRaw == "debt_added") {
-                                                if (noteNonNull.contains("تجديد") || noteNonNull.contains("اشتراك") || noteNonNull.contains("Renew")) "renew"
-                                                else "debt"
-                                            } else if (entry.typeRaw == "add" || entry.typeRaw == "renewal") {
-                                                "renew"
-                                            } else { // "gave", "payment", "pay", etc.
-                                                if (noteNonNull.contains("تجديد") || noteNonNull.contains("واصل")) "renew_pay"
-                                                else if (noteNonNull.contains("إيداع") || noteNonNull.contains("ايداع") || noteNonNull.contains("Deposit") || noteNonNull.contains("deposit")) "deposit"
-                                                else "payment"
+                                            val normType = com.example.core.ledger.TransactionTypeNormalizer.normalizeTransactionType(entry.typeRaw)
+                                            when (normType) {
+                                                "renewal" -> "renew"
+                                                "took" -> "debt"
+                                                "gave" -> {
+                                                    if (noteNonNull.contains("إيداع") || noteNonNull.contains("ايداع") || noteNonNull.contains("Deposit") || noteNonNull.contains("deposit")) "deposit"
+                                                    else "payment"
+                                                }
+                                                else -> "payment"
                                             }
                                         }
                                     }

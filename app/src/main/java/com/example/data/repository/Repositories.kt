@@ -1320,7 +1320,7 @@ class LocalLedgerRepositoryImpl(
                         }
                     }
 
-                    val defaultNote = if (op.operationType.equals("ACTIVATION", ignoreCase = true)) "[VERIFIED ACTIVATION]" else "[VERIFIED RENEW]"
+                    val defaultNote = if (op.operationType.equals("ACTIVATION", ignoreCase = true)) "[VERIFIED ACTIVATION]" else null
                     val finalNote = if (!chargeNote.isNullOrBlank()) chargeNote else defaultNote
                     val accountWithPrice = localAcc.copy(currentPriceIqd = operationPrice)
                     val savedAcc = saveAccountInternal(accountWithPrice)
