@@ -74,23 +74,17 @@ object HistoryPresentationManager {
         for (payment in rawList) {
             if (payment.isSnapshotHistory) continue
             val payId = payment.id
-            val isPayPrefixed = payId.startsWith("pay_")
-            val isPayExtPrefixed = payment.sourceExternalId != null && payment.sourceExternalId.startsWith("pay_")
-            if (!isPayPrefixed && !isPayExtPrefixed) continue
+            if (!payId.startsWith("pay_charge_")) continue
 
             val paymentCanonicalType = com.example.core.ledger.TransactionTypeNormalizer.normalizeTransactionType(payment.typeRaw)
             if (paymentCanonicalType != "gave" && paymentCanonicalType != "payment" && payment.typeRaw != "gave") continue
 
-            val expectedChargeId = if (isPayPrefixed) payId.removePrefix("pay_") else payment.sourceExternalId!!.removePrefix("pay_")
+            val expectedChargeId = payId.removePrefix("pay_")
             val matchingCharge = rawList.find { charge ->
                 !charge.isSnapshotHistory &&
-                (charge.id == expectedChargeId || charge.sourceExternalId == expectedChargeId) &&
+                charge.id == expectedChargeId &&
                 charge.accountId == payment.accountId &&
-                kotlin.math.abs(charge.amountIqd - payment.amountIqd) < 0.0001 &&
-                (charge.id.startsWith("charge_") || charge.id.startsWith("tx_") ||
-                 (charge.sourceExternalId != null && (charge.sourceExternalId.startsWith("charge_") || charge.sourceExternalId.startsWith("tx_"))) ||
-                 charge.typeRaw == "took" ||
-                 com.example.core.ledger.TransactionTypeNormalizer.normalizeTransactionType(charge.typeRaw) == "renewal")
+                kotlin.math.abs(charge.amountIqd - payment.amountIqd) < 0.0001
             }
             if (matchingCharge != null) {
                 pairedChargeIds.add(matchingCharge.id)
@@ -111,7 +105,7 @@ object HistoryPresentationManager {
         val isDeposit = noteNonNull.startsWith("[DEPOSIT]")
         val isPayment = noteNonNull.startsWith("[PAYMENT]")
 
-        val isChargeIdRenew = entry.id.startsWith("charge_") || (entry.sourceExternalId != null && entry.sourceExternalId.startsWith("charge_"))
+        val isChargeIdRenew = entry.id.startsWith("charge_")
         val isCanonicalRenewal = com.example.core.ledger.TransactionTypeNormalizer.normalizeTransactionType(entry.typeRaw) == "renewal"
 
         val isUtowerHistoricalRecord = entry.isSnapshotHistory &&
@@ -120,19 +114,17 @@ object HistoryPresentationManager {
             isCanonicalRenewal &&
             noteNonNull.contains("(واصل)")
 
-        val isPayPrefixed = entry.id.startsWith("pay_") || (entry.sourceExternalId != null && entry.sourceExternalId.startsWith("pay_"))
-        val isPairedRenewalPayment = if (!entry.isSnapshotHistory && isPayPrefixed) {
+        val isPairedRenewalPayment = if (!entry.isSnapshotHistory && entry.id.startsWith("pay_charge_")) {
             if (fullList.isNotEmpty()) {
-                val expectedChargeId = if (entry.id.startsWith("pay_")) entry.id.removePrefix("pay_") else entry.sourceExternalId!!.removePrefix("pay_")
+                val expectedChargeId = entry.id.removePrefix("pay_")
                 fullList.any { charge ->
                     !charge.isSnapshotHistory &&
-                    (charge.id == expectedChargeId || charge.sourceExternalId == expectedChargeId) &&
+                    charge.id == expectedChargeId &&
                     charge.accountId == entry.accountId &&
                     kotlin.math.abs(charge.amountIqd - entry.amountIqd) < 0.0001
                 }
             } else {
-                entry.id.startsWith("pay_charge_") || entry.id.startsWith("pay_tx_") ||
-                (entry.sourceExternalId != null && (entry.sourceExternalId.startsWith("pay_charge_") || entry.sourceExternalId.startsWith("pay_tx_")))
+                true
             }
         } else {
             false
