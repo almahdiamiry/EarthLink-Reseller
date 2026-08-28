@@ -56,6 +56,16 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 
+// Pre-compiled static regex patterns to prevent repeated Pattern allocation on UI list rendering
+private val DAY_REGEX = """(\d+(?:\.\d+)?)\s*(?:day|days|d|يوم|أيام|ايام)""".toRegex()
+private val HOUR_REGEX = """(\d+(?:\.\d+)?)\s*(?:hour|hours|h|ساعة|ساعات)""".toRegex()
+private val FIRST_NUM_REGEX = """(\d+(?:\.\d+)?)""".toRegex()
+private val FRACTIONAL_SECONDS_REGEX = """(\.\d{3})\d+""".toRegex()
+private val MULTIPLE_SPACES_REGEX = """\s+""".toRegex()
+private val AM_PM_REGEX = """(?i)(AM|PM)""".toRegex()
+private val TIME_REGEX = """(\d{1,2}):(\d{2})(?::(\d{2}))?""".toRegex()
+private val DATE_REGEX = """(\d{1,4})[/-](\d{1,2})[/-](\d{1,4})""".toRegex()
+
 // Formatting helper for Money
 
 fun formatIqd(amount: Double): String {
@@ -143,8 +153,7 @@ fun getRemainingTime(expirationDateStr: String?, activeDaysLeftStr: String? = nu
         var fractionalDayFromRegex = 0.0
         
         // Find days: e.g. "29.5 days", "29 days", "29 d", "29 يوم", "29.2 أيام"
-        val dayRegex = """(\d+(?:\.\d+)?)\s*(?:day|days|d|يوم|أيام|ايام)""".toRegex()
-        val dayMatch = dayRegex.find(cleaned)
+        val dayMatch = DAY_REGEX.find(cleaned)
         if (dayMatch != null) {
             val dayNumStr = dayMatch.groupValues[1]
             val dayDouble = dayNumStr.toDoubleOrNull() ?: 0.0
@@ -154,8 +163,7 @@ fun getRemainingTime(expirationDateStr: String?, activeDaysLeftStr: String? = nu
         }
         
         // Find hours: e.g. "4.5 hours", "4 hours", "4 h", "4 ساعة", "4 ساعات"
-        val hourRegex = """(\d+(?:\.\d+)?)\s*(?:hour|hours|h|ساعة|ساعات)""".toRegex()
-        val hourMatch = hourRegex.find(cleaned)
+        val hourMatch = HOUR_REGEX.find(cleaned)
         if (hourMatch != null) {
             val hourNumStr = hourMatch.groupValues[1]
             hours = (hourNumStr.toDoubleOrNull() ?: 0.0).toLong()
@@ -172,8 +180,7 @@ fun getRemainingTime(expirationDateStr: String?, activeDaysLeftStr: String? = nu
         
         if (!found) {
             // Fallback: extract the first number as days
-            val firstNumRegex = """(\d+(?:\.\d+)?)""".toRegex()
-            val firstNumMatch = firstNumRegex.find(cleaned)
+            val firstNumMatch = FIRST_NUM_REGEX.find(cleaned)
             if (firstNumMatch != null) {
                 val num = firstNumMatch.groupValues[1].toDoubleOrNull()
                 if (num != null) {
@@ -201,8 +208,7 @@ fun getRemainingTime(expirationDateStr: String?, activeDaysLeftStr: String? = nu
         // Normalize 't' and 'z' to uppercase 'T' and 'Z' to match standard parsers
         sanitizedExpirationStr = sanitizedExpirationStr.replace('t', 'T').replace('z', 'Z')
         // Regex to trim high-precision fractional seconds (e.g., .1234567 to .123)
-        val fractionalSecondsRegex = """(\.\d{3})\d+""".toRegex()
-        sanitizedExpirationStr = fractionalSecondsRegex.replace(sanitizedExpirationStr, "$1")
+        sanitizedExpirationStr = FRACTIONAL_SECONDS_REGEX.replace(sanitizedExpirationStr, "$1")
     }
 
     // 1. Parse expiration date to get precise datetime if possible
@@ -228,7 +234,7 @@ fun getRemainingTime(expirationDateStr: String?, activeDaysLeftStr: String? = nu
             .replace("\u202D", "")
             .replace("\u202E", "")
             .replace("\u00A0", " ") // NBSP to normal space
-            .replace("\\s+".toRegex(), " ") // Normalize multiple spaces
+            .replace(MULTIPLE_SPACES_REGEX, " ") // Normalize multiple spaces
             .trim()
 
         // Convert Arabic/Persian numerals
@@ -246,17 +252,14 @@ fun getRemainingTime(expirationDateStr: String?, activeDaysLeftStr: String? = nu
             val cleanStr = sanitizedExpirationStr!!
             
             // 1. Find AM/PM (case insensitive)
-            val amPmRegex = """(?i)(AM|PM)""".toRegex()
-            val amPmMatch = amPmRegex.find(cleanStr)
+            val amPmMatch = AM_PM_REGEX.find(cleanStr)
             val amPm = amPmMatch?.groupValues?.get(1)?.uppercase()
 
             // 2. Find Time: HH:MM:SS or HH:MM
-            val timeRegex = """(\d{1,2}):(\d{2})(?::(\d{2}))?""".toRegex()
-            val timeMatch = timeRegex.find(cleanStr)
+            val timeMatch = TIME_REGEX.find(cleanStr)
 
             // 3. Find Date: YYYY-MM-DD or DD/MM/YYYY or MM/DD/YYYY or YYYY/MM/DD
-            val dateRegex = """(\d{1,4})[/-](\d{1,2})[/-](\d{1,4})""".toRegex()
-            val dateMatch = dateRegex.find(cleanStr)
+            val dateMatch = DATE_REGEX.find(cleanStr)
 
             if (timeMatch != null && dateMatch != null) {
                 var hour = timeMatch.groupValues[1].toInt()
