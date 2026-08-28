@@ -129,7 +129,62 @@ The following items are **officially accepted V1 technical debt**. They are **NO
 
 The **Testing Playbook** is the single operational testing method for all maintenance and feature work. Risk determines **depth of verification**, not a separate methodology.
 
-### 9.1 Core Reasoning (The 8 Questions)
+### 9.1 Three-Lifecycle Model & Execution Tiers
+The testing ecosystem formally distinguishes between a test's **Lifecycle** (its ongoing operational reason to exist) and its **Execution Tier** (the physical runtime environment in which it executes):
+
+```text
+                         TEST LIFECYCLE
+                              │
+          ┌───────────────────┼───────────────────┐
+          ▼                   ▼                   ▼
+      PERMANENT           TEMPORARY           HISTORICAL
+          │                   │                   │
+          │                   │                   └── Evidence only (evidence/)
+          │                   │
+          │                   └── PROMOTE / ARCHIVE / REMOVE
+          │
+          ├── RELEASE-REQUIRED
+          │       │
+          │       └── production_gate.sh
+          │
+          └── SUPPORTING
+                  └── Useful, not mandatory gate blocker
+
+                               +
+
+                         EXECUTION TIER
+          ┌────────┬──────────────┬─────────────┬────────────┐
+          JVM   ROBOLECTRIC   INSTRUMENTED   STRUCTURAL
+```
+
+* **Lifecycle Dimension:**
+  * **`PERMANENT`**: Tests with an ongoing present-day reason to exist.
+    * **`RELEASE-REQUIRED`**: Authoritative suites directly protecting RED Invariants (`INV-01`..`INV-16`), the silent corruption barrier (`DataIntegrityReleaseGateTest`), and structural gate scripts. Executed by `scripts/production_gate.sh`.
+    * **`SUPPORTING`**: Component, presentation, or utility tests verifying UI or helper logic without serving as canonical invariant barriers.
+  * **`TEMPORARY`**: Task-bound exploratory, migration, or diagnostic tests. Must resolve to an explicit exit: `PROMOTE` (to permanent), `ARCHIVE` (to evidence), or `REMOVE` at task completion.
+  * **`HISTORICAL`**: Static evidence records from completed milestones (`evidence/`, `utower_data_c.tgz`). Retained for lineage and provenance; never a blocking runtime dependency.
+* **Execution Tier Dimension:**
+  * **`JVM`**: Headless, sub-second verification of pure domain logic, money parsers, balance math, and state machines.
+  * **`ROBOLECTRIC`**: In-memory Android runtime simulation for SQLite Room transactions, Room migrations, and multi-device convergence simulations.
+  * **`INSTRUMENTED`**: Real Android OS runtime execution (`app/src/androidTest/`) for physical concurrency, SQLCipher encryption, and filesystem sandboxing.
+  * **`STRUCTURAL`**: Static analysis, forbidden pattern scanners, invariant contract validators, and meta-gate scripts.
+* **Gradle Discovery vs. Lifecycle Separation:** Lifecycle classification is semantic; Gradle discovery is not lifecycle-aware. Tests marked `HISTORICAL` or `TEMPORARY` cannot rely solely on documentation for build exclusion. Non-routine tests must live outside the active test source set or be excluded via standard Gradle test filtering at the test-task level.
+
+### 9.2 The Core Triad Standard (New & Touched Tests)
+All **NEW** permanent tests, as well as existing tests when modified, promoted, or selected as authoritative invariant verifiers, must document the **Core Triad** in their class or test KDoc header (no retroactive mass edits across untouched files):
+1. **Claim:** The exact invariant (`INV-01`..`INV-16`) or business contract clause being asserted.
+2. **Seam / Environment:** The execution tier (`JVM`, `ROBOLECTRIC`, `INSTRUMENTED`, `STRUCTURAL`).
+3. **Independent Oracle:** Explanation of how expected values were derived independently of production code.
+
+### 9.3 Explicit Arithmetic Decomposition for Financial Oracles
+All financial assertions must eliminate formula copy-pasting, circular reasoning, and hidden default fixture parameters:
+1. **No Production Math in Expected Values:** Expected outcomes must be literal constants or primitive arithmetic expressions written directly in the test.
+2. **Explicit 3-Vector Initialization:** Test fixtures must explicitly declare `openingDebt`, `openingAdvance`, and `openingLoan` (or explicitly utilize a zero-baseline helper).
+3. **Arithmetic Breakdown in Assertion Message:**
+   $$\text{Expected Position} = (\text{Opening Debt} - \text{Opening Advance} + \text{Opening Loan}) + \sum(\text{Runtime Mutations})$$
+4. **Deterministic Concurrency:** Concurrency and mutual exclusion assertions must use deterministic `CompletableDeferred` synchronization gates instead of arbitrary `delay()` timing.
+
+### 9.4 Core Reasoning (The 8 Questions)
 Use these questions to guide verification. Apply and record only the questions relevant to the material risk and scope of the actual change:
 * **Low-risk work:** Does not require explicit written answers to all eight questions.
 * **Higher-risk work:** Should record the questions that materially affect the verification decision.
@@ -143,7 +198,7 @@ Use these questions to guide verification. Apply and record only the questions r
 7. **What exactly did I prove?** (Boundaries of the executed test)
 8. **What does this NOT prove?** (Explicit non-coverage and unexecuted layers)
 
-### 9.2 Material Risk Depths
+### 9.5 Material Risk Depths
 Risk depth is determined by the **material impact of the actual change**, not by class name, file size, or historical labels:
 
 | Risk Level | Typical Change Scope | Required Verification Depth | Example Scenarios |
@@ -152,7 +207,7 @@ Risk depth is determined by the **material impact of the actual change**, not by
 | **MEDIUM** | Standard business logic, presentation orchestration, non-financial API call typing, retry policies | • Business semantics validation<br>• Real production-path tracing<br>• Targeted adversarial probe when useful | • Outbox queue prioritization<br>• Non-financial network DTO parsing<br>• UI error banner display logic |
 | **HIGH** | RED domain: Ledger math, balance calculation, Room schema/migrations, atomic dispatch claim, sync lineage/generation, restore merge | • Business semantics validation<br>• Real production-path tracing<br>• Adversarial verification<br>• Broader relevant regression suite<br>• Independent review when data integrity is impacted | • `BalanceCalculator.kt` changes<br>• Room migration 16→17<br>• Single-writer dispatch claim query<br>• `g4_local_generation` counter logic<br>• Restore merge lineage reconciliation |
 
-### 9.3 Semantic Safety & Failure Classification
+### 9.6 Semantic Safety & Failure Classification
 * **No Circular Assertions:** Expected test outcomes must be derived independently from product rules, never by mirroring implementation code.
 * **No Assertion Weakening:** Never relax an assertion or mock away invariants to force a green test.
 * **Semantic Failure Taxonomy:** When a test fails, classify the root cause explicitly before acting:
@@ -162,7 +217,7 @@ Risk depth is determined by the **material impact of the actual change**, not by
   - `SEMANTIC-ASSUMPTION ERROR`: Mismatch on domain meaning $\rightarrow$ consult Product Contract.
   - `ENVIRONMENT / TOOLING FAILURE`: Gradle/JVM runtime failure $\rightarrow$ fix environment.
 
-### 9.4 EarthLink Domain Semantic Lessons
+### 9.7 EarthLink Domain Semantic Lessons
 Maintainers must uphold these domain testing truths:
 1. `dispatchClaimCount = 0` signifies the local operation was **not authorized** for external dispatch.
 2. `dispatchClaimCount = 1` signifies dispatch authorization was acquired and external execution may have occurred.
@@ -171,7 +226,7 @@ Maintainers must uphold these domain testing truths:
 5. uTower snapshot baseline $\neq$ complete imported ledger history.
 6. History-only subscriber state $\neq$ financial debt deletion.
 
-### 9.5 Standardized Verification Reporting Contract
+### 9.8 Standardized Verification Reporting Contract
 For all verification tasks, report results using this exact schema:
 ```text
 Claim:                 [Exact behavior or invariant asserted]
@@ -186,7 +241,7 @@ Confidence:            [HIGH / MEDIUM / LOW]
 > - Never state "all tests passed" unless the full repository test suite was executed. A targeted run must be reported as *"Focused verification passed."*
 > - For documentation or routing inspection, explicitly state that no application runtime behavior or test suites were executed. Do not report inspection as runtime verification.
 
-### 9.6 G8 Operational Status & Release Gate Routing
+### 9.9 G8 Operational Status & Release Gate Routing
 * **G8 is permanently CLOSED.** All historical G8 certification contracts, scripts, plans, and tests are archived under `docs/historical/g8/`.
 * **Canonical Production Gate:** `scripts/production_gate.sh` is the sole supported release gate. `production_gate.ps1` is a historical unsupported mirror in `docs/historical/operational-gates/`.
 * Future agents and maintainers **must NOT** run G8 certification, require G8 artifacts for routine changes, recreate G8, or reopen G8 scope. The Testing Playbook above governs all ongoing development.

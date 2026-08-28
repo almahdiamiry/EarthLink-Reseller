@@ -62,9 +62,15 @@ def run_verified_command(
     # Configure preexec_fn for process group on Unix
     preexec_fn = os.setsid if os.name != 'nt' else None
     
+    cmd_to_spawn = list(command)
+    if os.name == 'nt' and cmd_to_spawn:
+        first = cmd_to_spawn[0].replace('/', '\\')
+        if first in ('.\\gradlew', 'gradlew', '.\\gradlew.bat', 'gradlew.bat') or first.endswith('\\gradlew') or first.endswith('\\gradlew.bat'):
+            cmd_to_spawn = ['cmd.exe', '/c', 'gradlew.bat'] + cmd_to_spawn[1:]
+
     try:
         process = subprocess.Popen(
-            command,
+            cmd_to_spawn,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,

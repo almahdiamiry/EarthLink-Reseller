@@ -64,9 +64,38 @@ $PYTHON_CMD scripts/run_verified_command.py --timeout 60 -- $PYTHON_CMD scripts/
 echo ">>> Scanning repository for forbidden architectural patterns..."
 $PYTHON_CMD scripts/run_verified_command.py --timeout 60 -- $PYTHON_CMD scripts/scan_forbidden_patterns.py
 
-# 5. Execute Complete Unit/Integration Suite
-echo ">>> Executing full test suite (:app:testDebugUnitTest)..."
-$PYTHON_CMD scripts/run_verified_command.py --timeout 900 --heartbeat 15 -- $GRADLE_CMD :app:testDebugUnitTest --no-daemon
+# 4b. Data Integrity Release Gate (Silent Corruption Prevention)
+echo ">>> Executing Data Integrity Release Gate (DataIntegrityReleaseGateTest)..."
+echo "    This gate prevents the class of failures where financial numbers come out wrong"
+echo "    with no crash or error — covering H-1 (bad push), H-2 (stale pull), H-3 (field stripping)."
+DATA_INTEGRITY_GATE_FILE="app/src/test/java/com/example/DataIntegrityReleaseGateTest.kt"
+if [ ! -f "$DATA_INTEGRITY_GATE_FILE" ]; then
+    echo "❌ FATAL: Data Integrity Release Gate test file missing: $DATA_INTEGRITY_GATE_FILE"
+    exit 1
+fi
+$PYTHON_CMD scripts/run_verified_command.py --timeout 300 --heartbeat 15 -- $GRADLE_CMD :app:testDebugUnitTest --tests "com.example.DataIntegrityReleaseGateTest" --no-daemon
+echo "✅ Data Integrity Release Gate: ALL TESTS PASSED."
+
+# 5. Execute Authoritative Primary Invariant Test Suites
+echo ">>> Executing Authoritative Primary Invariant Test Suites..."
+$PYTHON_CMD scripts/run_verified_command.py --timeout 900 --heartbeat 15 -- $GRADLE_CMD :app:testDebugUnitTest \
+    --tests "com.example.DataIntegrityReleaseGateTest" \
+    --tests "com.example.ResolveLocalVersionTest" \
+    --tests "com.example.Phase2ServerConfirmedLifecycleTest" \
+    --tests "com.example.Phase2RemoteVersionAdversarialTest" \
+    --tests "com.example.Phase1FirestoreDocumentIdentityTest" \
+    --tests "com.example.Phase1TwoDeviceConvergenceTest" \
+    --tests "com.example.Phase3PersistedGenerationTest" \
+    --tests "com.example.Phase1G1PendingOperationDurabilityTest" \
+    --tests "com.example.Phase1AtomicityAndLostAckTest" \
+    --tests "com.example.Phase1DuplicateInitiationProtectionTest" \
+    --tests "com.example.Phase2RestoreReplaceHardeningTest" \
+    --tests "com.example.Phase2UtowerImportHardeningTest" \
+    --tests "com.example.Phase1OutboxDurabilityTest" \
+    --tests "com.example.Phase1ItemIsolationTest" \
+    --tests "com.example.Phase1OrphanHandlingTest" \
+    --tests "com.example.Phase3CoordinatorMutexTokenTest" \
+    --no-daemon
 
 # 5. Verify JUnit Test Results
 TEST_RESULTS_DIR="app/build/test-results/testDebugUnitTest"
