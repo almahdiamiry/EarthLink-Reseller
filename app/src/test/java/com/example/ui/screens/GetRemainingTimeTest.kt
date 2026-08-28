@@ -60,4 +60,34 @@ class GetRemainingTimeTest {
         )
         assertEquals("Expired", result)
     }
+
+    @Test
+    fun testGetRemainingTimeNullAndEmptyInputs() {
+        val resultNullEn = getRemainingTime(
+            expirationDateStr = null,
+            activeDaysLeftStr = null,
+            lang = "en",
+            accountStatus = null
+        )
+        assertEquals("Expired", resultNullEn)
+
+        val resultNullAr = getRemainingTime(
+            expirationDateStr = "",
+            activeDaysLeftStr = "",
+            lang = "ar",
+            accountStatus = ""
+        )
+        assertEquals("منتهي", resultNullAr)
+    }
+
+    @Test
+    fun testGetRemainingTimeZeroDaysLeftActiveStatus() {
+        val result = getRemainingTime(
+            expirationDateStr = null,
+            activeDaysLeftStr = "0 days",
+            lang = "en",
+            accountStatus = "Active"
+        )
+        assertEquals("Remaining: 30 minutes", result)
+    }
 }
