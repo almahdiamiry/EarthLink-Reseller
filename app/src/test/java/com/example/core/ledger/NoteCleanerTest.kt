@@ -1,6 +1,7 @@
 package com.example.core.ledger
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Test
 
 class NoteCleanerTest {
@@ -61,6 +62,22 @@ class NoteCleanerTest {
         assertEquals("مع ابو علي", NoteCleaner.extractGenuineNote("تجديد اشتراك - مع ابو علي", 40000.0))
         assertEquals("", NoteCleaner.extractGenuineNote("40,000 | 40,000", 40000.0))
         assertEquals("نجم", NoteCleaner.extractGenuineNote("40,000 واصل | نجم", 40000.0))
+    }
+
+    @Test
+    fun `regex instances are compiled once as private constants and reused`() {
+        val segmentField = NoteCleaner::class.java.getDeclaredField("SEGMENT_SPLIT_REGEX").apply { isAccessible = true }
+        val whitespaceField = NoteCleaner::class.java.getDeclaredField("WHITESPACE_SPLIT_REGEX").apply { isAccessible = true }
+
+        val segmentRegex1 = segmentField.get(NoteCleaner) as Regex
+        val segmentRegex2 = segmentField.get(NoteCleaner) as Regex
+        val wsRegex1 = whitespaceField.get(NoteCleaner) as Regex
+        val wsRegex2 = whitespaceField.get(NoteCleaner) as Regex
+
+        assertSame(segmentRegex1, segmentRegex2)
+        assertSame(wsRegex1, wsRegex2)
+        assertEquals("""\s*\|\s*|\s+-\s+|\s*:\s*""", segmentRegex1.pattern)
+        assertEquals("""\s+""", wsRegex1.pattern)
     }
 }
 
