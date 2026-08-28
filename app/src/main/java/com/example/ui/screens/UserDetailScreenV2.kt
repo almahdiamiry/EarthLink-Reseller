@@ -1788,29 +1788,57 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                     title = { },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
-                            Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = if (currentLang == "ar") "رجوع" else "Back",
+                                tint = Color.White
+                            )
                         }
                     },
                     actions = {
                         IconButton(onClick = { viewModel.loadUserDetail(userIndex, userId) }) {
-                            Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh", tint = Color.White)
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = if (currentLang == "ar") "تحديث" else "Refresh",
+                                tint = Color.White
+                            )
                         }
                         IconButton(onClick = { showDebtDialog = true }) {
-                            Icon(imageVector = Icons.Default.AttachMoney, contentDescription = "Debt", tint = Color.White)
+                            Icon(
+                                imageVector = Icons.Default.AttachMoney,
+                                contentDescription = if (currentLang == "ar") "إضافة دين" else "Add Debt",
+                                tint = Color.White
+                            )
                         }
                         IconButton(onClick = { showShareDialog = true }) {
-                            Icon(imageVector = Icons.Default.Notifications, contentDescription = "Share", tint = Color.White)
+                            Icon(
+                                imageVector = Icons.Default.Notifications,
+                                contentDescription = if (currentLang == "ar") "مشاركة" else "Share",
+                                tint = Color.White
+                            )
                         }
                         IconButton(onClick = { showNotesDialog = true }) {
-                            Icon(imageVector = Icons.AutoMirrored.Filled.StickyNote2, contentDescription = "Notes", tint = Color.White)
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.StickyNote2,
+                                contentDescription = if (currentLang == "ar") "ملاحظات" else "Notes",
+                                tint = Color.White
+                            )
                         }
                         IconButton(onClick = { showHistoryDialog = true }) {
-                            Icon(imageVector = Icons.Default.History, contentDescription = "History", tint = Color.White)
+                            Icon(
+                                imageVector = Icons.Default.History,
+                                contentDescription = if (currentLang == "ar") "السجل" else "History",
+                                tint = Color.White
+                            )
                         }
                         var expanded by rememberSaveable { mutableStateOf(false) }
                         Box {
                             IconButton(onClick = { expanded = true }) {
-                                Icon(imageVector = Icons.Default.MoreVert, contentDescription = "More", tint = Color.White)
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = if (currentLang == "ar") "خيارات إضافية" else "More options",
+                                    tint = Color.White
+                                )
                             }
                             DropdownMenu(
                                 expanded = expanded,
