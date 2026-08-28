@@ -30,12 +30,16 @@ object TransactionTypeNormalizer {
 
     fun normalize(rawType: String?): String = normalizeTransactionType(rawType)
 
+    val RECOGNIZED_CANONICAL_TYPES = setOf("took", "gave", "renewal", "note")
+
+    fun isRecognizedCanonicalType(canonicalType: String): Boolean =
+        canonicalType in RECOGNIZED_CANONICAL_TYPES
+
     /**
      * Returns true if [rawType] resolves to a known canonical type ("took", "gave", "renewal", "note").
      */
     fun isRecognizedType(rawType: String?): Boolean {
         if (rawType.isNullOrBlank()) return true
-        val canonical = normalizeTransactionType(rawType)
-        return canonical in setOf("took", "gave", "renewal", "note")
+        return isRecognizedCanonicalType(normalizeTransactionType(rawType))
     }
 }
