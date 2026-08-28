@@ -86,10 +86,10 @@ object BalanceCalculator {
         val updatedEntries = mutableListOf<com.example.core.model.LocalLedgerEntry>()
 
         for (tx in sortedTxs) {
-            if (!TransactionTypeNormalizer.isRecognizedType(tx.typeRaw)) {
+            val canonicalType = TransactionTypeNormalizer.normalizeTransactionType(tx.typeRaw)
+            if (!TransactionTypeNormalizer.isRecognizedCanonicalType(canonicalType)) {
                 onUnrecognizedType?.invoke(tx, tx.typeRaw ?: "NULL")
             }
-            val canonicalType = TransactionTypeNormalizer.normalizeTransactionType(tx.typeRaw)
             val updatedBalances = applyTransaction(
                 currentDebt = runningDebt,
                 currentAdvance = runningAdvance,
