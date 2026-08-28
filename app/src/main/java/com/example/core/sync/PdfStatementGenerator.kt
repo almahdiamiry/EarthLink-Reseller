@@ -301,7 +301,12 @@ object PdfStatementGenerator {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
 
-            val chooser = Intent.createChooser(shareIntent, "Share Statement PDF via"); chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); context.startActivity(chooser)
+            // Explicitly grant read permissions on both the wrapped share intent and the chooser intent so target receiver apps safely obtain read access to FileProvider URI
+            val chooser = Intent.createChooser(shareIntent, "Share Statement PDF via").apply {
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(chooser)
 
         } catch (e: Exception) {
             if (e !is kotlinx.coroutines.CancellationException) {
