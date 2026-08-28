@@ -13,7 +13,6 @@
 /captures
 .externalNativeBuild
 .cxx
-local.properties
 .env
 .env.*
 !.env.example
