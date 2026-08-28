@@ -118,8 +118,8 @@ echo ">>> Verifying closure evidence bundle against contract..."
 $PYTHON_CMD scripts/run_verified_command.py --timeout 60 -- $PYTHON_CMD scripts/verify_closure_evidence.py
 
 # 8. Verify Canonical Requirement Matrix
-echo ">>> Generating and verifying canonical requirement compliance matrix..."
-$PYTHON_CMD scripts/run_verified_command.py --timeout 60 -- $PYTHON_CMD scripts/generate_and_verify_compliance_matrix.py
+echo ">>> Verifying canonical requirement compliance matrix (check mode)..."
+$PYTHON_CMD scripts/run_verified_command.py --timeout 60 -- $PYTHON_CMD scripts/generate_and_verify_compliance_matrix.py --check
 
 # 9. Render Machine Certification Report
 echo ">>> Rendering machine certification report..."
