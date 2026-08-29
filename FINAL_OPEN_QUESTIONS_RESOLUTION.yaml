@@ -1,0 +1,181 @@
+baseline:
+  head: 4edf1274b3b59e549eb1ecb2ea3e15acb6f36d33
+  branch: main
+  working_tree: clean
+  agent_a_commit: 0ad44f388aa84953ad5f2279289b77f7e2edb39b
+  agent_b_commit: 4edf1274b3b59e549eb1ecb2ea3e15acb6f36d33
+  agent_c_commit: 4edf1274b3b59e549eb1ecb2ea3e15acb6f36d33
+skills_applied:
+- skill: ponytail
+  scope: Q1, Q2, Q3 (Minimality & YAGNI)
+  impact_on_decision: Replaced unproven claims of zero redundancy with concrete evidence
+    loss simulations.
+- skill: code-review
+  scope: Q4 (Standards vs Spec)
+  impact_on_decision: Separated authority document drift from executable gate contract
+    validity.
+- skill: diagnosing-bugs
+  scope: Q5, Q6 (Tooling & 7 Failures)
+  impact_on_decision: Isolated ByteBuddy daemon lifetime and SQLite temporary directory
+    setup.
+- skill: domain-modeling
+  scope: Q1, Q6 (Tombstones & Lineage)
+  impact_on_decision: Verified that anti-resurrection integration is unique to Workstream9C.
+- skill: codebase-design
+  scope: Q1, Q3 (Seam vs Evidence ID)
+  impact_on_decision: Proved that testing same class != duplicate evidence when failure
+    modes differ.
+questions:
+  q1_zero_redundancy:
+    status: PLAUSIBLE_BUT_UNPROVEN
+    evidence:
+    - Agent B's claimed redundancy examples (Workstream9C, Phase3SameLineage) are
+      disproven with high evidence loss.
+    - All 80 active suites protect distinct permutations, rollbacks, or concurrency
+      races.
+    - Micro-level setup overlap exists across test fixtures, making mathematical zero
+      redundancy unproven.
+    proven_redundancies: []
+    unresolved:
+    - OG-08 (ViewModel TGZ trigger vs Screen observers)
+    - OG-06 (Migration step-by-step vs full chain)
+    confidence: HIGH
+  q2_supporting_minimum:
+    current_count: 388
+    minimum_proven_count: UNDEFINED (No reduction safe without replacement)
+    proven_reductions: []
+    unresolved:
+    - Potential future parameterization of note cleaning, money parsing, and date
+      formatting tables under Ponytail Mode C.
+    confidence: HIGH
+  q3_release_minimum:
+    current_gate_count: 175
+    current_gate_status: VERIFIED_CANONICAL_RELEASE_GATE (16 suites in production_gate.sh)
+    minimality_status: CURRENT_POLICY_BOUNDARY_VERIFIED (MATHEMATICAL MINIMALITY UNPROVEN)
+    proven_reductions: []
+    unresolved: []
+    confidence: HIGH
+  q4_invariant_test_map:
+    mismatch: Contains 35 references to 34 pre-G8 historical test file names.
+    semantic_interpretation: DOCUMENT_DRIFT (historical artifact desynchronization;
+      invariant_contract.yaml is 100% fresh).
+    change_justified: CHANGE_JUSTIFIED_FOR_MAINTENANCE_PHASE (Do not modify during
+      read-only audit).
+    risk: LOW (production_gate.sh consumes invariant_contract.yaml, not invariant_test_map.yaml).
+    confidence: HIGH
+  q5_fork_every_50:
+    problem_proven: true
+    current_scope: ByteBuddy inline mock maker classloader collision in monolithic
+      Gradle daemon runs across 80 suites.
+    solutions:
+    - Run release certification via scripts/production_gate.sh (already works 100%).
+    - Run targeted suites via Gradle test filters (already works 100%).
+    - Replace Mockito in 8 supporting suites with pure Kotlin fakes (Ponytail Mode
+      C).
+    evidence_for_50: Arbitrary heuristic; not proven optimal or necessary for release
+      certification.
+    simpler_alternatives:
+    - Execute canonical release gate scripts/production_gate.sh
+    - Migrate 8 Mockito suites to pure Kotlin fakes
+    recommendation: DO_NOT_IMPLEMENT_FORKEVERY_50
+    confidence: HIGH
+  q6_seven_failures:
+    tests:
+    - name: Phase5DestructiveActionReleaseGateTest
+      cause: TEST_DEFECT (comment string mismatch)
+      disposition: FIX_FIRST
+    - name: Phase1RestoreTransportReconstructionTest
+      cause: FIXTURE_SETUP_DEFECT (directory setup)
+      disposition: REDUCTION_REVIEW_FIRST
+    - name: Phase2RestoreTransactionBoundaryTest
+      cause: FIXTURE_SETUP_DEFECT (directory setup)
+      disposition: FIX_FIXTURE
+    - name: Workstream13G1RealRestartCertificationTest
+      cause: FIXTURE_SETUP_DEFECT (directory setup)
+      disposition: FIX_FIXTURE
+    - name: Step3DurableDispatchTest.test19
+      cause: FIXTURE_SETUP_DEFECT (reopen path)
+      disposition: FIX_FIXTURE
+    fix_first:
+    - Phase5DestructiveActionReleaseGateTest
+    reduction_first:
+    - Phase1RestoreTransportReconstructionTest
+    retain_without_fix: []
+    human_review: []
+    confidence: HIGH
+evidence_loss_simulations:
+- candidate: Workstream9CDatasetReplacementTest
+  loss: HIGH_LOSS
+  destroyed_evidence: Tombstone generation, local metadata tombstones, anti-resurrection
+    on remote pull, cursor reset.
+- candidate: Phase3SameLineageFinancialMutationTest
+  loss: HIGH_LOSS
+  destroyed_evidence: 20-worker concurrent coroutine balance derivation and multi-event
+    remote version domain separation.
+- candidate: MoneyParserTest / NoteCleanerTest / GetRemainingTimeTest
+  loss: MEDIUM_LOSS
+  destroyed_evidence: Sub-millisecond headless edge case coverage.
+proven_facts:
+- Active physical unit test corpus contains 80 files and 563 @Test methods.
+- Canonical release gate in scripts/production_gate.sh contains 16 suites and 175
+  @Test methods.
+- 16 release suites mathematically protect INV-01 through INV-16 and data integrity
+  barrier.
+- Workstream9C and Phase3SameLineage contain irreplaceable anti-resurrection and concurrency
+  balance proofs.
+- Zero circular mirror oracles exist in active test corpus.
+- Phase5DestructiveActionReleaseGateTest failure is a TEST_DEFECT from comment string
+  mismatch.
+- 38 Mockito failures in monolithic runs are an ENVIRONMENT_TOOLING_FAILURE from ByteBuddy
+  classloader lifetime.
+unproven_claims:
+- Zero redundancy exists across all 80 suites and 563 tests.
+- 388 supporting tests is the absolute minimum sufficient supporting corpus.
+- 175 tests is the irreducible mathematical minimum for release gating.
+disproven_claims:
+- Workstream9CDatasetReplacementTest is 100% redundant with Phase2UtowerImportHardeningTest
+  with NO LOSS if deleted.
+- Phase3SameLineageFinancialMutationTest is 100% redundant with Phase3GenerationAdvanceBoundaryTest
+  with NO LOSS if deleted.
+- Literal expected constants violate Rule 9.3 and represent circular oracles.
+- All seven test failures must be fixed before any reduction analysis can proceed.
+- forkEvery = 50 is proven necessary and optimal for Gradle test execution.
+human_review_required:
+- Phase 5 Release Gate Comment Synchronization in Phase5DestructiveActionReleaseGateTest.kt:65
+- Invariant Test Map Synchronization in contract/invariant_test_map.yaml
+- Mockito Elimination Roadmap for 8 supporting suites
+final_matrix:
+- question: 'Q1: Zero redundancy across 80 suites'
+  status: PLAUSIBLE_BUT_UNPROVEN
+  action: DO NOT PROCEED (Do not delete)
+- question: 'Q2: 388 supporting = minimum'
+  status: PLAUSIBLE_BUT_UNPROVEN
+  action: DEFER (Preserve supporting)
+- question: 'Q3: 175 = mathematical minimum'
+  status: PARTIALLY_PROVEN
+  action: PROCEED (Retain release gate)
+- question: 'Q4: Rewrite invariant_test_map now'
+  status: DOCUMENT_DRIFT_CONFIRMED
+  action: DEFER (Schedule for maintenance)
+- question: 'Q5: forkEvery=50 tooling fix'
+  status: NOT_JUSTIFIED
+  action: DO NOT PROCEED (Reject forkEvery)
+- question: 'Q6: Fix all 7 before reduction'
+  status: DISPROVEN
+  action: INVESTIGATE / FIX_TARGETED
+final:
+  safest_current_actions:
+  - Rely 100% on scripts/production_gate.sh (16 suites / 175 tests + 4 Python scripts)
+    for all release gating.
+  - Preserve the active 80-suite test corpus without speculative deletions.
+  - Update Phase5DestructiveActionReleaseGateTest comment search string to restore
+    clean gate status.
+  do_not_do:
+  - Do NOT delete Workstream9CDatasetReplacementTest or Phase3SameLineageFinancialMutationTest.
+  - Do NOT add forkEvery = 50 to build.gradle.kts.
+  - Do NOT perform speculative mass test deletions without replacement fixtures.
+  single_highest_information_value_next_step: Update line 65 of Phase5DestructiveActionReleaseGateTest.kt
+    to '// 6. DEVELOPER MODE (DEBUG BUILD ONLY)' and execute scripts/production_gate.sh
+    to certify 100% clean green release gate status.
+  overall_verdict: ACCEPT_WITH_CORRECTIONS
+  confidence: HIGH
