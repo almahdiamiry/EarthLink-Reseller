@@ -1322,7 +1322,6 @@ object BackupManager {
             }
 
             var verifiedPassphrase: String? = null
-            System.err.println("RESTORE_DEBUG: tempDb.exists=${tempDb.exists()}, length=${tempDb.length()}, candidates=$candidates")
             for (candPass in candidates) {
                 var testDb: AppDatabase? = null
                 try {
@@ -1378,7 +1377,6 @@ object BackupManager {
                         (app?.syncRepository as? com.example.core.sync.SyncRepositoryImpl)?.remoteSyncCoordinator?.clearCache()
                     } catch (_: Throwable) {}
                 } catch (e: Throwable) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                    System.err.println("RESTORE_DEBUG: Error merging entities: ${e.message}")
                     Log.e(TAG, "Error merging entities during restore", e)
                     e.printStackTrace()
                     return@withOperation false
@@ -1387,7 +1385,6 @@ object BackupManager {
                 Log.i(TAG, "Backup restored and verified successfully.")
                 true
             } else {
-                System.err.println("RESTORE_DEBUG: Decryption failed, verifiedPassphrase=$verifiedPassphrase, backupDb=$backupDb")
                 Log.e(TAG, "None of the candidate passphrases could decrypt the restored database file. Reverting restore.")
                 try {
                     (context.applicationContext as? EarthlinkApp)?.auditRepository?.log(
@@ -1399,7 +1396,6 @@ object BackupManager {
                 false
             }
         } catch (e: Throwable) { if (e is kotlinx.coroutines.CancellationException) throw e;
-            System.err.println("RESTORE_DEBUG: Exception in restoreBackupZip: ${e.message}")
             Log.e(TAG, "Failed to restore backup file: ${backupFile.absolutePath}", e)
             try {
                 (context.applicationContext as? EarthlinkApp)?.auditRepository?.log(

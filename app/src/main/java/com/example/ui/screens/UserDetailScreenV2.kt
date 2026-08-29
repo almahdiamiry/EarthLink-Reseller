@@ -1498,7 +1498,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                 IconButton(onClick = { showHistoryDialog = false }) {
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                        contentDescription = "Back",
+                                         contentDescription = if (currentLang == "ar") "رجوع" else "Back",
                                         tint = Color.White
                                     )
                                 }
@@ -1521,7 +1521,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                 }) {
                                     Icon(
                                         imageVector = Icons.Default.Share,
-                                        contentDescription = "Share PDF",
+                                         contentDescription = if (currentLang == "ar") "مشاركة كـ PDF" else "Share PDF",
                                         tint = Color.White
                                     )
                                 }
@@ -2257,7 +2257,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.Settings,
-                                                contentDescription = "Copy message text",
+                                                contentDescription = if (currentLang == "ar") "نسخ نص الرسالة" else "Copy message text",
                                                 tint = Color.White.copy(alpha = 0.7f),
                                                 modifier = Modifier.size(24.dp)
                                             )
@@ -2280,7 +2280,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.Share,
-                                                contentDescription = "System Share",
+                                                contentDescription = if (currentLang == "ar") "مشاركة عبر النظام" else "System Share",
                                                 tint = Color.White.copy(alpha = 0.7f),
                                                 modifier = Modifier.size(24.dp)
                                             )

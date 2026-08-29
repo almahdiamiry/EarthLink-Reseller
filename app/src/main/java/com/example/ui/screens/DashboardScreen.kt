@@ -65,6 +65,12 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 
+// Pre-compiled static regex patterns to prevent repeated Pattern allocation during list sorting/filtering
+private val MULTIPLE_SPACES_REGEX = """\s+""".toRegex()
+private val AM_PM_REGEX = """(?i)(AM|PM)""".toRegex()
+private val TIME_REGEX = """(\d{1,2}):(\d{2})(?::(\d{2}))?""".toRegex()
+private val DATE_REGEX = """(\d{1,4})[/-](\d{1,2})[/-](\d{1,4})""".toRegex()
+
 // Formatting helper for Money
 
 private fun parseExpirationTimestamp(dateStr: String?): Long? {
@@ -83,7 +89,7 @@ private fun parseExpirationTimestamp(dateStr: String?): Long? {
         .replace("\u202D", "")
         .replace("\u202E", "")
         .replace("\u00A0", " ")
-        .replace("\\s+".toRegex(), " ")
+        .replace(MULTIPLE_SPACES_REGEX, " ")
         .trim()
 
     // Convert Arabic/Persian numerals
@@ -97,15 +103,12 @@ private fun parseExpirationTimestamp(dateStr: String?): Long? {
     val baghdadTz = java.util.TimeZone.getTimeZone("Asia/Baghdad")
 
     try {
-        val amPmRegex = """(?i)(AM|PM)""".toRegex()
-        val amPmMatch = amPmRegex.find(cleanStr)
+        val amPmMatch = AM_PM_REGEX.find(cleanStr)
         val amPm = amPmMatch?.groupValues?.get(1)?.uppercase(Locale.US)
 
-        val timeRegex = """(\d{1,2}):(\d{2})(?::(\d{2}))?""".toRegex()
-        val timeMatch = timeRegex.find(cleanStr)
+        val timeMatch = TIME_REGEX.find(cleanStr)
 
-        val dateRegex = """(\d{1,4})[/-](\d{1,2})[/-](\d{1,4})""".toRegex()
-        val dateMatch = dateRegex.find(cleanStr)
+        val dateMatch = DATE_REGEX.find(cleanStr)
 
         if (dateMatch != null) {
             val p1 = dateMatch.groupValues[1].toInt()
