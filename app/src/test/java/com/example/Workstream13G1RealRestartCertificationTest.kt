@@ -83,6 +83,7 @@ class Workstream13G1RealRestartCertificationTest {
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         dbFile = File(context.filesDir, "g1_restart_test_${System.currentTimeMillis()}.db")
+        dbFile.parentFile?.mkdirs()
         if (dbFile.exists()) {
             dbFile.delete()
         }
@@ -96,8 +97,10 @@ class Workstream13G1RealRestartCertificationTest {
     }
 
     private fun openDatabase(file: File): AppDatabase {
+        file.parentFile?.mkdirs()
         return Room.databaseBuilder(context, AppDatabase::class.java, file.absolutePath)
             .allowMainThreadQueries()
+            .setJournalMode(androidx.room.RoomDatabase.JournalMode.TRUNCATE)
             .build()
     }
 

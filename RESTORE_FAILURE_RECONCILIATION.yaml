@@ -1,0 +1,204 @@
+# =============================================================================
+# EARTHLINK RESELLER V1 — RESTORE FAILURE RECONCILIATION DATA ARTIFACT
+# =============================================================================
+# Diagnostic reconciliation machine-readable dataset for the five remaining
+# restore/transport test failures.
+# =============================================================================
+
+reconciliation_metadata:
+  timestamp: "2026-08-29T22:05:00+03:00"
+  git_head: "a30198a2b7060df0b8b6d8a25cb92f3d03a9f9d6"
+  git_branch: "main"
+  working_tree_status: "Batch 1 test repairs verified and retained"
+  operating_system: "Windows 11"
+  test_runner: "Robolectric 4.11.1 / OpenJDK 17"
+  total_tests_audited: 563
+  total_failures_reconciled: 5
+
+baseline_results:
+  total_tests: 563
+  passed: 558
+  failed: 5
+  skipped: 0
+  errors: 0
+
+failure_inventory:
+  - test_id: "com.example.Phase1RestoreTransportReconstructionTest.case1_backupContainsStaleOutboxAndMetadata_restoreDiscardsItAndDoesNotReplay"
+    class_name: "com.example.Phase1RestoreTransportReconstructionTest"
+    method_name: "case1_backupContainsStaleOutboxAndMetadata_restoreDiscardsItAndDoesNotReplay"
+    file_path: "app/src/test/java/com/example/Phase1RestoreTransportReconstructionTest.kt"
+    line_number: 134
+    canonical_invariants:
+      - "INV-01"
+      - "INV-11"
+      - "INV-13"
+    phase_requirements:
+      - "P1-G2-REQ-05"
+      - "P2-G3-REQ-05"
+    behavioral_claim: "WHEN an operator restores a backup ZIP archive containing stale historical outbox entries and stale cloud sync cursors, AND the live database is replaced with the backup archive's business data, THE SYSTEM MUST replace live business accounts with the backup accounts, discard all historical outbox rows from the backup archive (never replaying them into the live sync_outbox), and reset operational sync metadata/cursors to a clean baseline, AND MUST NOT replay historical outbox items into the live queue or preserve stale sync cursors."
+    evidence_identity:
+      claim: "Stale backup transport outbox rows and sync cursors must be discarded on archive restore."
+      scenario: "Backup ZIP contains 1 account + 1 stale outbox item + 1 stale cursor metadata."
+      state: "Pre-restore clean database."
+      failure_mode: "SQLiteCantOpenDatabaseException (code 14 SQLITE_CANTOPEN) in pre-restore safety backup creation at BackupManager.kt:1153."
+      production_entrypoint: "com.example.core.backup.BackupManager.restoreBackupZip"
+      production_seam: "BackupManager.captureRestoreTransportSnapshot & BackupManager.reconstructTransportState"
+      oracle: "Account count == 1, live outbox size == 0, sync metadata empty."
+      environment: "ROBOLECTRIC"
+    failure_seam_type: "FAILURE_SEAM_IS_INCIDENTAL_HARNESS"
+    root_cause_analysis: "Robolectric on Windows SQLite connection error during dynamic temporary database clone staging in BackupManager.kt:80 via createLocalBackupZipInternal."
+    overlap_analysis: "Complements Phase2RestoreReplaceHardeningTest.testHistoricalOutboxFromBackupIsNotReplayed by providing decision-table granularity for both outbox and cursor reset."
+    evidence_loss_simulation: "Loses focused unit-level decision table proof of cursor reset baseline."
+    repair_value: "HIGH_VALUE"
+    repair_safety: "SAFE_REPAIR"
+    disposition: "PRESERVE_AND_REPAIR_AS_PERMANENT"
+    lifecycle_category: "PERMANENT"
+    execution_tier: "ROBOLECTRIC"
+
+  - test_id: "com.example.Phase1RestoreTransportReconstructionTest.case2_preRestoreValidUnresolvedObligation_withMatchingResultingEntity_isReconstructed"
+    class_name: "com.example.Phase1RestoreTransportReconstructionTest"
+    method_name: "case2_preRestoreValidUnresolvedObligation_withMatchingResultingEntity_isReconstructed"
+    file_path: "app/src/test/java/com/example/Phase1RestoreTransportReconstructionTest.kt"
+    line_number: 175
+    canonical_invariants:
+      - "INV-01"
+      - "INV-11"
+      - "INV-13"
+    phase_requirements:
+      - "P1-G2-REQ-05"
+      - "P2-G3-REQ-05"
+    behavioral_claim: "WHEN a live database contains a pre-restore unresolved transport obligation, AND a restore operation replaces the live database with a backup that CONTAINS the matching resulting entity, THE SYSTEM MUST preserve and reconstruct the pending transport obligation in the live sync_outbox with stable entity identity, entityType, operation, status, attempt count, and last error, AND MUST NOT delete the unresolved obligation or generate duplicate/corrupt outbox records."
+    evidence_identity:
+      claim: "Pre-restore unresolved cloud obligations for surviving entities are reconstructed with stable identity and preserved metadata."
+      scenario: "Live DB has account + pending outbox with attemptCount=2 and error string; backup contains matching account."
+      state: "Pre-restore 1 account + 1 outbox obligation."
+      failure_mode: "SQLiteCantOpenDatabaseException in pre-restore safety backup creation at BackupManager.kt:1153."
+      production_entrypoint: "com.example.core.backup.BackupManager.restoreBackupZip"
+      production_seam: "BackupManager.reconstructTransportState"
+      oracle: "Outbox item for entity exists with status='pending', attemptCount=2, lastError='Temporary timeout'."
+      environment: "ROBOLECTRIC"
+    failure_seam_type: "FAILURE_SEAM_IS_INCIDENTAL_HARNESS"
+    root_cause_analysis: "Pre-restore safety backup creation fails when creating temp_plain database clone in Robolectric on Windows."
+    overlap_analysis: "Decision Table Rule 2. Integrates with Phase 2 transport reconstruction integration suite."
+    evidence_loss_simulation: "Loses isolated decision table proof of attemptCount and lastError preservation across restore."
+    repair_value: "HIGH_VALUE"
+    repair_safety: "SAFE_REPAIR"
+    disposition: "PRESERVE_AND_REPAIR_AS_PERMANENT"
+    lifecycle_category: "PERMANENT"
+    execution_tier: "ROBOLECTRIC"
+
+  - test_id: "com.example.Phase1RestoreTransportReconstructionTest.case3_preRestoreUnresolvedObligation_withAbsentResultingEntity_classifiedAsOrphaned"
+    class_name: "com.example.Phase1RestoreTransportReconstructionTest"
+    method_name: "case3_preRestoreUnresolvedObligation_withAbsentResultingEntity_classifiedAsOrphaned"
+    file_path: "app/src/test/java/com/example/Phase1RestoreTransportReconstructionTest.kt"
+    line_number: 210
+    canonical_invariants:
+      - "INV-01"
+      - "INV-11"
+      - "INV-13"
+    phase_requirements:
+      - "P1-G2-REQ-05"
+      - "P2-G3-REQ-05"
+    behavioral_claim: "WHEN a live database contains a pre-restore unresolved transport obligation for an entity, AND a restore operation replaces the live database with a backup that DOES NOT contain that entity, THE SYSTEM MUST classify the unresolved obligation as orphaned, transition its status to failed (with incremented attemptCount and diagnostic error prefix ORPHAN:...), and retain the outbox record durably, AND MUST NOT silently delete the outbox obligation or leave it in an active pending loop."
+    evidence_identity:
+      claim: "Pre-restore unresolved transport obligations for absent entities must be classified as orphaned and durably preserved."
+      scenario: "Live DB has target account + outbox item; backup contains a different account."
+      state: "Pre-restore 1 orphan account + 1 obligation."
+      failure_mode: "SQLiteCantOpenDatabaseException in pre-restore safety backup creation at BackupManager.kt:1153."
+      production_entrypoint: "com.example.core.backup.BackupManager.restoreBackupZip"
+      production_seam: "BackupManager.reconstructTransportState"
+      oracle: "Target account is null, outbox row exists with status='failed', attemptCount=2, lastError starting with 'ORPHAN:'."
+      environment: "ROBOLECTRIC"
+    failure_seam_type: "FAILURE_SEAM_IS_INCIDENTAL_HARNESS"
+    root_cause_analysis: "Pre-restore safety backup clone fails to open temporary database in Robolectric on Windows."
+    overlap_analysis: "Decision Table Rule 3. Corresponds to INV-13 anti-dead-letter guarantee."
+    evidence_loss_simulation: "Loses standalone end-to-end restore pipeline proof for orphan outbox isolation."
+    repair_value: "HIGH_VALUE"
+    repair_safety: "SAFE_REPAIR"
+    disposition: "PRESERVE_AND_REPAIR_AS_PERMANENT"
+    lifecycle_category: "PERMANENT"
+    execution_tier: "ROBOLECTRIC"
+
+  - test_id: "com.example.Phase2RestoreTransactionBoundaryTest.testApprovedDecisionExecutesInsideRoomTransactionDeterministicallyWithoutSideEffects"
+    class_name: "com.example.Phase2RestoreTransactionBoundaryTest"
+    method_name: "testApprovedDecisionExecutesInsideRoomTransactionDeterministicallyWithoutSideEffects"
+    file_path: "app/src/test/java/com/example/Phase2RestoreTransactionBoundaryTest.kt"
+    line_number: 269
+    canonical_invariants:
+      - "INV-11"
+      - "INV-14"
+    phase_requirements:
+      - "P2-G3-REQ-01"
+      - "P2-G3-REQ-03"
+    behavioral_claim: "WHEN an operator provides a pre-computed and explicitly approved RestoreMergeDecision for a valid backup archive, AND BackupManager.restoreWithDecision executes the restore, THE SYSTEM MUST execute the entire business state replacement deterministically inside a single Room write transaction, update live accounts and ledgers to match the restored backup state, record a signed DATABASE_RESTORE audit log entry, and produce zero network/Firebase side effects, AND MUST NOT perform pre-commit computations inside the transaction or leave partial uncommitted state on failure."
+    evidence_identity:
+      claim: "Approved RestoreMergeDecision executes inside Room transaction deterministically with zero side effects and signed audit log."
+      scenario: "Live DB has old account; backup ZIP has new account + ledger. Decision isApproved=true."
+      state: "Pre-restore 1 old account."
+      failure_mode: "SQLiteCantOpenDatabaseException at BackupManager.kt:1153 during safety backup clone in restoreWithDecision."
+      production_entrypoint: "com.example.core.backup.BackupManager.restoreWithDecision"
+      production_seam: "BackupManager.restoreWithDecision -> executeRestoreReplaceInternal inside liveDb.withTransaction"
+      oracle: "Live accounts and ledgers match backup state; DATABASE_RESTORE audit log created with non-null signature."
+      environment: "ROBOLECTRIC"
+    failure_seam_type: "FAILURE_SEAM_IS_INCIDENTAL_HARNESS"
+    root_cause_analysis: "Pre-restore safety backup creation fails on temporary database open under Windows Robolectric."
+    overlap_analysis: "Central positive execution proof for P2-G3-REQ-01 / P2-G3-REQ-03 decision approval contract."
+    evidence_loss_simulation: "Loses primary positive execution evidence in the decision contract test suite."
+    repair_value: "CRITICAL_VALUE"
+    repair_safety: "SAFE_REPAIR"
+    disposition: "PRESERVE_AND_REPAIR_AS_PERMANENT"
+    lifecycle_category: "PERMANENT"
+    execution_tier: "ROBOLECTRIC"
+
+  - test_id: "com.example.Phase2TransportReconstructionIntegrationTest.testPreRestorePendingObligationsPreservationAndOrphanClassification"
+    class_name: "com.example.Phase2TransportReconstructionIntegrationTest"
+    method_name: "testPreRestorePendingObligationsPreservationAndOrphanClassification"
+    file_path: "app/src/test/java/com/example/Phase2TransportReconstructionIntegrationTest.kt"
+    line_number: 206
+    canonical_invariants:
+      - "INV-01"
+      - "INV-06"
+      - "INV-11"
+      - "INV-13"
+      - "INV-14"
+    phase_requirements:
+      - "P2-G3-REQ-05"
+    behavioral_claim: "WHEN a live database contains a complex pre-restore transport state (in-flight syncing account, pending surviving ledger, absent account obligation, failed missing ledger obligation), AND a restore operation replaces the live database with a backup containing only the surviving entities, THE SYSTEM MUST normalize the in-flight surviving obligation to pending, preserve the surviving ledger obligation as pending, classify the removed account and missing ledger obligations as failed with ORPHAN: prefix and ORPHAN_TARGET_ENTITY_MISSING tag, and ensure backoff delays prevent immediate sync hot loops, AND MUST NOT delete any obligations, drop attempt history, or allow orphaned items into immediate sync retry loops."
+    evidence_identity:
+      claim: "Comprehensive 4-vector transport reconstruction with in-flight normalization, surviving retention, orphan tagging, and backoff eligibility enforcement."
+      scenario: "Multi-entity live state with 4 distinct outbox obligations; backup contains surviving subset."
+      state: "Pre-restore 2 accounts + 1 ledger + 4 outbox rows across statuses syncing, pending, failed."
+      failure_mode: "SQLiteCantOpenDatabaseException at BackupManager.kt:1153."
+      production_entrypoint: "com.example.core.backup.BackupManager.restoreBackupZip"
+      production_seam: "BackupManager.restoreBackupZipInternal -> reconstructTransportState & OutboxManager.isEligibleForSync"
+      oracle: "Exact 4-tuple outbox state, attempt counts (2/0/2/4), ORPHAN_TARGET_ENTITY_MISSING tags, and OutboxManager.isEligibleForSync == false."
+      environment: "ROBOLECTRIC"
+    failure_seam_type: "FAILURE_SEAM_IS_INCIDENTAL_HARNESS"
+    root_cause_analysis: "Pre-restore safety backup creation fails during database clone staging under Windows Robolectric."
+    overlap_analysis: "Flagship integration test uniting Phase 1 cases 2, 3, and 8 with OutboxManager backoff eligibility checks."
+    evidence_loss_simulation: "Loses integration-tier proof that orphaned items do not cause hot retry loops in OutboxManager."
+    repair_value: "CRITICAL_VALUE"
+    repair_safety: "SAFE_REPAIR"
+    disposition: "PRESERVE_AND_REPAIR_AS_PERMANENT"
+    lifecycle_category: "PERMANENT"
+    execution_tier: "ROBOLECTRIC"
+
+cross_cutting_summary:
+  common_failure_seam: "BackupManager.kt:1153 -> BackupManager.kt:80 -> SQLiteCantOpenDatabaseException on temporary database clone staging in Robolectric on Windows."
+  environmental_factors:
+    - "Dynamic database name without .db extension"
+    - "Missing parent directory recreation after context.deleteDatabase in Robolectric on Windows"
+    - "File lock retention across rapid consecutive test methods"
+  governing_invariants:
+    - "INV-01"
+    - "INV-06"
+    - "INV-11"
+    - "INV-13"
+    - "INV-14"
+
+disposition_summary:
+  preserve_and_repair_as_permanent: 5
+  archive_to_evidence: 0
+  remove_as_pure_redundant: 0
+  quarantine_pending_platform_support: 0
+  total: 5

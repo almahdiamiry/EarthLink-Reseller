@@ -81,6 +81,7 @@ class Phase1RestoreTransportReconstructionTest {
         val srcDbName = "test_backup_source"
         AppDatabase.closeAndRemoveInstance(srcDbName)
         context.deleteDatabase(srcDbName)
+        context.getDatabasePath(srcDbName).parentFile?.mkdirs()
 
         val testDiskDb = AppDatabase.getDatabase(context, ByteArray(0), srcDbName)
 

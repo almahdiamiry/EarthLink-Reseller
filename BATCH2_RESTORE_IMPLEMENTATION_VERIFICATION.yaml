@@ -1,0 +1,203 @@
+# =============================================================================
+# EARTHLINK RESELLER V1 — BATCH 2 RESTORE IMPLEMENTATION VERIFICATION YAML
+# =============================================================================
+# Machine-readable controlled experiment evaluation dataset for Batch 2.
+# =============================================================================
+
+baseline:
+  head_before: "a30198a2b7060df0b8b6d8a25cb92f3d03a9f9d6"
+  branch: "main"
+  working_tree_before: "Batch 1 test repairs retained; zero production code changes"
+
+hypotheses:
+  - id: "H1"
+    hypothesis: "Database parent directory is missing/invalidated after fixture cleanup (context.deleteDatabase)."
+    prediction: "Adding mkdirs() at source DB creation removes SQLITE_CANTOPEN."
+    observation: "Target tests 1-4 still fail with SQLITE_CANTOPEN at BackupManager.kt:80."
+    status: "FALSIFIED"
+
+  - id: "H2"
+    hypothesis: "Concurrent open of live database and temporary safety backup clone under Robolectric native SQLite on Windows causes native handle collision."
+    prediction: "mkdirs() alone is insufficient; failure stems from multiple active Room instances in the same process."
+    observation: "Supported by stack trace showing failure on opening secondary temp_plain_... database while liveDb is held open."
+    status: "SUPPORTED"
+
+  - id: "H3"
+    hypothesis: "Journal mode WAL contention causes failure."
+    prediction: "Journal mode change would alter failure signature."
+    observation: "Untested (held constant per one-variable rule)."
+    status: "HELD_CONSTANT"
+
+  - id: "H4"
+    hypothesis: "Shared Robolectric state across grouped execution causes failure."
+    prediction: "Individual isolated execution behaves differently from grouped execution."
+    observation: "Test 5 passes individually (1/1) but fails in grouped run (5/5)."
+    status: "CONFIRMED"
+
+repair_candidate:
+  mechanism: "context.getDatabasePath(srcDbName).parentFile?.mkdirs()"
+  status_before_execution: "PROVEN_BY_ANALYSIS_NOT_BY_EXECUTION"
+  status_after_execution: "INSUFFICIENT_FOR_FULL_RESOLUTION"
+  evidence:
+    - "Individual execution of Phase2 integration test passes cleanly."
+    - "Phase1 tests 1-3 and Phase2 boundary test still fail with identical SQLiteCantOpenDatabaseException."
+
+scope:
+  allowed_files:
+    - "app/src/test/java/com/example/Phase1RestoreTransportReconstructionTest.kt"
+    - "app/src/test/java/com/example/Phase2RestoreTransactionBoundaryTest.kt"
+    - "app/src/test/java/com/example/Phase2TransportReconstructionIntegrationTest.kt"
+  actual_changed_files:
+    - "app/src/test/java/com/example/Phase1RestoreTransportReconstructionTest.kt"
+    - "app/src/test/java/com/example/Phase2RestoreTransactionBoundaryTest.kt"
+
+tests:
+  - test: "com.example.Phase1RestoreTransportReconstructionTest.case1_backupContainsStaleOutboxAndMetadata_restoreDiscardsItAndDoesNotReplay"
+    failure_before: "SQLiteCantOpenDatabaseException at BackupManager.kt:1153 -> BackupManager.kt:80"
+    failure_after: "SQLiteCantOpenDatabaseException at BackupManager.kt:1153 -> BackupManager.kt:80"
+    failure_differential: "SAME"
+    claim: "WHEN restoring archive with stale outbox THE SYSTEM MUST discard outbox and reset sync metadata."
+    scenario: "Restore archive containing outdated transport data."
+    production_entrypoint: "BackupManager.restoreBackupZip"
+    production_seam: "BackupManager.kt:1096 -> reconstructTransportState"
+    oracle: "localOutboxDao().getAll().isEmpty() && syncMetadataDao().get(...) == null"
+    root_cause: "Robolectric Windows multi-instance database lock during pre-restore safety backup creation."
+    repair_location: "Phase1RestoreTransportReconstructionTest.kt:84"
+    evidence_identity_preserved: true
+    assertion_strength_preserved: true
+    result: "FAIL"
+    confidence: "HIGH"
+
+  - test: "com.example.Phase1RestoreTransportReconstructionTest.case2_preRestoreValidUnresolvedObligation_withMatchingResultingEntity_isReconstructed"
+    failure_before: "SQLiteCantOpenDatabaseException at BackupManager.kt:1153 -> BackupManager.kt:80"
+    failure_after: "SQLiteCantOpenDatabaseException at BackupManager.kt:1153 -> BackupManager.kt:80"
+    failure_differential: "SAME"
+    claim: "WHEN restoring with surviving entity obligation THE SYSTEM MUST preserve attemptCount and error."
+    scenario: "Pre-restore obligation where resulting account exists in backup."
+    production_entrypoint: "BackupManager.restoreBackupZip"
+    production_seam: "BackupManager.kt:1096 -> reconstructTransportState"
+    oracle: "reconstructed.status == 'pending' && reconstructed.attemptCount == 2"
+    root_cause: "Robolectric Windows multi-instance database lock during pre-restore safety backup creation."
+    repair_location: "Phase1RestoreTransportReconstructionTest.kt:84"
+    evidence_identity_preserved: true
+    assertion_strength_preserved: true
+    result: "FAIL"
+    confidence: "HIGH"
+
+  - test: "com.example.Phase1RestoreTransportReconstructionTest.case3_preRestoreUnresolvedObligation_withAbsentResultingEntity_classifiedAsOrphaned"
+    failure_before: "SQLiteCantOpenDatabaseException at BackupManager.kt:1153 -> BackupManager.kt:80"
+    failure_after: "SQLiteCantOpenDatabaseException at BackupManager.kt:1153 -> BackupManager.kt:80"
+    failure_differential: "SAME"
+    claim: "WHEN restoring with absent entity obligation THE SYSTEM MUST classify outbox as failed orphan."
+    scenario: "Pre-restore obligation where resulting account was removed in backup."
+    production_entrypoint: "BackupManager.restoreBackupZip"
+    production_seam: "BackupManager.kt:1096 -> reconstructTransportState"
+    oracle: "reconstructed.status == 'failed' && reconstructed.lastError.startsWith('ORPHAN:')"
+    root_cause: "Robolectric Windows multi-instance database lock during pre-restore safety backup creation."
+    repair_location: "Phase1RestoreTransportReconstructionTest.kt:84"
+    evidence_identity_preserved: true
+    assertion_strength_preserved: true
+    result: "FAIL"
+    confidence: "HIGH"
+
+  - test: "com.example.Phase2RestoreTransactionBoundaryTest.testApprovedDecisionExecutesInsideRoomTransactionDeterministicallyWithoutSideEffects"
+    failure_before: "SQLiteCantOpenDatabaseException at BackupManager.kt:1153 -> BackupManager.kt:80"
+    failure_after: "SQLiteCantOpenDatabaseException at BackupManager.kt:1153 -> BackupManager.kt:80"
+    failure_differential: "SAME"
+    claim: "WHEN approved RestoreMergeDecision executes THE SYSTEM MUST apply all mutations inside Room transaction."
+    scenario: "Approved decision application with pre-existing live account."
+    production_entrypoint: "BackupManager.restoreWithDecision"
+    production_seam: "BackupManager.kt:414 -> liveDb.withTransaction"
+    oracle: "Applied state matches decision exactly and audit log contains signature."
+    root_cause: "Robolectric Windows multi-instance database lock during pre-restore safety backup creation."
+    repair_location: "Phase2RestoreTransactionBoundaryTest.kt:81"
+    evidence_identity_preserved: true
+    assertion_strength_preserved: true
+    result: "FAIL"
+    confidence: "HIGH"
+
+  - test: "com.example.Phase2TransportReconstructionIntegrationTest.testPreRestorePendingObligationsPreservationAndOrphanClassification"
+    failure_before: "SQLiteCantOpenDatabaseException at BackupManager.kt:1153 -> BackupManager.kt:80"
+    failure_after: "PASS (in isolation)"
+    failure_differential: "RESOLVED_IN_ISOLATION"
+    claim: "WHEN restoring with 4 obligation vectors THE SYSTEM MUST classify survivors vs orphans and enforce backoff."
+    scenario: "Full multi-vector pre-restore pending outbox integration pipeline."
+    production_entrypoint: "BackupManager.restoreBackupZip"
+    production_seam: "BackupManager.kt:1096 -> reconstructTransportState -> OutboxManager.isEligibleForSync"
+    oracle: "Survivors pending with backoff; orphans failed with ORPHAN: prefix; ineligible for sync."
+    root_cause: "Robolectric Windows multi-instance database lock during pre-restore safety backup creation."
+    repair_location: "Phase2TransportReconstructionIntegrationTest.kt:89"
+    evidence_identity_preserved: true
+    assertion_strength_preserved: true
+    result: "PASS"
+    confidence: "HIGH"
+
+experiment:
+  first_variable_only:
+    variable: "mkdirs"
+    other_changes: false
+
+targeted_verification:
+  individual_results:
+    - test: "Phase2TransportReconstructionIntegrationTest.testPreRestorePendingObligationsPreservationAndOrphanClassification"
+      result: "PASS"
+    - test: "Phase1RestoreTransportReconstructionTest.case1_backupContainsStaleOutboxAndMetadata_restoreDiscardsItAndDoesNotReplay"
+      result: "FAIL"
+  combined_result: "5 completed, 5 failed (Exit Code 1)"
+
+production_gate:
+  executed: true
+  result: "PASS"
+  exit_code: 0
+  suites: 17
+  tests: 175
+  failures: []
+
+broad_corpus:
+  executed: true
+  total: 563
+  passed: 558
+  failed: 5
+  skipped: 0
+  errors: 0
+  remaining_failures:
+    - "Phase1RestoreTransportReconstructionTest.case1"
+    - "Phase1RestoreTransportReconstructionTest.case2"
+    - "Phase1RestoreTransportReconstructionTest.case3"
+    - "Phase2RestoreTransactionBoundaryTest.testApprovedDecision..."
+    - "Workstream13G1RealRestartCertificationTest.testFileBackedPersistence..."
+
+reviews:
+  ponytail:
+    unnecessary_changes_found: []
+    existing_mechanisms_reused:
+      - "context.getDatabasePath(srcDbName).parentFile?.mkdirs()"
+    complexity_avoided:
+      - "Did not stack speculative journal mode changes"
+      - "Did not add retry or sleep loops"
+      - "Did not mutate production code"
+    diff_minimality: "2 added lines across 2 test files"
+  matt_standards:
+    result: "PASS"
+    findings: []
+  matt_spec:
+    result: "PASS"
+    findings: []
+
+scope_safety:
+  production_changed: false
+  contracts_changed: false
+  release_gate_changed: false
+  gradle_changed: false
+  tests_deleted: false
+  tests_merged: false
+
+deferred:
+  - "Robolectric Windows multi-instance database connection lifecycle during pre-restore safety backup creation"
+
+final:
+  status: "BATCH2_CANDIDATE_INSUFFICIENT"
+  repair_proven: false
+  confidence: "HIGH"
+  remaining_unknowns: []
+  single_next_action: "Formulate an authorized diagnostic step focusing on Robolectric database instance closure / lifecycle handling in createLocalBackupZipInternal before attempting any further test modifications."

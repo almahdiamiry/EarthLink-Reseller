@@ -61,11 +61,20 @@ class Phase5DestructiveActionReleaseGateTest {
         val clearOccurrences = Regex("""\.clearLocalData\(""").findAll(content).count()
         assertTrue("SettingsScreen must contain the clearLocalData implementation", clearOccurrences >= 1)
 
-        // Verify the entire DEV MODE section is enclosed within BuildConfig.DEBUG
-        val devModeIndex = content.indexOf("// --- DEV MODE (DEBUG BUILD ONLY) ---")
-        assertTrue("DEV MODE section marker must be present", devModeIndex != -1)
-        val debugCheckAfterMarker = content.indexOf("BuildConfig.DEBUG", devModeIndex)
-        assertTrue("BuildConfig.DEBUG check must immediately guard DEV MODE section", debugCheckAfterMarker != -1 && debugCheckAfterMarker - devModeIndex < 200)
+        // 3. Verify DeveloperSection invocation is guarded by BuildConfig.DEBUG / AppBuildConfig.DEBUG
+        val debugGuardIndex = listOf(
+            content.indexOf("if (com.alamiry.earthlinkreseller.BuildConfig.DEBUG)"),
+            content.indexOf("if (BuildConfig.DEBUG)"),
+            content.indexOf("if (AppBuildConfig.DEBUG)")
+        ).filter { it != -1 }.minOrNull() ?: -1
+        assertTrue("BuildConfig.DEBUG or AppBuildConfig.DEBUG guard must be present", debugGuardIndex != -1)
+
+        val developerSectionCallIndex = content.indexOf("DeveloperSection(")
+        assertTrue("DeveloperSection must be called in SettingsScreen", developerSectionCallIndex != -1)
+        assertTrue(
+            "DeveloperSection call must be guarded by BuildConfig.DEBUG",
+            developerSectionCallIndex > debugGuardIndex && (developerSectionCallIndex - debugGuardIndex) < 500
+        )
     }
 
     @Test

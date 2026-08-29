@@ -801,6 +801,7 @@ class Step3DurableDispatchTest {
         // Add matching subscriber user search result and statement to FakeGateway to prove statement-based resolution
         gateway.searchUsersResult = UserListResponse(itemsList = listOf(UserListItem(userIndexLower = 101, userIDLower = "unregistered_refill_user")))
         val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+        sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
         val dateStr = sdf.format(java.util.Date())
         gateway.statementsResult = listOf(
             com.example.core.model.AccountStatementItem(
