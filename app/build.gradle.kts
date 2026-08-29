@@ -112,6 +112,17 @@ android {
           "-XX:+EnableDynamicAgentLoading",
           "-Dnet.bytebuddy.experimental=true"
         )
+        // Ensure unit-test temporary directory stays within Windows Win32 MAX_PATH (260 char) limit for Robolectric native SQLite
+        val isWindows = org.gradle.internal.os.OperatingSystem.current().isWindows
+        val testTmpDir = if (isWindows) {
+          val drive = System.getenv("SystemDrive") ?: "C:"
+          file("$drive/tmp")
+        } else {
+          layout.buildDirectory.dir("tmp").get().asFile
+        }
+        testTmpDir.mkdirs()
+        testTask.systemProperty("java.io.tmpdir", testTmpDir.absolutePath)
+
         val agentJar = file("/opt/gradle/.gradle/caches/modules-2/files-2.1/net.bytebuddy/byte-buddy-agent/1.14.12/be4984cb6fd1ef1d11f218a648889dfda44b8a15/byte-buddy-agent-1.14.12.jar")
         if (agentJar.exists()) {
           testTask.jvmArgs("-javaagent:${agentJar.absolutePath}")
