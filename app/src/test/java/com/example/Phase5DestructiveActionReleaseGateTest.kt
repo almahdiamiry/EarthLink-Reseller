@@ -1,5 +1,6 @@
 package com.example
 
+import com.example.core.util.AppBuildConfig
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -109,5 +110,28 @@ class Phase5DestructiveActionReleaseGateTest {
             "Registry rule must reference invariant INV-15",
             content.contains("invariant: \"INV-15\"")
         )
+    }
+
+    @Test
+    fun testNoRawBuildConfigReferencesInUiCode() {
+        val uiDir = findSourceDir("app/src/main/java/com/example/ui")
+        val ktFiles = uiDir.walkTopDown().filter { it.isFile && it.extension == "kt" }.toList()
+
+        for (file in ktFiles) {
+            val content = file.readText()
+            assertFalse(
+                "UI file ${file.name} must NOT contain raw 'com.alamiry.earthlinkreseller.BuildConfig' references. Use AppBuildConfig instead.",
+                content.contains("com.alamiry.earthlinkreseller.BuildConfig")
+            )
+        }
+    }
+
+    @Test
+    fun testAppBuildConfigAccessors() {
+        assertNotNull("AppBuildConfig.DEBUG must be accessible", AppBuildConfig.DEBUG)
+        assertNotNull("AppBuildConfig.FIREBASE_API_KEY must be accessible", AppBuildConfig.FIREBASE_API_KEY)
+        assertNotNull("AppBuildConfig.FIREBASE_APPLICATION_ID must be accessible", AppBuildConfig.FIREBASE_APPLICATION_ID)
+        assertNotNull("AppBuildConfig.FIREBASE_PROJECT_ID must be accessible", AppBuildConfig.FIREBASE_PROJECT_ID)
+        assertNotNull("AppBuildConfig.FIREBASE_DATABASE_URL must be accessible", AppBuildConfig.FIREBASE_DATABASE_URL)
     }
 }

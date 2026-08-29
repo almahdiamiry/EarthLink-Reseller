@@ -223,4 +223,30 @@ class ManualVerificationResolutionTest {
         val retrieved = pendingDao.getByBusinessTransactionId(txId)
         assertNotEquals("COMPLETED", retrieved?.status)
     }
+
+    @Test
+    fun testMissingFinancialTarget_directMaterialization_preventsCompletedState() = runBlocking {
+        val txId = "tx_" + UUID.randomUUID()
+        val op = PendingExternalOperation(
+            businessTransactionId = txId,
+            operationIntentId = "intent_direct_missing",
+            accountId = "missing_user_direct",
+            operationType = "REFILL",
+            amountIqd = 45000L,
+            payloadJson = "{}",
+            status = "IN_PROGRESS"
+        )
+        pendingDao.insert(op)
+
+        try {
+            ledgerRepository.resolvePendingOperationVerifiedSuccess(txId, null)
+            fail("Should have thrown IllegalStateException for missing local account")
+        } catch (e: IllegalStateException) {
+            assertTrue(e.message!!.contains("MISSING_LOCAL_FINANCIAL_TARGET"))
+        }
+
+        // Verify the status remains IN_PROGRESS and NOT COMPLETED
+        val verifyOp = pendingDao.getByBusinessTransactionId(txId)
+        assertEquals("IN_PROGRESS", verifyOp?.status)
+    }
 }

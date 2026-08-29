@@ -772,14 +772,6 @@ test_suites:
     associated_invariants:
       - "INV-05"
 
-  - name: "Workstream14BuildConfigConsistencyTest"
-    path: "app/src/test/java/com/example/Workstream14BuildConfigConsistencyTest.kt"
-    environment: "ROBOLECTRIC"
-    tier_purpose: "Workstream 14 Build Config Consistency test suite"
-    associated_invariants:
-      - "INV-01"
-      - "INV-05"
-
   - name: "Step3DurableDispatchTest"
     path: "app/src/test/java/com/example/Step3DurableDispatchTest.kt"
     environment: "ROBOLECTRIC"
@@ -832,14 +824,6 @@ test_suites:
     path: "app/src/test/java/com/example/Step2OutcomeResolutionTest.kt"
     environment: "ROBOLECTRIC"
     tier_purpose: "Step 2 Outcome Resolution test suite"
-    associated_invariants:
-      - "INV-01"
-      - "INV-05"
-
-  - name: "CompletedStateMaterializationInvariantTest"
-    path: "app/src/test/java/com/example/CompletedStateMaterializationInvariantTest.kt"
-    environment: "ROBOLECTRIC"
-    tier_purpose: "Completed State Materialization Invariant test suite"
     associated_invariants:
       - "INV-01"
       - "INV-05"
