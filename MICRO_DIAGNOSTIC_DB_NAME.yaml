@@ -1,0 +1,49 @@
+# =============================================================================
+# EARTHLINK RESELLER V1 — MICRO DIAGNOSTIC DB NAME / EXTENSION YAML DATASET
+# =============================================================================
+
+baseline:
+  head: "0842c73504d2b33be472e2d114347d4341ab624f"
+  branch: "main"
+  working_tree_clean: true
+
+test_target: "com.example.Phase1RestoreTransportReconstructionTest.case1_backupContainsStaleOutboxAndMetadata_restoreDiscardsItAndDoesNotReplay"
+
+experiment_setup:
+  isolated_variable: "Database name format / file extension (.db vs no extension)"
+  builder_used: "AppDatabase.getDatabase(context, ByteArray(0), name)"
+  journal_mode: "TRUNCATE"
+  parent_dir_exists: true
+
+control:
+  database_name: "temp_plain_20260830_000400_867"
+  has_db_extension: false
+  resolved_path: "C:\\Users\\ALMAHD~1\\AppData\\Local\\Temp\\robolectric-Phase1RestoreTransportReconstructionTest_case1_backupContainsStaleOutboxAndMetadata_restoreDiscardsItAndDoesNotReplay8891402100700071466\\com.alamiry.earthlinkreseller-dataDir\\databases\\temp_plain_20260830_000400_867"
+  success: false
+  exception_type: "android.database.sqlite.SQLiteCantOpenDatabaseException"
+  sqlite_error_code: "14 (SQLITE_CANTOPEN)"
+  exact_error: "Cannot open database '...\\temp_plain_20260830_000400_867' with flags 0x10000000: File ... doesn't exist and CREATE_IF_NECESSARY is set, check directory permissions"
+
+experiment:
+  database_name: "temp_plain_20260830_000400_867.db"
+  has_db_extension: true
+  resolved_path: "C:\\Users\\ALMAHD~1\\AppData\\Local\\Temp\\robolectric-Phase1RestoreTransportReconstructionTest_case1_backupContainsStaleOutboxAndMetadata_restoreDiscardsItAndDoesNotReplay8891402100700071466\\com.alamiry.earthlinkreseller-dataDir\\databases\\temp_plain_20260830_000400_867.db"
+  success: false
+  exception_type: "android.database.sqlite.SQLiteCantOpenDatabaseException"
+  sqlite_error_code: "14 (SQLITE_CANTOPEN)"
+  exact_error: "Cannot open database '...\\temp_plain_20260830_000400_867.db' with flags 0x10000000: File ... doesn't exist and CREATE_IF_NECESSARY is set, check directory permissions"
+
+comparison:
+  without_db_result: "FAIL"
+  with_db_result: "FAIL"
+  result_differential: "IDENTICAL_FAILURE"
+  causal_effect_of_extension: "NONE"
+
+verdict:
+  classification: "NAME_EXTENSION_FALSIFIED"
+  confidence: "HIGH"
+  summary: "Adding .db to the database name does not alter SQLite's native open behavior in Robolectric on Windows."
+
+working_tree_restored: true
+
+single_next_diagnostic_step: "Investigate whether pre-creating an empty physical 0-byte file on disk (File.createNewFile()) before invoking Room.databaseBuilder allows SQLite native open to succeed without encountering CREATE_IF_NECESSARY directory permission failures on Windows."
