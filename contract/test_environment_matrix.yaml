@@ -741,14 +741,6 @@ test_suites:
       - "INV-01"
       - "INV-05"
 
-  - name: "Phase1G1ProcessKillRecoveryTest"
-    path: "app/src/test/java/com/example/Phase1G1ProcessKillRecoveryTest.kt"
-    environment: "ROBOLECTRIC"
-    tier_purpose: "Phase 1 Process Kill Recovery test suite"
-    associated_invariants:
-      - "INV-01"
-      - "INV-05"
-
   - name: "Workstream7And8SafetyNetTest"
     path: "app/src/test/java/com/example/Workstream7And8SafetyNetTest.kt"
     environment: "ROBOLECTRIC"
@@ -866,13 +858,6 @@ test_suites:
     associated_invariants:
       - "INV-01"
       - "INV-05"
-
-  - name: "CoordinatorTransportSplitTest"
-    path: "app/src/test/java/com/example/CoordinatorTransportSplitTest.kt"
-    environment: "ROBOLECTRIC"
-    tier_purpose: "Coordinator Transport Split test suite"
-    associated_invariants:
-      - "INV-11"
 
   - name: "Workstream13G1RealRestartCertificationTest"
     path: "app/src/test/java/com/example/Workstream13G1RealRestartCertificationTest.kt"
