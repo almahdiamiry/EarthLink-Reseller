@@ -10,11 +10,13 @@ import com.example.core.database.LocalLedgerEntryDao
 import com.example.core.database.PendingExternalOperationDao
 import com.example.core.database.SyncOutboxDao
 import com.example.core.model.LocalAccount
+import com.example.core.network.EarthlinkTransportException
 import com.example.core.security.PreferenceManager
 import com.example.data.repository.AuditRepositoryImpl
 import com.example.data.repository.LocalAccountRepositoryImpl
 import com.example.data.repository.LocalLedgerRepositoryImpl
 import com.example.domain.repository.AuditRepository
+import com.example.domain.repository.EarthlinkGateway
 import com.example.domain.repository.LocalAccountRepository
 import com.example.domain.repository.LocalLedgerRepository
 import kotlinx.coroutines.Dispatchers
@@ -32,6 +34,17 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowLooper
 
+/**
+ * Causal verification test for Finding F2: Offline Search Expiry Status in EarthlinkSearchViewModel.
+ *
+ * Exercises the ACTUAL network-failure local fallback branch (Branch 3):
+ * 1. ISP Admin credentials are set (non-empty).
+ * 2. Gateway.searchUsers throws an EarthlinkTransportException ("Network unavailable").
+ * 3. The search() method catches the exception and falls back to localAccountRepository.searchAccounts().
+ * 4. Verifies that an expired local account with an ISO timestamp ("2020-01-01T00:00:00Z") evaluates to accountStatus == "Expired".
+ * 5. Verifies that an expired local account with a BGH datetime ("2020-01-01 12:00:00") evaluates to accountStatus == "Expired".
+ * 6. Verifies that a non-expired local account ("2099-01-01T00:00:00Z") evaluates to accountStatus == "Active".
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(manifest = Config.NONE)
@@ -47,7 +60,15 @@ class EarthlinkSearchViewModelF2OfflineExpiryTest {
     private lateinit var ledgerRepository: LocalLedgerRepository
     private lateinit var auditRepository: AuditRepository
     private lateinit var preferenceManager: PreferenceManager
-    private lateinit var testGateway: Phase1DuplicateInitiationProtectionTest.TestEarthlinkGateway
+    private lateinit var testGateway: F2NetworkFailureGateway
+
+    class F2NetworkFailureGateway(
+        private val delegate: Phase1DuplicateInitiationProtectionTest.TestEarthlinkGateway = Phase1DuplicateInitiationProtectionTest.TestEarthlinkGateway()
+    ) : EarthlinkGateway by delegate {
+        override suspend fun searchUsers(query: String, startIndex: Int, rowCount: Int): com.example.core.model.UserListResponse {
+            throw EarthlinkTransportException("Network unavailable")
+        }
+    }
 
     @Before
     fun setup() {
@@ -79,7 +100,7 @@ class EarthlinkSearchViewModelF2OfflineExpiryTest {
             auditDao = db.auditLogDao()
         )
         preferenceManager = PreferenceManager(context)
-        testGateway = Phase1DuplicateInitiationProtectionTest.TestEarthlinkGateway()
+        testGateway = F2NetworkFailureGateway()
     }
 
     @After
@@ -89,7 +110,7 @@ class EarthlinkSearchViewModelF2OfflineExpiryTest {
     }
 
     @Test
-    fun testOfflineSearchExpiryEvaluation_IsoAndFullDatetime_EvaluatesExpiredAndActive() = runBlocking {
+    fun testNetworkFailureFallbackSearchExpiryEvaluation_IsoAndFullDatetime_EvaluatesExpiredAndActive() = runBlocking {
         val expiredIsoAcc = LocalAccount(
             id = "acc_exp_iso",
             earthlinkUsername = "user_exp_iso",
@@ -119,9 +140,10 @@ class EarthlinkSearchViewModelF2OfflineExpiryTest {
         accountDao.insert(expiredBghAcc)
         accountDao.insert(activeAcc)
 
+        // Set non-empty credentials so search() passes isCredentialsEmpty check and calls gateway.searchUsers()
         preferenceManager.setDemoMode(false)
-        preferenceManager.saveIspAdminUsername("")
-        preferenceManager.saveIspAdminPassword("")
+        preferenceManager.saveIspAdminUsername("admin_user")
+        preferenceManager.saveIspAdminPassword("admin_pass")
 
         val viewModel = EarthlinkSearchViewModel(
             gateway = testGateway,
@@ -134,7 +156,7 @@ class EarthlinkSearchViewModelF2OfflineExpiryTest {
         viewModel.setSearchQuery("user")
         viewModel.search()
 
-        // Wait briefly for background IO execution and flush main looper
+        // Wait for IO dispatcher execution inside ViewModel and idle main looper
         delay(300)
         ShadowLooper.idleMainLooper()
 
