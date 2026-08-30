@@ -645,6 +645,41 @@ class Phase1FirestoreDocumentIdentityTest {
         assertNull("Restored entry has null rawJson when absent from cloud doc", entry.rawJson)
     }
 
+    @Test
+    fun testScenarioG_remoteEntityValidator_preservesExistingLocalCorrectsEntryIdWhenRemoteOmitted() {
+        val existingLocal = LocalLedgerEntry(
+            id = "local_corr_003",
+            accountId = "acc_003",
+            typeRaw = "gave",
+            amountIqd = 10000.0,
+            debtAfterIqd = 40000.0,
+            occurredAt = 1000L,
+            createdAt = 1000L,
+            correctsEntryId = "orig_003"
+        )
+
+        val remoteMap = mapOf<String, Any>(
+            "id" to "local_corr_003",
+            "accountId" to "acc_003",
+            "typeRaw" to "gave",
+            "amountIqd" to 10000.0,
+            "debtAfterIqd" to 40000.0,
+            "occurredAt" to 1000L,
+            "createdAt" to 1000L
+        )
+
+        val validationResult = RemoteEntityValidator.validateAndMapLedgerEntry(
+            id = "local_corr_003",
+            d = remoteMap,
+            remoteUpdatedAt = 1500L,
+            existingLocalLedgerEntry = existingLocal
+        )
+
+        assertTrue(validationResult is RemoteEntityValidationResult.Valid)
+        val mappedEntry = (validationResult as RemoteEntityValidationResult.Valid).entity
+        assertEquals("orig_003", mappedEntry.correctsEntryId)
+    }
+
     // Scenario H — Local Import Flow
     @Test
     fun testScenarioH_uTowerImportFlowStoresRawJsonLocallyStripsOnEgress() = runBlocking {

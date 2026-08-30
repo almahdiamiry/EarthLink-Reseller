@@ -724,15 +724,6 @@ test_suites:
       - "INV-01"
       - "INV-05"
 
-  - name: "Workstream9DLineagePipelineTest"
-    path: "app/src/test/java/com/example/Workstream9DLineagePipelineTest.kt"
-    environment: "ROBOLECTRIC"
-    tier_purpose: "Workstream 9D Lineage Pipeline validation test suite"
-    associated_invariants:
-      - "INV-01"
-      - "INV-05"
-      - "INV-11"
-
   - name: "Workstream11UnknownTypeObservabilityTest"
     path: "app/src/test/java/com/example/Workstream11UnknownTypeObservabilityTest.kt"
     environment: "ROBOLECTRIC"

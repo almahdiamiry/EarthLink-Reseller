@@ -5,6 +5,8 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.room.Room
 import com.example.core.database.AppDatabase
 import com.example.core.sync.SyncRepositoryImpl
+import com.example.domain.repository.SyncReason
+import com.example.domain.repository.SyncStatusState
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.withLock
 import org.junit.After
@@ -325,6 +327,30 @@ class Phase5SettingsSyncUnifiedCallerTest {
             "pull_remote_changes must be guarded by hasSettingsLocalMutation() or timestamp == 0L",
             syncRepoText.contains("if (prefManager.hasSettingsLocalMutation() || prefManager.getSettingsLastSyncedTimestamp() == 0L)") &&
                     syncRepoText.contains("triggerSettingsSync(currentUid, \"pull_remote_changes\")")
+        )
+    }
+
+    @Test
+    fun requestSyncAndTriggerSync_doNotPrematurelyLatchSyncState() {
+        val initialStatus = syncRepo.syncState.value
+        assertNotEquals(
+            "Initial state must not be SYNCING",
+            SyncStatusState.SYNCING,
+            initialStatus
+        )
+
+        syncRepo.requestSync(SyncReason.USER_ACTION)
+        assertEquals(
+            "requestSync must not prematurely set syncState to SYNCING before execution",
+            initialStatus,
+            syncRepo.syncState.value
+        )
+
+        syncRepo.triggerSync()
+        assertEquals(
+            "triggerSync must not prematurely set syncState to SYNCING before execution",
+            initialStatus,
+            syncRepo.syncState.value
         )
     }
 }
