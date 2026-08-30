@@ -96,11 +96,11 @@ fun LocalAccountsScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column {
-                Text(text = "Local Subscriber Billing", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Text(text = "Fast Offline-First Ledgers", fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
+                Text(text = if (isAr) "سجل الحسابات المحلية" else "Local Subscriber Billing", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text(text = if (isAr) "دفاتر ديون سريعة بدون إنترنت" else "Fast Offline-First Ledgers", fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
             }
             IconButton(onClick = onNavigateToImport, modifier = Modifier.size(48.dp)) {
-                Icon(imageVector = Icons.Default.ImportContacts, contentDescription = "Import", tint = MaterialTheme.colorScheme.primary)
+                Icon(imageVector = Icons.Default.ImportContacts, contentDescription = if (isAr) "استيراد" else "Import", tint = MaterialTheme.colorScheme.primary)
             }
         }
 
@@ -111,7 +111,7 @@ fun LocalAccountsScreen(
                 localQuery = it
                 viewModel.setSearchQuery(it)
             },
-            label = { Text("Filter local ledger accounts") },
+            label = { Text(if (isAr) "تصفية حسابات السجل المحلي" else "Filter local ledger accounts") },
             singleLine = true,
             modifier = Modifier
                 .fillMaxWidth()
@@ -129,22 +129,22 @@ fun LocalAccountsScreen(
             FilterChip(
                 selected = hasDebt,
                 onClick = { viewModel.toggleFilterDebt() },
-                label = { Text("Outstanding Debt") }
+                label = { Text(if (isAr) "ديون متبقية" else "Outstanding Debt") }
             )
             FilterChip(
                 selected = hasAdv,
                 onClick = { viewModel.toggleFilterAdvance() },
-                label = { Text("Advance Prepaid") }
+                label = { Text(if (isAr) "رصيد مدفوع مقدماً" else "Advance Prepaid") }
             )
             FilterChip(
                 selected = noUser,
                 onClick = { viewModel.toggleFilterNoUsername() },
-                label = { Text("No Username") }
+                label = { Text(if (isAr) "بدون اسم يوزر" else "No Username") }
             )
             FilterChip(
                 selected = hasCoords,
                 onClick = { viewModel.toggleFilterCoordinates() },
-                label = { Text("GPS Coordinates") }
+                label = { Text(if (isAr) "إحداثيات الموقع" else "GPS Coordinates") }
             )
         }
 
@@ -172,7 +172,7 @@ fun LocalAccountsScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(imageVector = Icons.Default.Storage, contentDescription = null, modifier = Modifier.size(48.dp), tint = Color.Gray)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(text = "No records match local filter criteria.", fontSize = 14.sp, color = Color.Gray)
+                    Text(text = if (isAr) "لا توجد سجلات تطابق معايير التصفية المحلية." else "No records match local filter criteria.", fontSize = 14.sp, color = Color.Gray)
                 }
             }
         } else {
@@ -192,16 +192,16 @@ fun LocalAccountsScreen(
                                 } else if (acc.advanceIqd > 0.0) {
                                     Text(text = "+" + formatIqd(acc.advanceIqd), color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                 } else {
-                                    Text(text = "Settled", color = Color.Gray, fontSize = 13.sp)
+                                    Text(text = if (isAr) "مسدد" else "Settled", color = Color.Gray, fontSize = 13.sp)
                                 }
                             }
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(text = acc.earthlinkUsername ?: "Missing Earthlink Account", color = Color.Gray, fontSize = 12.sp)
-                                Text(text = "Pkg: ${acc.packageName ?: "N/A"}", fontSize = 12.sp)
+                                Text(text = acc.earthlinkUsername ?: (if (isAr) "حساب إيرثلنك غير مرتبط" else "Missing Earthlink Account"), color = Color.Gray, fontSize = 12.sp)
+                                Text(text = "${if (isAr) "الباقة: " else "Pkg: "}${acc.packageName ?: "N/A"}", fontSize = 12.sp)
                             }
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(text = "Phone: ${acc.phone1 ?: acc.phone2 ?: "N/A"}", fontSize = 12.sp)
-                                Text(text = "Price: ${formatIqd(acc.currentPriceIqd)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                                Text(text = "${if (isAr) "الهاتف: " else "Phone: "}${acc.phone1 ?: acc.phone2 ?: "N/A"}", fontSize = 12.sp)
+                                Text(text = "${if (isAr) "السعر: " else "Price: "}${formatIqd(acc.currentPriceIqd)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                             }
                         }
                     }
@@ -216,7 +216,7 @@ fun LocalAccountsScreen(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
-                                text = "Showing ${accounts.size} of $totalMatchingCount subscribers",
+                                text = if (isAr) "عرض ${accounts.size} من أصل $totalMatchingCount مشترك" else "Showing ${accounts.size} of $totalMatchingCount subscribers",
                                 fontSize = 12.sp,
                                 color = Color.Gray
                             )
@@ -225,7 +225,7 @@ fun LocalAccountsScreen(
                                 onClick = { viewModel.loadMore() },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Load More Subscribers")
+                                Text(if (isAr) "تحميل المزيد من المشتركين" else "Load More Subscribers")
                             }
                         }
                     }
