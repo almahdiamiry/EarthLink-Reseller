@@ -246,6 +246,18 @@ Confidence:            [HIGH / MEDIUM / LOW]
 * **Canonical Production Gate:** `scripts/production_gate.sh` is the sole supported release gate. `production_gate.ps1` is a historical unsupported mirror in `docs/historical/operational-gates/`.
 * Future agents and maintainers **must NOT** run G8 certification, require G8 artifacts for routine changes, recreate G8, or reopen G8 scope. The Testing Playbook above governs all ongoing development.
 
+### 9.10 Test Baseline & Evidence Evolution Rule (From 535 Onward)
+* **Evidence Baseline, Not Target Count:** 535/535 is the current certified evidence baseline, not a target test count. The baseline is fixed in terms of **evidence completeness**, not numerical size.
+* **Dual Protection (Anti-Bloat & Anti-Starvation):**
+  - **No Test Bloat:** Never add redundant tests for coverage appearance or testing implementation details. Never duplicate assertions already proven by surviving invariant suites.
+  - **No Test Starvation:** Always add new permanent or supporting tests whenever introducing genuinely new behavioral claims, uncovered failure modes, or newly exposed regression risks.
+* **Prerequisites for Adding Tests:** Before adding any test, identify **Claim + Scenario + Production Seam + Independent Oracle** and verify that existing tests do not already prove the same claim with equal or stronger rigor.
+* **Bug Fixes vs. Refactors:**
+  - **Bug Fixes:** Prefer a focused regression test that reproduces the defect before the fix (RED) and passes after the fix (GREEN).
+  - **Refactoring (Unchanged Behavior):** Do not add tests solely because internal implementation or private helper structure changed; existing evidence must remain green without spurious test creation.
+* **Failure Classification Discipline:** Test failures must first be classified according to the 5-point taxonomy (`PRODUCT DEFECT`, `TEST DEFECT`, `FIXTURE / SETUP DEFECT`, `SEMANTIC-ASSUMPTION ERROR`, `ENVIRONMENT / TOOLING FAILURE`) before modifying production code.
+* **Scope & Removal Discipline:** Keep tests at the smallest evidence-preserving scope. Never increase test count merely for coverage appearance, and never remove a test merely to reduce count.
+
 ---
 
 ## 10. Lean Planning Model (Planning Follows Complexity)
