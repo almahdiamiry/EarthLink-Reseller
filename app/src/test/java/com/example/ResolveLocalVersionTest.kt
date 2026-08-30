@@ -223,4 +223,24 @@ class ResolveLocalVersionTest {
         assertTrue(tracked is LocalVersionState.ServerTracked)
         assertEquals(1770000000000L, (tracked as LocalVersionState.ServerTracked).version)
     }
+
+    @Test
+    fun testUntrackedLocalEntity_returnsUntrackedNull_withoutCrossDomainTimestampComparison() = runBlocking {
+        // Insert a local account without any record in sync_metadata (untracked)
+        val untrackedAccount = LocalAccount(
+            id = "acc_untracked_001",
+            earthlinkUsername = "untracked_user",
+            displayName = "Untracked User",
+            updatedAt = 500L // Sequence/local timestamp < 1e12
+        )
+        db.localAccountDao().insert(untrackedAccount)
+
+        // Resolve local version state
+        val localVersionState = coordinator.resolveLocalVersion("account", "acc_untracked_001")
+
+        // Assert that state is Untracked and legacyFallback is null (no sub-1e12 fallback compared to server version)
+        assertTrue(localVersionState is LocalVersionState.Untracked)
+        val untrackedState = localVersionState as LocalVersionState.Untracked
+        assertNull(untrackedState.legacyFallback)
+    }
 }

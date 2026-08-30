@@ -748,13 +748,6 @@ test_suites:
       - "INV-01"
       - "INV-05"
 
-  - name: "TrustBoundaryHygieneTest"
-    path: "app/src/test/java/com/example/TrustBoundaryHygieneTest.kt"
-    environment: "ROBOLECTRIC"
-    tier_purpose: "Trust Boundary Hygiene test suite"
-    associated_invariants:
-      - "INV-05"
-
   - name: "Step3DurableDispatchTest"
     path: "app/src/test/java/com/example/Step3DurableDispatchTest.kt"
     environment: "ROBOLECTRIC"
@@ -807,14 +800,6 @@ test_suites:
     path: "app/src/test/java/com/example/Step2OutcomeResolutionTest.kt"
     environment: "ROBOLECTRIC"
     tier_purpose: "Step 2 Outcome Resolution test suite"
-    associated_invariants:
-      - "INV-01"
-      - "INV-05"
-
-  - name: "EarthlinkMutationResponseContractTest"
-    path: "app/src/test/java/com/example/EarthlinkMutationResponseContractTest.kt"
-    environment: "ROBOLECTRIC"
-    tier_purpose: "Earthlink Mutation Response Contract test suite"
     associated_invariants:
       - "INV-01"
       - "INV-05"

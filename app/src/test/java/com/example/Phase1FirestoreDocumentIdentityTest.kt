@@ -680,6 +680,66 @@ class Phase1FirestoreDocumentIdentityTest {
         assertEquals("orig_003", mappedEntry.correctsEntryId)
     }
 
+    @Test
+    fun testScenarioG_missingRemoteFields_fallbackToExistingLocalValues() {
+        val existingLedger = LocalLedgerEntry(
+            id = "ledger_missing_field_001",
+            accountId = "acc_001",
+            typeRaw = "PAYMENT",
+            amountIqd = 25000.0,
+            debtAfterIqd = 10000.0,
+            note = "Original local note",
+            occurredAt = 1600000000000L,
+            createdAt = 1600000000000L
+        )
+
+        val remoteMap = mapOf<String, Any>(
+            "accountId" to "acc_001",
+            "typeRaw" to "PAYMENT",
+            "amountIqd" to 25000.0,
+            "occurredAt" to 1600000000000L
+        )
+
+        val result = RemoteEntityValidator.validateAndMapLedgerEntry(
+            id = "ledger_missing_field_001",
+            d = remoteMap,
+            remoteUpdatedAt = 1700000000000L,
+            existingLocalLedgerEntry = existingLedger
+        )
+
+        assertTrue(result is RemoteEntityValidationResult.Valid)
+        val mapped = (result as RemoteEntityValidationResult.Valid).entity
+        assertEquals(10000.0, mapped.debtAfterIqd, 0.01)
+        assertEquals("Original local note", mapped.note)
+    }
+
+    @Test
+    fun testScenarioG_isLegacyMonotonicity_cannotRegressToFalse() {
+        val existingAccount = LocalAccount(
+            id = "acc_legacy_001",
+            earthlinkUsername = "legacy_user",
+            displayName = "Legacy User",
+            isLegacy = true
+        )
+
+        val remoteMap = mapOf<String, Any>(
+            "displayName" to "Legacy User Updated",
+            "isLegacy" to false,
+            "debtIqd" to 0.0
+        )
+
+        val result = RemoteEntityValidator.validateAndMapAccount(
+            id = "acc_legacy_001",
+            d = remoteMap,
+            remoteUpdatedAt = 1700000000000L,
+            existingLocalAccount = existingAccount
+        )
+
+        assertTrue(result is RemoteEntityValidationResult.Valid)
+        val mapped = (result as RemoteEntityValidationResult.Valid).entity
+        assertTrue("isLegacy must remain true and not regress to false", mapped.isLegacy)
+    }
+
     // Scenario H — Local Import Flow
     @Test
     fun testScenarioH_uTowerImportFlowStoresRawJsonLocallyStripsOnEgress() = runBlocking {
