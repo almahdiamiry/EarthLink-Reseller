@@ -1127,7 +1127,11 @@ private fun AccountAndIspSection(
                 IconButton(onClick = { isIspPasswordVisible = !isIspPasswordVisible }) {
                     Icon(
                         imageVector = if (isIspPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                        contentDescription = null,
+                        contentDescription = if (isIspPasswordVisible) {
+                            if (currentLang == "ar") "إخفاء كلمة المرور" else "Hide password"
+                        } else {
+                            if (currentLang == "ar") "إظهار كلمة المرور" else "Show password"
+                        },
                         tint = Color.White.copy(alpha = 0.5f),
                         modifier = Modifier.size(18.dp)
                     )
@@ -1178,7 +1182,11 @@ private fun AccountAndIspSection(
                 IconButton(onClick = { isDepositPassVisible = !isDepositPassVisible }) {
                     Icon(
                         imageVector = if (isDepositPassVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                        contentDescription = null,
+                        contentDescription = if (isDepositPassVisible) {
+                            if (currentLang == "ar") "إخفاء كلمة المرور" else "Hide password"
+                        } else {
+                            if (currentLang == "ar") "إظهار كلمة المرور" else "Show password"
+                        },
                         tint = Color.White.copy(alpha = 0.5f),
                         modifier = Modifier.size(18.dp)
                     )
