@@ -27,6 +27,10 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.GZIPInputStream
 
+// Performance Optimization (Bolt): Pre-compile regex pattern to avoid repeated Pattern compilation
+// and JVM allocations inside transaction loop during bulk uTower data imports.
+private val NUMERIC_PHONE_REGEX = Regex("^[0-9+]+$")
+
 data class ImportResult(
     val batchId: String,
     val success: Boolean,
@@ -1433,7 +1437,8 @@ private class ImportSession(
             }
 
             if (accountId == null && subscriberRef != null) {
-                if (subscriberRef.matches(Regex("^[0-9+]+$"))) {
+                // Bolt: Re-use pre-compiled NUMERIC_PHONE_REGEX pattern to prevent per-transaction allocations
+                if (subscriberRef.matches(NUMERIC_PHONE_REGEX)) {
                     val p = subscriberRef.trim()
                     val phoneAccountIds = setOfNotNull(subscriberByPhone[p], accountsByPhone[p]?.id)
                     if (phoneAccountIds.size == 1) {
