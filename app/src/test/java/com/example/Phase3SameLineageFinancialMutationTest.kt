@@ -808,4 +808,64 @@ class Phase3SameLineageFinancialMutationTest {
         // Final generation remains exactly 2L
         assertEquals("Generation must remain 2L throughout valid same-lineage operations", 2L, db.getGeneration())
     }
+
+    @Test
+    fun testRemoteSyncReconciliation_persistsChronologicalDebtAfterIqd() = runBlocking {
+        val accountId = "acc_test_recalc_1"
+        val initialAccount = LocalAccount(
+            id = accountId,
+            displayName = "Subscriber Test",
+            debtIqd = 25000.0,
+            advanceIqd = 0.0,
+            openingDebtIqd = 0.0,
+            openingAdvanceIqd = 0.0,
+            currentPriceIqd = 35000.0,
+            updatedAt = 2000L
+        )
+        db.localAccountDao().insert(initialAccount)
+
+        // Existing local transaction T2 at occurredAt = 2000L with debtAfterIqd = 25000.0
+        val localT2 = LocalLedgerEntry(
+            id = "tx_local_recalc_2",
+            accountId = accountId,
+            amountIqd = 25000.0,
+            typeRaw = "DEBT",
+            debtAfterIqd = 25000.0,
+            occurredAt = 2000L,
+            createdAt = 2000L
+        )
+        db.localLedgerEntryDao().insert(localT2)
+
+        // Inbound remote transaction T1 at occurredAt = 1000L (earlier) with amount = 30,000.0
+        val remoteT1 = LocalLedgerEntry(
+            id = "tx_remote_recalc_1",
+            accountId = accountId,
+            amountIqd = 30000.0,
+            typeRaw = "DEBT",
+            debtAfterIqd = 30000.0,
+            occurredAt = 1000L,
+            createdAt = 1000L
+        )
+
+        val event = RemoteEvent.LedgerUpsert(
+            entityId = remoteT1.id,
+            remoteVersion = 3000L,
+            source = RemoteEventSource.PULL,
+            entry = remoteT1
+        )
+
+        val result = coordinator.processEvent(event)
+        assertEquals(EventSyncResult.APPLIED, result)
+
+        // Verify account balance
+        val updatedAccount = db.localAccountDao().getByIdOneShot(accountId)!!
+        assertEquals(55000.0, updatedAccount.debtIqd, 0.001)
+
+        // Verify persisted ledger entries in Room
+        val persistedT1 = db.localLedgerEntryDao().getByIdOneShot("tx_remote_recalc_1")!!
+        val persistedT2 = db.localLedgerEntryDao().getByIdOneShot("tx_local_recalc_2")!!
+
+        assertEquals(30000.0, persistedT1.debtAfterIqd, 0.001)
+        assertEquals("T2 debtAfterIqd must be updated after earlier transaction is applied", 55000.0, persistedT2.debtAfterIqd, 0.001)
+    }
 }

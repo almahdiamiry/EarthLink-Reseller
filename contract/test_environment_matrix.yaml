@@ -568,16 +568,6 @@ test_suites:
       - "INV-05"
       - "INV-11"
 
-  - name: "Phase5NonDestructiveMigrationTest"
-    path: "app/src/test/java/com/example/Phase5NonDestructiveMigrationTest.kt"
-    environment: "ROBOLECTRIC"
-    tier_purpose: "Phase 5 Non-Destructive Schema Migration and Interruption Safety Test Suite (P5-G6-REQ-05 / P5-G6-REQ-06 / INV-01 / INV-05 / INV-11 / INV-14)"
-    associated_invariants:
-      - "INV-01"
-      - "INV-05"
-      - "INV-11"
-      - "INV-14"
-
   - name: "CoordinatorInstrumentedTest"
     path: "app/src/androidTest/java/com/example/CoordinatorInstrumentedTest.kt"
     environment: "INSTRUMENTED"
@@ -871,14 +861,6 @@ test_suites:
     associated_invariants:
       - "INV-15"
       - "INV-16"
-
-  - name: "RemoteSyncDebtAfterRecalculationTest"
-    path: "app/src/test/java/com/example/RemoteSyncDebtAfterRecalculationTest.kt"
-    environment: "ROBOLECTRIC"
-    tier_purpose: "Remote Sync Debt After Recalculation test suite"
-    associated_invariants:
-      - "INV-01"
-      - "INV-05"
 
 # Required Phase 3 Pending Test Suites (Preserved for Phase 3 Execution)
 phase3_required_suites:

@@ -617,10 +617,13 @@ phase5_gate_closure:
       production_code:
         - "app/src/main/java/com/example/core/database/AppDatabase.kt"
       behavioral_tests:
-        - "app/src/test/java/com/example/Phase5NonDestructiveMigrationTest.kt"
-      evidence_xml: "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase5NonDestructiveMigrationTest.xml"
+        - "app/src/test/java/com/example/DatabaseMigrationTest.kt"
+        - "app/src/test/java/com/example/FinancialHistoryDeletionProtectionTest.kt"
+      evidence_xml:
+        - "app/build/test-results/testDebugUnitTest/TEST-com.example.DatabaseMigrationTest.xml"
+        - "app/build/test-results/testDebugUnitTest/TEST-com.example.FinancialHistoryDeletionProtectionTest.xml"
       test_metrics:
-        total_tests: 3
+        total_tests: 9
         failures: 0
         errors: 0
         skipped: 0
@@ -635,12 +638,9 @@ phase5_gate_closure:
         - "app/src/main/java/com/example/core/backup/BackupManager.kt"
       behavioral_tests:
         - "app/src/test/java/com/example/Phase2RestoreReplaceHardeningTest.kt"
-        - "app/src/test/java/com/example/Phase5NonDestructiveMigrationTest.kt"
-      evidence_xml:
-        - "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase2RestoreReplaceHardeningTest.xml"
-        - "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase5NonDestructiveMigrationTest.xml"
+      evidence_xml: "app/build/test-results/testDebugUnitTest/TEST-com.example.Phase2RestoreReplaceHardeningTest.xml"
       test_metrics:
-        total_tests: 12
+        total_tests: 9
         failures: 0
         errors: 0
         skipped: 0
