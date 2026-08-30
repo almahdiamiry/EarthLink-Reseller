@@ -158,7 +158,11 @@ class EarthlinkSearchViewModel(
                                 mobileNumberLower = acc.phone1,
                                 accountStatusLower = if (acc.expiresAt != null) {
                                     try {
-                                        val expireDate = parseBghDate(acc.expiresAt)
+                                        val expireDate = if (acc.expiresAt.endsWith("Z") && acc.expiresAt.contains("T")) {
+                                            parseIsoDate(acc.expiresAt)
+                                        } else {
+                                            parseBghDate(acc.expiresAt)
+                                        }
                                         if (expireDate != null && expireDate.before(java.util.Date())) "Expired" else "Active"
                                     } catch(ex: Exception) { if (ex is kotlinx.coroutines.CancellationException) throw ex; "Active" }
                                 } else "Active",
