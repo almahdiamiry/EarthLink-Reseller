@@ -34,8 +34,7 @@
 | File / Directory | Tier | Authority Level | Lifecycle | Action / Rule |
 |:---|:---|:---|:---|:---|
 | **[`AGENTS.md`](AGENTS.md)** | Tier 1 (Operational) | **Sole Operational Authority** | Controlled | **V1 Operating Government:** Primary entry point for all rules and navigation. |
-| **[`PROJECT_ROADMAP.md`](PROJECT_ROADMAP.md)** | Tier 1 (GPS) | **Dynamic Milestone GPS** | Dynamic | **Current State GPS:** Tracks active operating mode and authorized next step. |
-| **[`FUTURE_WORK.md`](FUTURE_WORK.md)** | Tier 1 (Future Work) | **Future Improvements List** | Dynamic | **Future Work:** Tracks legitimate non-blocking improvements and conditional items. |
+| **[`PROJECT_ROADMAP.md`](PROJECT_ROADMAP.md)** | Tier 1 (GPS) | **Dynamic Milestone GPS** | Dynamic | **Current State GPS:** Tracks active operating mode, active task, and authorized post-V1 work. |
 | **[`docs/authority/PLAN_STATUS.md`](docs/authority/PLAN_STATUS.md)** | Tier 1 (Plans) | **Plan Status Registry** | Dynamic | **Plan Registry:** Tracks formal multi-session implementation plan lifecycles. |
 | **[`docs/authority/Target Product Contract v0.6.md`](docs/authority/Target%20Product%20Contract%20v0.6.md)** | Tier 2 (Strategic) | **Frozen Business Authority** | Frozen | **Highest Product Truth:** Defines domain rules and data integrity mandates. |
 | **[`docs/authority/Final Independent Adjudication Memo.md`](docs/authority/Final%20Independent%20Adjudication%20Memo.md)** | Tier 2 (Strategic) | **Frozen Technical Authority** | Frozen | **Highest Architecture Truth:** Defines Direct Room and concurrency boundaries. |
@@ -46,9 +45,10 @@
 | **[`contract/`](contract/)** | Tier 3 (Evidence) | **Machine Contracts** | Managed | **Machine Contracts:** YAML invariant rules and test matrix coverage maps. |
 | **[`evidence/`](evidence/)** | Tier 3 (Evidence) | **Sealed Machine Proofs** | Immutable | **Verification Receipts:** Sealed JSON bundles, probe outputs, APK hashes. |
 | **[`scripts/`](scripts/)** | Tier 3 (Tooling) | **Verification Harness** | Managed | **G8 Verification Tools:** Independent verification runners. |
-| **[`CHANGELOG.md`](CHANGELOG.md)** | Tier 4 (Historical) | **Audit Log** | Append-Only | **Historical Commit Ledger:** Chronological release history (Audit only). |
+| **[`CHANGELOG.md`](CHANGELOG.md)** | Tier 4 (Historical) | **Release Changelog** | Append-Only | **Active Release Changelog:** Milestone summaries (Archive in `docs/historical/`). |
 | **`PRODUCTION_INVARIANTS.md`** | Tier 4 (Historical) | **Path-Locked Record** | Immutable | **LEAVE UNTOUCHED:** Retained in root for cryptographic hash integrity. |
 | **`ARCHITECTURE.md`** | Tier 4 (Historical) | **Path-Locked Record** | Immutable | **LEAVE UNTOUCHED:** Retained in root for historical evidence integrity. |
 | **`PRODUCTION_CONTRACT_MATRIX.md`** | Tier 4 (Historical) | **Path-Locked Record** | Immutable | **LEAVE UNTOUCHED:** Retained in root for historical evidence integrity. |
+| **[`docs/historical/ISSUE_LOG.md`](docs/historical/ISSUE_LOG.md)** | Tier 4 (Historical) | **Historical Defect Log** | Immutable | **Historical Issue Archive:** Closed bugs, audits, and 5-Whys from V1 remediation. |
 | **`docs/authority/EARTHLINK_V1_HANDOVER.md`** | Tier 4 (Historical) | **Forensic Handover** | Immutable | **LEAVE UNTOUCHED:** Read-only transition context from ZIP 71 audit. |
 | **[`docs/LESSONS_LEARNED/*`](docs/LESSONS_LEARNED/)** | Tier 4 (Historical) | **Lessons Learned Archive** | Controlled | **Engineering & Testing Lessons:** Distilled practical rules and testing techniques. |

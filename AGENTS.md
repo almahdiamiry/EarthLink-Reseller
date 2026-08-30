@@ -111,7 +111,7 @@ The following items are **officially accepted V1 technical debt**. They are **NO
    - direct product, safety, architectural, or repository problem.
 4. **Do NOT perform "while-we're-here" expansions:** Implement ONLY the minimal required scope for the current authorized task.
 5. **Do NOT refactor working code solely for line count:** Large files that work reliably and pass tests are acceptable V1 debt.
-6. **Historical certification records:** Files `PRODUCTION_INVARIANTS.md`, `ARCHITECTURE.md`, `PRODUCTION_CONTRACT_MATRIX.md`, `ISSUE_LOG.md`, `docs/historical/g8/G8_Plan.md`, and all files in `evidence/` are historical certification records. Do not modify them during routine maintenance unless the active task explicitly concerns those records.
+6. **Historical certification records:** Files `PRODUCTION_INVARIANTS.md`, `ARCHITECTURE.md`, `PRODUCTION_CONTRACT_MATRIX.md`, `docs/historical/ISSUE_LOG.md`, `docs/historical/g8/G8_Plan.md`, and all files in `evidence/` are historical certification records. Do not modify them during routine maintenance unless the active task explicitly concerns those records.
 
 ---
 
