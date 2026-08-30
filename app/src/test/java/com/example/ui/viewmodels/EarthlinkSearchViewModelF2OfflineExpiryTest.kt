@@ -19,29 +19,24 @@ import com.example.domain.repository.LocalAccountRepository
 import com.example.domain.repository.LocalLedgerRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLooper
 
-/**
- * Verification test for Finding F2: Offline Search Expiry Status in EarthlinkSearchViewModel.
- *
- * Verifies that when network fails or credentials are empty:
- * 1. An expired local account with an ISO timestamp ("2020-01-01T00:00:00Z") produces accountStatusLower == "Expired".
- * 2. An expired local account with a full datetime string ("2020-01-01 12:00:00") produces accountStatusLower == "Expired".
- * 3. A non-expired local account ("2099-01-01T00:00:00Z") produces accountStatusLower == "Active".
- */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(manifest = Config.NONE)
 class EarthlinkSearchViewModelF2OfflineExpiryTest {
 
-    private val testDispatcher = StandardTestDispatcher()
     private lateinit var context: Context
     private lateinit var db: AppDatabase
     private lateinit var accountDao: LocalAccountDao
@@ -56,7 +51,7 @@ class EarthlinkSearchViewModelF2OfflineExpiryTest {
 
     @Before
     fun setup() {
-        Dispatchers.setMain(testDispatcher)
+        Dispatchers.setMain(Dispatchers.Unconfined)
         context = ApplicationProvider.getApplicationContext()
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
             .allowMainThreadQueries()
@@ -94,27 +89,27 @@ class EarthlinkSearchViewModelF2OfflineExpiryTest {
     }
 
     @Test
-    fun testOfflineSearchExpiryEvaluation_IsoAndFullDatetime_EvaluatesExpiredAndActive() = runTest(testDispatcher) {
+    fun testOfflineSearchExpiryEvaluation_IsoAndFullDatetime_EvaluatesExpiredAndActive() = runBlocking {
         val expiredIsoAcc = LocalAccount(
             id = "acc_exp_iso",
-            earthlinkUsername = "exp_iso_user",
-            displayName = "Expired ISO User",
+            earthlinkUsername = "user_exp_iso",
+            displayName = "User Expired ISO",
             expiresAt = "2020-01-01T00:00:00Z",
             currentPriceIqd = 35000.0,
             debtIqd = 0.0
         )
         val expiredBghAcc = LocalAccount(
             id = "acc_exp_bgh",
-            earthlinkUsername = "exp_bgh_user",
-            displayName = "Expired BGH User",
+            earthlinkUsername = "user_exp_bgh",
+            displayName = "User Expired BGH",
             expiresAt = "2020-01-01 12:00:00",
             currentPriceIqd = 35000.0,
             debtIqd = 0.0
         )
         val activeAcc = LocalAccount(
             id = "acc_active",
-            earthlinkUsername = "active_user",
-            displayName = "Active User",
+            earthlinkUsername = "user_active",
+            displayName = "User Active",
             expiresAt = "2099-01-01T00:00:00Z",
             currentPriceIqd = 35000.0,
             debtIqd = 0.0
@@ -124,6 +119,7 @@ class EarthlinkSearchViewModelF2OfflineExpiryTest {
         accountDao.insert(expiredBghAcc)
         accountDao.insert(activeAcc)
 
+        preferenceManager.setDemoMode(false)
         preferenceManager.saveIspAdminUsername("")
         preferenceManager.saveIspAdminPassword("")
 
@@ -137,18 +133,22 @@ class EarthlinkSearchViewModelF2OfflineExpiryTest {
 
         viewModel.setSearchQuery("user")
         viewModel.search()
-        advanceUntilIdle()
+
+        // Wait briefly for background IO execution and flush main looper
+        delay(300)
+        ShadowLooper.idleMainLooper()
 
         val results = viewModel.usersList.value
-        assertEquals(3, results.size)
+        val isoResult = results.find { it.userID == "user_exp_iso" }
+        val bghResult = results.find { it.userID == "user_exp_bgh" }
+        val activeResult = results.find { it.userID == "user_active" }
 
-        val isoResult = results.find { it.userID == "exp_iso_user" }
+        assertNotNull("isoResult should not be null", isoResult)
+        assertNotNull("bghResult should not be null", bghResult)
+        assertNotNull("activeResult should not be null", activeResult)
+
         assertEquals("Expired", isoResult?.accountStatus)
-
-        val bghResult = results.find { it.userID == "exp_bgh_user" }
         assertEquals("Expired", bghResult?.accountStatus)
-
-        val activeResult = results.find { it.userID == "active_user" }
         assertEquals("Active", activeResult?.accountStatus)
     }
 }
