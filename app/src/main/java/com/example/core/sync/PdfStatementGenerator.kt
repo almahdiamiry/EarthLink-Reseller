@@ -10,6 +10,7 @@ import android.graphics.pdf.PdfDocument
 import android.util.Log
 import android.widget.Toast
 import androidx.core.content.FileProvider
+import com.example.core.ledger.TransactionTypeNormalizer
 import com.example.core.model.LocalAccount
 import com.example.core.model.LocalLedgerEntry
 import java.io.File
@@ -199,11 +200,12 @@ object PdfStatementGenerator {
             val txDateString = baghdadDateFormat.format(Date(tx.occurredAt))
             drawBidiText(canvas, txDateString, 35f, y, textPaint)
 
-            // Format transaction type
-            val typeText = when (tx.typeRaw) {
-                "gave", "deposit", "payment" -> "Payment / دفع"
-                "took", "renewal", "renew" -> "Renewal / تجديد"
-                "debt", "debt_added" -> "Debt / دين"
+            // Format transaction type using canonical normalizer
+            val normType = TransactionTypeNormalizer.normalizeTransactionType(tx.typeRaw)
+            val typeText = when (normType) {
+                "gave" -> "Payment / دفع"
+                "renewal" -> "Renewal / تجديد"
+                "took" -> "Debt / دين"
                 else -> tx.typeRaw.replaceFirstChar { it.uppercase() }
             }
             drawBidiText(canvas, typeText, 135f, y, textPaint)
@@ -250,8 +252,13 @@ object PdfStatementGenerator {
         canvas.drawRect(250f, y, (PAGE_WIDTH - 25).toFloat(), y + 65f, Paint().apply { color = Color.parseColor("#EFF6FF"); style = Paint.Style.FILL })
         canvas.drawRect(250f, y, (PAGE_WIDTH - 25).toFloat(), y + 65f, dividerPaint)
 
-        val totalPayments = transactions.filter { it.typeRaw == "gave" || it.typeRaw == "deposit" || it.typeRaw == "payment" }.sumOf { it.amountIqd }
-        val totalCharges = transactions.filter { it.typeRaw == "took" || it.typeRaw == "renewal" || it.typeRaw == "renew" || it.typeRaw == "debt" }.sumOf { it.amountIqd }
+        val totalPayments = transactions.filter {
+            TransactionTypeNormalizer.normalizeTransactionType(it.typeRaw) == "gave"
+        }.sumOf { it.amountIqd }
+        val totalCharges = transactions.filter {
+            val norm = TransactionTypeNormalizer.normalizeTransactionType(it.typeRaw)
+            norm == "took" || norm == "renewal"
+        }.sumOf { it.amountIqd }
 
         drawBidiText(canvas, "Total Payments / مجموع المدفوعات:", 265f, y + 20f, textBoldPaint)
         drawBidiText(canvas, "${String.format(Locale.US, "%,.0f", totalPayments.toDouble())} IQD", 440f, y + 20f, textPaint)
