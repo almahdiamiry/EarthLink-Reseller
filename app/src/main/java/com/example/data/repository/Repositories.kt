@@ -1367,20 +1367,30 @@ class LocalLedgerRepositoryImpl(
         }
     }
 
-    private fun parseStatementTimestamp(dateStr: String?): Long {
-        if (dateStr.isNullOrBlank()) return 0L
-        val trimmed = dateStr.trim()
-        val formats = arrayOf(
+    companion object {
+        private val STATEMENT_PATTERNS = arrayOf(
             "yyyy-MM-dd'T'HH:mm:ss.SSSSSSS",
             "yyyy-MM-dd'T'HH:mm:ss.SSS",
             "yyyy-MM-dd'T'HH:mm:ss",
             "yyyy-MM-dd HH:mm:ss",
             "yyyy-MM-dd"
         )
-        for (pattern in formats) {
+
+        private val THREAD_LOCAL_STATEMENT_FORMATTERS = ThreadLocal.withInitial {
+            STATEMENT_PATTERNS.map { pattern ->
+                java.text.SimpleDateFormat(pattern, java.util.Locale.US).apply {
+                    timeZone = java.util.TimeZone.getTimeZone("UTC")
+                }
+            }
+        }
+    }
+
+    private fun parseStatementTimestamp(dateStr: String?): Long {
+        if (dateStr.isNullOrBlank()) return 0L
+        val trimmed = dateStr.trim()
+        val formatters = THREAD_LOCAL_STATEMENT_FORMATTERS.get() ?: return 0L
+        for (sdf in formatters) {
             try {
-                val sdf = java.text.SimpleDateFormat(pattern, java.util.Locale.US)
-                sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
                 val d = sdf.parse(trimmed)
                 if (d != null) return d.time
             } catch (_: Exception) {}
