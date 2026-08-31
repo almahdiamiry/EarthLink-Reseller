@@ -22,7 +22,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Payment
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.*
@@ -1812,7 +1812,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                         }
                         IconButton(onClick = { showShareDialog = true }) {
                             Icon(
-                                imageVector = Icons.Default.Notifications,
+                                imageVector = Icons.Default.Share,
                                 contentDescription = if (currentLang == "ar") "مشاركة" else "Share",
                                 tint = Color.White
                             )
