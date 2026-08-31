@@ -2256,7 +2256,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                             }
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Default.Settings,
+                                                imageVector = Icons.Default.ContentCopy,
                                                 contentDescription = if (currentLang == "ar") "نسخ نص الرسالة" else "Copy message text",
                                                 tint = Color.White.copy(alpha = 0.7f),
                                                 modifier = Modifier.size(24.dp)
