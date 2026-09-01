@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.EarthlinkApp
+import com.example.core.ledger.TransactionTypeNormalizer
 import com.example.core.model.*
 import com.example.domain.repository.SyncStatusState
 import com.example.domain.repository.UtowerImportPreview
@@ -39,11 +40,12 @@ class StatementViewModel(
                 
                 // Map synthetic ledger entries to Statement view models
                 val mappedSynthetic = syntheticItems.map { ledger ->
+                    val isGave = TransactionTypeNormalizer.normalizeTransactionType(ledger.typeRaw) == "gave"
                     AccountStatementItem(
-                        occurredAt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date()),
+                        occurredAt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date(ledger.occurredAt)),
                         operation = "PENDING_${ledger.typeRaw}",
-                        depositAmount = 0.0,
-                        withdrawalAmount = ledger.amountIqd,
+                        depositAmount = if (isGave) ledger.amountIqd else 0.0,
+                        withdrawalAmount = if (isGave) 0.0 else ledger.amountIqd,
                         balanceAfter = 0.0,
                         note = ledger.note
                     )
