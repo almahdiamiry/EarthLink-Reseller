@@ -207,6 +207,13 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
 
         }
     }
+    override suspend fun invalidateBalanceCache() {
+        balanceMutex.withLock {
+            cachedBalance = null
+            lastBalanceFetchTime = 0L
+        }
+    }
+
     override suspend fun getBalance(): Double {
         if (prefs.getDemoMode()) {
             return 282250.0
@@ -685,6 +692,7 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
         if (result.isSuccessful == true) {
             val userIndex = result.userIndex
             if (userIndex != null && userIndex > 0) {
+                invalidateBalanceCache()
                 return userPass
             } else {
                 throw EarthlinkBusinessException(statusCode = 200, errorMessage = "API returned success without valid userIndex payload.")
@@ -789,14 +797,16 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
             }
             return true
         }
-        return safeApiCall {
+        val success = safeApiCall {
             apiService.refillUserDeposit(
                 userId = userId,
                 depositPass = depositPassword
             )
-
-
         }
+        if (success) {
+            invalidateBalanceCache()
+        }
+        return success
     }
     override suspend fun extendUser(userIndex: Int): Boolean {
         if (prefs.getDemoMode()) {

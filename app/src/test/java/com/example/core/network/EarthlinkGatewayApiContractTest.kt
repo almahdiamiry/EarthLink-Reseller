@@ -382,4 +382,50 @@ class EarthlinkGatewayApiContractTest {
         assertEquals(true, result?.isSuccessful)
         assertNull("userIndex must be null when value is null, indicating malformed/missing payload", result?.userIndex)
     }
+
+    @Test
+    fun testRefillUserDeposit_invalidatesCachedBalance() = runBlocking {
+        val mockPrefs = org.mockito.Mockito.mock(com.example.core.security.PreferenceManager::class.java)
+        org.mockito.Mockito.`when`(mockPrefs.getDemoMode()).thenReturn(false)
+
+        val gateway = com.example.data.repository.EarthlinkGatewayImpl(apiService, mockPrefs)
+
+        // 1. Initial balance fetch -> 1,000,000 IQD
+        testInterceptor.nextResponseJson = """
+            {
+                "value": 1000000.0,
+                "isSuccessful": true,
+                "statusCode": 200
+            }
+        """.trimIndent()
+
+        val initialBalance = gateway.getBalance()
+        assertEquals(1000000.0, initialBalance, 0.001)
+
+        // 2. Perform refill user deposit
+        testInterceptor.nextResponseJson = """
+            {
+                "value": true,
+                "isSuccessful": true,
+                "statusCode": 200,
+                "responseMessage": "Refill successful"
+            }
+        """.trimIndent()
+
+        val refillSuccess = gateway.refillUserDeposit("sub_refill_101", "Secret123")
+        assertTrue(refillSuccess)
+
+        // 3. Second balance fetch -> API now returns 965,000 IQD
+        testInterceptor.nextResponseJson = """
+            {
+                "value": 965000.0,
+                "isSuccessful": true,
+                "statusCode": 200
+            }
+        """.trimIndent()
+
+        val freshBalance = gateway.getBalance()
+        // Must immediately reflect fresh value (965000.0) rather than returning stale cached value (1000000.0)
+        assertEquals(965000.0, freshBalance, 0.001)
+    }
 }
