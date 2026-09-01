@@ -290,8 +290,11 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
     override suspend fun getPrepaidNeeded(): Double {
         val value = safeApiCall { apiService.getPrepaidNeeded() }
         return calculatePrepaidNeededFromPayload(value)
+    }
 
-
+    override suspend fun getPrepaidNeeded(days: Int): Double {
+        val value = safeApiCall { apiService.getPrepaidNeededForDays(days) }
+        return calculatePrepaidNeededFromPayload(value)
     }
     private fun calculatePrepaidNeededFromPayload(value: Any?): Double {
         if (value == null) return 0.0
@@ -322,8 +325,8 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
         }
         var total = 0.0
         for (row in rows) {
-            val neededNum = getFirstNumber(row, "neededCount", "NeededCount", "needed", "Needed")
-            val costNum = getFirstNumber(row, "accountCost", "AccountCost", "cost", "Cost")
+            val neededNum = getFirstNumber(row, "neededCount", "NeededCount", "needed", "Needed", "usersCount", "userCount", "count", "Count", "UsersCount")
+            val costNum = getFirstNumber(row, "accountCost", "AccountCost", "cost", "Cost", "prePaidPrice", "prepaidPrice", "price", "Price", "PrePaidPrice")
             var totalNum = getFirstNumber(row, "totalCost", "TotalCost", "total", "Total")
 
             if (totalNum <= 0.0 && neededNum > 0.0 && costNum > 0.0) {

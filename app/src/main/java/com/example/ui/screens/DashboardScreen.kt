@@ -32,9 +32,11 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.text.font.FontFamily
@@ -44,6 +46,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -222,6 +225,8 @@ fun DashboardScreen(
 
     val balance by viewModel.balance.collectAsStateWithLifecycle()
     val prepaidNeeded by viewModel.prepaidNeeded.collectAsStateWithLifecycle()
+    val prepaidNeededDays by viewModel.prepaidNeededDays.collectAsStateWithLifecycle()
+    val isPrepaidLoading by viewModel.isPrepaidLoading.collectAsStateWithLifecycle()
     val testCount by viewModel.testCount.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val isCredentialsEmpty by viewModel.isCredentialsEmpty.collectAsStateWithLifecycle()
@@ -875,7 +880,9 @@ fun DashboardScreen(
                     prepaidNeeded = prepaidNeeded,
                     forecastAfter = forecastAfter,
                     testCount = testCount,
-                    isLoading = isLoading,
+                    days = prepaidNeededDays,
+                    isLoading = isLoading || isPrepaidLoading,
+                    onDaysChanged = { newDays -> viewModel.setPrepaidNeededDays(newDays) },
                     onRefresh = { viewModel.loadDashboardData() },
                     onDismissRequest = { showFinancialSummarySheet = false }
                 )
@@ -892,13 +899,19 @@ fun FinancialSummaryBottomSheet(
     prepaidNeeded: Double,
     forecastAfter: Double,
     testCount: Int,
+    days: Int = 7,
     isLoading: Boolean,
+    onDaysChanged: (Int) -> Unit = {},
     onRefresh: () -> Unit,
     onDismissRequest: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+
+    var daysInput by remember(days) {
+        mutableStateOf(TextFieldValue(text = days.toString(), selection = TextRange(0, days.toString().length)))
+    }
 
     LaunchedEffect(Unit) {
         focusManager.clearFocus(force = true)
@@ -945,7 +958,7 @@ fun FinancialSummaryBottomSheet(
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         Text(
-                            text = "تحليل الصندوق وتوقعات 7 أيام",
+                            text = "تحليل الصندوق وتوقعات $days أيام",
                             fontWeight = FontWeight.Bold,
                             fontSize = 17.sp,
                             color = Color.White
@@ -984,7 +997,103 @@ fun FinancialSummaryBottomSheet(
                     }
                 }
 
-                // 2. HERO CARD: Smart Decision & Forecast (Apple Inset Card)
+                // 2. DAYS HORIZON SELECTOR (Apple Inset Card)
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFF0E131B),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .background(Color(0xFF0A84FF).copy(alpha = 0.15f), shape = RoundedCornerShape(8.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.DateRange,
+                                    contentDescription = null,
+                                    tint = Color(0xFF0A84FF),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = "فترة التوقع (عدد الأيام)",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "تحديد الأفق الزمني لاحتساب الرصيد المطلوب",
+                                    fontSize = 10.sp,
+                                    color = Color(0xFF8E8E93)
+                                )
+                            }
+                        }
+
+                        // Editable Number Input Box
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFF1C2430),
+                            border = BorderStroke(1.dp, Color(0xFF0A84FF).copy(alpha = 0.4f)),
+                            modifier = Modifier
+                                .width(64.dp)
+                                .height(38.dp)
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                BasicTextField(
+                                    value = daysInput,
+                                    onValueChange = { newValue ->
+                                        val digitsOnly = newValue.text.filter { it.isDigit() }.take(3)
+                                        daysInput = newValue.copy(text = digitsOnly)
+                                        val parsed = digitsOnly.toIntOrNull()
+                                        if (parsed != null && parsed > 0) {
+                                            onDaysChanged(parsed)
+                                        }
+                                    },
+                                    singleLine = true,
+                                    textStyle = TextStyle(
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        textAlign = TextAlign.Center
+                                    ),
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Number,
+                                        imeAction = ImeAction.Done
+                                    ),
+                                    keyboardActions = KeyboardActions(
+                                        onDone = {
+                                            focusManager.clearFocus()
+                                            keyboardController?.hide()
+                                        }
+                                    ),
+                                    cursorBrush = SolidColor(Color(0xFF0A84FF)),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("prepaid_days_input")
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 3. HERO CARD: Smart Decision & Forecast (Apple Inset Card)
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
@@ -1008,7 +1117,7 @@ fun FinancialSummaryBottomSheet(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "الهامش المتوقع بعد 7 أيام",
+                                text = "الهامش المتوقع بعد $days أيام",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color.White.copy(alpha = 0.8f)
@@ -1056,10 +1165,11 @@ fun FinancialSummaryBottomSheet(
                                 fontSize = 28.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (isSufficient) Color(0xFF30D158) else Color(0xFFFF453A),
-                                letterSpacing = (-0.5).sp
+                                letterSpacing = (-0.5).sp,
+                                modifier = Modifier.testTag("forecast_after_value")
                             )
                             Text(
-                                text = if (isSufficient) "فائض نقدي متاح بعد تغطية تجديدات الأسبوع" else "المبلغ المطلوب إيداعه لتغطية تجديدات الأسبوع",
+                                text = if (isSufficient) "فائض نقدي متاح بعد تغطية تجديدات $days أيام" else "المبلغ المطلوب إيداعه لتغطية تجديدات $days أيام",
                                 fontSize = 11.sp,
                                 color = Color(0xFF8E8E93)
                             )
@@ -1071,7 +1181,7 @@ fun FinancialSummaryBottomSheet(
                             thickness = 1.dp
                         )
 
-                        // Breakdown Details (Balance vs 7-Day Required)
+                        // Breakdown Details (Balance vs Days Required)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1105,7 +1215,7 @@ fun FinancialSummaryBottomSheet(
                                 )
                             }
 
-                            // 7-Day Needed
+                            // Days Needed
                             Column(
                                 horizontalAlignment = Alignment.End,
                                 verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -1120,7 +1230,7 @@ fun FinancialSummaryBottomSheet(
                                             .background(Color(0xFF94A3B8), shape = CircleShape)
                                     )
                                     Text(
-                                        text = "المطلوب للتجديد (7 أيام)",
+                                        text = "المطلوب للتجديد ($days أيام)",
                                         fontSize = 11.sp,
                                         color = Color(0xFF8E8E93)
                                     )
@@ -1129,14 +1239,15 @@ fun FinancialSummaryBottomSheet(
                                     text = formatIqd(prepaidNeeded),
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFE2E8F0)
+                                    color = Color(0xFFE2E8F0),
+                                    modifier = Modifier.testTag("prepaid_needed_value")
                                 )
                             }
                         }
                     }
                 }
 
-                // 3. SECONDARY CARDS (Trial Users & Total Debts)
+                // 4. SECONDARY CARDS (Trial Users & Total Debts)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)

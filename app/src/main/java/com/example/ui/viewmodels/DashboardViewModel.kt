@@ -31,6 +31,12 @@ class DashboardViewModel(
     private val _prepaidNeeded = MutableStateFlow(0.0)
     val prepaidNeeded = _prepaidNeeded.asStateFlow()
 
+    private val _prepaidNeededDays = MutableStateFlow(7)
+    val prepaidNeededDays = _prepaidNeededDays.asStateFlow()
+
+    private val _isPrepaidLoading = MutableStateFlow(false)
+    val isPrepaidLoading = _isPrepaidLoading.asStateFlow()
+
     private val _testCount = MutableStateFlow(0)
     val testCount = _testCount.asStateFlow()
 
@@ -113,25 +119,10 @@ class DashboardViewModel(
 
                 // Parallel fetch 3: Prepaid Needed
                 val prepaidJob = async {
+                    val days = _prepaidNeededDays.value
                     try {
-                        var needed = gateway.getPrepaidNeeded()
-                        val accounts = kotlinx.coroutines.withContext(ioDispatcher) {
-                            try {
-                                localAccountRepository.getAllAccountsOneShot()
-                            } catch (ex: Exception) { if (ex is kotlinx.coroutines.CancellationException) throw ex;
-                                emptyList()
-                            }
-                        }
-                        if (needed == 0.0 && accounts.isNotEmpty()) {
-                            needed = accounts.sumOf { acc ->
-                                val diff = acc.currentPriceIqd - acc.advanceIqd
-                                if (diff > 0.0) diff else 0.0
-                            }
-                        }
-                        _prepaidNeeded.value = needed
-                    } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                        android.util.Log.w("DashboardViewModel", "PrepaidNeeded fetch fell back to database calculation: ${e.message}", e)
-                        try {
+                        var needed = gateway.getPrepaidNeeded(days)
+                        if (days == 7) {
                             val accounts = kotlinx.coroutines.withContext(ioDispatcher) {
                                 try {
                                     localAccountRepository.getAllAccountsOneShot()
@@ -139,12 +130,32 @@ class DashboardViewModel(
                                     emptyList()
                                 }
                             }
-                            _prepaidNeeded.value = accounts.sumOf { acc ->
-                                val diff = acc.currentPriceIqd - acc.advanceIqd
-                                if (diff > 0.0) diff else 0.0
+                            if (needed == 0.0 && accounts.isNotEmpty()) {
+                                needed = accounts.sumOf { acc ->
+                                    val diff = acc.currentPriceIqd - acc.advanceIqd
+                                    if (diff > 0.0) diff else 0.0
+                                }
                             }
-                        } catch (ex: Exception) { if (ex is kotlinx.coroutines.CancellationException) throw ex;
-                            _prepaidNeeded.value = 0.0
+                        }
+                        _prepaidNeeded.value = needed
+                    } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+                        android.util.Log.w("DashboardViewModel", "PrepaidNeeded fetch fell back: ${e.message}", e)
+                        if (days == 7) {
+                            try {
+                                val accounts = kotlinx.coroutines.withContext(ioDispatcher) {
+                                    try {
+                                        localAccountRepository.getAllAccountsOneShot()
+                                    } catch (ex: Exception) { if (ex is kotlinx.coroutines.CancellationException) throw ex;
+                                        emptyList()
+                                    }
+                                }
+                                _prepaidNeeded.value = accounts.sumOf { acc ->
+                                    val diff = acc.currentPriceIqd - acc.advanceIqd
+                                    if (diff > 0.0) diff else 0.0
+                                }
+                            } catch (ex: Exception) { if (ex is kotlinx.coroutines.CancellationException) throw ex;
+                                _prepaidNeeded.value = 0.0
+                            }
                         }
                     }
                 }
@@ -164,6 +175,24 @@ class DashboardViewModel(
             }
 
             _isLoading.value = false
+        }
+    }
+
+    fun setPrepaidNeededDays(days: Int) {
+        if (days <= 0) return
+        _prepaidNeededDays.value = days
+        viewModelScope.launch {
+            _isPrepaidLoading.value = true
+            try {
+                val needed = gateway.getPrepaidNeeded(days)
+                _prepaidNeeded.value = needed
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                android.util.Log.w("DashboardViewModel", "PrepaidNeeded for days $days failed: ${e.message}", e)
+                _error.value = e.message ?: "Failed to fetch prepaid needed forecast"
+            } finally {
+                _isPrepaidLoading.value = false
+            }
         }
     }
 

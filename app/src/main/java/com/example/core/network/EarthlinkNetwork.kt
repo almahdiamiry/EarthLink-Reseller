@@ -43,6 +43,12 @@ interface EarthlinkApiService {
     @GET("home/PrepaidNeeded")
     suspend fun getPrepaidNeeded(): ApiEnvelope<Any>
 
+    @FormUrlEncoded
+    @POST("prepaycard/prepaidneeded")
+    suspend fun getPrepaidNeededForDays(
+        @Field("Days") days: Int
+    ): ApiEnvelope<Any>
+
     @GET("accounts/all")
     suspend fun getPackages(): ApiEnvelope<List<AccountPackage>>
 

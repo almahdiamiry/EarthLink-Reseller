@@ -518,4 +518,43 @@ class EarthlinkGatewayApiContractTest {
         // Must immediately reflect fresh value (950000.0) rather than returning stale cached value (1000000.0)
         assertEquals(950000.0, freshBalance, 0.001)
     }
+
+    @Test
+    fun testPrepaidNeededForDays_encodesDaysParamAndParsesResponse() = runBlocking {
+        testInterceptor.nextResponseJson = """
+            {
+                "value": [
+                    {
+                        "prePaidPrice": 35000,
+                        "usersCount": 4
+                    },
+                    {
+                        "prePaidPrice": 45000,
+                        "usersCount": 2
+                    }
+                ],
+                "isSuccessful": true,
+                "statusCode": 200,
+                "responseMessage": null
+            }
+        """.trimIndent()
+
+        val response = apiService.getPrepaidNeededForDays(8)
+
+        val req = testInterceptor.lastRequest
+        assertNotNull(req)
+        assertEquals("POST", req!!.method)
+        assertEquals("https://rapi.earthlink.iq/api/reseller/prepaycard/prepaidneeded", req.url.toString())
+        val body = testInterceptor.lastRequestBody ?: ""
+        assertTrue("Request body must contain Days=8, got: $body", body.contains("Days=8"))
+        assertEquals(true, response.isSuccessful)
+
+        val mockPrefs = org.mockito.Mockito.mock(com.example.core.security.PreferenceManager::class.java)
+        org.mockito.Mockito.`when`(mockPrefs.getDemoMode()).thenReturn(false)
+        val gateway = com.example.data.repository.EarthlinkGatewayImpl(apiService, mockPrefs)
+
+        val needed = gateway.getPrepaidNeeded(8)
+        // 35000 * 4 + 45000 * 2 = 140000 + 90000 = 230000
+        assertEquals(230000.0, needed, 0.001)
+    }
 }

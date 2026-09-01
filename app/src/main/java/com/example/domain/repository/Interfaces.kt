@@ -9,6 +9,7 @@ interface EarthlinkGateway {
     suspend fun getTestUsersCount(affiliateIndex: Int? = null): Int
     suspend fun getActiveTestUsersCount(): Int
     suspend fun getPrepaidNeeded(): Double
+    suspend fun getPrepaidNeeded(days: Int): Double = getPrepaidNeeded()
     suspend fun getPackages(): List<AccountPackage>
     suspend fun getAccountCost(accountIndex: Int): Double
     suspend fun searchUsers(query: String, startIndex: Int = 0, rowCount: Int = 30): UserListResponse
