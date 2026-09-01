@@ -1,2 +1,0 @@
-## 2026-09-01 - Synthetic Pending Statement Mapping
-**Learning:** Synthetic pending ledger entries must use `ledger.occurredAt` for timestamp formatting rather than wall-clock `Date()`, and map `depositAmount` vs `withdrawalAmount` via `TransactionTypeNormalizer.normalizeTransactionType(ledger.typeRaw)` to prevent payments from being rendered as negative withdrawals on the account statement screen.

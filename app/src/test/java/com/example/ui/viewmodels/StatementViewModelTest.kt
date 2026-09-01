@@ -6,8 +6,9 @@ import com.example.domain.repository.EarthlinkGateway
 import com.example.domain.repository.LocalLedgerRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.*
@@ -35,9 +36,11 @@ import java.util.Locale
 @Config(manifest = Config.NONE)
 class StatementViewModelTest {
 
+    private val testDispatcher = StandardTestDispatcher()
+
     @Before
     fun setup() {
-        Dispatchers.setMain(Dispatchers.Unconfined)
+        Dispatchers.setMain(testDispatcher)
     }
 
     @After
@@ -46,12 +49,12 @@ class StatementViewModelTest {
     }
 
     @Test
-    fun testLoadStatement_syntheticItemMapping_preservesOccurredAtAndCorrectTypeAmounts() = runBlocking {
+    fun testLoadStatement_syntheticItemMapping_preservesOccurredAtAndCorrectTypeAmounts() = runTest {
         val mockGateway = mock(EarthlinkGateway::class.java)
         val mockLedgerRepo = mock(LocalLedgerRepository::class.java)
 
-        // StatementViewModel calls gateway.getAccountStatement() which resolves to default args (0, 30, "")
-        `when`(mockGateway.getAccountStatement(anyInt(), anyInt(), anyString())).thenReturn(emptyList())
+        // StatementViewModel calls gateway.getAccountStatement() with no args in Kotlin
+        `when`(mockGateway.getAccountStatement()).thenReturn(emptyList())
 
         val fixedTimestamp = 1600000000000L // Specific epoch millis timestamp
         val expectedDateStr = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(fixedTimestamp))
@@ -79,6 +82,13 @@ class StatementViewModelTest {
         `when`(mockLedgerRepo.getPendingSyntheticHistory()).thenReturn(listOf(syntheticGave, syntheticTook))
 
         val viewModel = StatementViewModel(mockGateway, mockLedgerRepo)
+
+        // Advance past init block
+        testScheduler.advanceUntilIdle()
+
+        // Explicitly trigger loadStatement() with coroutine test control
+        viewModel.loadStatement()
+        testScheduler.advanceUntilIdle()
 
         val transactions = viewModel.transactions.value
         assertEquals(2, transactions.size)
