@@ -29,8 +29,7 @@ interface EarthlinkGateway {
     suspend fun toggleUserActive(userIndex: Int, active: Boolean): Boolean
     suspend fun changeAccountType(userIndex: Int, userId: String, accountIndex: Int): Boolean
     suspend fun updateUserDisplayName(userIndex: Int, newName: String): Boolean
-
-
+    suspend fun invalidateBalanceCache() {}
 }
 
 interface LocalAccountRepository {
