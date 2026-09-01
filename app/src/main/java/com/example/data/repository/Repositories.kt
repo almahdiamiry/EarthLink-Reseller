@@ -771,6 +771,7 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
         if (result.isSuccessful == true) {
             val userIndex = result.userIndex
             if (userIndex != null && userIndex > 0) {
+                invalidateBalanceCache()
                 return userPass
             } else {
                 throw EarthlinkBusinessException(statusCode = 200, errorMessage = "API returned success without valid userIndex payload.")

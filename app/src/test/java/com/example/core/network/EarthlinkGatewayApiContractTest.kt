@@ -33,6 +33,7 @@ class EarthlinkGatewayApiContractTest {
         var lastRequestBody: String? = null
         var nextResponseJson: String = "{}"
         var nextResponseCode: Int = 200
+        val responseQueue = java.util.ArrayDeque<Pair<Int, String>>()
 
         override fun intercept(chain: Interceptor.Chain): Response {
             val request = chain.request()
@@ -42,11 +43,17 @@ class EarthlinkGatewayApiContractTest {
             request.body?.writeTo(buffer)
             lastRequestBody = buffer.readUtf8()
 
-            val body = nextResponseJson.toResponseBody("application/json".toMediaTypeOrNull())
+            val (code, json) = if (responseQueue.isNotEmpty()) {
+                responseQueue.poll()!!
+            } else {
+                Pair(nextResponseCode, nextResponseJson)
+            }
+
+            val body = json.toResponseBody("application/json".toMediaTypeOrNull())
             return Response.Builder()
                 .request(request)
                 .protocol(Protocol.HTTP_1_1)
-                .code(nextResponseCode)
+                .code(code)
                 .message("OK")
                 .body(body)
                 .build()
@@ -54,8 +61,10 @@ class EarthlinkGatewayApiContractTest {
     }
 
     @Before
-    fun setup() {
+    fun setup() = runBlocking {
         testInterceptor = FakeHttpInterceptor()
+        testInterceptor.responseQueue.clear()
+        com.example.data.repository.EarthlinkGatewayImpl.clearBalanceCache()
 
         val okHttpClient = OkHttpClient.Builder()
             .connectTimeout(5, TimeUnit.SECONDS)
@@ -385,47 +394,128 @@ class EarthlinkGatewayApiContractTest {
 
     @Test
     fun testRefillUserDeposit_invalidatesCachedBalance() = runBlocking {
+        testInterceptor.responseQueue.clear()
+        com.example.data.repository.EarthlinkGatewayImpl.clearBalanceCache()
         val mockPrefs = org.mockito.Mockito.mock(com.example.core.security.PreferenceManager::class.java)
         org.mockito.Mockito.`when`(mockPrefs.getDemoMode()).thenReturn(false)
 
         val gateway = com.example.data.repository.EarthlinkGatewayImpl(apiService, mockPrefs)
 
         // 1. Initial balance fetch -> 1,000,000 IQD
-        testInterceptor.nextResponseJson = """
-            {
-                "value": 1000000.0,
-                "isSuccessful": true,
-                "statusCode": 200
-            }
-        """.trimIndent()
+        testInterceptor.responseQueue.add(
+            200 to """
+                {
+                    "value": 1000000.0,
+                    "isSuccessful": true,
+                    "statusCode": 200
+                }
+            """.trimIndent()
+        )
 
         val initialBalance = gateway.getBalance()
         assertEquals(1000000.0, initialBalance, 0.001)
 
         // 2. Perform refill user deposit
-        testInterceptor.nextResponseJson = """
-            {
-                "value": true,
-                "isSuccessful": true,
-                "statusCode": 200,
-                "responseMessage": "Refill successful"
-            }
-        """.trimIndent()
+        testInterceptor.responseQueue.add(
+            200 to """
+                {
+                    "value": true,
+                    "isSuccessful": true,
+                    "statusCode": 200,
+                    "responseMessage": "Refill successful"
+                }
+            """.trimIndent()
+        )
 
         val refillSuccess = gateway.refillUserDeposit("sub_refill_101", "Secret123")
         assertTrue(refillSuccess)
 
         // 3. Second balance fetch -> API now returns 965,000 IQD
-        testInterceptor.nextResponseJson = """
-            {
-                "value": 965000.0,
-                "isSuccessful": true,
-                "statusCode": 200
-            }
-        """.trimIndent()
+        testInterceptor.responseQueue.add(
+            200 to """
+                {
+                    "value": 965000.0,
+                    "isSuccessful": true,
+                    "statusCode": 200
+                }
+            """.trimIndent()
+        )
 
         val freshBalance = gateway.getBalance()
         // Must immediately reflect fresh value (965000.0) rather than returning stale cached value (1000000.0)
         assertEquals(965000.0, freshBalance, 0.001)
+    }
+
+    @Test
+    fun testCreateUserUsingDeposit_invalidatesCachedBalance() = runBlocking {
+        testInterceptor.responseQueue.clear()
+        com.example.data.repository.EarthlinkGatewayImpl.clearBalanceCache()
+        val mockPrefs = org.mockito.Mockito.mock(com.example.core.security.PreferenceManager::class.java)
+        org.mockito.Mockito.`when`(mockPrefs.getDemoMode()).thenReturn(false)
+
+        val gateway = com.example.data.repository.EarthlinkGatewayImpl(apiService, mockPrefs)
+
+        // 1. Initial balance fetch -> 1,000,000 IQD
+        testInterceptor.responseQueue.add(
+            200 to """
+                {
+                    "value": 1000000.0,
+                    "isSuccessful": true,
+                    "statusCode": 200
+                }
+            """.trimIndent()
+        )
+
+        val initialBalance = gateway.getBalance()
+        assertEquals(1000000.0, initialBalance, 0.001)
+
+        // 2. Customer lookup by phone -> returns customer ID 1001
+        testInterceptor.responseQueue.add(
+            200 to """
+                {
+                    "value": {
+                        "customerId": 1001
+                    },
+                    "isSuccessful": true,
+                    "statusCode": 200
+                }
+            """.trimIndent()
+        )
+
+        // 3. Create user using deposit -> returns userIndex 5001
+        testInterceptor.responseQueue.add(
+            200 to """
+                {
+                    "value": 5001,
+                    "isSuccessful": true,
+                    "statusCode": 200,
+                    "responseMessage": "User created successfully"
+                }
+            """.trimIndent()
+        )
+
+        val generatedPass = gateway.createUserUsingDeposit(
+            username = "new_user_5001",
+            phone = "07701234567",
+            fullName = "Test User",
+            accountIndex = 1,
+            depositPassword = "DepositPass123"
+        )
+        assertNotNull(generatedPass)
+
+        // 4. Second balance fetch -> API now returns 950,000 IQD
+        testInterceptor.responseQueue.add(
+            200 to """
+                {
+                    "value": 950000.0,
+                    "isSuccessful": true,
+                    "statusCode": 200
+                }
+            """.trimIndent()
+        )
+
+        val freshBalance = gateway.getBalance()
+        // Must immediately reflect fresh value (950000.0) rather than returning stale cached value (1000000.0)
+        assertEquals(950000.0, freshBalance, 0.001)
     }
 }
