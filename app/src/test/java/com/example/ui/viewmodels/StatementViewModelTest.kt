@@ -4,9 +4,14 @@ import com.example.core.model.AccountStatementItem
 import com.example.core.model.LocalLedgerEntry
 import com.example.domain.repository.EarthlinkGateway
 import com.example.domain.repository.LocalLedgerRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
+import org.junit.After
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.ArgumentMatchers.*
@@ -20,7 +25,8 @@ import java.util.Locale
 /**
  * Claim: StatementViewModel correctly maps synthetic pending ledger entries to AccountStatementItem,
  * asserting that "gave" (payments/deposits) entries map to depositAmount = amount and withdrawalAmount = 0.0,
- * and that occurredAt uses the entry's actual timestamp rather than the current system time.
+ * "took" (debt/renewals) entries map to withdrawalAmount = amount and depositAmount = 0.0,
+ * and that occurredAt uses the entry's actual timestamp rather than current system time.
  * Seam / Environment: ROBOLECTRIC
  * Independent Oracle: Derived directly from Target Product Contract v0.6 transaction type rules and LocalLedgerEntry.occurredAt.
  */
@@ -29,11 +35,22 @@ import java.util.Locale
 @Config(manifest = Config.NONE)
 class StatementViewModelTest {
 
+    @Before
+    fun setup() {
+        Dispatchers.setMain(Dispatchers.Unconfined)
+    }
+
+    @After
+    fun tearDown() {
+        Dispatchers.resetMain()
+    }
+
     @Test
     fun testLoadStatement_syntheticItemMapping_preservesOccurredAtAndCorrectTypeAmounts() = runBlocking {
         val mockGateway = mock(EarthlinkGateway::class.java)
         val mockLedgerRepo = mock(LocalLedgerRepository::class.java)
 
+        // StatementViewModel calls gateway.getAccountStatement() which resolves to default args (0, 30, "")
         `when`(mockGateway.getAccountStatement(anyInt(), anyInt(), anyString())).thenReturn(emptyList())
 
         val fixedTimestamp = 1600000000000L // Specific epoch millis timestamp
@@ -63,13 +80,10 @@ class StatementViewModelTest {
 
         val viewModel = StatementViewModel(mockGateway, mockLedgerRepo)
 
-        // Wait for coroutine to complete loadStatement
-        kotlinx.coroutines.delay(200)
-
         val transactions = viewModel.transactions.value
         assertEquals(2, transactions.size)
 
-        // Verify deposit mapping for "GAVE"
+        // Verify GAVE -> depositAmount = amount, withdrawalAmount = 0, occurredAt from ledger.occurredAt
         val depositItem = transactions[0]
         assertEquals("PENDING_GAVE", depositItem.operation)
         assertEquals(50000.0, depositItem.depositAmount ?: 0.0, 0.001)
@@ -77,7 +91,7 @@ class StatementViewModelTest {
         assertEquals(expectedDateStr, depositItem.occurredAt)
         assertEquals("Payment received", depositItem.note)
 
-        // Verify withdrawal mapping for "took"
+        // Verify TOOK -> withdrawalAmount = amount, depositAmount = 0, occurredAt from ledger.occurredAt
         val withdrawalItem = transactions[1]
         assertEquals("PENDING_took", withdrawalItem.operation)
         assertEquals(0.0, withdrawalItem.depositAmount ?: 0.0, 0.001)
