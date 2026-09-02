@@ -862,7 +862,15 @@ fun ConfirmationDialog(
                         trailingIcon = {
                             val image = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
                             IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                Icon(imageVector = image, contentDescription = null, tint = Color.White.copy(alpha = 0.7f))
+                                Icon(
+                                    imageVector = image,
+                                    contentDescription = if (passwordVisible) {
+                                        if (isAr) "إخفاء كلمة المرور" else "Hide password"
+                                    } else {
+                                        if (isAr) "إظهار كلمة المرور" else "Show password"
+                                    },
+                                    tint = Color.White.copy(alpha = 0.7f)
+                                )
                             }
                         },
                         colors = OutlinedTextFieldDefaults.colors(
