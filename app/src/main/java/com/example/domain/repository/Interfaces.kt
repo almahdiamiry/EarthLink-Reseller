@@ -36,7 +36,6 @@ interface EarthlinkGateway {
 interface LocalAccountRepository {
     fun getAllAccounts(): Flow<List<LocalAccount>>
     suspend fun getAllAccountsOneShot(): List<LocalAccount>
-    suspend fun getAllPersistedAccountsOneShot(): List<LocalAccount> = getAllAccountsOneShot()
     suspend fun searchAccounts(query: String, limit: Int = 100, offset: Int = 0): List<LocalAccount>
     
     fun searchAccountsFilteredFlow(

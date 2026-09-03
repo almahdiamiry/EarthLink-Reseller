@@ -1018,9 +1018,6 @@ class LocalAccountRepositoryImpl(
     override suspend fun getAllAccountsOneShot(): List<LocalAccount> {
         return accountDao.getAllOneShot()
     }
-    override suspend fun getAllPersistedAccountsOneShot(): List<LocalAccount> {
-        return accountDao.getAllPersistedOneShot()
-    }
     override suspend fun searchAccounts(query: String, limit: Int, offset: Int): List<LocalAccount> {
         return accountDao.searchAccounts(query, limit, offset)
     }

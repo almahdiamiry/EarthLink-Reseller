@@ -1,27 +1,30 @@
 package com.example
 
 import android.content.Context
-import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.example.EarthlinkApp
 import com.example.core.backup.BackupManager
 import com.example.core.database.AppDatabase
 import com.example.core.model.*
+import com.example.core.sync.SyncRepositoryImpl
 import com.example.core.sync.UtowerImporter
 import com.example.domain.repository.UtowerImportPreview
 import com.example.data.repository.rebuildAccountBalances
+import com.google.android.gms.tasks.Tasks
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.firestore.*
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.mockito.ArgumentCaptor
+import org.mockito.Mockito.*
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
 
 /**
  * Verification suite for History-Only Subscriber Infrastructure Integrity:
@@ -32,7 +35,7 @@ import java.util.zip.ZipOutputStream
  *    Infrastructure and account-integrity paths (Backup export/restore, restore merge, remote replace-all reconciliation,
  *    uTower import matching, full account-balance reconstruction) must see all persisted accounts including
  *    isHistoryOnlySubscriber accounts, while UI/search/expiry queries remain active-only.
- * 2. Seam / Environment: ROBOLECTRIC (in-memory SQLite Room databases).
+ * 2. Seam / Environment: ROBOLECTRIC (SQLite Room databases via real production repository & manager components).
  * 3. Independent Oracle: Explicit multi-vector test fixtures verifying exact counts, balance sums, and identity matching
  *    derived directly from business rules without circular production math.
  */
@@ -46,14 +49,88 @@ class HistoryOnlyInfrastructureIntegrityTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
-        database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
-            .allowMainThreadQueries()
-            .build()
+        (context as? EarthlinkApp)?.isSafeDebugFallbackAllowedOverride = true
+        context.getDatabasePath("earthlink_reseller_db").parentFile?.mkdirs()
+        AppDatabase.closeDatabase()
+        database = (context as? EarthlinkApp)?.database ?: AppDatabase.getDatabase(context, ByteArray(0), "earthlink_reseller_db")
+        runBlocking {
+            database.localLedgerEntryDao().deleteAll()
+            database.localAccountDao().deleteAll()
+            database.importBatchDao().deleteAll()
+            database.syncOutboxDao().deleteAll()
+            database.syncMetadataDao().deleteAll()
+            database.auditLogDao().clearAll()
+        }
     }
 
     @After
     fun tearDown() {
-        database.close()
+        runBlocking {
+            database.localLedgerEntryDao().deleteAll()
+            database.localAccountDao().deleteAll()
+            database.importBatchDao().deleteAll()
+            database.syncOutboxDao().deleteAll()
+            database.syncMetadataDao().deleteAll()
+            database.auditLogDao().clearAll()
+        }
+        AppDatabase.closeDatabase()
+    }
+
+    private fun createMockDoc(
+        id: String,
+        data: Map<String, Any?>
+    ): DocumentSnapshot {
+        val mockDoc = mock(DocumentSnapshot::class.java)
+        val mockRef = mock(DocumentReference::class.java)
+        `when`(mockDoc.id).thenReturn(id)
+        `when`(mockDoc.data).thenReturn(data)
+        `when`(mockDoc.reference).thenReturn(mockRef)
+        return mockDoc
+    }
+
+    private fun createMockFirebase(
+        accountsDocs: List<DocumentSnapshot> = emptyList(),
+        ledgersDocs: List<DocumentSnapshot> = emptyList(),
+        batchesDocs: List<DocumentSnapshot> = emptyList()
+    ): Triple<FirebaseAuth, FirebaseFirestore, WriteBatch> {
+        val testUid = "test_reseller_user_123"
+        val mockAuth = mock(FirebaseAuth::class.java)
+        val mockUser = mock(FirebaseUser::class.java)
+        `when`(mockAuth.currentUser).thenReturn(mockUser)
+        `when`(mockUser.uid).thenReturn(testUid)
+
+        val mockFirestore = mock(FirebaseFirestore::class.java)
+        val mockUsersCollection = mock(CollectionReference::class.java)
+        val mockUserDoc = mock(DocumentReference::class.java)
+
+        `when`(mockFirestore.collection("users")).thenReturn(mockUsersCollection)
+        `when`(mockUsersCollection.document(testUid)).thenReturn(mockUserDoc)
+
+        val mockAccountsColl = mock(CollectionReference::class.java)
+        val mockLedgersColl = mock(CollectionReference::class.java)
+        val mockBatchesColl = mock(CollectionReference::class.java)
+
+        `when`(mockUserDoc.collection("local_accounts")).thenReturn(mockAccountsColl)
+        `when`(mockUserDoc.collection("local_ledger_entries")).thenReturn(mockLedgersColl)
+        `when`(mockUserDoc.collection("import_batches")).thenReturn(mockBatchesColl)
+
+        val accountsQuerySnapshot = mock(QuerySnapshot::class.java)
+        `when`(accountsQuerySnapshot.documents).thenReturn(accountsDocs)
+        `when`(mockAccountsColl.get(Source.SERVER)).thenReturn(Tasks.forResult(accountsQuerySnapshot))
+
+        val ledgersQuerySnapshot = mock(QuerySnapshot::class.java)
+        `when`(ledgersQuerySnapshot.documents).thenReturn(ledgersDocs)
+        `when`(mockLedgersColl.get(Source.SERVER)).thenReturn(Tasks.forResult(ledgersQuerySnapshot))
+
+        val batchesQuerySnapshot = mock(QuerySnapshot::class.java)
+        `when`(batchesQuerySnapshot.documents).thenReturn(batchesDocs)
+        `when`(mockBatchesColl.get(Source.SERVER)).thenReturn(Tasks.forResult(batchesQuerySnapshot))
+
+        val mockBatch = mock(WriteBatch::class.java)
+        `when`(mockBatch.commit()).thenReturn(Tasks.forResult(null))
+        `when`(mockFirestore.batch()).thenReturn(mockBatch)
+
+        return Triple(mockAuth, mockFirestore, mockBatch)
     }
 
     @Test
@@ -132,42 +209,19 @@ class HistoryOnlyInfrastructureIntegrityTest {
             )
             database.localLedgerEntryDao().insert(txHist)
 
-            // Export backup to a plain database
-            val backupDbFile = File(context.cacheDir, "test_backup.db")
-            if (backupDbFile.exists()) backupDbFile.delete()
+            // Exercise REAL BackupManager export path
+            val backupFile = BackupManager.createLocalBackupZip(context, password = null)
+            assertTrue("Backup file must be created by BackupManager", backupFile.exists())
+            assertTrue("Backup file must not be empty", backupFile.length() > 0)
 
-            val backupDb = AppDatabase.getDatabase(context, ByteArray(0), backupDbFile.name)
-            backupDb.openHelper.writableDatabase
-
-            val exportedAccs = database.localAccountDao().getAllPersistedOneShot(limit = 100000, offset = 0)
-            assertEquals(2, exportedAccs.size)
-            backupDb.localAccountDao().insertAll(exportedAccs)
-
-            val exportedLedgers = database.localLedgerEntryDao().getAllOneShot(limit = 100000, offset = 0)
-            backupDb.localLedgerEntryDao().insertAll(exportedLedgers)
-
-            // Verify backupDb has both accounts
-            val backupPersisted = backupDb.localAccountDao().getAllPersistedOneShot()
-            assertEquals(2, backupPersisted.size)
-            val backupHist = backupDb.localAccountDao().getByIdOneShot(historyAcc.id)
-            assertNotNull(backupHist)
-            assertTrue(backupHist!!.isHistoryOnlySubscriber)
-            assertEquals(70000.0, backupHist.debtIqd, 0.001)
-
-            // Clear target database and simulate restore chunking
+            // Clear target live database to simulate clean restore target
             database.localLedgerEntryDao().deleteAll()
             database.localAccountDao().deleteAll()
             assertEquals(0, database.localAccountDao().getTotalCount())
 
-            val batchSize = 500
-            var accOffset = 0
-            while (true) {
-                val chunk = backupDb.localAccountDao().getAllPersistedOneShot(limit = batchSize, offset = accOffset)
-                if (chunk.isEmpty()) break
-                database.localAccountDao().insertAll(chunk)
-                accOffset += chunk.size
-                if (chunk.size < batchSize) break
-            }
+            // Exercise REAL BackupManager restore path (executes restoreBackupZip -> executeRestoreReplaceInternal)
+            val restoreSuccess = BackupManager.restoreBackupZip(context, backupFile, force = true)
+            assertTrue("Real BackupManager restore path must succeed", restoreSuccess)
 
             // Restored database must contain BOTH active and history-only accounts
             val restoredPersisted = database.localAccountDao().getAllPersistedOneShot()
@@ -181,8 +235,7 @@ class HistoryOnlyInfrastructureIntegrityTest {
             // Active-only query on restored db still returns only 1 account
             assertEquals(1, database.localAccountDao().getAllOneShot().size)
 
-            backupDb.close()
-            backupDbFile.delete()
+            backupFile.delete()
         }
     }
 
@@ -225,6 +278,7 @@ class HistoryOnlyInfrastructureIntegrityTest {
                 isApproved = true
             )
 
+            // Exercises REAL BackupManager executeRestoreMergeInternal path
             val result = BackupManager.executeRestoreMergeInternal(database, backupDb, decision)
             assertTrue("Restore merge must succeed", result.success)
 
@@ -240,19 +294,48 @@ class HistoryOnlyInfrastructureIntegrityTest {
     @Test
     fun testRemoteReplaceAllReconciliation_canonicalSetIncludesHistoryOnlySubscribers() {
         runBlocking {
-            // Database has 1 active account and 1 history-only account
+            // Local Room database has 1 active account and 1 history-only account
             val activeAcc = LocalAccount(id = "acc_active_sync", displayName = "Active", isHistoryOnlySubscriber = false)
             val histAcc = LocalAccount(id = "acc_hist_sync", displayName = "History", isHistoryOnlySubscriber = true)
 
             database.localAccountDao().insert(activeAcc)
             database.localAccountDao().insert(histAcc)
 
-            // Canonical set used by reconcileRemoteReplaceAll must include both IDs
-            val canonicalIds = database.localAccountDao().getAllPersistedOneShot(limit = Int.MAX_VALUE).map { it.id }.toSet()
+            // Remote active docs in Firestore:
+            // 1. "acc_active_sync" (matches active account in local Room)
+            // 2. "acc_hist_sync" (matches history-only account in local Room)
+            // 3. "acc_remote_orphan" (remote doc absent from local Room entirely)
+            val docActive = createMockDoc("acc_active_sync", mapOf("displayName" to "Active", "deletedAt" to null))
+            val docHist = createMockDoc("acc_hist_sync", mapOf("displayName" to "History", "deletedAt" to null))
+            val docOrphan = createMockDoc("acc_remote_orphan", mapOf("displayName" to "Orphan", "deletedAt" to null))
 
-            assertTrue("Canonical set must contain active account ID", canonicalIds.contains("acc_active_sync"))
-            assertTrue("Canonical set must contain history-only account ID to prevent false remote deletion", canonicalIds.contains("acc_hist_sync"))
-            assertEquals(2, canonicalIds.size)
+            val (mockAuth, mockFirestore, mockBatch) = createMockFirebase(accountsDocs = listOf(docActive, docHist, docOrphan))
+
+            val syncRepository = SyncRepositoryImpl(
+                context = context,
+                appDatabase = database,
+                outboxDao = database.syncOutboxDao(),
+                accountDao = database.localAccountDao(),
+                ledgerDao = database.localLedgerEntryDao(),
+                batchDao = database.importBatchDao(),
+                metadataDao = database.syncMetadataDao(),
+                auditDao = database.auditLogDao()
+            )
+            syncRepository.setFirebaseInstancesForTest(mockAuth, mockFirestore)
+
+            // Exercise the REAL production reconciliation method
+            val success = syncRepository.executeRemoteReplaceAllReconciliation()
+            assertTrue("executeRemoteReplaceAllReconciliation must succeed", success)
+
+            // Verify: ONLY the orphan document is tombstoned in Firestore.
+            // Crucially, the history-only account is in canonicalAccountIds and must NOT be tombstoned!
+            val refCaptor = ArgumentCaptor.forClass(DocumentReference::class.java)
+            val optionsCaptor = ArgumentCaptor.forClass(SetOptions::class.java)
+            verify(mockBatch, times(1)).set(refCaptor.capture(), anyMap<String, Any?>(), optionsCaptor.capture())
+
+            assertEquals("Only the orphan document reference should be tombstoned", docOrphan.reference, refCaptor.value)
+            verify(mockBatch, never()).set(eq(docHist.reference), anyMap<String, Any?>(), any<SetOptions>())
+            verify(mockBatch, never()).set(eq(docActive.reference), anyMap<String, Any?>(), any<SetOptions>())
         }
     }
 
