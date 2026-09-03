@@ -2454,6 +2454,7 @@ class UtowerImportRepositoryImpl(
     private fun parseDateString(strVal: String, pattern: String): java.util.Date? {
         val sdf = java.text.SimpleDateFormat(pattern, java.util.Locale.US).apply {
             timeZone = java.util.TimeZone.getTimeZone("Asia/Baghdad")
+            isLenient = false
         }
         return try { sdf.parse(strVal) } catch (_: Exception) { null }
     }
@@ -2470,6 +2471,9 @@ class UtowerImportRepositoryImpl(
             "dd/MM/yyyy HH:mm:ss",
             "dd/MM/yyyy HH:mm",
             "dd/MM/yyyy",
+            "dd-MM-yyyy HH:mm:ss",
+            "dd-MM-yyyy HH:mm",
+            "dd-MM-yyyy",
             "yyyy-MM-dd'T'HH:mm:ss",
             "yyyy-MM-dd'T'HH:mm:ss'Z'",
             "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"

@@ -128,6 +128,9 @@ class UtowerImporter(
             "dd/MM/yyyy HH:mm:ss",
             "dd/MM/yyyy HH:mm",
             "dd/MM/yyyy",
+            "dd-MM-yyyy HH:mm:ss",
+            "dd-MM-yyyy HH:mm",
+            "dd-MM-yyyy",
             "yyyy-MM-dd'T'HH:mm:ss",
             "yyyy-MM-dd'T'HH:mm:ss'Z'",
             "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"

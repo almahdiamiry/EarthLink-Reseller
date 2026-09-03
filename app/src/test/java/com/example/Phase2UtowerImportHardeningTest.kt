@@ -568,4 +568,62 @@ class Phase2UtowerImportHardeningTest {
         println("Approx Peak Memory Delta: ${(memAfterBytes - memBeforeBytes) / (1024 * 1024)} MB")
         println("=================================")
     }
+
+    /**
+     * Requirement: Day-first date formats (DD/MM/YYYY and DD-MM-YYYY) must be parsed strictly
+     * and must not roll over to year 17 AD or get quarantined/dropped during preview or commit.
+     */
+    @Test
+    fun testDayFirstDateParsingInUtowerPreviewAndImport() = runBlocking {
+        val sub = JSONObject().apply {
+            put("id", "sub_date_test")
+            put("name", "Date Test User")
+            put("userName", "date_user")
+            put("debt_iqd", 50000)
+        }
+        val txSlash = JSONObject().apply {
+            put("id", "tx_slash")
+            put("toWho", "sub_date_test")
+            put("amount_iqd", 25000.0)
+            put("debt_after_iqd", 25000.0)
+            put("type", "took")
+            put("date", "11/12/2026 10:15:30")
+        }
+        val txDash = JSONObject().apply {
+            put("id", "tx_dash")
+            put("toWho", "sub_date_test")
+            put("amount_iqd", 25000.0)
+            put("debt_after_iqd", 50000.0)
+            put("type", "took")
+            put("date", "11-12-2026 10:15:30")
+        }
+
+        val previewJson = JSONObject().apply {
+            put("subscribers", org.json.JSONArray().apply { put(sub) })
+            put("transactions", org.json.JSONArray().apply { put(txSlash); put(txDash) })
+        }.toString()
+
+        val utowerRepo = com.example.data.repository.UtowerImportRepositoryImpl(
+            context,
+            liveDb,
+            liveDb.importBatchDao(),
+            liveDb.localAccountDao(),
+            liveDb.localLedgerEntryDao(),
+            liveDb.syncOutboxDao()
+        )
+        val preview = utowerRepo.processImportPreview(previewJson)
+
+        assertEquals("Preview must parse both transactions without quarantine", 2, preview.totalTransactionsFound)
+        assertEquals("Preview must have zero warnings", 0, preview.warnings.size)
+        assertTrue("Transaction occurredAt must be in year 2026 (positive ms)", preview.parsedTransactions.all { it.occurredAt > 1700000000000L })
+
+        val jsonFile = createUtowerJsonFile(
+            subscribers = listOf(sub),
+            transactions = listOf(txSlash, txDash)
+        )
+        val importResult = importer.importFromFile(jsonFile, shouldReplace = true)
+        assertTrue("Direct file import must succeed", importResult.success)
+        assertEquals("Direct file import must import 2 transactions", 2, importResult.transactionsImported)
+    }
 }
+
