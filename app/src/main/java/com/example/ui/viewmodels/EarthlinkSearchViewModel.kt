@@ -538,6 +538,28 @@ class EarthlinkSearchViewModel(
                 }
                 val exactAmountIqd = authoritativePrice.toLong()
 
+                val localAcc = localAccountRepository.getAccountByIdOneShot(userId)
+                    ?: localAccountRepository.findAccountByUsernameOrIdOneShot(userId)
+                if (localAcc == null) {
+                    val snapshotUser = _selectedUser.value?.takeIf { it.userID.equals(userId, ignoreCase = true) }
+                    val snapshotListItem = _usersList.value.find { it.userID.equals(userId, ignoreCase = true) }
+                    val displayName = snapshotUser?.customerFullName
+                        ?: snapshotListItem?.customerName
+                        ?: userId
+                    val phone = snapshotUser?.mobileNumber ?: snapshotListItem?.mobileNumber
+                    val pkgName = snapshotUser?.packageName ?: snapshotListItem?.packageName ?: "Default"
+                    val newAcc = LocalAccount(
+                        id = userId,
+                        earthlinkUsername = userId,
+                        displayName = displayName.ifBlank { userId },
+                        phone1 = phone,
+                        packageName = pkgName,
+                        currentPriceIqd = exactAmountIqd.toDouble(),
+                        debtIqd = 0.0
+                    )
+                    localAccountRepository.saveAccount(newAcc)
+                }
+
                 localLedgerRepository.recordPendingOperation(
                     PendingExternalOperation(
                         businessTransactionId = businessTxId,

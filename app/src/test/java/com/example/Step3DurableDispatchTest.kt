@@ -733,13 +733,20 @@ class Step3DurableDispatchTest {
         assertEquals("COMPLETED", opExtend!!.status)
     }
 
+    /**
+     * Core Triad:
+     * 1. Claim: When an ISP subscriber exists but no LocalAccount is yet persisted in Room,
+     *    refillUser creates and persists LocalAccount prior to dispatch, completes external refill,
+     *    and successfully materializes the ledger debt entry with status COMPLETED.
+     * 2. Seam / Environment: ROBOLECTRIC (Room SQLite + ViewModel + FakeGateway).
+     * 3. Independent Oracle: LocalAccount must exist with subscriber details, PendingExternalOperation
+     *    must be COMPLETED with dispatchClaimCount = 1, and LocalLedgerEntry must be persisted for exact amount.
+     */
     @Test
-    fun test19_refillSuccessNotReportedWhenLocalMaterializationFails() = runTest {
+    fun test19_refillCreatesLocalAccountWhenMissingAndMaterializesLedgerSuccessfully() = runTest {
         val app = context as com.example.EarthlinkApp
         val gateway = FakeGateway()
 
-        // Create a repository instance that fails in resolvePendingOperationVerifiedSuccess by omitting local account
-        // (Missing local account for positive IQD throws MISSING_LOCAL_FINANCIAL_TARGET)
         val viewModel = com.example.ui.viewmodels.EarthlinkSearchViewModel(
             gateway = gateway,
             prefs = app.preferenceManager,
@@ -748,96 +755,40 @@ class Step3DurableDispatchTest {
             localLedgerRepository = ledgerRepo
         )
 
-        // Attempt refill without pre-existing local account -> gateway succeeds, but materialization throws MISSING_LOCAL_FINANCIAL_TARGET
+        // Precondition: No local account exists initially
+        assertNull(accountRepo.getAccountByIdOneShot("unregistered_refill_user"))
+
+        // Attempt refill without pre-existing local account -> auto-creates LocalAccount, gateway succeeds, materializes ledger
         val job = viewModel.refillUser(
             userId = "unregistered_refill_user",
             depositPass = "pass",
             price = 35000.0,
             note = "Test Refill",
-            intentId = "intent_refill_fail_mat"
+            intentId = "intent_refill_auto_create"
         )
         job.join()
 
-        // 1. Action success must NOT be set
-        assertNull("Action success must not be shown when local materialization fails", viewModel.actionSuccess.value)
-        // 2. Error message must reflect pending confirmation
-        assertNotNull("Error message must be set", viewModel.error.value)
-        assertTrue(
-            "Error must indicate local record confirmation is pending",
-            viewModel.error.value!!.contains("local record confirmation is pending") || viewModel.error.value!!.contains("فشل تسجيل القيد المحلي")
-        )
-        // 3. Operation must remain in DISPATCHING with claim count = 1 (recoverable, blocked from redispatch)
-        val op = ledgerRepo.getPendingOperationByIntentId("intent_refill_fail_mat")
-        assertNotNull(op)
-        assertEquals("DISPATCHING", op!!.status)
+        // 1. Action success must be set
+        assertNotNull("Action success must be shown when refill and materialization succeed", viewModel.actionSuccess.value)
+        assertNull("Error message must not be set", viewModel.error.value)
+
+        // 2. LocalAccount must now be persisted in Room with correct price
+        val localAccount = accountRepo.getAccountByIdOneShot("unregistered_refill_user")
+        assertNotNull("LocalAccount must be auto-created and persisted before dispatch", localAccount)
+        assertEquals("unregistered_refill_user", localAccount!!.id)
+        assertEquals(35000.0, localAccount.currentPriceIqd, 0.001)
+
+        // 3. Operation must be COMPLETED with dispatchClaimCount = 1
+        val op = ledgerRepo.getPendingOperationByIntentId("intent_refill_auto_create")
+        assertNotNull("PendingExternalOperation must exist", op)
+        assertEquals("COMPLETED", op!!.status)
         assertEquals(1, op.dispatchClaimCount)
-        assertNull(op.lastError)
 
-        // 4. Close the current Room database instance completely
-        db.close()
-
-        // 5. Create a NEW Room/AppDatabase instance against the same database file & NEW repository instance
-        val newDb = Room.databaseBuilder(context, AppDatabase::class.java, dbFile.name)
-            .allowMainThreadQueries()
-            .build()
-        val newLedgerRepo = createRepository(newDb)
-        val newAccountRepo = LocalAccountRepositoryImpl(
-            accountDao = newDb.localAccountDao(),
-            outboxDao = newDb.syncOutboxDao(),
-            database = newDb
-        )
-
-        // 6. Confirm the operation is still persisted in NEW Room instance as DISPATCHING / dispatchClaimCount = 1
-        val opInNewDb = newLedgerRepo.getPendingOperationByIntentId("intent_refill_fail_mat")
-        assertNotNull("Operation must persist across Room instance closure", opInNewDb)
-        assertEquals("DISPATCHING", opInNewDb!!.status)
-        assertEquals(1, opInNewDb.dispatchClaimCount)
-        assertNull(opInNewDb.lastError)
-
-        // Save local account in NEW Room instance so materialization can succeed on recovery verification
-        val account = LocalAccount(id = "unregistered_refill_user", displayName = "Refill User", currentPriceIqd = 35000.0)
-        newAccountRepo.saveAccount(account)
-
-        // Add matching subscriber user search result and statement to FakeGateway to prove statement-based resolution
-        gateway.searchUsersResult = UserListResponse(itemsList = listOf(UserListItem(userIndexLower = 101, userIDLower = "unregistered_refill_user")))
-        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
-        sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
-        val dateStr = sdf.format(java.util.Date())
-        gateway.statementsResult = listOf(
-            com.example.core.model.AccountStatementItem(
-                occurredAt = dateStr,
-                operation = "Withdraw",
-                depositAmount = 0.0,
-                withdrawalAmount = 35000.0,
-                balanceAfter = 50000.0,
-                note = "RENEW",
-                userIDLower = "unregistered_refill_user"
-            )
-        )
-
-        // 7. Verify intermediate recovery transition capability:
-        // resetOrphanedInFlightToPending resets DISPATCHING(count=1) -> PENDING(count=1)
-        val resetRows = newDb.pendingExternalOperationDao().resetOrphanedInFlightToPending(opInNewDb.businessTransactionId)
-        assertEquals(1, resetRows)
-        val intermediateOp = newLedgerRepo.getPendingOperationByIntentId("intent_refill_fail_mat")
-        assertNotNull(intermediateOp)
-        assertEquals("PENDING", intermediateOp!!.status)
-        assertEquals(1, intermediateOp.dispatchClaimCount)
-
-        // 8. Run cold-start orphan recovery / statement verification using NEW repository instance
-        val resolution = newLedgerRepo.verifyAndResolvePendingOperation(opInNewDb.businessTransactionId, gateway)
-        assertEquals(UnknownOutcomeResolutionResult.VERIFIED_SUCCESS, resolution.result)
-
-        // 9. Prove final persisted state in NEW Room instance: VERIFIED resolution + COMPLETED + materialized ledger entry
-        val opAfterRecovery = newLedgerRepo.getPendingOperationByIntentId("intent_refill_fail_mat")
-        assertNotNull(opAfterRecovery)
-        assertEquals("COMPLETED", opAfterRecovery!!.status)
-
-        val ledgerEntry = newDb.localLedgerEntryDao().getByIdOneShot(op.businessTransactionId)
-        assertNotNull("Ledger debt entry must be materialized after cold-start recovery verification", ledgerEntry)
-        assertEquals(35000.0, ledgerEntry!!.amountIqd, 0.001)
-
-        newDb.close()
+        // 4. Ledger debt entry must be materialized in Room
+        val ledgerEntries = db.localLedgerEntryDao().getByAccountIdOneShot("unregistered_refill_user")
+        assertEquals("Ledger debt entry must be materialized", 1, ledgerEntries.size)
+        assertEquals(35000.0, ledgerEntries.first().amountIqd, 0.001)
+        assertEquals("unregistered_refill_user", ledgerEntries.first().accountId)
     }
 
     @Test
