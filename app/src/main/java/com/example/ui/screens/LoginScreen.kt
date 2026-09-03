@@ -310,7 +310,11 @@ fun LoginScreen(viewModel: AuthViewModel) {
                                 IconButton(onClick = { passwordVisible = !passwordVisible }) {
                                     Icon(
                                         imageVector = image,
-                                        contentDescription = null,
+                                        contentDescription = if (passwordVisible) {
+                                            if (currentLang == "ar") "إخفاء كلمة المرور" else "Hide password"
+                                        } else {
+                                            if (currentLang == "ar") "إظهار كلمة المرور" else "Show password"
+                                        },
                                         tint = Color.White.copy(alpha = 0.6f)
                                     )
                                 }
