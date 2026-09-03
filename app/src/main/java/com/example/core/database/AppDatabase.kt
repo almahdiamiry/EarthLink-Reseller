@@ -508,6 +508,11 @@ abstract class AppDatabase : RoomDatabase() {
 
     suspend fun setGeneration(gen: Long) = syncMetadataDao().setGeneration(gen)
 
+    /**
+     * MAINTENANCE / RESET-ONLY: Physically clears all database entity tables while preserving
+     * and incrementing the local generation counter (g4_local_generation) to protect against stale sync.
+     * Used exclusively for full database reset, clear data actions, or pre-restore preparation.
+     */
     suspend fun clearAllData(): Long = withTransaction {
         localLedgerEntryDao().deleteAll()
         localAccountDao().deleteAll()

@@ -40,6 +40,10 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
                 isDemoUsersGenerated.set(false)
             }
         }
+        /**
+         * DEV / DEMO-ONLY: Generates synthetic in-memory demo subscriber data for testing and offline demo mode.
+         * Must NOT be used for live production ISP subscriber operations.
+         */
         fun ensureDemoUsersGenerated() {
             if (isDemoUsersGenerated.get()) return
             if (isDemoUsersGenerated.compareAndSet(false, true)) {
@@ -1145,6 +1149,11 @@ class LocalAccountRepositoryImpl(
         }
     }
 
+    /**
+     * DEV / MAINTENANCE-ONLY: Enqueues deletion tombstones for all accounts and ledgers,
+     * physically clears the tables, and increments the sync generation counter.
+     * Must NOT be used for normal production subscriber flows (which preserve history via history-only status).
+     */
     override suspend fun deleteAllAccounts() {
         com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
             database.withTransaction {
@@ -1161,6 +1170,10 @@ class LocalAccountRepositoryImpl(
         }
     }
 
+    /**
+     * MAINTENANCE / RESET-ONLY: Physically wipes all local tables while preserving and incrementing
+     * the local generation counter (g4_local_generation). Used exclusively for dataset restore or full reset.
+     */
     override suspend fun clearAllData(): Long {
         return com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.CLEAR_DATA) {
             database.clearAllData()
@@ -1272,6 +1285,11 @@ class LocalLedgerRepositoryImpl(
         }
     }
 
+    /**
+     * LEGACY HELPER: Directly marks a pending operation as completed without canonical materialization.
+     * Production external operations MUST use [resolvePendingOperationVerifiedSuccess] to avoid canonical
+     * financial materializer bypass (RED Invariant 4).
+     */
     @Deprecated("Legacy helper: production external operations MUST use resolvePendingOperationVerifiedSuccess to avoid canonical financial materializer bypass.")
     override suspend fun completePendingOperation(businessTransactionId: String, accountId: String, ledgerEntryId: String?) {
         com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
@@ -1281,6 +1299,11 @@ class LocalLedgerRepositoryImpl(
         }
     }
 
+    /**
+     * MAINTENANCE-ONLY: Physically deletes a pending external operation record.
+     * Normal production operations must resolve through the verification state machine
+     * (resolvePendingOperationVerifiedSuccess, resolvePendingOperationVerifiedFailure, or resolvePendingOperationInconclusive).
+     */
     override suspend fun deletePendingOperation(businessTransactionId: String) {
         com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
             database.withTransaction {
@@ -2383,6 +2406,11 @@ class LocalLedgerRepositoryImpl(
         correctTransaction(originalEntryId = id, intendedAmount = 0.0, note = "[FULL REVERSAL for $id]")
     }
 
+    /**
+     * LEGACY / MAINTENANCE-ONLY: Enqueues outbox tombstones for all local ledger entries and zeros account balances.
+     * Must NOT be used for normal production financial flows; production financial history is strictly additive
+     * (RED Invariant 2). Full dataset wipes must use [clearAllData].
+     */
     override suspend fun deleteAllLedgerEntries() {
         com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
             database.withTransaction {
