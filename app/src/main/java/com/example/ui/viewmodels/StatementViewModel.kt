@@ -39,10 +39,11 @@ class StatementViewModel(
                 val syntheticItems = ledgerRepository.getPendingSyntheticHistory()
                 
                 // Map synthetic ledger entries to Statement view models
+                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
                 val mappedSynthetic = syntheticItems.map { ledger ->
                     val isGave = TransactionTypeNormalizer.normalizeTransactionType(ledger.typeRaw) == "gave"
                     AccountStatementItem(
-                        occurredAt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date(ledger.occurredAt)),
+                        occurredAt = sdf.format(java.util.Date(ledger.occurredAt)),
                         operation = "PENDING_${ledger.typeRaw}",
                         depositAmount = if (isGave) ledger.amountIqd else 0.0,
                         withdrawalAmount = if (isGave) 0.0 else ledger.amountIqd,
