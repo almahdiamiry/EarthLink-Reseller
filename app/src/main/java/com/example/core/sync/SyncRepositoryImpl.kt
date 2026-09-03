@@ -274,7 +274,7 @@ class SyncRepositoryImpl(
         }
 
         return try {
-            val canonicalAccountIds = accountDao.getAllOneShot(limit = Int.MAX_VALUE).map { it.id }.toSet()
+            val canonicalAccountIds = accountDao.getAllPersistedOneShot(limit = Int.MAX_VALUE).map { it.id }.toSet()
             val canonicalLedgerIds = ledgerDao.getAllOneShot(limit = Int.MAX_VALUE).map { it.id }.toSet()
             val canonicalBatchIds = batchDao.getAllOneShot().map { it.id }.toSet()
 

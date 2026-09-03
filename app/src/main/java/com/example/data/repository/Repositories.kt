@@ -1017,8 +1017,9 @@ class LocalAccountRepositoryImpl(
     }
     override suspend fun getAllAccountsOneShot(): List<LocalAccount> {
         return accountDao.getAllOneShot()
-
-
+    }
+    override suspend fun getAllPersistedAccountsOneShot(): List<LocalAccount> {
+        return accountDao.getAllPersistedOneShot()
     }
     override suspend fun searchAccounts(query: String, limit: Int, offset: Int): List<LocalAccount> {
         return accountDao.searchAccounts(query, limit, offset)
@@ -3342,7 +3343,7 @@ suspend fun rebuildAccountBalances(
     val moshi = com.squareup.moshi.Moshi.Builder().build()
     val ledgerAdapter = moshi.adapter(com.example.core.model.LocalLedgerEntry::class.java)
 
-    val accounts = accountDao.getAllOneShot(limit = Int.MAX_VALUE)
+    val accounts = accountDao.getAllPersistedOneShot(limit = Int.MAX_VALUE)
     var count = 0
     for (acc in accounts) {
         recalculateAccountHistoryInternal(acc.id, accountDao, ledgerDao, outboxDao, ledgerAdapter, origin, auditDao = database.auditLogDao())

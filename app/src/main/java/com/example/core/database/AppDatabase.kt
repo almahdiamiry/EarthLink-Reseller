@@ -13,6 +13,9 @@ interface LocalAccountDao {
     @Query("SELECT * FROM local_accounts WHERE isHistoryOnlySubscriber = 0 ORDER BY displayName ASC, id ASC LIMIT :limit OFFSET :offset")
     suspend fun getAllOneShot(limit: Int = 100000, offset: Int = 0): List<LocalAccount>
 
+    @Query("SELECT * FROM local_accounts ORDER BY displayName ASC, id ASC LIMIT :limit OFFSET :offset")
+    suspend fun getAllPersistedOneShot(limit: Int = 100000, offset: Int = 0): List<LocalAccount>
+
     @Query("SELECT * FROM local_accounts WHERE id = :id")
     fun getById(id: String): Flow<LocalAccount?>
 

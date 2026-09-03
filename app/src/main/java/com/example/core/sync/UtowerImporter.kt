@@ -305,7 +305,7 @@ class UtowerImporter(
                     session.batchId = batchId
                 }
 
-                val oldAccounts = if (shouldReplace) appDatabase.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE) else emptyList()
+                val oldAccounts = if (shouldReplace) appDatabase.localAccountDao().getAllPersistedOneShot(limit = Int.MAX_VALUE) else emptyList()
                 val oldLedgers = if (shouldReplace) appDatabase.localLedgerEntryDao().getAllOneShot(limit = Int.MAX_VALUE) else emptyList()
                 val oldBatches = if (shouldReplace) appDatabase.importBatchDao().getAllOneShot() else emptyList()
 
@@ -317,14 +317,14 @@ class UtowerImporter(
                     appDatabase.syncMetadataDao().incrementGeneration()
                 }
 
-                val existingAccounts = appDatabase.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE)
+                val existingAccounts = appDatabase.localAccountDao().getAllPersistedOneShot(limit = Int.MAX_VALUE)
                 val existingTxList = appDatabase.localLedgerEntryDao().getAllOneShot(limit = Int.MAX_VALUE)
                 session.init(existingAccounts, existingTxList)
 
                 session.commitAll()
 
                 if (shouldReplace) {
-                    val newAccounts = appDatabase.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE)
+                    val newAccounts = appDatabase.localAccountDao().getAllPersistedOneShot(limit = Int.MAX_VALUE)
                     val newAccountIds = newAccounts.map { it.id }.toSet()
                     val deletedAccountIds = oldAccounts.map { it.id }.filter { it !in newAccountIds }
                     if (deletedAccountIds.isNotEmpty()) {
@@ -358,7 +358,7 @@ class UtowerImporter(
                     appDatabase.syncMetadataDao().put("replace_all_pending_reconciliation", "true")
                 }
 
-                val freshAccounts = appDatabase.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE)
+                val freshAccounts = appDatabase.localAccountDao().getAllPersistedOneShot(limit = Int.MAX_VALUE)
                 val totalImportedDebt = freshAccounts.sumOf { it.debtIqd }
                 val totalOpeningDebt = freshAccounts.sumOf { it.openingDebtIqd }
                 Log.i("UtowerImporter", "Reconciliation Report -> Total Current Debt: $totalImportedDebt, Total Opening Debt: $totalOpeningDebt, Diff: ${totalImportedDebt - totalOpeningDebt}")
@@ -674,7 +674,7 @@ class UtowerImporter(
                         session.batchId = batchId
                     }
 
-                    val oldAccounts = if (shouldReplace) appDatabase.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE) else emptyList()
+                    val oldAccounts = if (shouldReplace) appDatabase.localAccountDao().getAllPersistedOneShot(limit = Int.MAX_VALUE) else emptyList()
                     val oldLedgers = if (shouldReplace) appDatabase.localLedgerEntryDao().getAllOneShot(limit = Int.MAX_VALUE) else emptyList()
                     val oldBatches = if (shouldReplace) appDatabase.importBatchDao().getAllOneShot() else emptyList()
 
@@ -686,14 +686,14 @@ class UtowerImporter(
                         appDatabase.syncMetadataDao().incrementGeneration()
                     }
 
-                    val existingAccounts = appDatabase.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE)
+                    val existingAccounts = appDatabase.localAccountDao().getAllPersistedOneShot(limit = Int.MAX_VALUE)
                     val existingTxList = appDatabase.localLedgerEntryDao().getAllOneShot(limit = Int.MAX_VALUE)
                     session.init(existingAccounts, existingTxList)
 
                     session.commitAll()
 
                     if (shouldReplace) {
-                        val newAccounts = appDatabase.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE)
+                        val newAccounts = appDatabase.localAccountDao().getAllPersistedOneShot(limit = Int.MAX_VALUE)
                         val newAccountIds = newAccounts.map { it.id }.toSet()
                         val deletedAccountIds = oldAccounts.map { it.id }.filter { it !in newAccountIds }
                         if (deletedAccountIds.isNotEmpty()) {
@@ -727,7 +727,7 @@ class UtowerImporter(
                         appDatabase.syncMetadataDao().put("replace_all_pending_reconciliation", "true")
                     }
 
-                    val freshAccounts = appDatabase.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE)
+                    val freshAccounts = appDatabase.localAccountDao().getAllPersistedOneShot(limit = Int.MAX_VALUE)
                     val totalImportedDebt = freshAccounts.sumOf { it.debtIqd }
                     val totalOpeningDebt = freshAccounts.sumOf { it.openingDebtIqd }
                     Log.i("UtowerImporter", "Reconciliation Report -> Total Current Debt: $totalImportedDebt, Total Opening Debt: $totalOpeningDebt, Diff: ${totalImportedDebt - totalOpeningDebt}")

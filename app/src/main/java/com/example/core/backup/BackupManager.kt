@@ -52,7 +52,7 @@ object BackupManager {
             val diskDb = AppDatabase.getDatabase(context, ByteArray(0), tempPlainDbName)
             diskDb.openHelper.writableDatabase // Force creation of database file even if no data is written
             
-            val accList = liveDb.localAccountDao().getAllOneShot(limit = 100000, offset = 0)
+            val accList = liveDb.localAccountDao().getAllPersistedOneShot(limit = 100000, offset = 0)
             if (accList.isNotEmpty()) diskDb.localAccountDao().insertAll(accList)
             val ledgerList = liveDb.localLedgerEntryDao().getAllOneShot(limit = 100000, offset = 0)
             if (ledgerList.isNotEmpty()) diskDb.localLedgerEntryDao().insertAll(ledgerList)
@@ -464,7 +464,7 @@ object BackupManager {
         val batchSize = 500
         var accOffset = 0
         while (true) {
-            val backupAccountsChunk = backupDb.localAccountDao().getAllOneShot(limit = batchSize, offset = accOffset)
+            val backupAccountsChunk = backupDb.localAccountDao().getAllPersistedOneShot(limit = batchSize, offset = accOffset)
             if (backupAccountsChunk.isEmpty()) break
             liveDb.localAccountDao().insertAll(backupAccountsChunk)
             accOffset += backupAccountsChunk.size
@@ -536,8 +536,8 @@ object BackupManager {
         backupDb: AppDatabase,
         decision: com.example.core.model.RestoreMergeDecision
     ): com.example.core.model.RestoreMergeResult {
-        val liveAccounts = liveDb.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE)
-        val backupAccounts = backupDb.localAccountDao().getAllOneShot(limit = Int.MAX_VALUE)
+        val liveAccounts = liveDb.localAccountDao().getAllPersistedOneShot(limit = Int.MAX_VALUE)
+        val backupAccounts = backupDb.localAccountDao().getAllPersistedOneShot(limit = Int.MAX_VALUE)
 
         val liveLedgers = liveDb.localLedgerEntryDao().getAllOneShot(limit = Int.MAX_VALUE)
         val backupLedgers = backupDb.localLedgerEntryDao().getAllOneShot(limit = Int.MAX_VALUE)
