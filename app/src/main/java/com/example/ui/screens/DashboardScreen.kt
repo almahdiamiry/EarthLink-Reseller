@@ -68,40 +68,8 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 
-// Pre-compiled static regex patterns to prevent repeated Pattern allocation during list sorting/filtering
-private val MULTIPLE_SPACES_REGEX = """\s+""".toRegex()
-private val AM_PM_REGEX = """(?i)(AM|PM)""".toRegex()
-private val TIME_REGEX = """(\d{1,2}):(\d{2})(?::(\d{2}))?""".toRegex()
-private val DATE_REGEX = """(\d{1,4})[/-](\d{1,2})[/-](\d{1,4})""".toRegex()
-
-// Formatting helper for Money
-
-private fun parseExpirationTimestamp(dateStr: String?): Long? {
-    if (dateStr.isNullOrBlank() || dateStr.equals("n/a", ignoreCase = true) || dateStr.equals("none", ignoreCase = true)) {
-        return null
-    }
-
-    var cleanStr = dateStr
-        .replace("\u200E", "") // LRM
-        .replace("\u200F", "") // RLM
-        .replace("\u206F", "")
-        .replace("\u206E", "")
-        .replace("\u202A", "")
-        .replace("\u202B", "")
-        .replace("\u202C", "")
-        .replace("\u202D", "")
-        .replace("\u202E", "")
-        .replace("\u00A0", " ")
-        .replace(MULTIPLE_SPACES_REGEX, " ")
-        .trim()
-
-    // Convert Arabic/Persian numerals
-    val arabicDigits = charArrayOf('٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩')
-    val persianDigits = charArrayOf('۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '٨', '٩')
-    for (i in 0..9) {
-        cleanStr = cleanStr.replace(arabicDigits[i], (i + 48).toChar())
-        cleanStr = cleanStr.replace(persianDigits[i], (i + 48).toChar())
-    }
+internal fun parseExpirationTimestamp(dateStr: String?): Long? {
+    val cleanStr = sanitizePresentationDateString(dateStr) ?: return null
 
     val baghdadTz = java.util.TimeZone.getTimeZone("Asia/Baghdad")
 

@@ -61,10 +61,54 @@ private val DAY_REGEX = """(\d+(?:\.\d+)?)\s*(?:day|days|d|يوم|أيام|اي�
 private val HOUR_REGEX = """(\d+(?:\.\d+)?)\s*(?:hour|hours|h|ساعة|ساعات)""".toRegex()
 private val FIRST_NUM_REGEX = """(\d+(?:\.\d+)?)""".toRegex()
 private val FRACTIONAL_SECONDS_REGEX = """(\.\d{3})\d+""".toRegex()
-private val MULTIPLE_SPACES_REGEX = """\s+""".toRegex()
-private val AM_PM_REGEX = """(?i)(AM|PM)""".toRegex()
-private val TIME_REGEX = """(\d{1,2}):(\d{2})(?::(\d{2}))?""".toRegex()
-private val DATE_REGEX = """(\d{1,4})[/-](\d{1,2})[/-](\d{1,4})""".toRegex()
+internal val MULTIPLE_SPACES_REGEX = """\s+""".toRegex()
+internal val AM_PM_REGEX = """(?i)(AM|PM)""".toRegex()
+internal val TIME_REGEX = """(\d{1,2}):(\d{2})(?::(\d{2}))?""".toRegex()
+internal val DATE_REGEX = """(\d{1,4})[/-](\d{1,2})[/-](\d{1,4})""".toRegex()
+
+/**
+ * Normalizes Eastern Arabic ('٠'..'٩') and Persian ('۰'..'۹') numerals to standard ASCII digits ('0'..'9').
+ */
+internal fun normalizeArabicPersianDigits(input: String): String {
+    val arabicDigits = charArrayOf('٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩')
+    val persianDigits = charArrayOf('۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '٨', '٩')
+    var result = input
+    for (i in 0..9) {
+        result = result.replace(arabicDigits[i], (i + 48).toChar())
+        result = result.replace(persianDigits[i], (i + 48).toChar())
+    }
+    return result
+}
+
+/**
+ * Strips RTL and directional marks, collapses spaces, handles ISO fractional seconds,
+ * and converts Arabic/Persian digits to standard ASCII digits. Returns null for null/blank/sentinel inputs.
+ */
+internal fun sanitizePresentationDateString(dateStr: String?): String? {
+    if (dateStr.isNullOrBlank() || dateStr.equals("none", ignoreCase = true) || dateStr.equals("n/a", ignoreCase = true)) {
+        return null
+    }
+
+    var cleanStr = dateStr.trim()
+    cleanStr = cleanStr.replace('t', 'T').replace('z', 'Z')
+    cleanStr = FRACTIONAL_SECONDS_REGEX.replace(cleanStr, "$1")
+
+    cleanStr = cleanStr
+        .replace("\u200E", "") // LRM
+        .replace("\u200F", "") // RLM
+        .replace("\u206F", "")
+        .replace("\u206E", "")
+        .replace("\u202A", "")
+        .replace("\u202B", "")
+        .replace("\u202C", "")
+        .replace("\u202D", "")
+        .replace("\u202E", "")
+        .replace("\u00A0", " ") // NBSP to normal space
+        .replace(MULTIPLE_SPACES_REGEX, " ") // Normalize multiple spaces
+        .trim()
+
+    return normalizeArabicPersianDigits(cleanStr)
+}
 
 // Formatting helper for Money
 
@@ -126,12 +170,7 @@ fun getRemainingTime(expirationDateStr: String?, activeDaysLeftStr: String? = nu
         }
         
         // Convert Arabic/Persian numerals to standard English digits
-        val arabicDigits = charArrayOf('٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩')
-        val persianDigits = charArrayOf('۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '٨', '٩')
-        for (i in 0..9) {
-            cleaned = cleaned.replace(arabicDigits[i], (i + 48).toChar())
-            cleaned = cleaned.replace(persianDigits[i], (i + 48).toChar())
-        }
+        cleaned = normalizeArabicPersianDigits(cleaned)
         
         // Check if it's a pure number (integer or double)
         val doubleVal = cleaned.toDoubleOrNull()
@@ -202,15 +241,6 @@ fun getRemainingTime(expirationDateStr: String?, activeDaysLeftStr: String? = nu
         return null
     }
 
-    // Pre-process expirationDateStr to handle high-precision ISO fractional seconds
-    var sanitizedExpirationStr = expirationDateStr?.trim()
-    if (!sanitizedExpirationStr.isNullOrEmpty() && !sanitizedExpirationStr.equals("n/a", ignoreCase = true)) {
-        // Normalize 't' and 'z' to uppercase 'T' and 'Z' to match standard parsers
-        sanitizedExpirationStr = sanitizedExpirationStr.replace('t', 'T').replace('z', 'Z')
-        // Regex to trim high-precision fractional seconds (e.g., .1234567 to .123)
-        sanitizedExpirationStr = FRACTIONAL_SECONDS_REGEX.replace(sanitizedExpirationStr, "$1")
-    }
-
     // 1. Parse expiration date to get precise datetime if possible
     var expireDate: Date? = null
     var parsedYear = 0
@@ -221,35 +251,13 @@ fun getRemainingTime(expirationDateStr: String?, activeDaysLeftStr: String? = nu
     var parsedSecond = 0
     var parsedHasTime = false
 
-    if (!sanitizedExpirationStr.isNullOrEmpty() && !sanitizedExpirationStr.equals("none", ignoreCase = true) && !sanitizedExpirationStr.equals("n/a", ignoreCase = true)) {
-        // Remove LRM, RLM, and other invisible/directional formatting characters
-        sanitizedExpirationStr = sanitizedExpirationStr
-            .replace("\u200E", "") // LRM
-            .replace("\u200F", "") // RLM
-            .replace("\u206F", "")
-            .replace("\u206E", "")
-            .replace("\u202A", "")
-            .replace("\u202B", "")
-            .replace("\u202C", "")
-            .replace("\u202D", "")
-            .replace("\u202E", "")
-            .replace("\u00A0", " ") // NBSP to normal space
-            .replace(MULTIPLE_SPACES_REGEX, " ") // Normalize multiple spaces
-            .trim()
-
-        // Convert Arabic/Persian numerals
-        val arabicDigits = charArrayOf('٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩')
-        val persianDigits = charArrayOf('۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '٨', '٩')
-        for (i in 0..9) {
-            sanitizedExpirationStr = sanitizedExpirationStr!!.replace(arabicDigits[i], (i + 48).toChar())
-            sanitizedExpirationStr = sanitizedExpirationStr!!.replace(persianDigits[i], (i + 48).toChar())
-        }
-
+    val sanitizedExpirationStr = sanitizePresentationDateString(expirationDateStr)
+    if (sanitizedExpirationStr != null) {
         val baghdadTz = java.util.TimeZone.getTimeZone("Asia/Baghdad")
 
         // Component-based parsing to handle any RTL layout or ordering issue (e.g. PM 02:06 01/07/2026 or 01/07/2026 02:06 PM)
         try {
-            val cleanStr = sanitizedExpirationStr!!
+            val cleanStr = sanitizedExpirationStr
             
             // 1. Find AM/PM (case insensitive)
             val amPmMatch = AM_PM_REGEX.find(cleanStr)
@@ -377,7 +385,7 @@ fun getRemainingTime(expirationDateStr: String?, activeDaysLeftStr: String? = nu
                     val sdf = SimpleDateFormat(fmt, Locale.US)
                     sdf.timeZone = baghdadTz
                     sdf.isLenient = false
-                    val parsed = sdf.parse(sanitizedExpirationStr!!)
+                    val parsed = sdf.parse(sanitizedExpirationStr)
                     if (parsed != null) {
                         expireDate = parsed
                         
