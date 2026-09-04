@@ -172,19 +172,15 @@ fun UserDetailScreenV2(
     val error by viewModel.error.collectAsStateWithLifecycle()
     val success by viewModel.actionSuccess.collectAsStateWithLifecycle()
 
-    val repo = remember { viewModel.localAccountRepository }
     val targetUsername = detail?.userID?.trim() ?: ""
     val matchingAccountFlow = remember(targetUsername) {
         if (targetUsername.isNotEmpty()) {
-            repo.getAccountByUsernameOrId(targetUsername)
+            viewModel.getAccountByUsernameOrId(targetUsername)
         } else {
             emptyFlow()
         }
     }
     val matchingAccount by matchingAccountFlow.collectAsStateWithLifecycle(initialValue = null)
-
-    val audit = remember { viewModel.audit }
-    val coroutineScope = rememberCoroutineScope()
 
     var showRefillDialog by rememberSaveable { mutableStateOf(false) }
     var showDepositDialog by rememberSaveable { mutableStateOf(false) }
@@ -208,7 +204,7 @@ fun UserDetailScreenV2(
     LaunchedEffect(matchingAccount?.id, showHistoryDialog) {
         val currentAcc = matchingAccount
         if (showHistoryDialog && currentAcc != null) {
-            viewModel.localLedgerRepository.getLedgerForAccount(currentAcc.id).collect {
+            viewModel.getLedgerForAccount(currentAcc.id).collect {
                 ledgerList = it
             }
         }
@@ -319,7 +315,7 @@ fun UserDetailScreenV2(
             val currentPackages by viewModel.packages.collectAsStateWithLifecycle()
             LaunchedEffect(user.userIndex, currentPackages) {
                 try {
-                    resellerBalance = viewModel.gateway.getBalance()
+                    resellerBalance = viewModel.getResellerBalance()
                 } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
                     resellerBalance = 0.0
                 }
@@ -329,7 +325,7 @@ fun UserDetailScreenV2(
                     val acctIdx = user.accountIndex ?: foundPackage?.accountIndex
                     
                     if (acctIdx != null && acctIdx > 0) {
-                        val fetchedCost = viewModel.gateway.getAccountCost(acctIdx)
+                        val fetchedCost = viewModel.getAccountCost(acctIdx)
                         if (fetchedCost > 0.0) {
                             packageCost = fetchedCost
                         } else {
@@ -352,8 +348,7 @@ fun UserDetailScreenV2(
             val balanceAfter = resellerBalance - packageCost
 
             val performRefill: () -> Unit = {
-                val depositPass = prefs.getDepositPassword()
-                if (depositPass.isBlank()) {
+                if (!viewModel.hasDepositPassword()) {
                     android.widget.Toast.makeText(
                         context,
                         if (currentLang == "ar") "الرجاء ضبط كلمة مرور الصندوق في الإعدادات أولاً!" else "Please set your deposit password in settings first!",
@@ -387,39 +382,10 @@ fun UserDetailScreenV2(
 
                         viewModel.refillUser(
                             userId = user.userID,
-                            depositPass = depositPass,
                             price = parsedPrice,
                             note = noteVal,
-                            onSuccessCallback = { txId ->
-                                try {
-                                    val chargeNote = noteVal.trim()
-                                    val payNote = if (isWasil) noteVal.trim() else null
-                                    
-                                    viewModel.localLedgerRepository.recordAccountRenewal(
-                                        account = accToUse,
-                                        newPriceIqd = parsedPrice,
-                                        chargeNote = chargeNote,
-                                        payNote = payNote,
-                                        idempotencyKey = txId
-                                    )
-                                    viewModel.syncRepo?.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
-                                } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                                    android.util.Log.e("UserDetailScreen", "Failed to add ledger entry", e)
-                                    try {
-                                        audit.logAction(
-                                            action = "RECONCILIATION_REQUIRED",
-                                            entityType = "USER",
-                                            entityId = user.userID,
-                                            summary = "Refill succeeded on API, but local ledger persistence failed: ${e.message}"
-                                        )
-                                    } catch (ex: Exception) { if (ex is kotlinx.coroutines.CancellationException) throw ex; }
-                                    android.widget.Toast.makeText(
-                                        context,
-                                        if (currentLang == "ar") "تم التجديد على النظام ولكن تعذر الحفظ محلياً. يرجى المزامنة." else "Renewed on system, but failed to save locally. Please sync.",
-                                        android.widget.Toast.LENGTH_LONG
-                                    ).show()
-                                }
-                            }
+                            isWasil = isWasil,
+                            account = accToUse
                         )
                     }
                 }
@@ -797,44 +763,29 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                     isSubmitting = true
                     val noteVal = noteInput.trim()
                     val accToUse = matchingAccount ?: finalAcc
-                    val baseNote = if ((matchingAccount?.debtIqd ?: 0.0) > 0) "[PAYMENT]" else "[DEPOSIT]"
-                    val payNote = if (noteVal.isNotBlank()) "$baseNote $noteVal" else null
                     
-                    coroutineScope.launch {
-                        try {
-                            viewModel.localLedgerRepository.recordAccountPayment(
-                                account = accToUse,
-                                amount = parsedPriceVal,
-                                note = payNote
-                            )
-                            viewModel.syncRepo?.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
-
+                    viewModel.recordPayment(
+                        account = accToUse,
+                        amount = parsedPriceVal,
+                        note = noteVal,
+                        onSuccess = {
                             showDepositDialog = false
+                            isSubmitting = false
                             android.widget.Toast.makeText(
                                 context,
                                 if (currentLang == "ar") if ((matchingAccount?.debtIqd ?: 0.0) > 0) "تم تسديد المبلغ بنجاح." else "تم إيداع المبلغ بنجاح." else if ((matchingAccount?.debtIqd ?: 0.0) > 0) "Payment completed successfully." else "Deposit completed successfully.",
                                 android.widget.Toast.LENGTH_SHORT
                             ).show()
-
-                            try {
-                                audit.logAction(
-                                    action = "DEPOSIT_PAYMENT",
-                                    entityType = "USER",
-                                    entityId = user.userID,
-                                    summary = "Recorded payment amount $parsedPriceVal. Note: $payNote"
-                                )
-                            } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; }
-                        } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                            android.util.Log.e("UserDetailScreen", "Failed to add deposit", e)
+                        },
+                        onError = { errorMsg ->
+                            isSubmitting = false
                             android.widget.Toast.makeText(
                                 context,
-                                if (currentLang == "ar") "فشلت العملية: ${e.localizedMessage}" else "Operation failed: ${e.localizedMessage}",
+                                if (currentLang == "ar") "فشلت العملية: $errorMsg" else "Operation failed: $errorMsg",
                                 android.widget.Toast.LENGTH_LONG
                             ).show()
-                        } finally {
-                            isSubmitting = false
                         }
-                    }
+                    )
                 }
             }
 
@@ -1160,43 +1111,29 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                     isSubmitting = true
                     val noteVal = noteInput.trim()
                     val accToUse = matchingAccount ?: finalAcc
-                    val debtNote = if (noteVal.isNotBlank()) "[DEBT] $noteVal" else null
                     
-                    coroutineScope.launch {
-                        try {
-                            viewModel.localLedgerRepository.recordAccountDebt(
-                                account = accToUse,
-                                amount = parsedPriceVal,
-                                note = debtNote
-                            )
-                            viewModel.syncRepo?.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
-
+                    viewModel.recordDebt(
+                        account = accToUse,
+                        amount = parsedPriceVal,
+                        note = noteVal,
+                        onSuccess = {
                             showDebtDialog = false
+                            isSubmitting = false
                             android.widget.Toast.makeText(
                                 context,
                                 if (currentLang == "ar") "تم إضافة الدين بنجاح." else "Debt added successfully.",
                                 android.widget.Toast.LENGTH_SHORT
                             ).show()
-
-                            try {
-                                audit.logAction(
-                                    action = "ADD_DEBT",
-                                    entityType = "USER",
-                                    entityId = user.userID,
-                                    summary = "Added debt amount $parsedPriceVal. Note: $debtNote"
-                                )
-                            } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; }
-                        } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                            android.util.Log.e("UserDetailScreen", "Failed to add debt", e)
+                        },
+                        onError = { errorMsg ->
+                            isSubmitting = false
                             android.widget.Toast.makeText(
                                 context,
-                                if (currentLang == "ar") "فشلت العملية: ${e.localizedMessage}" else "Operation failed: ${e.localizedMessage}",
+                                if (currentLang == "ar") "فشلت العملية: $errorMsg" else "Operation failed: $errorMsg",
                                 android.widget.Toast.LENGTH_LONG
                             ).show()
-                        } finally {
-                            isSubmitting = false
                         }
-                    }
+                    )
                 }
             }
 
@@ -1743,13 +1680,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                 packageName = user.packageName ?: "Default",
                                 createdAt = System.currentTimeMillis()
                              )
-                            coroutineScope.launch {
-                                val updated = finalAcc.copy(
-                                    note = noteText,
-                                    updatedAt = System.currentTimeMillis()
-                                )
-                                repo.saveAccount(updated)
-                            }
+                            viewModel.saveCustomerNote(finalAcc, noteText)
                         }
                         showNotesDialog = false
                     },
@@ -2991,15 +2922,14 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                             packageName = pkg.accountName,
                                             currentPriceIqd = pkg.price ?: 0.0
                                         )
-                                        val updated = finalAcc.copy(
-                                            packageName = pkg.accountName,
-                                            currentPriceIqd = pkg.price ?: 0.0,
-                                            updatedAt = System.currentTimeMillis()
+                                        viewModel.changeAccountType(
+                                            userIndex = user.userIndex,
+                                            userId = user.userID,
+                                            accountIndex = pkg.accountIndex,
+                                            accountName = pkg.accountName,
+                                            account = finalAcc,
+                                            newPriceIqd = pkg.price ?: 0.0
                                         )
-                                        coroutineScope.launch {
-                                            repo.saveAccount(updated)
-                                        }
-                                        viewModel.changeAccountType(user.userIndex, user.userID, pkg.accountIndex, pkg.accountName)
                                     }
                                 }
                             ) {
@@ -3056,14 +2986,11 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                             packageName = user.packageName ?: "Unknown",
                                             currentPriceIqd = 45000.0
                                         )
-                                        val updated = finalAcc.copy(
-                                            displayName = newName,
-                                            updatedAt = System.currentTimeMillis()
+                                        viewModel.updateUserDisplayName(
+                                            userIndex = userIndex,
+                                            newName = newName,
+                                            account = finalAcc
                                         )
-                                        coroutineScope.launch {
-                                            repo.saveAccount(updated)
-                                        }
-                                        viewModel.updateUserDisplayName(userIndex, newName)
                                     }
                                 }
                             ) {
@@ -3145,13 +3072,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                         packageName = user.packageName ?: "Economy",
                                         currentPriceIqd = 45000.0
                                     )
-                                    val updated = finalAcc.copy(
-                                        nanoIp = if (newIp.isNotBlank()) newIp else null,
-                                        updatedAt = System.currentTimeMillis()
-                                    )
-                                    coroutineScope.launch {
-                                        repo.saveAccount(updated)
-                                    }
+                                    viewModel.saveCustomNanoIp(finalAcc, newIp)
                                 }
                             ) {
                                 Text(if (currentLang == "ar") "حفظ" else "Save")

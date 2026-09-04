@@ -15,12 +15,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class EarthlinkSearchViewModel(
-    val gateway: com.example.domain.repository.EarthlinkGateway,
-    val audit: com.example.domain.repository.AuditRepository,
+    private val gateway: com.example.domain.repository.EarthlinkGateway,
+    private val audit: com.example.domain.repository.AuditRepository,
     val prefs: com.example.core.security.PreferenceManager,
-    val localAccountRepository: com.example.domain.repository.LocalAccountRepository,
-    val localLedgerRepository: com.example.domain.repository.LocalLedgerRepository,
-    val syncRepo: com.example.domain.repository.SyncRepository? = null
+    private val localAccountRepository: com.example.domain.repository.LocalAccountRepository,
+    private val localLedgerRepository: com.example.domain.repository.LocalLedgerRepository,
+    private val syncRepo: com.example.domain.repository.SyncRepository? = null
 ) : ViewModel() {
 
     companion object {
@@ -75,6 +75,32 @@ class EarthlinkSearchViewModel(
         _actionSuccess.value = null
         _selectedUser.value = null
         _isLoading.value = true
+    }
+
+    fun hasDepositPassword(): Boolean = !prefs.getDepositPassword().isNullOrBlank()
+
+    fun getAccountByUsernameOrId(username: String): Flow<LocalAccount?> =
+        localAccountRepository.getAccountByUsernameOrId(username)
+
+    fun getLedgerForAccount(accountId: String): Flow<List<com.example.core.model.LocalLedgerEntry>> =
+        localLedgerRepository.getLedgerForAccount(accountId)
+
+    suspend fun getResellerBalance(): Double = withContext(Dispatchers.IO) {
+        try {
+            gateway.getBalance()
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            0.0
+        }
+    }
+
+    suspend fun getAccountCost(accountIndex: Int): Double = withContext(Dispatchers.IO) {
+        try {
+            gateway.getAccountCost(accountIndex)
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            0.0
+        }
     }
 
 
@@ -496,12 +522,111 @@ class EarthlinkSearchViewModel(
         }
     }
 
+    fun recordPayment(
+        account: LocalAccount,
+        amount: Double,
+        note: String? = null,
+        onSuccess: (() -> Unit)? = null,
+        onError: ((String) -> Unit)? = null
+    ): kotlinx.coroutines.Job = viewModelScope.launch(Dispatchers.IO) {
+        try {
+            val noteVal = note?.trim() ?: ""
+            val baseNote = if (account.debtIqd > 0) "[PAYMENT]" else "[DEPOSIT]"
+            val payNote = if (noteVal.isNotBlank()) "$baseNote $noteVal" else null
+
+            localLedgerRepository.recordAccountPayment(
+                account = account,
+                amount = amount,
+                note = payNote
+            )
+            syncRepo?.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
+            try {
+                audit.logAction(
+                    action = "DEPOSIT_PAYMENT",
+                    entityType = "USER",
+                    entityId = account.earthlinkUsername ?: account.id,
+                    summary = "Recorded payment amount $amount. Note: $payNote"
+                )
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+            }
+            withContext(Dispatchers.Main) {
+                onSuccess?.invoke()
+            }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Log.e("EarthlinkSearchVM", "Failed to add deposit/payment", e)
+            withContext(Dispatchers.Main) {
+                onError?.invoke(e.localizedMessage ?: e.message ?: "Unknown error")
+            }
+        }
+    }
+
+    fun recordDebt(
+        account: LocalAccount,
+        amount: Double,
+        note: String? = null,
+        onSuccess: (() -> Unit)? = null,
+        onError: ((String) -> Unit)? = null
+    ): kotlinx.coroutines.Job = viewModelScope.launch(Dispatchers.IO) {
+        try {
+            val noteVal = note?.trim() ?: ""
+            val debtNote = if (noteVal.isNotBlank()) "[DEBT] $noteVal" else null
+
+            localLedgerRepository.recordAccountDebt(
+                account = account,
+                amount = amount,
+                note = debtNote
+            )
+            syncRepo?.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
+            try {
+                audit.logAction(
+                    action = "ADD_DEBT",
+                    entityType = "USER",
+                    entityId = account.earthlinkUsername ?: account.id,
+                    summary = "Added debt amount $amount. Note: $debtNote"
+                )
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+            }
+            withContext(Dispatchers.Main) {
+                onSuccess?.invoke()
+            }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Log.e("EarthlinkSearchVM", "Failed to add debt", e)
+            withContext(Dispatchers.Main) {
+                onError?.invoke(e.localizedMessage ?: e.message ?: "Unknown error")
+            }
+        }
+    }
+
+    fun saveCustomerNote(account: LocalAccount, note: String): kotlinx.coroutines.Job =
+        viewModelScope.launch(Dispatchers.IO) {
+            val updated = account.copy(
+                note = note,
+                updatedAt = System.currentTimeMillis()
+            )
+            localAccountRepository.saveAccount(updated)
+        }
+
+    fun saveCustomNanoIp(account: LocalAccount, nanoIp: String?): kotlinx.coroutines.Job =
+        viewModelScope.launch(Dispatchers.IO) {
+            val updated = account.copy(
+                nanoIp = nanoIp?.trim()?.ifEmpty { null },
+                updatedAt = System.currentTimeMillis()
+            )
+            localAccountRepository.saveAccount(updated)
+        }
+
     fun refillUser(
         userId: String,
-        depositPass: String,
+        depositPass: String? = null,
         price: Double? = null,
         note: String? = null,
         intentId: String? = null,
+        isWasil: Boolean = false,
+        account: LocalAccount? = null,
         onSuccessCallback: (suspend (String) -> Unit)? = null
     ): kotlinx.coroutines.Job {
         val lock = getAccountLock("${userId}:REFILL")
@@ -530,6 +655,16 @@ class EarthlinkSearchViewModel(
                     return@launch
                 }
 
+                val resolvedPass = if (!depositPass.isNullOrBlank()) depositPass else prefs.getDepositPassword()
+                if (resolvedPass.isNullOrBlank()) {
+                    _error.value = if (prefs.getLanguage() == "ar") {
+                        "الرجاء ضبط كلمة مرور الصندوق في الإعدادات أولاً!"
+                    } else {
+                        "Please set your deposit password in settings first!"
+                    }
+                    return@launch
+                }
+
                 val authoritativePrice = price
                 if (authoritativePrice == null || !authoritativePrice.isFinite() || authoritativePrice <= 0.0 ||
                     authoritativePrice % 1.0 != 0.0 || authoritativePrice % 250.0 != 0.0) {
@@ -538,9 +673,10 @@ class EarthlinkSearchViewModel(
                 }
                 val exactAmountIqd = authoritativePrice.toLong()
 
-                val localAcc = localAccountRepository.getAccountByIdOneShot(userId)
+                val localAcc = account
+                    ?: localAccountRepository.getAccountByIdOneShot(userId)
                     ?: localAccountRepository.findAccountByUsernameOrIdOneShot(userId)
-                if (localAcc == null) {
+                val effectiveAcc = if (localAcc == null) {
                     val snapshotUser = _selectedUser.value?.takeIf { it.userID.equals(userId, ignoreCase = true) }
                     val snapshotListItem = _usersList.value.find { it.userID.equals(userId, ignoreCase = true) }
                     val displayName = snapshotUser?.customerFullName
@@ -558,6 +694,9 @@ class EarthlinkSearchViewModel(
                         debtIqd = 0.0
                     )
                     localAccountRepository.saveAccount(newAcc)
+                    newAcc
+                } else {
+                    localAcc
                 }
 
                 localLedgerRepository.recordPendingOperation(
@@ -579,11 +718,36 @@ class EarthlinkSearchViewModel(
                     return@launch
                 }
 
-                val success = gateway.refillUserDeposit(userId, depositPass)
+                val success = gateway.refillUserDeposit(userId, resolvedPass)
                 if (success) {
                     try {
                         val chargeNote = finalNote.trim().ifEmpty { null }
                         localLedgerRepository.resolvePendingOperationVerifiedSuccess(businessTxId, chargeNote)
+
+                        try {
+                            val chargeNoteToUse = finalNote.trim()
+                            val payNoteToUse = if (isWasil) finalNote.trim() else null
+                            localLedgerRepository.recordAccountRenewal(
+                                account = effectiveAcc,
+                                newPriceIqd = exactAmountIqd.toDouble(),
+                                chargeNote = chargeNoteToUse,
+                                payNote = payNoteToUse,
+                                idempotencyKey = businessTxId
+                            )
+                            syncRepo?.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
+                        } catch (e: Exception) {
+                            if (e is kotlinx.coroutines.CancellationException) throw e
+                            Log.e("EarthlinkSearchVM", "Failed to add ledger entry", e)
+                            try {
+                                audit.logAction(
+                                    action = "RECONCILIATION_REQUIRED",
+                                    entityType = "USER",
+                                    entityId = userId,
+                                    summary = "Refill succeeded on API, but local ledger persistence failed: ${e.message}"
+                                )
+                            } catch (ex: Exception) { if (ex is kotlinx.coroutines.CancellationException) throw ex }
+                        }
+
                         onSuccessCallback?.invoke(businessTxId)
 
                         _actionSuccess.value = if (prefs.getLanguage() == "ar") {
@@ -816,11 +980,28 @@ class EarthlinkSearchViewModel(
         }
     }
 
-    fun changeAccountType(userIndex: Int, userId: String, accountIndex: Int, accountName: String) {
+    fun changeAccountType(
+        userIndex: Int,
+        userId: String,
+        accountIndex: Int,
+        accountName: String,
+        account: LocalAccount? = null,
+        newPriceIqd: Double? = null
+    ): kotlinx.coroutines.Job =
         viewModelScope.launch {
             _isActionLoading.value = true
             _error.value = null
             try {
+                if (account != null) {
+                    val updated = account.copy(
+                        packageName = accountName,
+                        currentPriceIqd = newPriceIqd ?: account.currentPriceIqd,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                    withContext(Dispatchers.IO) {
+                        localAccountRepository.saveAccount(updated)
+                    }
+                }
                 val success = gateway.changeAccountType(userIndex, userId, accountIndex)
                 if (success) {
                     _actionSuccess.value = "Package changed to $accountName successfully."
@@ -840,7 +1021,6 @@ class EarthlinkSearchViewModel(
                 _isActionLoading.value = false
             }
         }
-    }
 
     // --- Password Tools ---
     private val _revealedUserPass = MutableStateFlow<String?>(null)
@@ -920,11 +1100,20 @@ class EarthlinkSearchViewModel(
         }
     }
 
-    fun updateUserDisplayName(userIndex: Int, newName: String) {
+    fun updateUserDisplayName(userIndex: Int, newName: String, account: LocalAccount? = null): kotlinx.coroutines.Job =
         viewModelScope.launch {
             _isActionLoading.value = true
             _error.value = null
             try {
+                if (account != null) {
+                    val updated = account.copy(
+                        displayName = newName,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                    withContext(Dispatchers.IO) {
+                        localAccountRepository.saveAccount(updated)
+                    }
+                }
                 val success = gateway.updateUserDisplayName(userIndex, newName)
                 if (success) {
                     _actionSuccess.value = if (prefs.getLanguage() == "ar") {
@@ -943,5 +1132,4 @@ class EarthlinkSearchViewModel(
                 _isActionLoading.value = false
             }
         }
-    }
 }
