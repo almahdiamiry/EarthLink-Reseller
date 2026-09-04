@@ -2448,42 +2448,8 @@ class UtowerImportRepositoryImpl(
     private val accountAdapter = moshi.adapter(LocalAccount::class.java)
     private val ledgerAdapter = moshi.adapter(LocalLedgerEntry::class.java)
 
-    private val bghSdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("Asia/Baghdad") }
-    @Synchronized private fun formatBghFull(ms: Long): String = bghSdf.format(java.util.Date(ms))
-
-    private fun parseDateString(strVal: String, pattern: String): java.util.Date? {
-        val sdf = java.text.SimpleDateFormat(pattern, java.util.Locale.US).apply {
-            timeZone = java.util.TimeZone.getTimeZone("Asia/Baghdad")
-            isLenient = false
-        }
-        return try { sdf.parse(strVal) } catch (_: Exception) { null }
-    }
-
-    private fun parseBghDate(strVal: String?): Long? {
-        if (strVal.isNullOrBlank() || strVal == "null") return null
-        val formats = listOf(
-            "yyyy-MM-dd HH:mm:ss",
-            "yyyy-MM-dd HH:mm",
-            "yyyy-MM-dd",
-            "yyyy/MM/dd HH:mm:ss",
-            "yyyy/MM/dd HH:mm",
-            "yyyy/MM/dd",
-            "dd/MM/yyyy HH:mm:ss",
-            "dd/MM/yyyy HH:mm",
-            "dd/MM/yyyy",
-            "dd-MM-yyyy HH:mm:ss",
-            "dd-MM-yyyy HH:mm",
-            "dd-MM-yyyy",
-            "yyyy-MM-dd'T'HH:mm:ss",
-            "yyyy-MM-dd'T'HH:mm:ss'Z'",
-            "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
-        )
-        for (fmt in formats) {
-            val d = parseDateString(strVal, fmt)
-            if (d != null) return d.time
-        }
-        return strVal.toLongOrNull()
-    }
+    private fun formatBghFull(ms: Long): String = com.example.core.sync.UtowerDateParser.formatBghFull(ms)
+    private fun parseBghDate(strVal: String?): Long? = com.example.core.sync.UtowerDateParser.parseBghDate(strVal)
 
     override fun getImportBatches(): Flow<List<ImportBatch>> = batchDao.getAll().distinctUntilChanged()
 

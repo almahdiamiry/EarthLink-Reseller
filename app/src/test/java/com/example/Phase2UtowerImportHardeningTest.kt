@@ -624,6 +624,15 @@ class Phase2UtowerImportHardeningTest {
         val importResult = importer.importFromFile(jsonFile, shouldReplace = true)
         assertTrue("Direct file import must succeed", importResult.success)
         assertEquals("Direct file import must import 2 transactions", 2, importResult.transactionsImported)
+
+        val importedTxs = liveDb.localLedgerEntryDao().getAllOneShot()
+        assertEquals("Direct file import must write 2 transactions to Room", 2, importedTxs.size)
+        val previewTxMap = preview.parsedTransactions.associateBy { it.sourceExternalId }
+        for (importedTx in importedTxs) {
+            val previewTx = previewTxMap[importedTx.sourceExternalId]
+            assertNotNull("Imported transaction must match preview transaction", previewTx)
+            assertEquals("Preview and imported transaction occurredAt must be exactly identical", previewTx!!.occurredAt, importedTx.occurredAt)
+        }
     }
 }
 

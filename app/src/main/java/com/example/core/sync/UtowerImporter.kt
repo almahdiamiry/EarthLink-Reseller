@@ -81,18 +81,33 @@ data class ImportResult(
  *    After import completion, all ongoing financial activity is strictly governed by V1 ledger,
  *    materialization, and recovery semantics.
  */
-class UtowerImporter(
-    private val context: Context,
-    private val appDatabase: AppDatabase
-) {
-    private val moshi = Moshi.Builder().build()
-    private val accountAdapter = moshi.adapter(LocalAccount::class.java)
-    private val ledgerAdapter = moshi.adapter(LocalLedgerEntry::class.java)
-    private val batchAdapter = moshi.adapter(ImportBatch::class.java)
-
+/**
+ * Canonical date parser and formatter for uTower archive ingestion.
+ * Shared between UtowerImporter and UtowerImportRepositoryImpl to guarantee
+ * 100% identical parsing semantics and eliminate drift between preview and import.
+ */
+internal object UtowerDateParser {
     private val dateFormatsMap = ConcurrentHashMap<String, SimpleDateFormat>()
 
-    private fun formatBghFull(ms: Long): String {
+    val DATE_PATTERNS = listOf(
+        "yyyy-MM-dd HH:mm:ss",
+        "yyyy-MM-dd HH:mm",
+        "yyyy-MM-dd",
+        "yyyy/MM/dd HH:mm:ss",
+        "yyyy/MM/dd HH:mm",
+        "yyyy/MM/dd",
+        "dd/MM/yyyy HH:mm:ss",
+        "dd/MM/yyyy HH:mm",
+        "dd/MM/yyyy",
+        "dd-MM-yyyy HH:mm:ss",
+        "dd-MM-yyyy HH:mm",
+        "dd-MM-yyyy",
+        "yyyy-MM-dd'T'HH:mm:ss",
+        "yyyy-MM-dd'T'HH:mm:ss'Z'",
+        "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+    )
+
+    fun formatBghFull(ms: Long): String {
         val sdf = dateFormatsMap.getOrPut("bgh_full") {
             SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).apply {
                 timeZone = TimeZone.getTimeZone("Asia/Baghdad")
@@ -104,7 +119,7 @@ class UtowerImporter(
         }
     }
 
-    private fun parseDateString(strVal: String, fmt: String): Date? {
+    fun parseDateString(strVal: String, fmt: String): Date? {
         val sdf = dateFormatsMap.getOrPut(fmt) {
             SimpleDateFormat(fmt, Locale.US).apply {
                 timeZone = TimeZone.getTimeZone("Asia/Baghdad")
@@ -116,31 +131,27 @@ class UtowerImporter(
         }
     }
 
-    private fun parseBghDate(strVal: String?): Long? {
+    fun parseBghDate(strVal: String?): Long? {
         if (strVal.isNullOrBlank() || strVal == "null") return null
-        val formats = listOf(
-            "yyyy-MM-dd HH:mm:ss",
-            "yyyy-MM-dd HH:mm",
-            "yyyy-MM-dd",
-            "yyyy/MM/dd HH:mm:ss",
-            "yyyy/MM/dd HH:mm",
-            "yyyy/MM/dd",
-            "dd/MM/yyyy HH:mm:ss",
-            "dd/MM/yyyy HH:mm",
-            "dd/MM/yyyy",
-            "dd-MM-yyyy HH:mm:ss",
-            "dd-MM-yyyy HH:mm",
-            "dd-MM-yyyy",
-            "yyyy-MM-dd'T'HH:mm:ss",
-            "yyyy-MM-dd'T'HH:mm:ss'Z'",
-            "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
-        )
-        for (fmt in formats) {
+        for (fmt in DATE_PATTERNS) {
             val d = parseDateString(strVal, fmt)
             if (d != null) return d.time
         }
         return strVal.toLongOrNull()
     }
+}
+
+class UtowerImporter(
+    private val context: Context,
+    private val appDatabase: AppDatabase
+) {
+    private val moshi = Moshi.Builder().build()
+    private val accountAdapter = moshi.adapter(LocalAccount::class.java)
+    private val ledgerAdapter = moshi.adapter(LocalLedgerEntry::class.java)
+    private val batchAdapter = moshi.adapter(ImportBatch::class.java)
+
+    private fun formatBghFull(ms: Long): String = UtowerDateParser.formatBghFull(ms)
+    private fun parseBghDate(strVal: String?): Long? = UtowerDateParser.parseBghDate(strVal)
 
     private fun deepMerge(target: JSONObject, source: JSONObject) {
         val keys = source.keys()
