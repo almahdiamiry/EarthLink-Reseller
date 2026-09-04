@@ -673,18 +673,22 @@ class EarthlinkSearchViewModel(
                 }
                 val exactAmountIqd = authoritativePrice.toLong()
 
-                val localAcc = account
-                    ?: localAccountRepository.getAccountByIdOneShot(userId)
+                val localAcc = localAccountRepository.getAccountByIdOneShot(userId)
                     ?: localAccountRepository.findAccountByUsernameOrIdOneShot(userId)
                 val effectiveAcc = if (localAcc == null) {
                     val snapshotUser = _selectedUser.value?.takeIf { it.userID.equals(userId, ignoreCase = true) }
                     val snapshotListItem = _usersList.value.find { it.userID.equals(userId, ignoreCase = true) }
-                    val displayName = snapshotUser?.customerFullName
+                    val displayName = account?.displayName?.ifBlank { null }
+                        ?: snapshotUser?.customerFullName
                         ?: snapshotListItem?.customerName
                         ?: userId
-                    val phone = snapshotUser?.mobileNumber ?: snapshotListItem?.mobileNumber
-                    val pkgName = snapshotUser?.packageName ?: snapshotListItem?.packageName ?: "Default"
-                    val newAcc = LocalAccount(
+                    val phone = account?.phone1 ?: snapshotUser?.mobileNumber ?: snapshotListItem?.mobileNumber
+                    val pkgName = account?.packageName ?: snapshotUser?.packageName ?: snapshotListItem?.packageName ?: "Default"
+                    val newAcc = account?.copy(
+                        id = if (account.id.isNotBlank()) account.id else userId,
+                        earthlinkUsername = userId,
+                        currentPriceIqd = exactAmountIqd.toDouble()
+                    ) ?: LocalAccount(
                         id = userId,
                         earthlinkUsername = userId,
                         displayName = displayName.ifBlank { userId },

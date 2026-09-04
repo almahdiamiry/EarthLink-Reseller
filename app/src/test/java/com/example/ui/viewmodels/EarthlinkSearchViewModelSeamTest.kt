@@ -11,6 +11,7 @@ import com.example.data.repository.AuditRepositoryImpl
 import com.example.data.repository.LocalAccountRepositoryImpl
 import com.example.data.repository.LocalLedgerRepositoryImpl
 import com.example.domain.repository.EarthlinkGateway
+import com.example.domain.repository.LocalAccountRepository
 import com.example.domain.repository.SyncPhase
 import com.example.domain.repository.SyncProgress
 import com.example.domain.repository.SyncReason
@@ -68,9 +69,15 @@ class EarthlinkSearchViewModelSeamTest {
 
     class SeamTestGateway(val delegate: Phase1DuplicateInitiationProtectionTest.TestEarthlinkGateway = Phase1DuplicateInitiationProtectionTest.TestEarthlinkGateway()) : EarthlinkGateway by delegate {
         val refillCalls get() = delegate.refillCalls
+        var onRefillUserDepositCallback: ((userId: String) -> Unit)? = null
         val updateDisplayNameCalls = java.util.concurrent.atomic.AtomicInteger(0)
         var lastUpdatedDisplayName: String? = null
         var shouldFailUpdateDisplayName = false
+
+        override suspend fun refillUserDeposit(userId: String, depositPassword: String): Boolean {
+            onRefillUserDepositCallback?.invoke(userId)
+            return delegate.refillUserDeposit(userId, depositPassword)
+        }
 
         val changeAccountTypeCalls = java.util.concurrent.atomic.AtomicInteger(0)
         var lastChangedAccountIndex: Int? = null
@@ -140,12 +147,14 @@ class EarthlinkSearchViewModelSeamTest {
         db.close()
     }
 
-    private fun createViewModel(): EarthlinkSearchViewModel {
+    private fun createViewModel(
+        customAccountRepo: LocalAccountRepository? = null
+    ): EarthlinkSearchViewModel {
         return EarthlinkSearchViewModel(
             gateway = testGateway,
             audit = auditRepo,
             prefs = prefs,
-            localAccountRepository = accountRepo,
+            localAccountRepository = customAccountRepo ?: accountRepo,
             localLedgerRepository = ledgerRepo,
             syncRepo = testSyncRepo
         )
@@ -560,5 +569,109 @@ class EarthlinkSearchViewModelSeamTest {
         // 4. Audit must NOT be logged on remote failure
         val audits = db.auditLogDao().getAllSync()
         assertTrue(audits.none { it.action == "CHANGE_PACKAGE" && it.entityId == "pkg_usr_2" })
+    }
+
+    @Test
+    fun testRefillUser_unregisteredInMemoryAccount_persistsLocalAccountAndMaterializesLedger() = runBlocking {
+        prefs.saveDepositPassword("valid_deposit_pass")
+        val vm = createViewModel()
+
+        var accountExistedAtDispatchTime = false
+        testGateway.onRefillUserDepositCallback = { uid ->
+            accountExistedAtDispatchTime = runBlocking {
+                accountRepo.getAccountByIdOneShot(uid) != null ||
+                        accountRepo.findAccountByUsernameOrIdOneShot(uid) != null
+            }
+        }
+
+        val inMemoryAccount = LocalAccount(
+            id = "unregistered_in_memory_user",
+            earthlinkUsername = "unregistered_in_memory_user",
+            displayName = "In-Memory User",
+            debtIqd = 0.0,
+            currentPriceIqd = 35000.0,
+            createdAt = System.currentTimeMillis()
+        )
+        // Precondition: Account does NOT exist in local database
+        assertNull("Precondition: Account must NOT exist in local DB", accountRepo.getAccountByIdOneShot("unregistered_in_memory_user"))
+
+        val job = vm.refillUser(
+            userId = "unregistered_in_memory_user",
+            price = 35000.0,
+            note = "Renewal Note",
+            isWasil = false,
+            account = inMemoryAccount,
+            intentId = "intent_unregistered_mem_01"
+        )
+        job.join()
+
+        // 1. Account MUST be persisted in Room BEFORE remote gateway dispatch is called
+        assertTrue("Account must be persisted in Room BEFORE remote gateway dispatch is initiated", accountExistedAtDispatchTime)
+
+        // 2. Remote dispatch must have executed
+        assertEquals("Remote gateway call must execute", 1, testGateway.refillCalls.get())
+
+        // 3. LocalAccount must be persisted in Room
+        val persistedAccount = accountRepo.getAccountByIdOneShot("unregistered_in_memory_user")
+            ?: accountRepo.findAccountByUsernameOrIdOneShot("unregistered_in_memory_user")
+        assertNotNull("LocalAccount must be auto-created/persisted in Room", persistedAccount)
+
+        // 4. Action success must be set, error must be null
+        assertNotNull("actionSuccess must be set", vm.actionSuccess.value)
+        assertNull("error must be null, but was: ${vm.error.value}", vm.error.value)
+
+        // 5. Pending operation must be COMPLETED
+        val op = ledgerRepo.getPendingOperationByIntentId("intent_unregistered_mem_01")
+        assertNotNull("Pending operation must exist", op)
+        assertEquals("COMPLETED", op!!.status)
+
+        // 6. Ledger debt entry must be materialized exactly once (no duplicates)
+        val entries = db.localLedgerEntryDao().getByAccountIdOneShot("unregistered_in_memory_user")
+        assertEquals("Ledger debt entry must be materialized exactly once", 1, entries.size)
+        assertEquals("took", entries.first().typeRaw)
+        assertEquals(35000.0, entries.first().amountIqd, 0.001)
+    }
+
+    @Test
+    fun testRefillUser_localPersistenceFails_abortsBeforeRemoteDispatch() = runBlocking {
+        prefs.saveDepositPassword("valid_deposit_pass")
+
+        val failingAccountRepo = object : LocalAccountRepository by accountRepo {
+            override suspend fun saveAccount(account: LocalAccount): LocalAccount {
+                throw android.database.sqlite.SQLiteDiskIOException("Simulated disk failure during saveAccount")
+            }
+        }
+
+        val vm = createViewModel(customAccountRepo = failingAccountRepo)
+
+        val inMemoryAccount = LocalAccount(
+            id = "failing_db_user",
+            earthlinkUsername = "failing_db_user",
+            displayName = "Failing DB User",
+            currentPriceIqd = 35000.0
+        )
+
+        val job = vm.refillUser(
+            userId = "failing_db_user",
+            price = 35000.0,
+            account = inMemoryAccount,
+            intentId = "intent_failing_db_01"
+        )
+        job.join()
+
+        // 1. Remote gateway dispatch MUST NOT be called
+        assertEquals("Remote gateway call must NOT be initiated when local persistence fails", 0, testGateway.refillCalls.get())
+
+        // 2. Error message must be surfaced, actionSuccess must be null
+        assertNotNull("Error must be set on persistence failure", vm.error.value)
+        assertNull("Action success must be null", vm.actionSuccess.value)
+
+        // 3. No pending operation recorded
+        val op = ledgerRepo.getPendingOperationByIntentId("intent_failing_db_01")
+        assertNull("No pending operation should be recorded when pre-dispatch persistence fails", op)
+
+        // 4. Zero ledger entries materialized
+        val entries = db.localLedgerEntryDao().getByAccountIdOneShot("failing_db_user")
+        assertEquals(0, entries.size)
     }
 }
