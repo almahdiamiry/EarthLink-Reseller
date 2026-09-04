@@ -17,6 +17,8 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.Mockito.*
+import org.mockito.kotlin.any as anyObject
+import org.mockito.kotlin.eq as eqValue
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.io.ByteArrayOutputStream
@@ -66,9 +68,18 @@ class LocalAccountsViewModelTgzSyncTriggerTest {
 
         mockLocalRepo = mock(LocalAccountRepository::class.java)
         mockLedgerRepo = mock(LocalLedgerRepository::class.java)
-        mockUtowerRepo = mock(UtowerImportRepository::class.java)
         mockAuditRepo = mock(AuditRepository::class.java)
         mockSyncRepo = mock(SyncRepository::class.java)
+        val realUtowerRepo = com.example.data.repository.UtowerImportRepositoryImpl(
+            context = context,
+            database = db,
+            batchDao = db.importBatchDao(),
+            accountDao = db.localAccountDao(),
+            ledgerDao = db.localLedgerEntryDao(),
+            outboxDao = db.syncOutboxDao(),
+            auditRepo = mockAuditRepo
+        )
+        mockUtowerRepo = spy(realUtowerRepo)
 
         `when`(mockUtowerRepo.getImportBatches()).thenReturn(flowOf(emptyList()))
 
@@ -166,6 +177,9 @@ class LocalAccountsViewModelTgzSyncTriggerTest {
             assertNotNull("Import result should not be null", result)
             assertTrue("Import must be successful: ${result?.errorMessage}", result!!.success)
             assertEquals(1, result.subscribersImported)
+
+            // Verify utowerRepo.importFromFile was invoked on the injected repository seam
+            verify(mockUtowerRepo, times(1)).importFromFile(anyObject(), eqValue(true))
 
             // A. Verify syncRepo.requestSync(USER_ACTION) was invoked exactly once
             verify(mockSyncRepo, times(1)).requestSync(SyncReason.USER_ACTION)

@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import com.example.EarthlinkApp
 import com.example.core.model.*
 import com.example.core.sync.ImportResult
-import com.example.core.sync.UtowerImporter
 import com.example.domain.repository.SyncStatusState
 import com.example.domain.repository.UtowerImportPreview
 import java.security.MessageDigest
@@ -19,7 +18,10 @@ class LocalAccountsViewModel(
     private val utowerRepo: com.example.domain.repository.UtowerImportRepository,
     private val audit: com.example.domain.repository.AuditRepository,
     private val syncRepo: com.example.domain.repository.SyncRepository,
-    private val appDatabase: com.example.core.database.AppDatabase,
+    // Retained as an optional backward-compatibility parameter for existing DI/composition roots
+    // (AppViewModelProvider) and test fixtures. LocalAccountsViewModel no longer references AppDatabase directly.
+    @Suppress("unused")
+    private val appDatabase: com.example.core.database.AppDatabase? = null,
     private val prefs: com.example.core.security.PreferenceManager? = null
 ) : ViewModel() {
 
@@ -300,8 +302,7 @@ class LocalAccountsViewModel(
                     }
                 }
                 
-                val importer = com.example.core.sync.UtowerImporter(appContext, appDatabase)
-                val result = importer.importFromFile(tempFile, shouldReplace)
+                val result = utowerRepo.importFromFile(tempFile, shouldReplace)
                 _importResult.value = result
                 
                 if (!result.success) {

@@ -1,6 +1,8 @@
 package com.example.domain.repository
 
 import com.example.core.model.*
+import com.example.core.sync.ImportResult
+import java.io.File
 import kotlinx.coroutines.flow.Flow
 
 interface EarthlinkGateway {
@@ -139,6 +141,7 @@ interface UtowerImportRepository {
     suspend fun processImportPreview(jsonString: String): UtowerImportPreview
     suspend fun commitImport(preview: UtowerImportPreview, fileName: String, fileHash: String): ImportBatch
     suspend fun rollbackImportBatch(batchId: String): Boolean
+    suspend fun importFromFile(sourceFile: File, shouldReplace: Boolean = false): ImportResult
 }
 
 data class UtowerImportPreview(

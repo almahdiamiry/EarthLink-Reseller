@@ -31,3 +31,5 @@ build_release.bat
 build_release.ps1
 /evidence/[0-9a-f]*/
 !/evidence/ba1761ffa8b0cb62fb744e03aef429175831af7a/
+utower_data_c.tgz
+*.tgz

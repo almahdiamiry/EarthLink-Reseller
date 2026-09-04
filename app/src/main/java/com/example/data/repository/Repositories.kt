@@ -2836,6 +2836,11 @@ class UtowerImportRepositoryImpl(
             }
         }
     }
+
+    override suspend fun importFromFile(sourceFile: java.io.File, shouldReplace: Boolean): com.example.core.sync.ImportResult {
+        val importer = com.example.core.sync.UtowerImporter(context, database)
+        return importer.importFromFile(sourceFile, shouldReplace)
+    }
 }
 // Add variable to enable simple duplicate merging marker compile options
 val LocalAccount.version: Int get() = 1
