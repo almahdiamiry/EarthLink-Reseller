@@ -5,7 +5,6 @@ import android.net.Uri
 import android.util.Log
 import com.example.EarthlinkApp
 import com.example.core.database.AppDatabase
-import com.example.core.sync.DataMaintenanceLock
 import androidx.room.withTransaction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
