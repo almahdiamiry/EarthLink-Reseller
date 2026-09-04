@@ -4,31 +4,6 @@ import org.json.JSONObject
 import kotlin.math.abs
 
 /**
- * Explicit currency parser API as mandated by Phase 8 of the Structural Stabilization Plan.
- */
-sealed interface MoneyValue {
-    data class Iqd(val rawAmount: Double) : MoneyValue
-    data class Thousands(val thousandsCount: Long) : MoneyValue
-    object Invalid : MoneyValue
-
-    fun toIqdDouble(): Double {
-        return when (this) {
-            is Iqd -> rawAmount
-            is Thousands -> thousandsCount * 1000.0
-            is Invalid -> 0.0
-        }
-    }
-
-    fun toIqdLong(): Long {
-        return when (this) {
-            is Iqd -> rawAmount.toLong()
-            is Thousands -> thousandsCount * 1000L
-            is Invalid -> 0L
-        }
-    }
-}
-
-/**
  * MONEY UNIT BOUNDARY
  *
  * uTower source values, raw IQD inputs, and UI shorthand inputs represent different
@@ -36,7 +11,7 @@ sealed interface MoneyValue {
  *
  * - parseUtowerAmount(): Normalizes uTower unit values (e.g. 15 -> 15,000 IQD).
  * - parseRawIqd(): Preserves already-whole IQD amounts without scaling.
- * - parseUiThousandsAmount() / parseUiInput(): Normalizes user UI shorthand ("50k" -> 50,000 IQD).
+ * - parseUiThousandsAmount(): Normalizes user UI shorthand ("50k" -> 50,000 IQD).
  *
  * All values persisted in Room or used in BalanceCalculator calculations represent whole IQD.
  */
@@ -63,12 +38,6 @@ object MoneyParser {
             }
         }
         return null
-    }
-
-    @Deprecated("Use parseUtowerAmount() for uTower unit values or parseRawIqd() for exact IQD values.", ReplaceWith("parseRawIqd(value)"))
-    fun parseIqdAmount(value: Double?): Double {
-        if (value == null || value.isNaN()) return 0.0
-        return value
     }
 
     /**
@@ -173,66 +142,9 @@ object MoneyParser {
     }
 
     /**
-     * Deterministically parses UI input into a type-safe [MoneyValue].
-     * Handles:
-     * - 1000 / 5000 / 15000 / 500000 / 1000000 (raw IQD)
-     * - 15,000 / 500,000 / 1,000,000 (comma-formatted IQD)
-     * - 15000 IQD / 15000 د.ع (explicit unit)
-     * - 15k / 15 K / 500k / 1000k (explicit thousands)
-     * - 15.0 / 15000.0 (explicit float)
-     */
-    fun parseUiInput(rawInput: String?): MoneyValue {
-        if (rawInput.isNullOrBlank()) return MoneyValue.Invalid
-
-        val trimmed = rawInput.trim()
-        val isNegative = trimmed.startsWith("-")
-        val cleanUnit = trimmed
-            .replace("-", "")
-            .replace("IQD", "", ignoreCase = true)
-            .replace("iqd", "", ignoreCase = true)
-            .replace("د.ع", "")
-            .trim()
-
-        if (cleanUnit.isBlank()) return MoneyValue.Invalid
-
-        // Check explicit 'k' or 'K' suffix
-        if (cleanUnit.endsWith("k", ignoreCase = true)) {
-            val countStr = cleanUnit.dropLast(1).trim().replace(",", "")
-            val count = countStr.toLongOrNull() ?: return MoneyValue.Invalid
-            return MoneyValue.Thousands(if (isNegative) -count else count)
-        }
-
-        // Check for comma formatting or decimal point
-        val hasCommas = cleanUnit.contains(",")
-        val hasDecimal = cleanUnit.contains(".")
-
-        val numericStr = cleanUnit.replace(",", "")
-
-        if (hasDecimal) {
-            val d = numericStr.toDoubleOrNull() ?: return MoneyValue.Invalid
-            val valDouble = if (isNegative) -d else d
-            return MoneyValue.Iqd(valDouble)
-        }
-
-        val rawLong = numericStr.toLongOrNull() ?: return MoneyValue.Invalid
-        val signedVal = if (isNegative) -rawLong else rawLong
-
-        // All plain numeric values without 'k' suffix are deterministically treated as exact raw IQD
-        return MoneyValue.Iqd(signedVal.toDouble())
-    }
-
-    /**
-     * Normalizes string input from UI dialogs to an exact IQD value.
-     */
-    @Deprecated("Use parseUiThousandsAmount() for payment/debt inputs or parseSubscriptionPriceIqd() for subscriptions.", ReplaceWith("parseUiThousandsAmount(rawInput)?.toDouble() ?: 0.0"))
-    fun normalizeUiInputToIqd(rawInput: String?): Double {
-        return parseUiInput(rawInput).toIqdDouble()
-    }
-
-    /**
      * Formats an IQD amount to a full deterministic string suitable for UI input fields.
      * Always outputs the exact raw IQD amount (e.g. 15000, 500000, 1000000) so roundtrips
-     * through normalizeUiInputToIqd never lose precision or corrupt values.
+     * through UI input parsing never lose precision or corrupt values.
      */
     fun formatIqdToUiString(amountIqd: Double): String {
         if (amountIqd == 0.0 || amountIqd.isNaN()) return ""

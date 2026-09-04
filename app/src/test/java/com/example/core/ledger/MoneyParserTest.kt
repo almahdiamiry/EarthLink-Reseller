@@ -64,4 +64,51 @@ class MoneyParserTest {
         assertEquals(50000L, MoneyParser.parseUiThousandsAmount("50,000"))
         assertEquals(-50000L, MoneyParser.parseUiThousandsAmount("-50k"))
     }
+
+    @Test
+    fun testParseSubscriptionPriceIqd() {
+        assertNull(MoneyParser.parseSubscriptionPriceIqd(null))
+        assertNull(MoneyParser.parseSubscriptionPriceIqd(""))
+        assertNull(MoneyParser.parseSubscriptionPriceIqd("   "))
+        assertNull(MoneyParser.parseSubscriptionPriceIqd("-35k"))
+
+        // Decimals in thousands scale by 1000
+        assertEquals(22500L, MoneyParser.parseSubscriptionPriceIqd("22.5"))
+        assertEquals(35000L, MoneyParser.parseSubscriptionPriceIqd("35"))
+        assertEquals(35000L, MoneyParser.parseSubscriptionPriceIqd("35k"))
+        assertEquals(35000L, MoneyParser.parseSubscriptionPriceIqd("35K IQD"))
+        assertEquals(40000L, MoneyParser.parseSubscriptionPriceIqd("40 د.ع"))
+
+        // Full IQD values (>= 1000) remain exact
+        assertEquals(22500L, MoneyParser.parseSubscriptionPriceIqd("22500"))
+        assertEquals(35000L, MoneyParser.parseSubscriptionPriceIqd("35,000"))
+    }
+
+    @Test
+    fun testParseRawIqdString() {
+        assertNull(MoneyParser.parseRawIqdString(null))
+        assertNull(MoneyParser.parseRawIqdString(""))
+        assertNull(MoneyParser.parseRawIqdString("   "))
+
+        assertEquals(50000.0, MoneyParser.parseRawIqdString("50000")!!, 0.001)
+        assertEquals(50000.0, MoneyParser.parseRawIqdString("50,000 IQD")!!, 0.001)
+        assertEquals(50000.0, MoneyParser.parseRawIqdString("50000 د.ع")!!, 0.001)
+    }
+
+    @Test
+    fun testFormatIqdToUiString() {
+        assertEquals("", MoneyParser.formatIqdToUiString(0.0))
+        assertEquals("", MoneyParser.formatIqdToUiString(Double.NaN))
+        assertEquals("15000", MoneyParser.formatIqdToUiString(15000.0))
+        assertEquals("500000", MoneyParser.formatIqdToUiString(500000.0))
+        assertEquals("123.45", MoneyParser.formatIqdToUiString(123.45))
+    }
+
+    @Test
+    fun testFormatIqdForDisplay() {
+        assertEquals("0", MoneyParser.formatIqdForDisplay(Double.NaN))
+        assertEquals("15,000", MoneyParser.formatIqdForDisplay(15000.0))
+        assertEquals("1,000,000", MoneyParser.formatIqdForDisplay(1000000.0))
+        assertEquals("1,234.50", MoneyParser.formatIqdForDisplay(1234.50))
+    }
 }
