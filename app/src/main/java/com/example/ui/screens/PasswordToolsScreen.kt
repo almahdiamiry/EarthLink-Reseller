@@ -155,7 +155,10 @@ fun PasswordToolsScreen(
                             fontSize = 18.sp
                         )
                         IconButton(onClick = onClose) {
-                            Icon(imageVector = Icons.Filled.Close, contentDescription = "Close")
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = if (currentLang == "ar") "إغلاق" else "Close"
+                            )
                         }
                     }
 
@@ -257,7 +260,10 @@ fun PasswordToolsScreen(
                             enabled = inputUserResetPass.isNotEmpty() && !isActionLoading,
                             modifier = Modifier.size(48.dp)
                         ) {
-                            Icon(imageVector = Icons.Default.Save, contentDescription = "Save")
+                            Icon(
+                                imageVector = Icons.Default.Save,
+                                contentDescription = if (currentLang == "ar") "حفظ" else "Save"
+                            )
                         }
                     }
 
@@ -325,7 +331,10 @@ fun PasswordToolsScreen(
                             enabled = inputAccResetPass.isNotEmpty() && !isActionLoading,
                             modifier = Modifier.size(48.dp)
                         ) {
-                            Icon(imageVector = Icons.Default.Save, contentDescription = "Save")
+                            Icon(
+                                imageVector = Icons.Default.Save,
+                                contentDescription = if (currentLang == "ar") "حفظ" else "Save"
+                            )
                         }
                     }
                 }

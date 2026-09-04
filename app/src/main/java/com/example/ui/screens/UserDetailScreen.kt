@@ -123,7 +123,7 @@ fun UserDetailScreen(
                 IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
+                        contentDescription = if (currentLang == "ar") "رجوع" else "Back",
                         tint = Color.White
                     )
                 }
