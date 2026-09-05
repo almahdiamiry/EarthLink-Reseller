@@ -81,20 +81,28 @@ class SubscriberStatusClassificationTest {
             expirationDateLower = dateOffset(-1 * ONE_DAY),
             onlineStatusLower = "Offline"
         )
-        val activeBooleanFlag = UserListItem(
+        val activeManageFlag = UserListItem(
             userIndexLower = 107,
-            userIDLower = "user_active_bool",
-            userActiveLower = true,
+            userIDLower = "user_active_manage_bool",
+            userActiveManageLower = true,
             onlineStatusLower = "Online"
         )
-        val deactivatedBooleanFlag = UserListItem(
+        val deactivatedManageFlag = UserListItem(
             userIndexLower = 108,
-            userIDLower = "user_deactivated_bool",
-            userActiveLower = false,
+            userIDLower = "user_deactivated_manage_bool",
+            userActiveManageLower = false,
             onlineStatusLower = "Offline"
         )
-        val unclassifiedDateExpired = UserListItem(
+        val unclassifiedUserActiveOnly = UserListItem(
             userIndexLower = 109,
+            userIDLower = "user_unclassified_user_active_true",
+            userActiveLower = true,
+            accountStatusLower = null,
+            userActiveManageLower = null,
+            onlineStatusLower = null
+        )
+        val unclassifiedDateExpired = UserListItem(
+            userIndexLower = 110,
             userIDLower = "user_unclassified_date_expired",
             accountStatusLower = null,
             expirationDateLower = dateOffset(-1 * ONE_DAY),
@@ -104,7 +112,7 @@ class SubscriberStatusClassificationTest {
         // 1. Canonical active subscribers match ACTIVE
         assertTrue(DashboardStatusClassifier.matches(activeCanonical, null, DashboardStatusFilter.ACTIVE, fixedNow))
         assertTrue(DashboardStatusClassifier.matches(expiringSoonActive, null, DashboardStatusFilter.ACTIVE, fixedNow))
-        assertTrue(DashboardStatusClassifier.matches(activeBooleanFlag, null, DashboardStatusFilter.ACTIVE, fixedNow))
+        assertTrue(DashboardStatusClassifier.matches(activeManageFlag, null, DashboardStatusFilter.ACTIVE, fixedNow))
 
         // Canonical active status governs even if expiration date string is past (ISP source of truth):
         assertTrue(DashboardStatusClassifier.matches(activeStatusDateExpired, null, DashboardStatusFilter.ACTIVE, fixedNow))
@@ -114,9 +122,14 @@ class SubscriberStatusClassificationTest {
         assertFalse(DashboardStatusClassifier.matches(suspendedByAgent, null, DashboardStatusFilter.ACTIVE, fixedNow))
         assertFalse(DashboardStatusClassifier.matches(expiredStatusAr, null, DashboardStatusFilter.ACTIVE, fixedNow))
         assertFalse(DashboardStatusClassifier.matches(expiredStatus, null, DashboardStatusFilter.ACTIVE, fixedNow))
-        assertFalse(DashboardStatusClassifier.matches(deactivatedBooleanFlag, null, DashboardStatusFilter.ACTIVE, fixedNow))
+        assertFalse(DashboardStatusClassifier.matches(deactivatedManageFlag, null, DashboardStatusFilter.ACTIVE, fixedNow))
 
-        // 3. Unclassified subscriber with expired date matches EXPIRED, not ACTIVE
+        // 3. User with only EarthLink default userActive=true (no active status/manage toggle) is unclassified
+        assertFalse(DashboardStatusClassifier.matches(unclassifiedUserActiveOnly, null, DashboardStatusFilter.ACTIVE, fixedNow))
+        assertFalse(DashboardStatusClassifier.matches(unclassifiedUserActiveOnly, null, DashboardStatusFilter.ONLINE, fixedNow))
+        assertFalse(DashboardStatusClassifier.matches(unclassifiedUserActiveOnly, null, DashboardStatusFilter.EXPIRED, fixedNow))
+
+        // 4. Unclassified subscriber with expired date matches EXPIRED, not ACTIVE
         assertFalse(DashboardStatusClassifier.matches(unclassifiedDateExpired, null, DashboardStatusFilter.ACTIVE, fixedNow))
         assertTrue(DashboardStatusClassifier.matches(unclassifiedDateExpired, null, DashboardStatusFilter.EXPIRED, fixedNow))
     }
@@ -179,8 +192,8 @@ class SubscriberStatusClassificationTest {
         assertTrue(DashboardStatusClassifier.matches(onlineNoNAS, null, DashboardStatusFilter.ONLINE, fixedNow))
         assertFalse(DashboardStatusClassifier.matches(activeOffline, null, DashboardStatusFilter.ONLINE, fixedNow))
 
-        // Active subscriber with null onlineStatus is connected/online by ISP default
-        assertTrue(DashboardStatusClassifier.matches(activeNullOnlineStatus, null, DashboardStatusFilter.ONLINE, fixedNow))
+        // Active subscriber with null onlineStatus does NOT match ONLINE (requires actual connection) and does NOT match OFFLINE
+        assertFalse(DashboardStatusClassifier.matches(activeNullOnlineStatus, null, DashboardStatusFilter.ONLINE, fixedNow))
         assertFalse(DashboardStatusClassifier.matches(activeNullOnlineStatus, null, DashboardStatusFilter.OFFLINE, fixedNow))
 
         // Active Offline subscribers match OFFLINE
@@ -374,7 +387,8 @@ class SubscriberStatusClassificationTest {
         // Simulates the exact dataset verified against real EarthLink ISP:
         // 43 Active users (39 regular active + 4 expiring soon), all online, 0 offline.
         // 25 Expired users (1 recently expired within 7 days + 24 long expired).
-        // Total = 68 subscribers.
+        // 1 Unclassified user with EarthLink default userActive=true but no active status.
+        // Total = 69 subscribers.
         val subscribers = mutableListOf<UserListItem>()
 
         // 39 Active users (various date representations, all connected/online)
@@ -385,7 +399,7 @@ class SubscriberStatusClassificationTest {
                     userIDLower = "active_user_$i",
                     accountStatusLower = "Active",
                     expirationDateLower = if (i % 2 == 0) dateOffset(15 * ONE_DAY) else null,
-                    onlineStatusLower = if (i <= 6) "Online" else null // 6 had explicit "Online", 33 had null
+                    onlineStatusLower = "Online"
                 )
             )
         }
@@ -427,7 +441,23 @@ class SubscriberStatusClassificationTest {
             )
         }
 
+        // 69th unclassified subscriber: in EarthLink API response has userActive=true by default,
+        // but no active accountStatus and no userActiveManage=true toggle, null onlineStatus.
+        // Must NOT match ACTIVE, ONLINE, or EXPIRED.
+        subscribers.add(
+            UserListItem(
+                userIndexLower = 9999,
+                userIDLower = "unclassified_isp_subscriber_69",
+                userActiveLower = true,
+                accountStatusLower = null,
+                userActiveManageLower = null,
+                onlineStatusLower = null
+            )
+        )
+
         val matcher = LocalAccountMatcher(emptyList<LocalAccount>())
+
+        assertEquals(69, subscribers.size)
 
         // Exact match against real EarthLink ISP counts:
         assertEquals(43, DashboardStatusClassifier.countFiltered(subscribers, matcher, DashboardStatusFilter.ACTIVE, fixedNow))

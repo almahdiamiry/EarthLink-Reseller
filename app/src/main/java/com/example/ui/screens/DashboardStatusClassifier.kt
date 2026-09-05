@@ -39,8 +39,8 @@ object DashboardStatusClassifier {
         if (statusClean == "expired" || statusClean == "منتهي" || statusClean == "suspendedbyagent" || statusClean == "suspended") {
             return true
         }
-        if (user.userActive == false || user.userActiveManage == false) return true
-        if (user.userActive == true || user.userActiveManage == true) return false
+        if (user.userActive == false || user.userActiveManage == false || user.isBlocked == true) return true
+        if (user.userActiveManage == true) return false
         if (statusClean == "active" || statusClean == "فعال" || statusClean == "نشط") return false
         val expTimestamp = getExpirationTimestamp(user, matchingAccount)
         return expTimestamp != null && expTimestamp <= nowMs
@@ -48,14 +48,15 @@ object DashboardStatusClassifier {
 
     fun isUserActive(user: UserListItem, matchingAccount: LocalAccount? = null, nowMs: Long = System.currentTimeMillis()): Boolean {
         val statusClean = user.accountStatus?.trim()?.lowercase(Locale.US) ?: ""
-        if (statusClean == "suspendedbyagent" || statusClean == "suspended" || statusClean == "expired" || statusClean == "منتهي") {
+        if (statusClean in setOf(
+                "suspendedbyagent", "suspended", "expired", "منتهي",
+                "recentlyexpired", "inactive", "disabled", "blocked"
+            )
+        ) {
             return false
         }
-        if (user.userActive == false || user.userActiveManage == false) {
+        if (user.userActive == false || user.userActiveManage == false || user.isBlocked == true) {
             return false
-        }
-        if (user.userActive == true || user.userActiveManage == true) {
-            return true
         }
         if (statusClean == "active" || statusClean == "فعال" || statusClean == "نشط") {
             return true
@@ -64,10 +65,15 @@ object DashboardStatusClassifier {
             val expTimestamp = getExpirationTimestamp(user, matchingAccount)
             return expTimestamp == null || expTimestamp > nowMs
         }
-        return !isUserExpired(user, matchingAccount, nowMs)
+        if (user.userActiveManage == true) {
+            val expTimestamp = getExpirationTimestamp(user, matchingAccount)
+            return expTimestamp == null || expTimestamp > nowMs
+        }
+        return false
     }
 
-    fun isUserOffline(user: UserListItem): Boolean {
+    fun isUserOffline(user: UserListItem, matchingAccount: LocalAccount? = null, nowMs: Long = System.currentTimeMillis()): Boolean {
+        if (!isUserActive(user, matchingAccount, nowMs)) return false
         val onlineClean = user.onlineStatus?.trim()?.lowercase(Locale.US) ?: ""
         val statusClean = user.accountStatus?.trim()?.lowercase(Locale.US) ?: ""
         return onlineClean.contains("offline") || statusClean == "offline"
@@ -75,7 +81,8 @@ object DashboardStatusClassifier {
 
     fun isUserOnline(user: UserListItem, matchingAccount: LocalAccount? = null, nowMs: Long = System.currentTimeMillis()): Boolean {
         if (!isUserActive(user, matchingAccount, nowMs)) return false
-        return !isUserOffline(user)
+        val onlineClean = user.onlineStatus?.trim()?.lowercase(Locale.US) ?: ""
+        return onlineClean.startsWith("online")
     }
 
     fun matches(
@@ -86,14 +93,12 @@ object DashboardStatusClassifier {
     ): Boolean {
         val active = isUserActive(user, matchingAccount, nowMs)
         val expired = isUserExpired(user, matchingAccount, nowMs)
-        val offline = isUserOffline(user)
-        val online = active && !offline
         val expTimestamp = getExpirationTimestamp(user, matchingAccount)
 
         return when (filter) {
             DashboardStatusFilter.ACTIVE -> active
-            DashboardStatusFilter.ONLINE -> online
-            DashboardStatusFilter.OFFLINE -> active && offline
+            DashboardStatusFilter.ONLINE -> isUserOnline(user, matchingAccount, nowMs)
+            DashboardStatusFilter.OFFLINE -> isUserOffline(user, matchingAccount, nowMs)
             DashboardStatusFilter.EXPIRING_SOON -> {
                 if (!active || expired) {
                     false

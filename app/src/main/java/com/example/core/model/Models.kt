@@ -4,7 +4,26 @@ import androidx.room.*
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
+import java.util.Locale
+
 // --- API Elements ---
+
+internal fun parseBoolLike(value: Any?): Boolean? {
+    return when (value) {
+        null -> null
+        is Boolean -> value
+        is Number -> value.toInt() != 0
+        is String -> {
+            val s = value.trim().lowercase(Locale.US)
+            when (s) {
+                "true", "1", "yes" -> true
+                "false", "0", "no" -> false
+                else -> null
+            }
+        }
+        else -> null
+    }
+}
 
 @JsonClass(generateAdapter = true)
 data class ApiEnvelope<T>(
@@ -77,10 +96,12 @@ data class UserListItem(
     @Json(name = "AccountName") val accountNameUpper: String? = null,
     @Json(name = "onlineStatus") val onlineStatusLower: String? = null,
     @Json(name = "OnlineStatus") val onlineStatusUpper: String? = null,
-    @Json(name = "userActive") val userActiveLower: Boolean? = null,
-    @Json(name = "UserActive") val userActiveUpper: Boolean? = null,
-    @Json(name = "userActiveManage") val userActiveManageLower: Boolean? = null,
-    @Json(name = "UserActiveManage") val userActiveManageUpper: Boolean? = null
+    @Json(name = "userActive") val userActiveLower: Any? = null,
+    @Json(name = "UserActive") val userActiveUpper: Any? = null,
+    @Json(name = "userActiveManage") val userActiveManageLower: Any? = null,
+    @Json(name = "UserActiveManage") val userActiveManageUpper: Any? = null,
+    @Json(name = "isBlocked") val isBlockedLower: Any? = null,
+    @Json(name = "IsBlocked") val isBlockedUpper: Any? = null
 ) {
     val userIndex: Int get() = userIndexLower ?: userIndexUpper ?: 0
     val userID: String get() = userIDLower ?: userIDUpper ?: userIdLowerCamel ?: userIdUpperCamel ?: ""
@@ -94,8 +115,9 @@ data class UserListItem(
     val displayName: String? get() = displayNameLower ?: displayNameUpper
     val packageName: String? get() = accountNameLower ?: accountNameUpper
     val onlineStatus: String? get() = onlineStatusLower ?: onlineStatusUpper
-    val userActive: Boolean? get() = userActiveLower ?: userActiveUpper
-    val userActiveManage: Boolean? get() = userActiveManageLower ?: userActiveManageUpper
+    val userActive: Boolean? get() = parseBoolLike(userActiveLower ?: userActiveUpper)
+    val userActiveManage: Boolean? get() = parseBoolLike(userActiveManageLower ?: userActiveManageUpper)
+    val isBlocked: Boolean? get() = parseBoolLike(isBlockedLower ?: isBlockedUpper)
 }
 
 @JsonClass(generateAdapter = true)
@@ -235,12 +257,12 @@ data class UserDetail(
     @Json(name = "MAXMAC") val maxmacUpper: String? = null,
     @Json(name = "AccountMAC") val accountMACUpper: String? = null,
     @Json(name = "OnlineSessionTime") val onlineSessionTimeUpper: String? = null,
-    @Json(name = "userActive") val userActiveLower: Boolean? = null,
-    @Json(name = "UserActive") val userActiveUpper: Boolean? = null,
-    @Json(name = "userActiveManage") val userActiveManageLower: Boolean? = null,
-    @Json(name = "UserActiveManage") val userActiveManageUpper: Boolean? = null,
-    @Json(name = "isBlocked") val isBlockedLower: Boolean? = null,
-    @Json(name = "IsBlocked") val isBlockedUpper: Boolean? = null,
+    @Json(name = "userActive") val userActiveLower: Any? = null,
+    @Json(name = "UserActive") val userActiveUpper: Any? = null,
+    @Json(name = "userActiveManage") val userActiveManageLower: Any? = null,
+    @Json(name = "UserActiveManage") val userActiveManageUpper: Any? = null,
+    @Json(name = "isBlocked") val isBlockedLower: Any? = null,
+    @Json(name = "IsBlocked") val isBlockedUpper: Any? = null,
     @Json(name = "ipAddress") val ipAddressLower: String? = null,
     @Json(name = "IPAddress") val ipAddressUpper: String? = null,
     @Json(name = "currentIp") val currentIpLowerCamel: String? = null,
@@ -256,9 +278,9 @@ data class UserDetail(
     @Json(name = "sessionTime") val sessionTimeLower: String? = null,
     @Json(name = "SessionTime") val sessionTimeUpper: String? = null
 ) {
-    val userActive: Boolean? get() = userActiveLower ?: userActiveUpper
-    val userActiveManage: Boolean? get() = userActiveManageLower ?: userActiveManageUpper
-    val isBlocked: Boolean? get() = isBlockedLower ?: isBlockedUpper
+    val userActive: Boolean? get() = parseBoolLike(userActiveLower ?: userActiveUpper)
+    val userActiveManage: Boolean? get() = parseBoolLike(userActiveManageLower ?: userActiveManageUpper)
+    val isBlocked: Boolean? get() = parseBoolLike(isBlockedLower ?: isBlockedUpper)
     val userIndex: Int get() = userIndexLower ?: userIndexUpper ?: 0
     val userID: String get() = userIDLower ?: userIDUpper ?: userIdLowerCamel ?: userIdUpperCamel ?: ""
     val customerFullName: String? get() = customerFullNameLower ?: customerFullNameUpper ?: customerNameLower ?: customerNameUpper ?: displayNameLower ?: displayNameUpper ?: nameLower ?: nameUpper
