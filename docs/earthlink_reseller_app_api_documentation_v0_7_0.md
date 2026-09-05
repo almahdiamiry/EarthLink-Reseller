@@ -366,20 +366,36 @@ application/x-www-form-urlencoded
 }
 ```
 
-### Important fields
-
 | Field | Meaning |
 |---|---|
 | `userIndex` | Primary numeric user identifier for most detail/actions. |
 | `userID` | Username, for example `abbas@sacx`. |
 | `displayName` | Display name. |
 | `accountStatus` | `Active`, `ExpiringSoon`, `Suspended`, `SuspendedByAgent`, etc. |
+| `activeDaysLeft` | Remaining active subscription days (e.g. `"00"`, `"01"`, `"25"`). |
+| `manualExpirationDate` | Expiration timestamp string (e.g. `"06/09/2026 12:19 AM"`). |
 | `onlineStatus` | `Online`, `Offline`, `OnlineNoNet`, etc. |
 | `userIP` | IP where available. |
 | `callerID` / `maxmac` | MAC lock / caller ID data. |
 | `canExtendUser` | Whether extend may be possible. |
 | `canRefill` | Whether refill may be possible. |
 | `canChangeAccount` | Whether account-type change may be possible. |
+
+### Observed Live Behavior & Classification Semantics
+
+> **Note on Contract vs. Observation:** The official API schema returns `accountStatus`, `activeDaysLeft`, and `onlineStatus` as separate descriptive fields. The observations below describe proven ISP live behavior and edge cases established via API audits.
+
+* **`activeDaysLeft` Semantics:**
+  - **Observed formats:** String numbers with zero-padding (e.g. `"00"`, `"01"`, `"08"`, `"25"`), raw numbers, or empty/null for admin/unlimited accounts.
+  - **Boundary Meaning (`<= 0`):** A value of `0`, `"00"`, or any value `<= 0.0` indicates that the subscription duration has fully elapsed.
+* **`accountStatus` vs. Real Active Eligibility:**
+  - `accountStatus` alone is **not** a sufficient single-field oracle for active subscription eligibility.
+  - **Observed string lag:** When an active period ends, `accountStatus` may temporarily remain `"ExpiringSoon"` before batch transition to `"Suspended"` / `"Expired"`.
+  - **Observed regression example:** In live ISP audits, user `hussam@sacx` (`userIndex = 10942873`) presented `accountStatus = "ExpiringSoon"`, `activeDaysLeft = "00"`, and `onlineStatus = "Online"`. Server-side ISP filtering (`AccountStatusID = 1`, Active) strictly excluded this subscriber from active counts (returning 43 active subscribers instead of 44), confirming that `activeDaysLeft <= 0` overrides `"ExpiringSoon"` into expired status.
+* **`onlineStatus` Classification (`Online` vs. `OnlineNoNet`):**
+  - **`Online`:** Active gateway session with full internet routing (`hasNoInternet = false`, IP allocated on CGNAT `100.x.x.x` or public pool).
+  - **`OnlineNoNet`:** Active physical PPPoE connection to the NAS without internet routing (`hasNoInternet = true`, IP allocated on walled-garden/captive portal pool `10.2.72.x`). `OnlineNoNet` must **not** be classified as internet-connected `Online`.
+  - **`Offline`:** No active NAS session.
 
 ---
 
@@ -496,12 +512,25 @@ application/x-www-form-urlencoded
 
 | Field | Meaning |
 |---|---|
-| `userID` | Username. |
-| `userIndex` | User index. |
-| `userIP` | Current IP. |
-| `onlineStatus` | Online/session status. |
-| `usageTime` / `onlineTime` | Session duration. |
-| `callerMAC` / `callerID` | MAC data where available. |
+| `userObject.userIndex` | Canonical subscriber numeric index. (Note: Root `userIndex` in session rows is frequently `0`). |
+| `userObject.userId` / `userID` | Subscriber username. |
+| `userIp` / `userIP` | Allocated gateway/session IP. |
+| `isOnline` | Physical session alive flag on NAS. |
+| `hasNoInternet` | Boolean indicating captive portal / walled-garden state (`true` = no internet routing). |
+| `usageTime` / `onlineTime` | Session duration string (e.g. `03:06:32` or `28d 19:28:40`). |
+| `userMac` / `callerMAC` | Hardware MAC address. |
+
+### Observed Live Behavior & Correlation Notes
+
+> **Note on Contract vs. Observation:** `POST /usersession/active` serves raw NAS/RADIUS network connection telemetry rather than a pre-filtered dashboard subscriber list.
+
+* **Network Session Scope:**
+  - The endpoint returns all live PPPoE connections on the gateway hardware.
+  - This includes subscribers whose account status is `Suspended` but who maintain an active physical connection in captive portal mode (`hasNoInternet = true`, IP in `10.2.72.x` pool, corresponding to `onlineStatus = "OnlineNoNet"` in `/user/all`).
+* **Canonical Correlation Key:**
+  - Correlation between `/user/all` and `/usersession/active` must use `userIndex` (`userObject.userIndex` in sessions matched against `userIndex` in user lists).
+  - In live audits, the set of active sessions strictly equals:
+    $$\text{Total Active Sessions} = (\text{Subscribers with } \texttt{onlineStatus = "Online"}) + (\text{Subscribers with } \texttt{onlineStatus = "OnlineNoNet"})$$
 
 ---
 
