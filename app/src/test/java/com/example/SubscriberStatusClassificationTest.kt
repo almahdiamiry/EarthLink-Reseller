@@ -146,16 +146,16 @@ class SubscriberStatusClassificationTest {
         assertFalse(DashboardStatusClassifier.matches(unclassifiedDateExpired, null, DashboardStatusFilter.ACTIVE, fixedNow))
         assertTrue(DashboardStatusClassifier.matches(unclassifiedDateExpired, null, DashboardStatusFilter.EXPIRED, fixedNow))
 
-        // 6. Subscriber with accountStatus='Active' but activeDaysLeft <= 0 matches EXPIRED, not ACTIVE
-        val activeStringZeroDaysLeft = UserListItem(
+        // 6. Subscriber with accountStatus='Active' but negative daysLeft (< 0) matches EXPIRED, not ACTIVE
+        val activeStringNegativeDaysLeft = UserListItem(
             userIndexLower = 112,
-            userIDLower = "user_active_zero_days",
+            userIDLower = "user_active_negative_days",
             accountStatusLower = "Active",
-            activeDaysLeftLower = 0.0,
+            activeDaysLeftLower = -1.0,
             onlineStatusLower = "Offline"
         )
-        assertFalse(DashboardStatusClassifier.matches(activeStringZeroDaysLeft, null, DashboardStatusFilter.ACTIVE, fixedNow))
-        assertTrue(DashboardStatusClassifier.matches(activeStringZeroDaysLeft, null, DashboardStatusFilter.EXPIRED, fixedNow))
+        assertFalse(DashboardStatusClassifier.matches(activeStringNegativeDaysLeft, null, DashboardStatusFilter.ACTIVE, fixedNow))
+        assertTrue(DashboardStatusClassifier.matches(activeStringNegativeDaysLeft, null, DashboardStatusFilter.EXPIRED, fixedNow))
 
         // 7. Null or unparseable activeDaysLeft does NOT trigger expiry when account is Active with future date
         val activeNullDaysLeftFutureDate = UserListItem(
@@ -260,8 +260,8 @@ class SubscriberStatusClassificationTest {
         assertFalse(DashboardStatusClassifier.matches(staleOnlineExpiredUser, null, DashboardStatusFilter.ONLINE, fixedNow))
         assertTrue(DashboardStatusClassifier.matches(staleOnlineExpiredUser, null, DashboardStatusFilter.EXPIRED, fixedNow))
 
-        // Live ISP Oracle Case (User #44): accountStatus='ExpiringSoon' with activeDaysLeft='00' and onlineStatus='Online'
-        // Routed to EXPIRED, excluded from ACTIVE and ONLINE, but matches EXPIRING_SOON (ISP portal view)
+        // Live ISP Oracle Case (User #44): accountStatus='ExpiringSoon' with activeDaysLeft='00', future expiration date, and onlineStatus='Online'
+        // Matches EXPIRING_SOON, ACTIVE, and ONLINE, and strictly does NOT match EXPIRED (since expiration date is in the future)
         val liveIspOracleUser44 = UserListItem(
             userIndexLower = 10942873,
             userIDLower = "hussam@sacx",
@@ -270,10 +270,10 @@ class SubscriberStatusClassificationTest {
             expirationDateLower = "06/09/2026 12:19 AM",
             onlineStatusLower = "Online"
         )
-        assertFalse(DashboardStatusClassifier.matches(liveIspOracleUser44, null, DashboardStatusFilter.ACTIVE, fixedNow))
-        assertFalse(DashboardStatusClassifier.matches(liveIspOracleUser44, null, DashboardStatusFilter.ONLINE, fixedNow))
+        assertTrue(DashboardStatusClassifier.matches(liveIspOracleUser44, null, DashboardStatusFilter.ACTIVE, fixedNow))
+        assertTrue(DashboardStatusClassifier.matches(liveIspOracleUser44, null, DashboardStatusFilter.ONLINE, fixedNow))
         assertTrue(DashboardStatusClassifier.matches(liveIspOracleUser44, null, DashboardStatusFilter.EXPIRING_SOON, fixedNow))
-        assertTrue(DashboardStatusClassifier.matches(liveIspOracleUser44, null, DashboardStatusFilter.EXPIRED, fixedNow))
+        assertFalse(DashboardStatusClassifier.matches(liveIspOracleUser44, null, DashboardStatusFilter.EXPIRED, fixedNow))
     }
 
     @Test

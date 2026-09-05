@@ -52,12 +52,16 @@ object DashboardStatusClassifier {
         }
         if (user.userActive == false || user.userActiveManage == false || user.isBlocked == true) return true
         val expTimestamp = getExpirationTimestamp(user, matchingAccount)
-        if (expTimestamp != null && expTimestamp <= nowMs) return true
+        if (expTimestamp != null) {
+            return expTimestamp <= nowMs
+        }
         val daysLeft = parseActiveDaysLeft(user.activeDaysLeft)
-        if (daysLeft != null && daysLeft <= 0.0) return true
+        if (daysLeft != null && daysLeft < 0.0) {
+            return true
+        }
         if (statusClean == "active" || statusClean == "فعال" || statusClean == "نشط") return false
         if (statusClean == "expiringsoon" || statusClean == "expiring") return false
-        return (expTimestamp != null && expTimestamp <= nowMs) || (daysLeft != null && daysLeft <= 0.0)
+        return false
     }
 
     fun isUserActive(user: UserListItem, matchingAccount: LocalAccount? = null, nowMs: Long = System.currentTimeMillis()): Boolean {
@@ -73,20 +77,20 @@ object DashboardStatusClassifier {
             return false
         }
         val expTimestamp = getExpirationTimestamp(user, matchingAccount)
-        if (expTimestamp != null && expTimestamp <= nowMs) {
-            return false
+        if (expTimestamp != null) {
+            return expTimestamp > nowMs
         }
         val daysLeft = parseActiveDaysLeft(user.activeDaysLeft)
-        if (daysLeft != null && daysLeft <= 0.0) {
+        if (daysLeft != null && daysLeft < 0.0) {
             return false
         }
         if (statusClean == "active" || statusClean == "فعال" || statusClean == "نشط") {
             return true
         }
         if (statusClean == "expiringsoon" || statusClean == "expiring") {
-            return (expTimestamp == null || expTimestamp > nowMs) && (daysLeft == null || daysLeft > 0.0)
+            return true
         }
-        return (expTimestamp != null && expTimestamp > nowMs) || (daysLeft != null && daysLeft > 0.0)
+        return daysLeft != null && daysLeft >= 0.0
     }
 
     fun isUserOffline(user: UserListItem, matchingAccount: LocalAccount? = null, nowMs: Long = System.currentTimeMillis()): Boolean {
