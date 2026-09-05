@@ -36,19 +36,46 @@ object DashboardStatusClassifier {
 
     fun isUserExpired(user: UserListItem, matchingAccount: LocalAccount?, nowMs: Long): Boolean {
         val statusClean = user.accountStatus?.trim()?.lowercase(Locale.US) ?: ""
-        val isExplicitExpired = statusClean == "expired" || statusClean == "منتهي" || statusClean == "suspendedbyagent"
+        if (statusClean == "expired" || statusClean == "منتهي" || statusClean == "suspendedbyagent" || statusClean == "suspended") {
+            return true
+        }
+        if (user.userActive == false || user.userActiveManage == false) return true
+        if (user.userActive == true || user.userActiveManage == true) return false
+        if (statusClean == "active" || statusClean == "فعال" || statusClean == "نشط") return false
         val expTimestamp = getExpirationTimestamp(user, matchingAccount)
-        val isDateExpired = expTimestamp != null && expTimestamp <= nowMs
-        return isExplicitExpired || isDateExpired
+        return expTimestamp != null && expTimestamp <= nowMs
     }
 
-    fun isUserActive(user: UserListItem, matchingAccount: LocalAccount?, nowMs: Long): Boolean {
+    fun isUserActive(user: UserListItem, matchingAccount: LocalAccount? = null, nowMs: Long = System.currentTimeMillis()): Boolean {
+        val statusClean = user.accountStatus?.trim()?.lowercase(Locale.US) ?: ""
+        if (statusClean == "suspendedbyagent" || statusClean == "suspended" || statusClean == "expired" || statusClean == "منتهي") {
+            return false
+        }
+        if (user.userActive == false || user.userActiveManage == false) {
+            return false
+        }
+        if (user.userActive == true || user.userActiveManage == true) {
+            return true
+        }
+        if (statusClean == "active" || statusClean == "فعال" || statusClean == "نشط") {
+            return true
+        }
+        if (statusClean == "expiringsoon" || statusClean == "expiring") {
+            val expTimestamp = getExpirationTimestamp(user, matchingAccount)
+            return expTimestamp == null || expTimestamp > nowMs
+        }
         return !isUserExpired(user, matchingAccount, nowMs)
     }
 
-    fun isUserOnline(user: UserListItem): Boolean {
-        val status = user.onlineStatus?.trim()?.lowercase(Locale.US) ?: return false
-        return status == "online" || status.startsWith("online")
+    fun isUserOffline(user: UserListItem): Boolean {
+        val onlineClean = user.onlineStatus?.trim()?.lowercase(Locale.US) ?: ""
+        val statusClean = user.accountStatus?.trim()?.lowercase(Locale.US) ?: ""
+        return onlineClean.contains("offline") || statusClean == "offline"
+    }
+
+    fun isUserOnline(user: UserListItem, matchingAccount: LocalAccount? = null, nowMs: Long = System.currentTimeMillis()): Boolean {
+        if (!isUserActive(user, matchingAccount, nowMs)) return false
+        return !isUserOffline(user)
     }
 
     fun matches(
@@ -59,13 +86,14 @@ object DashboardStatusClassifier {
     ): Boolean {
         val active = isUserActive(user, matchingAccount, nowMs)
         val expired = isUserExpired(user, matchingAccount, nowMs)
-        val online = isUserOnline(user)
+        val offline = isUserOffline(user)
+        val online = active && !offline
         val expTimestamp = getExpirationTimestamp(user, matchingAccount)
 
         return when (filter) {
             DashboardStatusFilter.ACTIVE -> active
             DashboardStatusFilter.ONLINE -> online
-            DashboardStatusFilter.OFFLINE -> active && !online
+            DashboardStatusFilter.OFFLINE -> active && offline
             DashboardStatusFilter.EXPIRING_SOON -> {
                 if (!active || expired) {
                     false

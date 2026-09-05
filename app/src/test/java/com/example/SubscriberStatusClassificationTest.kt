@@ -81,19 +81,44 @@ class SubscriberStatusClassificationTest {
             expirationDateLower = dateOffset(-1 * ONE_DAY),
             onlineStatusLower = "Offline"
         )
+        val activeBooleanFlag = UserListItem(
+            userIndexLower = 107,
+            userIDLower = "user_active_bool",
+            userActiveLower = true,
+            onlineStatusLower = "Online"
+        )
+        val deactivatedBooleanFlag = UserListItem(
+            userIndexLower = 108,
+            userIDLower = "user_deactivated_bool",
+            userActiveLower = false,
+            onlineStatusLower = "Offline"
+        )
+        val unclassifiedDateExpired = UserListItem(
+            userIndexLower = 109,
+            userIDLower = "user_unclassified_date_expired",
+            accountStatusLower = null,
+            expirationDateLower = dateOffset(-1 * ONE_DAY),
+            onlineStatusLower = "Offline"
+        )
 
         // 1. Canonical active subscribers match ACTIVE
         assertTrue(DashboardStatusClassifier.matches(activeCanonical, null, DashboardStatusFilter.ACTIVE, fixedNow))
         assertTrue(DashboardStatusClassifier.matches(expiringSoonActive, null, DashboardStatusFilter.ACTIVE, fixedNow))
+        assertTrue(DashboardStatusClassifier.matches(activeBooleanFlag, null, DashboardStatusFilter.ACTIVE, fixedNow))
+
+        // Canonical active status governs even if expiration date string is past (ISP source of truth):
+        assertTrue(DashboardStatusClassifier.matches(activeStatusDateExpired, null, DashboardStatusFilter.ACTIVE, fixedNow))
+        assertFalse(DashboardStatusClassifier.matches(activeStatusDateExpired, null, DashboardStatusFilter.EXPIRED, fixedNow))
 
         // 2. Inactive / suspended / deactivated subscribers do NOT match ACTIVE
         assertFalse(DashboardStatusClassifier.matches(suspendedByAgent, null, DashboardStatusFilter.ACTIVE, fixedNow))
         assertFalse(DashboardStatusClassifier.matches(expiredStatusAr, null, DashboardStatusFilter.ACTIVE, fixedNow))
         assertFalse(DashboardStatusClassifier.matches(expiredStatus, null, DashboardStatusFilter.ACTIVE, fixedNow))
+        assertFalse(DashboardStatusClassifier.matches(deactivatedBooleanFlag, null, DashboardStatusFilter.ACTIVE, fixedNow))
 
-        // 3. Active status with expired date does NOT match ACTIVE, but matches EXPIRED
-        assertFalse(DashboardStatusClassifier.matches(activeStatusDateExpired, null, DashboardStatusFilter.ACTIVE, fixedNow))
-        assertTrue(DashboardStatusClassifier.matches(activeStatusDateExpired, null, DashboardStatusFilter.EXPIRED, fixedNow))
+        // 3. Unclassified subscriber with expired date matches EXPIRED, not ACTIVE
+        assertFalse(DashboardStatusClassifier.matches(unclassifiedDateExpired, null, DashboardStatusFilter.ACTIVE, fixedNow))
+        assertTrue(DashboardStatusClassifier.matches(unclassifiedDateExpired, null, DashboardStatusFilter.EXPIRED, fixedNow))
     }
 
     @Test
@@ -154,13 +179,18 @@ class SubscriberStatusClassificationTest {
         assertTrue(DashboardStatusClassifier.matches(onlineNoNAS, null, DashboardStatusFilter.ONLINE, fixedNow))
         assertFalse(DashboardStatusClassifier.matches(activeOffline, null, DashboardStatusFilter.ONLINE, fixedNow))
 
+        // Active subscriber with null onlineStatus is connected/online by ISP default
+        assertTrue(DashboardStatusClassifier.matches(activeNullOnlineStatus, null, DashboardStatusFilter.ONLINE, fixedNow))
+        assertFalse(DashboardStatusClassifier.matches(activeNullOnlineStatus, null, DashboardStatusFilter.OFFLINE, fixedNow))
+
         // Active Offline subscribers match OFFLINE
         assertTrue(DashboardStatusClassifier.matches(activeOffline, null, DashboardStatusFilter.OFFLINE, fixedNow))
-        assertTrue(DashboardStatusClassifier.matches(activeNullOnlineStatus, null, DashboardStatusFilter.OFFLINE, fixedNow))
 
-        // Non-active or Expired subscribers with onlineStatus='Offline' MUST NOT match OFFLINE
+        // Non-active or Expired subscribers with onlineStatus='Offline' MUST NOT match OFFLINE or ONLINE
         assertFalse(DashboardStatusClassifier.matches(suspendedOffline, null, DashboardStatusFilter.OFFLINE, fixedNow))
         assertFalse(DashboardStatusClassifier.matches(expiredOffline, null, DashboardStatusFilter.OFFLINE, fixedNow))
+        assertFalse(DashboardStatusClassifier.matches(suspendedOffline, null, DashboardStatusFilter.ONLINE, fixedNow))
+        assertFalse(DashboardStatusClassifier.matches(expiredOffline, null, DashboardStatusFilter.ONLINE, fixedNow))
     }
 
     @Test
@@ -256,7 +286,7 @@ class SubscriberStatusClassificationTest {
         val userExpiresExactlyNow = UserListItem(
             userIndexLower = 501,
             userIDLower = "u_exp_now",
-            accountStatusLower = "Active", // gateway status might still say Active right at cutoff
+            accountStatusLower = null, // unclassified subscriber without explicit status
             expirationDateLower = dateOffset(0),
             onlineStatusLower = "Offline"
         )
@@ -288,7 +318,7 @@ class SubscriberStatusClassificationTest {
         val u3ExpiringSoonOnline = UserListItem(
             userIndexLower = 603,
             userIDLower = "u3",
-            accountStatusLower = "Active",
+            accountStatusLower = "ExpiringSoon",
             expirationDateLower = dateOffset(1 * ONE_DAY), // 24h <= 48h
             onlineStatusLower = "Online"
         )
@@ -337,5 +367,74 @@ class SubscriberStatusClassificationTest {
         assertEquals(0, DashboardStatusClassifier.countFiltered(batch, matcher, DashboardStatusFilter.EXPIRING_SOON, advancedNow))
         assertEquals(2, DashboardStatusClassifier.countFiltered(batch, matcher, DashboardStatusFilter.RECENTLY_EXPIRED, advancedNow)) // u4, u3
         assertEquals(4, DashboardStatusClassifier.countFiltered(batch, matcher, DashboardStatusFilter.EXPIRED, advancedNow)) // u4, u5, u6, u3
+    }
+
+    @Test
+    fun testRealIspDatasetExactMatches() {
+        // Simulates the exact dataset verified against real EarthLink ISP:
+        // 43 Active users (39 regular active + 4 expiring soon), all online, 0 offline.
+        // 25 Expired users (1 recently expired within 7 days + 24 long expired).
+        // Total = 68 subscribers.
+        val subscribers = mutableListOf<UserListItem>()
+
+        // 39 Active users (various date representations, all connected/online)
+        for (i in 1..39) {
+            subscribers.add(
+                UserListItem(
+                    userIndexLower = 1000 + i,
+                    userIDLower = "active_user_$i",
+                    accountStatusLower = "Active",
+                    expirationDateLower = if (i % 2 == 0) dateOffset(15 * ONE_DAY) else null,
+                    onlineStatusLower = if (i <= 6) "Online" else null // 6 had explicit "Online", 33 had null
+                )
+            )
+        }
+
+        // 4 Expiring Soon active users (expiring within 48h, all online)
+        for (i in 1..4) {
+            subscribers.add(
+                UserListItem(
+                    userIndexLower = 2000 + i,
+                    userIDLower = "expiring_soon_user_$i",
+                    accountStatusLower = "ExpiringSoon",
+                    expirationDateLower = dateOffset((i * 10) * ONE_HOUR), // <= 48h
+                    onlineStatusLower = "Online"
+                )
+            )
+        }
+
+        // 1 Recently Expired user (expired 3 days ago)
+        subscribers.add(
+            UserListItem(
+                userIndexLower = 3001,
+                userIDLower = "recently_expired_user",
+                accountStatusLower = "Expired",
+                expirationDateLower = dateOffset(-3 * ONE_DAY),
+                onlineStatusLower = "Offline"
+            )
+        )
+
+        // 24 Older Expired users (expired > 7 days ago)
+        for (i in 2..25) {
+            subscribers.add(
+                UserListItem(
+                    userIndexLower = 3000 + i,
+                    userIDLower = "expired_user_$i",
+                    accountStatusLower = "Expired",
+                    expirationDateLower = dateOffset((-10 - i) * ONE_DAY),
+                    onlineStatusLower = "Offline"
+                )
+            )
+        }
+
+        val matcher = LocalAccountMatcher(emptyList<LocalAccount>())
+
+        // Exact match against real EarthLink ISP counts:
+        assertEquals(43, DashboardStatusClassifier.countFiltered(subscribers, matcher, DashboardStatusFilter.ACTIVE, fixedNow))
+        assertEquals(43, DashboardStatusClassifier.countFiltered(subscribers, matcher, DashboardStatusFilter.ONLINE, fixedNow))
+        assertEquals(0, DashboardStatusClassifier.countFiltered(subscribers, matcher, DashboardStatusFilter.OFFLINE, fixedNow))
+        assertEquals(4, DashboardStatusClassifier.countFiltered(subscribers, matcher, DashboardStatusFilter.EXPIRING_SOON, fixedNow))
+        assertEquals(1, DashboardStatusClassifier.countFiltered(subscribers, matcher, DashboardStatusFilter.RECENTLY_EXPIRED, fixedNow))
+        assertEquals(25, DashboardStatusClassifier.countFiltered(subscribers, matcher, DashboardStatusFilter.EXPIRED, fixedNow))
     }
 }

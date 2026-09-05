@@ -76,7 +76,11 @@ data class UserListItem(
     @Json(name = "DisplayName") val displayNameUpper: String? = null,
     @Json(name = "AccountName") val accountNameUpper: String? = null,
     @Json(name = "onlineStatus") val onlineStatusLower: String? = null,
-    @Json(name = "OnlineStatus") val onlineStatusUpper: String? = null
+    @Json(name = "OnlineStatus") val onlineStatusUpper: String? = null,
+    @Json(name = "userActive") val userActiveLower: Boolean? = null,
+    @Json(name = "UserActive") val userActiveUpper: Boolean? = null,
+    @Json(name = "userActiveManage") val userActiveManageLower: Boolean? = null,
+    @Json(name = "UserActiveManage") val userActiveManageUpper: Boolean? = null
 ) {
     val userIndex: Int get() = userIndexLower ?: userIndexUpper ?: 0
     val userID: String get() = userIDLower ?: userIDUpper ?: userIdLowerCamel ?: userIdUpperCamel ?: ""
@@ -90,6 +94,8 @@ data class UserListItem(
     val displayName: String? get() = displayNameLower ?: displayNameUpper
     val packageName: String? get() = accountNameLower ?: accountNameUpper
     val onlineStatus: String? get() = onlineStatusLower ?: onlineStatusUpper
+    val userActive: Boolean? get() = userActiveLower ?: userActiveUpper
+    val userActiveManage: Boolean? get() = userActiveManageLower ?: userActiveManageUpper
 }
 
 @JsonClass(generateAdapter = true)
