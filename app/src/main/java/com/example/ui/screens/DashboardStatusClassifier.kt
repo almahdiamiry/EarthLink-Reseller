@@ -117,14 +117,24 @@ object DashboardStatusClassifier {
             DashboardStatusFilter.ONLINE -> isUserOnline(user, matchingAccount, nowMs)
             DashboardStatusFilter.OFFLINE -> isUserOffline(user, matchingAccount, nowMs)
             DashboardStatusFilter.EXPIRING_SOON -> {
-                if (!active || expired) {
+                val statusClean = user.accountStatus?.trim()?.lowercase(Locale.US) ?: ""
+                val isExplicitlyInactive = statusClean in setOf(
+                    "suspendedbyagent", "suspended", "expired", "منتهي",
+                    "recentlyexpired", "inactive", "disabled", "blocked"
+                ) || user.userActive == false || user.userActiveManage == false || user.isBlocked == true
+
+                if (isExplicitlyInactive) {
                     false
                 } else if (expTimestamp != null) {
-                    val remainingMs = expTimestamp - nowMs
-                    remainingMs in 1..TWO_DAYS_MS
+                    if (expTimestamp <= nowMs) {
+                        false
+                    } else {
+                        val remainingMs = expTimestamp - nowMs
+                        remainingMs in 1..TWO_DAYS_MS || statusClean == "expiringsoon" || statusClean == "expiring"
+                    }
                 } else {
                     val daysLeft = parseActiveDaysLeft(user.activeDaysLeft)
-                    daysLeft != null && daysLeft > 0.0 && daysLeft <= 2.0
+                    (daysLeft != null && daysLeft in 0.0..2.0) || statusClean == "expiringsoon" || statusClean == "expiring"
                 }
             }
             DashboardStatusFilter.RECENTLY_EXPIRED -> {

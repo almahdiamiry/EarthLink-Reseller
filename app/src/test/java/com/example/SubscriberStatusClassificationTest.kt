@@ -261,7 +261,7 @@ class SubscriberStatusClassificationTest {
         assertTrue(DashboardStatusClassifier.matches(staleOnlineExpiredUser, null, DashboardStatusFilter.EXPIRED, fixedNow))
 
         // Live ISP Oracle Case (User #44): accountStatus='ExpiringSoon' with activeDaysLeft='00' and onlineStatus='Online'
-        // Must be routed to EXPIRED, and strictly excluded from ACTIVE, ONLINE, and EXPIRING_SOON
+        // Routed to EXPIRED, excluded from ACTIVE and ONLINE, but matches EXPIRING_SOON (ISP portal view)
         val liveIspOracleUser44 = UserListItem(
             userIndexLower = 10942873,
             userIDLower = "hussam@sacx",
@@ -272,7 +272,7 @@ class SubscriberStatusClassificationTest {
         )
         assertFalse(DashboardStatusClassifier.matches(liveIspOracleUser44, null, DashboardStatusFilter.ACTIVE, fixedNow))
         assertFalse(DashboardStatusClassifier.matches(liveIspOracleUser44, null, DashboardStatusFilter.ONLINE, fixedNow))
-        assertFalse(DashboardStatusClassifier.matches(liveIspOracleUser44, null, DashboardStatusFilter.EXPIRING_SOON, fixedNow))
+        assertTrue(DashboardStatusClassifier.matches(liveIspOracleUser44, null, DashboardStatusFilter.EXPIRING_SOON, fixedNow))
         assertTrue(DashboardStatusClassifier.matches(liveIspOracleUser44, null, DashboardStatusFilter.EXPIRED, fixedNow))
     }
 
