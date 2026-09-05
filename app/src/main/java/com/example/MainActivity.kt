@@ -154,7 +154,7 @@ fun OperatorMainScreen(authViewModel: AuthViewModel) {
                 )
 
                 NavigationBarItem(
-                    selected = (currentRoute == "dashboard" || currentRoute == "dashboard_status" || currentRoute == "search") && !showCreateSheet,
+                    selected = (currentRoute == "dashboard" || currentRoute == "dashboard_status" || currentRoute?.startsWith("status_subscribers") == true || currentRoute == "search") && !showCreateSheet,
                     onClick = {
                         focusManager.clearFocus()
                         keyboardController?.hide()
@@ -168,7 +168,7 @@ fun OperatorMainScreen(authViewModel: AuthViewModel) {
                         }
                     },
                     icon = { Icon(imageVector = Icons.Default.People, contentDescription = "Subscribers") },
-                    label = { Text(if (isAr) "المشتركين" else "Subscribers", fontSize = 11.sp, fontWeight = if ((currentRoute == "dashboard" || currentRoute == "dashboard_status" || currentRoute == "search") && !showCreateSheet) FontWeight.Bold else FontWeight.Normal) },
+                    label = { Text(if (isAr) "المشتركين" else "Subscribers", fontSize = 11.sp, fontWeight = if ((currentRoute == "dashboard" || currentRoute == "dashboard_status" || currentRoute?.startsWith("status_subscribers") == true || currentRoute == "search") && !showCreateSheet) FontWeight.Bold else FontWeight.Normal) },
                     colors = itemColors
                 )
                 NavigationBarItem(
@@ -241,8 +241,27 @@ fun OperatorMainScreen(authViewModel: AuthViewModel) {
                         DashboardStatusScreen(
                             viewModel = dashboardViewModel,
                             onBack = { navController.popBackStack() },
-                            onPlusClick = {
-                                showCreateSheet = true
+                            onCardClick = { filter ->
+                                navController.navigate("status_subscribers/${filter.key}")
+                            }
+                        )
+                    }
+                }
+                composable(
+                    route = "status_subscribers/{filterKey}",
+                    arguments = listOf(navArgument("filterKey") { type = NavType.StringType })
+                ) { backStackEntry ->
+                    val filterKey = backStackEntry.arguments?.getString("filterKey") ?: "active"
+                    BottomNavPadded {
+                        StatusSubscribersScreen(
+                            viewModel = dashboardViewModel,
+                            filterKey = filterKey,
+                            lang = currentLang,
+                            onBack = { navController.popBackStack() },
+                            onUserClick = { userItem ->
+                                searchViewModel.clearErrorAndSuccess()
+                                searchViewModel.prepareUserDetail(userItem.userIndex, userItem)
+                                navController.navigate("user_detail/${userItem.userIndex}?userId=${userItem.userIDLower}")
                             }
                         )
                     }

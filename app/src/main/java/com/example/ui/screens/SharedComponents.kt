@@ -1052,12 +1052,16 @@ fun StatGridCard(
     value: String,
     icon: ImageVector,
     iconBg: Color,
-    iconColor: Color
+    iconColor: Color,
+    onClick: (() -> Unit)? = null
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .height(96.dp),
+            .height(96.dp)
+            .then(
+                if (onClick != null) Modifier.clickable { onClick() } else Modifier
+            ),
         color = Color(0xFF141922),
         shape = RoundedCornerShape(14.dp),
         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
