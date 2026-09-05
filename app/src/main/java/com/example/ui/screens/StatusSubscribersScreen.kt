@@ -52,6 +52,7 @@ fun StatusSubscribersScreen(
     val subscribers by viewModel.subscribersList.collectAsStateWithLifecycle()
     val localAccounts by viewModel.localAccounts.collectAsStateWithLifecycle(emptyList())
     val localAccountMatcher = remember(localAccounts) { LocalAccountMatcher(localAccounts) }
+    val nowMs = remember { System.currentTimeMillis() }
 
     var isSearchActive by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
@@ -59,12 +60,16 @@ fun StatusSubscribersScreen(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
-    val effectiveSubscribers = remember(subscribers, localAccounts, localAccountMatcher) {
-        DashboardStatusClassifier.getEffectiveSubscribers(subscribers, localAccounts, localAccountMatcher)
+    // Authoritative population: current ISP subscribers only (excluding any history-only accounts)
+    val ispSubscribers = remember(subscribers, localAccountMatcher) {
+        subscribers.filter { sub ->
+            val match = localAccountMatcher.findMatchingByUsername(sub.userID) ?: localAccountMatcher.findMatching(sub)
+            match?.isHistoryOnlySubscriber != true
+        }
     }
 
-    val categorySubscribers = remember(effectiveSubscribers, localAccountMatcher, filter) {
-        DashboardStatusClassifier.filterSubscribers(effectiveSubscribers, localAccountMatcher, filter)
+    val categorySubscribers = remember(ispSubscribers, localAccountMatcher, filter, nowMs) {
+        DashboardStatusClassifier.filterSubscribers(ispSubscribers, localAccountMatcher, filter, nowMs)
     }
 
     val displayList = remember(categorySubscribers, isSearchActive, searchQuery) {

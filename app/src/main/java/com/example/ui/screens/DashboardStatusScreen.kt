@@ -31,28 +31,33 @@ fun DashboardStatusScreen(
     val subscribers by viewModel.subscribersList.collectAsStateWithLifecycle()
     val localAccounts by viewModel.localAccounts.collectAsStateWithLifecycle(emptyList())
     val localAccountMatcher = remember(localAccounts) { LocalAccountMatcher(localAccounts) }
+    val nowMs = remember { System.currentTimeMillis() }
 
-    val effectiveSubscribers = remember(subscribers, localAccounts, localAccountMatcher) {
-        DashboardStatusClassifier.getEffectiveSubscribers(subscribers, localAccounts, localAccountMatcher)
+    // Authoritative population: current ISP subscribers only (excluding any history-only accounts)
+    val ispSubscribers = remember(subscribers, localAccountMatcher) {
+        subscribers.filter { sub ->
+            val match = localAccountMatcher.findMatchingByUsername(sub.userID) ?: localAccountMatcher.findMatching(sub)
+            match?.isHistoryOnlySubscriber != true
+        }
     }
 
-    val activeCount = remember(effectiveSubscribers, localAccountMatcher) {
-        DashboardStatusClassifier.countFiltered(effectiveSubscribers, localAccountMatcher, DashboardStatusFilter.ACTIVE)
+    val activeCount = remember(ispSubscribers, localAccountMatcher, nowMs) {
+        DashboardStatusClassifier.countFiltered(ispSubscribers, localAccountMatcher, DashboardStatusFilter.ACTIVE, nowMs)
     }
-    val onlineCount = remember(effectiveSubscribers, localAccountMatcher) {
-        DashboardStatusClassifier.countFiltered(effectiveSubscribers, localAccountMatcher, DashboardStatusFilter.ONLINE)
+    val onlineCount = remember(ispSubscribers, localAccountMatcher, nowMs) {
+        DashboardStatusClassifier.countFiltered(ispSubscribers, localAccountMatcher, DashboardStatusFilter.ONLINE, nowMs)
     }
-    val offlineCount = remember(effectiveSubscribers, localAccountMatcher) {
-        DashboardStatusClassifier.countFiltered(effectiveSubscribers, localAccountMatcher, DashboardStatusFilter.OFFLINE)
+    val offlineCount = remember(ispSubscribers, localAccountMatcher, nowMs) {
+        DashboardStatusClassifier.countFiltered(ispSubscribers, localAccountMatcher, DashboardStatusFilter.OFFLINE, nowMs)
     }
-    val expiringSoonCount = remember(effectiveSubscribers, localAccountMatcher) {
-        DashboardStatusClassifier.countFiltered(effectiveSubscribers, localAccountMatcher, DashboardStatusFilter.EXPIRING_SOON)
+    val expiringSoonCount = remember(ispSubscribers, localAccountMatcher, nowMs) {
+        DashboardStatusClassifier.countFiltered(ispSubscribers, localAccountMatcher, DashboardStatusFilter.EXPIRING_SOON, nowMs)
     }
-    val recentlyExpiredCount = remember(effectiveSubscribers, localAccountMatcher) {
-        DashboardStatusClassifier.countFiltered(effectiveSubscribers, localAccountMatcher, DashboardStatusFilter.RECENTLY_EXPIRED)
+    val recentlyExpiredCount = remember(ispSubscribers, localAccountMatcher, nowMs) {
+        DashboardStatusClassifier.countFiltered(ispSubscribers, localAccountMatcher, DashboardStatusFilter.RECENTLY_EXPIRED, nowMs)
     }
-    val expiredCount = remember(effectiveSubscribers, localAccountMatcher) {
-        DashboardStatusClassifier.countFiltered(effectiveSubscribers, localAccountMatcher, DashboardStatusFilter.EXPIRED)
+    val expiredCount = remember(ispSubscribers, localAccountMatcher, nowMs) {
+        DashboardStatusClassifier.countFiltered(ispSubscribers, localAccountMatcher, DashboardStatusFilter.EXPIRED, nowMs)
     }
 
     val formattedBalance = formatIqd(balance)
