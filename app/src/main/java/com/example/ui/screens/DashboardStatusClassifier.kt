@@ -40,8 +40,9 @@ object DashboardStatusClassifier {
             return true
         }
         if (user.userActive == false || user.userActiveManage == false || user.isBlocked == true) return true
-        if (statusClean == "active" || statusClean == "فعال" || statusClean == "نشط") return false
         val expTimestamp = getExpirationTimestamp(user, matchingAccount)
+        if (expTimestamp != null && expTimestamp <= nowMs) return true
+        if (statusClean == "active" || statusClean == "فعال" || statusClean == "نشط") return false
         return expTimestamp != null && expTimestamp <= nowMs
     }
 
@@ -57,11 +58,14 @@ object DashboardStatusClassifier {
         if (user.userActive == false || user.userActiveManage == false || user.isBlocked == true) {
             return false
         }
+        val expTimestamp = getExpirationTimestamp(user, matchingAccount)
+        if (expTimestamp != null && expTimestamp <= nowMs) {
+            return false
+        }
         if (statusClean == "active" || statusClean == "فعال" || statusClean == "نشط") {
             return true
         }
         if (statusClean == "expiringsoon" || statusClean == "expiring") {
-            val expTimestamp = getExpirationTimestamp(user, matchingAccount)
             return expTimestamp == null || expTimestamp > nowMs
         }
         return false

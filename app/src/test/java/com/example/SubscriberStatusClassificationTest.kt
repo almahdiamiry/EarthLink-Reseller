@@ -122,9 +122,9 @@ class SubscriberStatusClassificationTest {
         assertTrue(DashboardStatusClassifier.matches(expiringSoonActive, null, DashboardStatusFilter.ACTIVE, fixedNow))
         assertTrue(DashboardStatusClassifier.matches(activeWithManageFlag, null, DashboardStatusFilter.ACTIVE, fixedNow))
 
-        // Canonical active status governs even if expiration date string is past (ISP source of truth):
-        assertTrue(DashboardStatusClassifier.matches(activeStatusDateExpired, null, DashboardStatusFilter.ACTIVE, fixedNow))
-        assertFalse(DashboardStatusClassifier.matches(activeStatusDateExpired, null, DashboardStatusFilter.EXPIRED, fixedNow))
+        // Subscriber whose expiration date has passed is classified as EXPIRED, not ACTIVE, even if string accountStatus is "Active"
+        assertFalse(DashboardStatusClassifier.matches(activeStatusDateExpired, null, DashboardStatusFilter.ACTIVE, fixedNow))
+        assertTrue(DashboardStatusClassifier.matches(activeStatusDateExpired, null, DashboardStatusFilter.EXPIRED, fixedNow))
 
         // 2. Inactive / suspended / deactivated subscribers do NOT match ACTIVE
         assertFalse(DashboardStatusClassifier.matches(suspendedByAgent, null, DashboardStatusFilter.ACTIVE, fixedNow))
@@ -224,6 +224,18 @@ class SubscriberStatusClassificationTest {
         assertFalse(DashboardStatusClassifier.matches(expiredOffline, null, DashboardStatusFilter.OFFLINE, fixedNow))
         assertFalse(DashboardStatusClassifier.matches(suspendedOffline, null, DashboardStatusFilter.ONLINE, fixedNow))
         assertFalse(DashboardStatusClassifier.matches(expiredOffline, null, DashboardStatusFilter.ONLINE, fixedNow))
+
+        // Stale online session on a subscriber whose expiration date has passed must NOT match ACTIVE or ONLINE
+        val staleOnlineExpiredUser = UserListItem(
+            userIndexLower = 208,
+            userIDLower = "u_stale_online_expired",
+            accountStatusLower = "Active",
+            expirationDateLower = dateOffset(-1 * ONE_DAY),
+            onlineStatusLower = "Online"
+        )
+        assertFalse(DashboardStatusClassifier.matches(staleOnlineExpiredUser, null, DashboardStatusFilter.ACTIVE, fixedNow))
+        assertFalse(DashboardStatusClassifier.matches(staleOnlineExpiredUser, null, DashboardStatusFilter.ONLINE, fixedNow))
+        assertTrue(DashboardStatusClassifier.matches(staleOnlineExpiredUser, null, DashboardStatusFilter.EXPIRED, fixedNow))
     }
 
     @Test
