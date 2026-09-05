@@ -40,7 +40,6 @@ object DashboardStatusClassifier {
             return true
         }
         if (user.userActive == false || user.userActiveManage == false || user.isBlocked == true) return true
-        if (user.userActiveManage == true) return false
         if (statusClean == "active" || statusClean == "فعال" || statusClean == "نشط") return false
         val expTimestamp = getExpirationTimestamp(user, matchingAccount)
         return expTimestamp != null && expTimestamp <= nowMs
@@ -65,10 +64,6 @@ object DashboardStatusClassifier {
             val expTimestamp = getExpirationTimestamp(user, matchingAccount)
             return expTimestamp == null || expTimestamp > nowMs
         }
-        if (user.userActiveManage == true) {
-            val expTimestamp = getExpirationTimestamp(user, matchingAccount)
-            return expTimestamp == null || expTimestamp > nowMs
-        }
         return false
     }
 
@@ -76,13 +71,13 @@ object DashboardStatusClassifier {
         if (!isUserActive(user, matchingAccount, nowMs)) return false
         val onlineClean = user.onlineStatus?.trim()?.lowercase(Locale.US) ?: ""
         val statusClean = user.accountStatus?.trim()?.lowercase(Locale.US) ?: ""
-        return onlineClean.contains("offline") || statusClean == "offline"
+        return onlineClean == "offline" || statusClean == "offline"
     }
 
     fun isUserOnline(user: UserListItem, matchingAccount: LocalAccount? = null, nowMs: Long = System.currentTimeMillis()): Boolean {
         if (!isUserActive(user, matchingAccount, nowMs)) return false
         val onlineClean = user.onlineStatus?.trim()?.lowercase(Locale.US) ?: ""
-        return onlineClean.startsWith("online")
+        return onlineClean == "online"
     }
 
     fun matches(

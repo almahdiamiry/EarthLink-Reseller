@@ -81,20 +81,28 @@ class SubscriberStatusClassificationTest {
             expirationDateLower = dateOffset(-1 * ONE_DAY),
             onlineStatusLower = "Offline"
         )
-        val activeManageFlag = UserListItem(
+        val activeWithManageFlag = UserListItem(
             userIndexLower = 107,
-            userIDLower = "user_active_manage_bool",
+            userIDLower = "user_active_with_manage_bool",
+            accountStatusLower = "Active",
+            userActiveManageLower = true,
+            onlineStatusLower = "Online"
+        )
+        val unclassifiedManageOnly = UserListItem(
+            userIndexLower = 108,
+            userIDLower = "user_unclassified_manage_only",
+            accountStatusLower = null,
             userActiveManageLower = true,
             onlineStatusLower = "Online"
         )
         val deactivatedManageFlag = UserListItem(
-            userIndexLower = 108,
+            userIndexLower = 109,
             userIDLower = "user_deactivated_manage_bool",
             userActiveManageLower = false,
             onlineStatusLower = "Offline"
         )
         val unclassifiedUserActiveOnly = UserListItem(
-            userIndexLower = 109,
+            userIndexLower = 110,
             userIDLower = "user_unclassified_user_active_true",
             userActiveLower = true,
             accountStatusLower = null,
@@ -102,7 +110,7 @@ class SubscriberStatusClassificationTest {
             onlineStatusLower = null
         )
         val unclassifiedDateExpired = UserListItem(
-            userIndexLower = 110,
+            userIndexLower = 111,
             userIDLower = "user_unclassified_date_expired",
             accountStatusLower = null,
             expirationDateLower = dateOffset(-1 * ONE_DAY),
@@ -112,7 +120,7 @@ class SubscriberStatusClassificationTest {
         // 1. Canonical active subscribers match ACTIVE
         assertTrue(DashboardStatusClassifier.matches(activeCanonical, null, DashboardStatusFilter.ACTIVE, fixedNow))
         assertTrue(DashboardStatusClassifier.matches(expiringSoonActive, null, DashboardStatusFilter.ACTIVE, fixedNow))
-        assertTrue(DashboardStatusClassifier.matches(activeManageFlag, null, DashboardStatusFilter.ACTIVE, fixedNow))
+        assertTrue(DashboardStatusClassifier.matches(activeWithManageFlag, null, DashboardStatusFilter.ACTIVE, fixedNow))
 
         // Canonical active status governs even if expiration date string is past (ISP source of truth):
         assertTrue(DashboardStatusClassifier.matches(activeStatusDateExpired, null, DashboardStatusFilter.ACTIVE, fixedNow))
@@ -124,12 +132,17 @@ class SubscriberStatusClassificationTest {
         assertFalse(DashboardStatusClassifier.matches(expiredStatus, null, DashboardStatusFilter.ACTIVE, fixedNow))
         assertFalse(DashboardStatusClassifier.matches(deactivatedManageFlag, null, DashboardStatusFilter.ACTIVE, fixedNow))
 
-        // 3. User with only EarthLink default userActive=true (no active status/manage toggle) is unclassified
+        // 3. Reseller toggle userActiveManage=true alone is an administrative switch, not an active subscription
+        assertFalse(DashboardStatusClassifier.matches(unclassifiedManageOnly, null, DashboardStatusFilter.ACTIVE, fixedNow))
+        assertFalse(DashboardStatusClassifier.matches(unclassifiedManageOnly, null, DashboardStatusFilter.ONLINE, fixedNow))
+        assertFalse(DashboardStatusClassifier.matches(unclassifiedManageOnly, null, DashboardStatusFilter.EXPIRED, fixedNow))
+
+        // 4. User with only EarthLink default userActive=true (no active status) is unclassified
         assertFalse(DashboardStatusClassifier.matches(unclassifiedUserActiveOnly, null, DashboardStatusFilter.ACTIVE, fixedNow))
         assertFalse(DashboardStatusClassifier.matches(unclassifiedUserActiveOnly, null, DashboardStatusFilter.ONLINE, fixedNow))
         assertFalse(DashboardStatusClassifier.matches(unclassifiedUserActiveOnly, null, DashboardStatusFilter.EXPIRED, fixedNow))
 
-        // 4. Unclassified subscriber with expired date matches EXPIRED, not ACTIVE
+        // 5. Unclassified subscriber with expired date matches EXPIRED, not ACTIVE
         assertFalse(DashboardStatusClassifier.matches(unclassifiedDateExpired, null, DashboardStatusFilter.ACTIVE, fixedNow))
         assertTrue(DashboardStatusClassifier.matches(unclassifiedDateExpired, null, DashboardStatusFilter.EXPIRED, fixedNow))
     }
@@ -186,11 +199,18 @@ class SubscriberStatusClassificationTest {
             onlineStatusLower = "Offline"
         )
 
-        // Canonical Online values match ONLINE
+        // Exact "Online" value matches ONLINE
         assertTrue(DashboardStatusClassifier.matches(onlineExact, null, DashboardStatusFilter.ONLINE, fixedNow))
-        assertTrue(DashboardStatusClassifier.matches(onlineNoNet, null, DashboardStatusFilter.ONLINE, fixedNow))
-        assertTrue(DashboardStatusClassifier.matches(onlineNoNAS, null, DashboardStatusFilter.ONLINE, fixedNow))
         assertFalse(DashboardStatusClassifier.matches(activeOffline, null, DashboardStatusFilter.ONLINE, fixedNow))
+
+        // Discrete network states (OnlineNoNet, OnlineNoNAS) indicate gateway presence without active internet; NOT ONLINE and NOT OFFLINE
+        assertFalse(DashboardStatusClassifier.matches(onlineNoNet, null, DashboardStatusFilter.ONLINE, fixedNow))
+        assertFalse(DashboardStatusClassifier.matches(onlineNoNet, null, DashboardStatusFilter.OFFLINE, fixedNow))
+        assertTrue(DashboardStatusClassifier.matches(onlineNoNet, null, DashboardStatusFilter.ACTIVE, fixedNow))
+
+        assertFalse(DashboardStatusClassifier.matches(onlineNoNAS, null, DashboardStatusFilter.ONLINE, fixedNow))
+        assertFalse(DashboardStatusClassifier.matches(onlineNoNAS, null, DashboardStatusFilter.OFFLINE, fixedNow))
+        assertTrue(DashboardStatusClassifier.matches(onlineNoNAS, null, DashboardStatusFilter.ACTIVE, fixedNow))
 
         // Active subscriber with null onlineStatus does NOT match ONLINE (requires actual connection) and does NOT match OFFLINE
         assertFalse(DashboardStatusClassifier.matches(activeNullOnlineStatus, null, DashboardStatusFilter.ONLINE, fixedNow))
@@ -385,26 +405,35 @@ class SubscriberStatusClassificationTest {
     @Test
     fun testRealIspDatasetExactMatches() {
         // Simulates the exact dataset verified against real EarthLink ISP:
-        // 43 Active users (39 regular active + 4 expiring soon), all online, 0 offline.
+        // 43 Active users (39 regular active + 4 expiring soon):
+        //    - 30 Online (26 regular + 4 expiring soon)
+        //    - 1 OnlineNoNet (connected to gateway without internet, not Online for dashboard)
+        //    - 12 active users without connection status (null)
+        //    - 0 Offline
         // 25 Expired users (1 recently expired within 7 days + 24 long expired).
-        // 1 Unclassified user with EarthLink default userActive=true but no active status.
+        // 1 Unclassified user with EarthLink default userActive=true and userActiveManage=true but no active accountStatus.
         // Total = 69 subscribers.
         val subscribers = mutableListOf<UserListItem>()
 
-        // 39 Active users (various date representations, all connected/online)
+        // 39 Active users (26 Online, 1 OnlineNoNet, 12 null)
         for (i in 1..39) {
+            val online = when {
+                i <= 26 -> "Online"
+                i == 27 -> "OnlineNoNet"
+                else -> null
+            }
             subscribers.add(
                 UserListItem(
                     userIndexLower = 1000 + i,
                     userIDLower = "active_user_$i",
                     accountStatusLower = "Active",
                     expirationDateLower = if (i % 2 == 0) dateOffset(15 * ONE_DAY) else null,
-                    onlineStatusLower = "Online"
+                    onlineStatusLower = online
                 )
             )
         }
 
-        // 4 Expiring Soon active users (expiring within 48h, all online)
+        // 4 Expiring Soon active users (expiring within 48h, all online -> 26 + 4 = 30 Online total)
         for (i in 1..4) {
             subscribers.add(
                 UserListItem(
@@ -441,16 +470,16 @@ class SubscriberStatusClassificationTest {
             )
         }
 
-        // 69th unclassified subscriber: in EarthLink API response has userActive=true by default,
-        // but no active accountStatus and no userActiveManage=true toggle, null onlineStatus.
+        // 69th unclassified subscriber: in EarthLink API response has userActive=true and userActiveManage=true
+        // by default (reseller toggle not suspended), but no active accountStatus and null onlineStatus.
         // Must NOT match ACTIVE, ONLINE, or EXPIRED.
         subscribers.add(
             UserListItem(
                 userIndexLower = 9999,
                 userIDLower = "unclassified_isp_subscriber_69",
                 userActiveLower = true,
+                userActiveManageLower = true,
                 accountStatusLower = null,
-                userActiveManageLower = null,
                 onlineStatusLower = null
             )
         )
@@ -461,7 +490,7 @@ class SubscriberStatusClassificationTest {
 
         // Exact match against real EarthLink ISP counts:
         assertEquals(43, DashboardStatusClassifier.countFiltered(subscribers, matcher, DashboardStatusFilter.ACTIVE, fixedNow))
-        assertEquals(43, DashboardStatusClassifier.countFiltered(subscribers, matcher, DashboardStatusFilter.ONLINE, fixedNow))
+        assertEquals(30, DashboardStatusClassifier.countFiltered(subscribers, matcher, DashboardStatusFilter.ONLINE, fixedNow))
         assertEquals(0, DashboardStatusClassifier.countFiltered(subscribers, matcher, DashboardStatusFilter.OFFLINE, fixedNow))
         assertEquals(4, DashboardStatusClassifier.countFiltered(subscribers, matcher, DashboardStatusFilter.EXPIRING_SOON, fixedNow))
         assertEquals(1, DashboardStatusClassifier.countFiltered(subscribers, matcher, DashboardStatusFilter.RECENTLY_EXPIRED, fixedNow))
