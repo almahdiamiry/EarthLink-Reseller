@@ -119,7 +119,7 @@ fun SearchScreen(
                 modifier = Modifier.heightIn(min = 52.dp),
                 shape = RoundedCornerShape(8.dp)
             ) {
-                Icon(imageVector = Icons.Default.Search, contentDescription = "Search")
+                Icon(imageVector = Icons.Default.Search, contentDescription = if (lang == "ar") "بحث" else "Search")
             }
         }
 
