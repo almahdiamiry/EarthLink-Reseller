@@ -34,16 +34,30 @@ object DashboardStatusClassifier {
         return parseExpirationTimestamp(expStr)
     }
 
+    fun parseActiveDaysLeft(raw: Any?): Double? {
+        if (raw == null) return null
+        val str = raw.toString().trim()
+        if (str.isBlank() || str.equals("N/A", ignoreCase = true) || str.equals("none", ignoreCase = true)) return null
+        return str.toDoubleOrNull() ?: str.split(" ").firstOrNull()?.toDoubleOrNull()
+    }
+
     fun isUserExpired(user: UserListItem, matchingAccount: LocalAccount?, nowMs: Long): Boolean {
         val statusClean = user.accountStatus?.trim()?.lowercase(Locale.US) ?: ""
-        if (statusClean == "expired" || statusClean == "منتهي" || statusClean == "suspendedbyagent" || statusClean == "suspended") {
+        if (statusClean in setOf(
+                "expired", "منتهي", "suspendedbyagent", "suspended",
+                "recentlyexpired", "inactive", "disabled", "blocked"
+            )
+        ) {
             return true
         }
         if (user.userActive == false || user.userActiveManage == false || user.isBlocked == true) return true
         val expTimestamp = getExpirationTimestamp(user, matchingAccount)
         if (expTimestamp != null && expTimestamp <= nowMs) return true
+        val daysLeft = parseActiveDaysLeft(user.activeDaysLeft)
+        if (daysLeft != null && daysLeft <= 0.0) return true
         if (statusClean == "active" || statusClean == "فعال" || statusClean == "نشط") return false
-        return expTimestamp != null && expTimestamp <= nowMs
+        if (statusClean == "expiringsoon" || statusClean == "expiring") return false
+        return (expTimestamp != null && expTimestamp <= nowMs) || (daysLeft != null && daysLeft <= 0.0)
     }
 
     fun isUserActive(user: UserListItem, matchingAccount: LocalAccount? = null, nowMs: Long = System.currentTimeMillis()): Boolean {
@@ -62,13 +76,17 @@ object DashboardStatusClassifier {
         if (expTimestamp != null && expTimestamp <= nowMs) {
             return false
         }
+        val daysLeft = parseActiveDaysLeft(user.activeDaysLeft)
+        if (daysLeft != null && daysLeft <= 0.0) {
+            return false
+        }
         if (statusClean == "active" || statusClean == "فعال" || statusClean == "نشط") {
             return true
         }
         if (statusClean == "expiringsoon" || statusClean == "expiring") {
-            return expTimestamp == null || expTimestamp > nowMs
+            return (expTimestamp == null || expTimestamp > nowMs) && (daysLeft == null || daysLeft > 0.0)
         }
-        return false
+        return (expTimestamp != null && expTimestamp > nowMs) || (daysLeft != null && daysLeft > 0.0)
     }
 
     fun isUserOffline(user: UserListItem, matchingAccount: LocalAccount? = null, nowMs: Long = System.currentTimeMillis()): Boolean {
@@ -105,7 +123,7 @@ object DashboardStatusClassifier {
                     val remainingMs = expTimestamp - nowMs
                     remainingMs in 1..TWO_DAYS_MS
                 } else {
-                    val daysLeft = user.activeDaysLeft?.toString()?.toDoubleOrNull()
+                    val daysLeft = parseActiveDaysLeft(user.activeDaysLeft)
                     daysLeft != null && daysLeft > 0.0 && daysLeft <= 2.0
                 }
             }
