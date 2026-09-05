@@ -41,7 +41,16 @@ object DashboardStatusClassifier {
         return str.toDoubleOrNull() ?: str.split(" ").firstOrNull()?.toDoubleOrNull()
     }
 
+    fun isFreeAdminAccount(user: UserListItem): Boolean {
+        if (user.isFreeAccount == true) return true
+        val accName = (user.packageName ?: "").trim().lowercase(Locale.US)
+        if (accName == "free admin account") return true
+        val uid = user.userID.trim().lowercase(Locale.US)
+        return uid.startsWith("admin@") && user.activeDaysLeft == null && getExpirationTimestamp(user) == null
+    }
+
     fun isUserExpired(user: UserListItem, matchingAccount: LocalAccount?, nowMs: Long): Boolean {
+        if (isFreeAdminAccount(user)) return false
         val statusClean = user.accountStatus?.trim()?.lowercase(Locale.US) ?: ""
         if (statusClean in setOf(
                 "expired", "منتهي", "suspendedbyagent", "suspended",
@@ -65,6 +74,7 @@ object DashboardStatusClassifier {
     }
 
     fun isUserActive(user: UserListItem, matchingAccount: LocalAccount? = null, nowMs: Long = System.currentTimeMillis()): Boolean {
+        if (isFreeAdminAccount(user)) return false
         val statusClean = user.accountStatus?.trim()?.lowercase(Locale.US) ?: ""
         if (statusClean in setOf(
                 "suspendedbyagent", "suspended", "expired", "منتهي",
@@ -121,6 +131,7 @@ object DashboardStatusClassifier {
             DashboardStatusFilter.ONLINE -> isUserOnline(user, matchingAccount, nowMs)
             DashboardStatusFilter.OFFLINE -> isUserOffline(user, matchingAccount, nowMs)
             DashboardStatusFilter.EXPIRING_SOON -> {
+                if (isFreeAdminAccount(user)) return false
                 val statusClean = user.accountStatus?.trim()?.lowercase(Locale.US) ?: ""
                 val isExplicitlyInactive = statusClean in setOf(
                     "suspendedbyagent", "suspended", "expired", "منتهي",

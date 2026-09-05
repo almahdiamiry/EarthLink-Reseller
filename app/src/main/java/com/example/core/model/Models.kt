@@ -101,7 +101,9 @@ data class UserListItem(
     @Json(name = "userActiveManage") val userActiveManageLower: Any? = null,
     @Json(name = "UserActiveManage") val userActiveManageUpper: Any? = null,
     @Json(name = "isBlocked") val isBlockedLower: Any? = null,
-    @Json(name = "IsBlocked") val isBlockedUpper: Any? = null
+    @Json(name = "IsBlocked") val isBlockedUpper: Any? = null,
+    @Json(name = "isFreeAccount") val isFreeAccountLower: Any? = null,
+    @Json(name = "IsFreeAccount") val isFreeAccountUpper: Any? = null
 ) {
     val userIndex: Int get() = userIndexLower ?: userIndexUpper ?: 0
     val userID: String get() = userIDLower ?: userIDUpper ?: userIdLowerCamel ?: userIdUpperCamel ?: ""
@@ -118,6 +120,7 @@ data class UserListItem(
     val userActive: Boolean? get() = parseBoolLike(userActiveLower ?: userActiveUpper)
     val userActiveManage: Boolean? get() = parseBoolLike(userActiveManageLower ?: userActiveManageUpper)
     val isBlocked: Boolean? get() = parseBoolLike(isBlockedLower ?: isBlockedUpper)
+    val isFreeAccount: Boolean? get() = parseBoolLike(isFreeAccountLower ?: isFreeAccountUpper)
 }
 
 @JsonClass(generateAdapter = true)

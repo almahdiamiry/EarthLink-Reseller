@@ -168,6 +168,23 @@ class SubscriberStatusClassificationTest {
         )
         assertTrue(DashboardStatusClassifier.matches(activeNullDaysLeftFutureDate, null, DashboardStatusFilter.ACTIVE, fixedNow))
         assertFalse(DashboardStatusClassifier.matches(activeNullDaysLeftFutureDate, null, DashboardStatusFilter.EXPIRED, fixedNow))
+
+        // 8. Free Admin Account (admin@sacx / Free Admin Account / isFreeAccount=true) is an administrative tower account,
+        // strictly excluded from commercial subscriber dashboard metrics (Active, Online, Expired, Expiring Soon)
+        val freeAdminAccount = UserListItem(
+            userIndexLower = 9541377,
+            userIDLower = "admin@sacx",
+            accountStatusLower = "Active",
+            accountNameLower = "Free Admin Account",
+            isFreeAccountLower = true,
+            activeDaysLeftLower = "",
+            manualExpirationDateLower = "",
+            onlineStatusLower = "Online"
+        )
+        assertFalse(DashboardStatusClassifier.matches(freeAdminAccount, null, DashboardStatusFilter.ACTIVE, fixedNow))
+        assertFalse(DashboardStatusClassifier.matches(freeAdminAccount, null, DashboardStatusFilter.ONLINE, fixedNow))
+        assertFalse(DashboardStatusClassifier.matches(freeAdminAccount, null, DashboardStatusFilter.EXPIRING_SOON, fixedNow))
+        assertFalse(DashboardStatusClassifier.matches(freeAdminAccount, null, DashboardStatusFilter.EXPIRED, fixedNow))
     }
 
     @Test
