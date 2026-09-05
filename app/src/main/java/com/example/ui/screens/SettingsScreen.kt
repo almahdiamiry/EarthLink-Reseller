@@ -438,6 +438,7 @@ fun SettingsScreen(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    val backupDateFormatter = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US) }
                     backupsList.forEach { file ->
                         Surface(
                             shape = RoundedCornerShape(12.dp),
@@ -470,7 +471,7 @@ fun SettingsScreen(
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     Text(text = "${file.length() / 1024} KB", fontSize = 11.sp, color = Color.White.copy(alpha = 0.5f))
                                     Text(
-                                        text = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(file.lastModified())),
+                                        text = backupDateFormatter.format(Date(file.lastModified())),
                                         fontSize = 11.sp,
                                         color = Color.White.copy(alpha = 0.5f)
                                     )

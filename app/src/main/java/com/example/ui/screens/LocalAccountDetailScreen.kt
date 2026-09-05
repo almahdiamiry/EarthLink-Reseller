@@ -320,6 +320,7 @@ fun LocalAccountDetailScreen(
                 Text(text = "No prior ledger transactions for this record.", color = Color.Gray, fontSize = 13.sp)
             }
         } else {
+            val dateFormatter = remember { java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()) }
             LazyColumn(modifier = Modifier.fillMaxSize().weight(1f)) {
                 items(ledger, key = { it.id }) { item ->
                     Card(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
@@ -338,7 +339,7 @@ fun LocalAccountDetailScreen(
                                     Text(text = cleanNote, fontSize = 13.sp)
                                 }
                                 Text(
-                                    text = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(item.occurredAt)),
+                                    text = dateFormatter.format(java.util.Date(item.occurredAt)),
                                     color = Color.Gray,
                                     fontSize = 11.sp
                                 )

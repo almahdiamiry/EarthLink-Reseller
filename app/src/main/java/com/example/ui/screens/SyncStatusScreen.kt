@@ -167,6 +167,7 @@ fun SyncStatusScreen(
                 )
             }
         } else {
+            val logTimeFormatter = remember { java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()) }
             LazyColumn(modifier = Modifier.fillMaxSize().weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(logs, key = { it.id }) { log ->
                     Card(
@@ -183,7 +184,7 @@ fun SyncStatusScreen(
                                     fontSize = 13.sp
                                 )
                                 Text(
-                                    text = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(log.createdAt)),
+                                    text = logTimeFormatter.format(java.util.Date(log.createdAt)),
                                     color = Color.Gray,
                                     fontSize = 11.sp
                                 )
