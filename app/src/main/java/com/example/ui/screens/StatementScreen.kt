@@ -65,6 +65,11 @@ fun StatementScreen(
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
 
+    val context = LocalContext.current
+    val prefs = remember(context) { (context.applicationContext as? EarthlinkApp)?.preferenceManager }
+    val currentLang by (prefs?.languageFlow ?: kotlinx.coroutines.flow.flowOf("ar")).collectAsStateWithLifecycle(initialValue = "ar")
+    val isAr = currentLang == "ar"
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -82,7 +87,10 @@ fun StatementScreen(
                 Text(text = "Real-Time Reseller Billing Audit Log", fontSize = 12.sp, color = Color.Gray)
             }
             IconButton(onClick = { viewModel.loadStatement() }) {
-                Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh")
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = if (isAr) "تحديث" else "Refresh"
+                )
             }
         }
 

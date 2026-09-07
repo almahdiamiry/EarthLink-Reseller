@@ -315,6 +315,8 @@ fun LocalAccountDetailScreen(
         Spacer(modifier = Modifier.height(4.dp))
         Text(text = "Ledger Transaction feed", fontWeight = FontWeight.Bold, fontSize = 15.sp)
 
+        val dateFormatter = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
+
         if (ledger.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize().weight(1f), contentAlignment = Alignment.Center) {
                 Text(text = "No prior ledger transactions for this record.", color = Color.Gray, fontSize = 13.sp)
@@ -338,7 +340,7 @@ fun LocalAccountDetailScreen(
                                     Text(text = cleanNote, fontSize = 13.sp)
                                 }
                                 Text(
-                                    text = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(item.occurredAt)),
+                                    text = dateFormatter.format(java.util.Date(item.occurredAt)),
                                     color = Color.Gray,
                                     fontSize = 11.sp
                                 )
