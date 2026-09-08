@@ -71,6 +71,8 @@ fun SyncStatusScreen(
     val progress by viewModel.isSyncingProgress.collectAsStateWithLifecycle()
     val logs by viewModel.auditLogs.collectAsStateWithLifecycle()
 
+    val logTimeFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -183,7 +185,7 @@ fun SyncStatusScreen(
                                     fontSize = 13.sp
                                 )
                                 Text(
-                                    text = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(log.createdAt)),
+                                    text = logTimeFormat.format(java.util.Date(log.createdAt)),
                                     color = Color.Gray,
                                     fontSize = 11.sp
                                 )
