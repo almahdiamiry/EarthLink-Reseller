@@ -6,12 +6,13 @@ echo "=== Earthlink Reseller App — Machine-Enforced Production Gate ==="
 echo "================================================================="
 
 # 1. Verify Clean Environment & Required Commands
-if command -v gradle >/dev/null 2>&1; then
-    GRADLE_CMD="gradle"
-elif [ -f "./gradlew" ] && [ -x "./gradlew" ]; then
+if [ -f "./gradlew" ]; then
+    chmod +x ./gradlew 2>/dev/null || true
     GRADLE_CMD="./gradlew"
+elif command -v gradle >/dev/null 2>&1; then
+    GRADLE_CMD="gradle"
 else
-    echo "❌ FATAL: Neither 'gradle' nor executable './gradlew' command was found."
+    echo "❌ FATAL: Neither './gradlew' nor 'gradle' command was found."
     exit 1
 fi
 

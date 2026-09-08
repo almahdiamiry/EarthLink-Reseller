@@ -33,4 +33,3 @@ build_release.ps1
 !/evidence/ba1761ffa8b0cb62fb744e03aef429175831af7a/
 utower_data_c.tgz
 *.tgz
-.zvec-grep

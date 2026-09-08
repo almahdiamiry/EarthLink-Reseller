@@ -75,6 +75,8 @@ fun LocalAccountDetailScreen(
     val ledger by viewModel.ledgerEntries.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
 
+    val ledgerDateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
+
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
@@ -338,7 +340,7 @@ fun LocalAccountDetailScreen(
                                     Text(text = cleanNote, fontSize = 13.sp)
                                 }
                                 Text(
-                                    text = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(item.occurredAt)),
+                                    text = ledgerDateFormat.format(java.util.Date(item.occurredAt)),
                                     color = Color.Gray,
                                     fontSize = 11.sp
                                 )
