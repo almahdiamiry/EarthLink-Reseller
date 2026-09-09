@@ -1298,7 +1298,7 @@ fun EditLocalAccountDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = { showDeleteConfirm = true }) {
-                        Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red)
+                        Icon(imageVector = Icons.Default.Delete, contentDescription = if (isAr) "حذف" else "Delete", tint = Color.Red)
                     }
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
