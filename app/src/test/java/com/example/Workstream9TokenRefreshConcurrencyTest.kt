@@ -68,9 +68,15 @@ class Workstream9TokenRefreshConcurrencyTest {
     @Test
     fun productionAuthInterceptor_concurrentRequests_invokesRefreshOnceAndInjectsBearerToken() = runBlocking {
         val refreshExecutionCount = AtomicInteger(0)
+        val refreshStarted = CompletableDeferred<Unit>()
+        val releaseRefresh = CompletableDeferred<Unit>()
+        val allCallersReady = CompletableDeferred<Unit>()
+        val readyCount = AtomicInteger(0)
+
         networkClient.tokenRefresherForTest = {
             refreshExecutionCount.incrementAndGet()
-            Thread.sleep(30)
+            refreshStarted.complete(Unit)
+            runBlocking { releaseRefresh.await() }
             val token = "refreshed_token_live_999"
             prefManager.saveEarthlinkApiToken(token)
             token
@@ -86,9 +92,16 @@ class Workstream9TokenRefreshConcurrencyTest {
 
         val jobs = chains.map { chain ->
             launch(Dispatchers.Default) {
+                if (readyCount.incrementAndGet() == 10) {
+                    allCallersReady.complete(Unit)
+                }
+                allCallersReady.await()
                 networkClient.authInterceptor.intercept(chain)
             }
         }
+
+        refreshStarted.await()
+        releaseRefresh.complete(Unit)
         jobs.joinAll()
 
         assertEquals(
@@ -146,17 +159,27 @@ class Workstream9TokenRefreshConcurrencyTest {
         var cachedToken: String? = null
         val refreshExecutionCount = AtomicInteger(0)
         val acquiredTokens = ConcurrentLinkedQueue<String>()
+        val refreshStarted = CompletableDeferred<Unit>()
+        val releaseRefresh = CompletableDeferred<Unit>()
+        val allCallersReady = CompletableDeferred<Unit>()
+        val readyCount = AtomicInteger(0)
 
         val jobs = (1..10).map { threadId ->
             launch(Dispatchers.Default) {
+                if (readyCount.incrementAndGet() == 10) {
+                    allCallersReady.complete(Unit)
+                }
+                allCallersReady.await()
+
                 var apiToken = cachedToken
                 if (apiToken.isNullOrEmpty()) {
                     synchronized(tokenLock) {
                         apiToken = cachedToken
                         if (apiToken.isNullOrEmpty()) {
-                            Thread.sleep(25)
-                            val newToken = "refreshed_token_val_123"
                             refreshExecutionCount.incrementAndGet()
+                            refreshStarted.complete(Unit)
+                            runBlocking { releaseRefresh.await() }
+                            val newToken = "refreshed_token_val_123"
                             cachedToken = newToken
                             apiToken = newToken
                         }
@@ -166,6 +189,8 @@ class Workstream9TokenRefreshConcurrencyTest {
             }
         }
 
+        refreshStarted.await()
+        releaseRefresh.complete(Unit)
         jobs.joinAll()
 
         assertEquals("Exactly one token refresh must execute across concurrent callers", 1, refreshExecutionCount.get())
