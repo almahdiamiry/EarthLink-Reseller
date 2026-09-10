@@ -1111,6 +1111,8 @@ class LocalAccountRepositoryImpl(
                         packageName = account.packageName ?: existing.packageName,
                         currentPriceIqd = if (account.currentPriceIqd > 0.0) account.currentPriceIqd else existing.currentPriceIqd,
                         nanoIp = account.nanoIp ?: existing.nanoIp,
+                        towerName = account.towerName ?: existing.towerName,
+                        address = account.address ?: existing.address,
                         note = account.note ?: existing.note,
                         latitude = account.latitude ?: existing.latitude,
                         longitude = account.longitude ?: existing.longitude,
@@ -1342,17 +1344,37 @@ class LocalLedgerRepositoryImpl(
                         throw IllegalStateException("MISSING_PERSISTED_FINANCIAL_AMOUNT: Financial operation ${op.businessTransactionId} (${op.operationType}) missing valid positive persisted charge amount: ${op.amountIqd}")
                     }
 
+                    val payloadObj = try { JSONObject(op.payloadJson) } catch (_: Exception) { JSONObject() }
                     val localAcc = accountDao.getByIdOneShot(op.accountId)
                         ?: accountDao.findAccountByUsernameOrIdOneShot(op.accountId)
-                        ?: throw IllegalStateException("MISSING_LOCAL_FINANCIAL_TARGET: Cannot materialize financial position for missing local account ${op.accountId}")
+                        ?: if (op.operationType.equals("ACTIVATION", ignoreCase = true) && payloadObj.has("username") && payloadObj.optString("username").isNotBlank()) {
+                            val parsedFullName = payloadObj.optString("fullName").takeIf { it.isNotBlank() }
+                            val parsedPhone = payloadObj.optString("phone").takeIf { it.isNotBlank() }
+                            val shellAcc = LocalAccount(
+                                id = op.accountId,
+                                earthlinkUsername = op.accountId,
+                                displayName = parsedFullName ?: op.accountId,
+                                phone1 = parsedPhone,
+                                currentPriceIqd = op.amountIqd.toDouble(),
+                                debtIqd = 0.0
+                            )
+                            saveAccountInternal(shellAcc)
+                        } else {
+                            throw IllegalStateException("MISSING_LOCAL_FINANCIAL_TARGET: Cannot materialize financial position for missing local account ${op.accountId}")
+                        }
 
                     val operationPrice = op.amountIqd.toDouble()
+                    val isWasil = payloadObj.optBoolean("isWasil", false)
                     val existing = ledgerDao.getByIdOneShot(businessTransactionId)
                     if (existing != null) {
                         val isIdentical = existing.accountId == localAcc.id &&
                                 existing.typeRaw == "took" &&
                                 kotlin.math.abs(existing.amountIqd - operationPrice) < 0.0001
                         if (isIdentical) {
+                            if (isWasil) {
+                                val payId = "pay_$businessTransactionId"
+                                addPaymentInternal(localAcc.id, operationPrice, chargeNote, payId)
+                            }
                             pendingDao.updateStatus(businessTransactionId, "COMPLETED", System.currentTimeMillis(), null)
                             return@withTransaction existing
                         } else {
@@ -1369,6 +1391,10 @@ class LocalLedgerRepositoryImpl(
                     val accountWithPrice = localAcc.copy(currentPriceIqd = operationPrice)
                     val savedAcc = saveAccountInternal(accountWithPrice)
                     val chargeEntry = addDebtInternal(savedAcc.id, operationPrice, finalNote, businessTransactionId)
+                    if (isWasil) {
+                        val payId = "pay_$businessTransactionId"
+                        addPaymentInternal(savedAcc.id, operationPrice, finalNote, payId)
+                    }
                     pendingDao.updateStatus(businessTransactionId, "COMPLETED", System.currentTimeMillis(), null)
                     chargeEntry
                 } else {
@@ -2349,7 +2375,9 @@ class LocalLedgerRepositoryImpl(
 
                 val origType = com.example.core.ledger.TransactionTypeNormalizer.normalize(rootOriginal.typeRaw)
                 val origAmount = rootOriginal.amountIqd
-                require(intendedAmount >= 0.0) { "Intended amount must be non-negative." }
+                require(intendedAmount.isFinite() && intendedAmount >= 0.0 && intendedAmount % 250.0 == 0.0) {
+                    "Intended amount must be finite, non-negative, and a multiple of 250 IQD."
+                }
 
                 val allPriors = ledgerDao.getByCorrectsEntryId(rootOriginalId)
                 val priorCorrections = if (idempotencyKey != null) allPriors.filter { it.id != idempotencyKey } else allPriors

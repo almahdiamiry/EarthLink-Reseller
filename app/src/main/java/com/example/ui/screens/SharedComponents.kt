@@ -534,24 +534,27 @@ fun getRemainingTime(expirationDateStr: String?, activeDaysLeftStr: String? = nu
 
 class LocalAccountMatcher(localAccounts: List<LocalAccount>) {
     private val usernameMap: Map<String, LocalAccount>
-    private val nameMap: Map<String, LocalAccount>
+    private val uniqueNameMap: Map<String, LocalAccount>
 
     init {
         val byUsername = HashMap<String, LocalAccount>(localAccounts.size)
-        val byName = HashMap<String, LocalAccount>(localAccounts.size)
+        val nameCounts = HashMap<String, Int>(localAccounts.size)
+        val nameFirst = HashMap<String, LocalAccount>(localAccounts.size)
 
         for (acc in localAccounts) {
+            if (acc.isHistoryOnlySubscriber) continue
             val username = acc.earthlinkUsername?.trim()?.lowercase()
             if (!username.isNullOrBlank()) {
                 byUsername.putIfAbsent(username, acc)
             }
-            val displayName = acc.displayName?.trim()?.lowercase()
-            if (!displayName.isNullOrBlank()) {
-                byName.putIfAbsent(displayName, acc)
+            val displayName = acc.displayName.trim().lowercase()
+            if (displayName.isNotEmpty()) {
+                nameCounts[displayName] = (nameCounts[displayName] ?: 0) + 1
+                nameFirst.putIfAbsent(displayName, acc)
             }
         }
         usernameMap = byUsername
-        nameMap = byName
+        uniqueNameMap = nameFirst.filter { (name, _) -> nameCounts[name] == 1 }
     }
 
     fun findMatching(user: UserListItem): LocalAccount? {
@@ -560,17 +563,26 @@ class LocalAccountMatcher(localAccounts: List<LocalAccount>) {
             val matchedByUsername = usernameMap[uId]
             if (matchedByUsername != null) return matchedByUsername
         }
-        val dispName = user.displayName?.trim()?.lowercase()
-        if (!dispName.isNullOrEmpty()) {
-            val matchedByName = nameMap[dispName]
-            if (matchedByName != null) return matchedByName
+
+        val candidate = findUniqueCandidateByName(user.displayName)
+            ?: findUniqueCandidateByName(user.customerName)
+            ?: return null
+
+        val candidateUsername = candidate.earthlinkUsername?.trim()?.lowercase()
+        val hasConflictingUsername = !candidateUsername.isNullOrBlank() && uId.isNotEmpty() && candidateUsername != uId
+        val isHistoryOnly = candidate.isHistoryOnlySubscriber
+
+        if (hasConflictingUsername || isHistoryOnly) {
+            return null
         }
-        val custName = user.customerName?.trim()?.lowercase()
-        if (!custName.isNullOrEmpty()) {
-            val matchedByCustName = nameMap[custName]
-            if (matchedByCustName != null) return matchedByCustName
-        }
-        return null
+
+        return candidate
+    }
+
+    private fun findUniqueCandidateByName(name: String?): LocalAccount? {
+        val clean = name?.trim()?.lowercase() ?: return null
+        if (clean.isEmpty()) return null
+        return uniqueNameMap[clean]
     }
 
     fun findMatchingByUsername(username: String): LocalAccount? {
@@ -1249,11 +1261,11 @@ fun EditLocalAccountDialog(
 
     if (showDeleteConfirm) {
         ConfirmationDialog(
-            title = if (isAr) "تأكيد حذف المشترك نهائياً" else "Confirm Permanent Account Deletion",
+            title = if (isAr) "تأكيد أرشفة المشترك" else "Confirm Archive Subscriber",
             message = if (isAr)
-                "هل أنت تأكد من رغبتك في حذف الحساب ${account.displayName}؟ سيتم حذف هذا المشترك وجميع سجلاته المالية نهائياً من هذا الجهاز ومن السيرفر (Firestore) ولا يمكن التراجع عن هذا الإجراء."
+                "هل أنت متأكد من رغبتك في إلغاء تفعيل وأرشفة المشترك ${account.displayName}؟ سيتم إخفاء هذا الحساب من القوائم النشطة مع الحفاظ الكامل على جميع سجلاته وقيوده المالية التاريخية."
             else
-                "Are you absolutely sure you want to permanently delete ${account.displayName}? This will permanently wipe this account and all its financial transaction history from both this device and the cloud database (Firestore). This action cannot be undone.",
+                "Are you sure you want to deactivate and archive subscriber ${account.displayName}? This account will be hidden from active lists while permanently preserving all historical financial records.",
             needsPasswordField = false,
             onCancel = { showDeleteConfirm = false },
             onConfirm = {
@@ -1279,7 +1291,7 @@ fun EditLocalAccountDialog(
                 HorizontalDivider()
 
                 OutlinedTextField(value = dispName, onValueChange = { dispName = it }, label = { Text("Customer Display Name") }, singleLine = true)
-                OutlinedTextField(value = userlink, onValueChange = { userlink = it }, label = { Text("Earthlink Username Mapping") }, singleLine = true)
+                OutlinedTextField(value = userlink, onValueChange = {}, readOnly = true, enabled = false, label = { Text("Earthlink Username (ISP Authority)") }, singleLine = true)
                 OutlinedTextField(value = p1, onValueChange = { p1 = it }, label = { Text("Primary Phone Number") }, singleLine = true)
                 OutlinedTextField(value = p2, onValueChange = { p2 = it }, label = { Text("Backup Phone Number") }, singleLine = true)
                 OutlinedTextField(value = pkg, onValueChange = { pkg = it }, label = { Text("Package Name Type") }, singleLine = true)
@@ -1309,13 +1321,13 @@ fun EditLocalAccountDialog(
                             onClick = {
                                 val editedObj = account.copy(
                                     displayName = dispName,
-                                    earthlinkUsername = if (userlink.isEmpty()) null else userlink,
+                                    earthlinkUsername = account.earthlinkUsername,
                                     phone1 = if (p1.isEmpty()) null else p1,
                                     phone2 = if (p2.isEmpty()) null else p2,
                                     packageName = if (pkg.isEmpty()) null else pkg,
                                     currentPriceIqd = if (price.isBlank()) account.currentPriceIqd else (com.example.core.ledger.MoneyParser.parseSubscriptionPriceIqd(price)?.toDouble() ?: account.currentPriceIqd),
                                     debtIqd = if (debtLimit.isBlank()) account.debtIqd else (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(debtLimit)?.toDouble() ?: account.debtIqd),
-                                    loanIqd = if (debtLimit.isBlank()) account.debtIqd else (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(debtLimit)?.toDouble() ?: account.debtIqd),
+                                    loanIqd = account.loanIqd,
                                     advanceIqd = if (advanceBalance.isBlank()) account.advanceIqd else (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(advanceBalance)?.toDouble() ?: account.advanceIqd),
                                     towerName = if (tower.isEmpty()) null else tower,
                                     address = if (addr.isEmpty()) null else addr,

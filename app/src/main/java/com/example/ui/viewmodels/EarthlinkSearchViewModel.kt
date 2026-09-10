@@ -725,7 +725,7 @@ class EarthlinkSearchViewModel(
                         accountId = userId,
                         operationType = "REFILL",
                         amountIqd = exactAmountIqd,
-                        payloadJson = "{\"userId\":\"$userId\",\"price\":$authoritativePrice,\"note\":\"$finalNote\"}",
+                        payloadJson = "{\"userId\":\"$userId\",\"price\":$authoritativePrice,\"note\":\"$finalNote\",\"isWasil\":$isWasil}",
                         status = "PENDING",
                         dispatchClaimCount = 0
                     )
