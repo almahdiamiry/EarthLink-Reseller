@@ -1377,9 +1377,9 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                 usePlatformDefaultWidth = false
             )
         ) {
-            val formatLedgerDate: (Long) -> String = { timestamp ->
-                val sdf = java.text.SimpleDateFormat("yyyy/MM/dd • h:mm a", java.util.Locale.US)
-                sdf.format(java.util.Date(timestamp))
+            val ledgerSdf = remember { java.text.SimpleDateFormat("yyyy/MM/dd • h:mm a", java.util.Locale.US) }
+            val formatLedgerDate: (Long) -> String = remember(ledgerSdf) {
+                { timestamp -> ledgerSdf.format(java.util.Date(timestamp)) }
             }
             val entryBalancesMap = remember(finalLedgerList, matchingAccount) {
                 val openingDebt = matchingAccount?.openingDebtIqd ?: 0.0

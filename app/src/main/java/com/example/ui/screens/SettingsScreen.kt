@@ -431,6 +431,7 @@ fun SettingsScreen(
                 )
             },
             text = {
+                val backupDateFormatter = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US) }
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -470,7 +471,7 @@ fun SettingsScreen(
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     Text(text = "${file.length() / 1024} KB", fontSize = 11.sp, color = Color.White.copy(alpha = 0.5f))
                                     Text(
-                                        text = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(file.lastModified())),
+                                        text = backupDateFormatter.format(Date(file.lastModified())),
                                         fontSize = 11.sp,
                                         color = Color.White.copy(alpha = 0.5f)
                                     )
