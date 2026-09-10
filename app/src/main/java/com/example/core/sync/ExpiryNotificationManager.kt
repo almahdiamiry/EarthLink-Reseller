@@ -60,6 +60,7 @@ object ExpiryNotificationManager {
         var notificationCount = 0
 
         for (account in accounts) {
+            if (account.isHistoryOnlySubscriber) continue
             val expiresAtStr = account.expiresAt ?: continue
             try {
                 var expiryDate = try { isoParser.parse(expiresAtStr) } catch(e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; null }
