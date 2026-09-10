@@ -254,10 +254,11 @@ class EarthlinkSearchViewModel(
             // Prepare instant optimistic detail if available
             prepareUserDetail(userIndex)
 
+            var foundLocal: LocalAccount? = null
             // If still null, try finding in local DB via targeted lookup
             if (_selectedUser.value == null) {
                 try {
-                    val foundLocal = withContext(Dispatchers.IO) {
+                    foundLocal = withContext(Dispatchers.IO) {
                         if (!knownUserId.isNullOrBlank()) {
                             localAccountRepository.findAccountByUsernameOrIdOneShot(knownUserId)
                         } else {
@@ -301,15 +302,26 @@ class EarthlinkSearchViewModel(
                 }
             }
 
-            _isRefreshingDetail.value = true
-            try {
-                val detail = gateway.getUserDetail(userIndex)
-                _selectedUser.value = detail
-            } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                if (_selectedUser.value == null) {
-                    _error.value = e.message
+            val currentUserId = _selectedUser.value?.userID ?: knownUserId
+            val hasIspLinkage = if (foundLocal != null) {
+                foundLocal.earthlinkUsername?.isNotBlank() == true
+            } else {
+                currentUserId != null && !currentUserId.startsWith("local_") && currentUserId.isNotBlank()
+            }
+            if (hasIspLinkage) {
+                _isRefreshingDetail.value = true
+                try {
+                    val detail = gateway.getUserDetail(userIndex)
+                    _selectedUser.value = detail
+                } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+                    if (_selectedUser.value == null) {
+                        _error.value = e.message
+                    }
+                } finally {
+                    _isLoading.value = false
+                    _isRefreshingDetail.value = false
                 }
-            } finally {
+            } else {
                 _isLoading.value = false
                 _isRefreshingDetail.value = false
             }
@@ -502,6 +514,9 @@ class EarthlinkSearchViewModel(
                     localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, "Subscriber creation failed")
                     _error.value = "Subscriber creation failed."
                 }
+            } catch (e: EarthlinkInconclusiveException) {
+                localLedgerRepository.resolvePendingOperationInconclusive(businessTxId, e.message)
+                _error.value = "Subscriber created on gateway with missing ID payload. Operation stored for verification."
             } catch (e: EarthlinkBusinessException) {
                 localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, e.errorMessage)
                 _error.value = e.errorMessage

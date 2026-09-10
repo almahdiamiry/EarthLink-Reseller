@@ -564,7 +564,9 @@ class SyncRepositoryImpl(
             val collectionsToSync = listOf("local_accounts", "local_ledger_entries", "import_batches", "audit_logs")
             for (collName in collectionsToSync) {
                 val initialCursor = getCollectionCursor(collName)
-                val updatedCursor = pullRemoteChanges(currentUid, collName, initialCursor, fbFirestore, passGeneration)
+                val updatedCursor = DataOperationCoordinator.withOperation(DataOperationMode.REMOTE_APPLY) {
+                    pullRemoteChanges(currentUid, collName, initialCursor, fbFirestore, passGeneration)
+                }
                 if (metadataDao.getGeneration() == passGeneration) {
                     if (updatedCursor.lastServerTimestamp > initialCursor.lastServerTimestamp ||
                         (updatedCursor.lastServerTimestamp == initialCursor.lastServerTimestamp && updatedCursor.lastDocumentId > initialCursor.lastDocumentId)) {
@@ -919,7 +921,9 @@ class SyncRepositoryImpl(
                             val initialCursor = getCollectionCursor(collName)
                             var updatedCursor = initialCursor
                             try {
-                                updatedCursor = pullRemoteChanges(uid, collName, initialCursor, fbFirestore, bootstrapGen)
+                                updatedCursor = DataOperationCoordinator.withOperation(DataOperationMode.REMOTE_APPLY) {
+                                    pullRemoteChanges(uid, collName, initialCursor, fbFirestore, bootstrapGen)
+                                }
                                 if (metadataDao.getGeneration() == bootstrapGen) {
                                     if (updatedCursor.lastServerTimestamp > initialCursor.lastServerTimestamp ||
                                         (updatedCursor.lastServerTimestamp == initialCursor.lastServerTimestamp && updatedCursor.lastDocumentId > initialCursor.lastDocumentId)) {

@@ -1110,9 +1110,11 @@ private class ImportSession(
         existingAccounts = existingAccs
         accountsById = existingAccounts.associateBy { it.id }.toMutableMap()
         accountsByUsername = existingAccounts.filter { !it.earthlinkUsername.isNullOrEmpty() }.associateBy { it.earthlinkUsername!! }.toMutableMap()
-        accountsByPhone = existingAccounts.filter { !it.phone1.isNullOrEmpty() }.associateBy { it.phone1!! }.toMutableMap()
+        val phoneGroups = existingAccounts.filter { !it.phone1.isNullOrEmpty() }.groupBy { it.phone1!! }
+        accountsByPhone = phoneGroups.filter { it.value.size == 1 }.mapValues { it.value.first() }.toMutableMap()
         accountsBySourceId = existingAccounts.filter { !it.sourceExternalId.isNullOrEmpty() }.associateBy { it.sourceExternalId!! }.toMutableMap()
-        accountsByName = existingAccounts.filter { !it.displayName.isEmpty() }.associateBy { it.displayName }.toMutableMap()
+        val nameGroups = existingAccounts.filter { !it.displayName.isEmpty() }.groupBy { it.displayName }
+        accountsByName = nameGroups.filter { it.value.size == 1 }.mapValues { it.value.first() }.toMutableMap()
 
         existingTxList = existingTxs
         existingTxBySourceExtId = existingTxList
@@ -1454,18 +1456,26 @@ private class ImportSession(
                 // Bolt: Re-use pre-compiled NUMERIC_PHONE_REGEX pattern to prevent per-transaction allocations
                 if (subscriberRef.matches(NUMERIC_PHONE_REGEX)) {
                     val p = subscriberRef.trim()
-                    val phoneAccountIds = setOfNotNull(subscriberByPhone[p], accountsByPhone[p]?.id)
-                    if (phoneAccountIds.size == 1) {
-                        accountId = phoneAccountIds.first()
+                    if ((phoneCounts[p] ?: 0) <= 1) {
+                        val phoneAccountIds = setOfNotNull(subscriberByPhone[p], accountsByPhone[p]?.id)
+                        if (phoneAccountIds.size == 1) {
+                            accountId = phoneAccountIds.first()
+                        }
+                    } else {
+                        Log.w("UtowerImporter", "Ambiguous phone $p matched multiple subscribers; skipping phone auto-link for $sourceKey")
                     }
                 }
             }
 
             if (accountId == null && subscriberRef != null) {
                 val n = subscriberRef.trim()
-                val nameAccountIds = setOfNotNull(subscriberByName[n], accountsByName[n]?.id)
-                if (nameAccountIds.size == 1) {
-                    accountId = nameAccountIds.first()
+                if ((nameCounts[n] ?: 0) <= 1) {
+                    val nameAccountIds = setOfNotNull(subscriberByName[n], accountsByName[n]?.id)
+                    if (nameAccountIds.size == 1) {
+                        accountId = nameAccountIds.first()
+                    }
+                } else {
+                    Log.w("UtowerImporter", "Ambiguous name '$n' matched multiple subscribers; skipping name auto-link for $sourceKey")
                 }
             }
 
@@ -1474,9 +1484,13 @@ private class ImportSession(
 
             if (accountId == null && toWhoName != null) {
                 val n = toWhoName.trim()
-                val nameAccountIds = setOfNotNull(subscriberByName[n], accountsByName[n]?.id)
-                if (nameAccountIds.size == 1) {
-                    accountId = nameAccountIds.first()
+                if ((nameCounts[n] ?: 0) <= 1) {
+                    val nameAccountIds = setOfNotNull(subscriberByName[n], accountsByName[n]?.id)
+                    if (nameAccountIds.size == 1) {
+                        accountId = nameAccountIds.first()
+                    }
+                } else {
+                    Log.w("UtowerImporter", "Ambiguous toWhoName '$n' matched multiple subscribers; skipping name auto-link for $sourceKey")
                 }
             }
 

@@ -144,6 +144,9 @@ interface LocalLedgerEntryDao {
     @Query("SELECT * FROM local_ledger_entries WHERE accountId = :accountId AND sourceExternalId = :sourceExternalId LIMIT 1")
     suspend fun findByAccountAndExternalId(accountId: String, sourceExternalId: String): LocalLedgerEntry?
 
+    @Query("SELECT * FROM local_ledger_entries WHERE correctsEntryId = :correctsEntryId ORDER BY occurredAt ASC, createdAt ASC")
+    suspend fun getByCorrectsEntryId(correctsEntryId: String): List<LocalLedgerEntry>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(entry: LocalLedgerEntry): Long
 
@@ -396,6 +399,9 @@ interface PendingExternalOperationDao {
 
     @Query("SELECT * FROM pending_external_operations WHERE accountId = :accountId AND status = 'PENDING' LIMIT 1")
     suspend fun getPendingByAccountId(accountId: String): PendingExternalOperation?
+
+    @Query("SELECT * FROM pending_external_operations WHERE accountId = :accountId AND status IN ('PENDING', 'DISPATCHING', 'RESOLVING') LIMIT 1")
+    suspend fun getActiveByAccountId(accountId: String): PendingExternalOperation?
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(operation: PendingExternalOperation): Long

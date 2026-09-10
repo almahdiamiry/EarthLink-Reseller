@@ -230,7 +230,12 @@ class NetworkClient(private val context: Context) {
     private val moshi = Moshi.Builder()
         .build()
 
+    @androidx.annotation.VisibleForTesting
+    internal var tokenRefresherForTest: (() -> String?)? = null
+
     private fun refreshEarthlinkToken(isGoogleUser: Boolean = true): String? {
+        val testRefresher = tokenRefresherForTest
+        if (testRefresher != null) return testRefresher.invoke()
         val username = if (isGoogleUser) prefManager.getIspAdminUsername() else prefManager.getUsername()
         val password = if (isGoogleUser) prefManager.getIspAdminPassword() else prefManager.getPassword()
         if (username.isNullOrEmpty() || password.isNullOrEmpty()) return null
@@ -324,7 +329,8 @@ class NetworkClient(private val context: Context) {
     }
 
     // OkHttp Auth and User-Agent injection Interceptor
-    private val authInterceptor = Interceptor { chain ->
+    @androidx.annotation.VisibleForTesting
+    internal val authInterceptor = Interceptor { chain ->
         val original = chain.request()
         val builder = original.newBuilder()
             .header("User-Agent", "Android 9; Resellers 40001; KotlinCompose")
@@ -337,7 +343,12 @@ class NetworkClient(private val context: Context) {
         val actualToken = if (isGoogleUser) {
             var apiToken = prefManager.getEarthlinkApiToken()
             if (apiToken.isNullOrEmpty()) {
-                apiToken = refreshEarthlinkToken()
+                synchronized(tokenLock) {
+                    apiToken = prefManager.getEarthlinkApiToken()
+                    if (apiToken.isNullOrEmpty()) {
+                        apiToken = refreshEarthlinkToken()
+                    }
+                }
             }
             apiToken
         } else {

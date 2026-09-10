@@ -324,11 +324,11 @@ data class AutocompleteUser(
 
 @JsonClass(generateAdapter = true)
 data class AccountStatementItem(
-    @Json(name = "occurredAt") val occurredAt: String? = null,
+    @Json(name = "date") val occurredAt: String? = null,
     @Json(name = "operation") val operation: String? = null,
-    @Json(name = "depositAmount") val depositAmount: Double? = 0.0,
-    @Json(name = "withdrawalAmount") val withdrawalAmount: Double? = 0.0,
-    @Json(name = "balanceAfter") val balanceAfter: Double? = 0.0,
+    @Json(name = "deposit") val depositAmount: Double? = 0.0,
+    @Json(name = "withdrawal") val withdrawalAmount: Double? = 0.0,
+    @Json(name = "balance") val balanceAfter: Double? = 0.0,
     @Json(name = "note") val note: String? = null,
     @Json(name = "userID") val userIDLower: String? = null,
     @Json(name = "UserID") val userIDUpper: String? = null,

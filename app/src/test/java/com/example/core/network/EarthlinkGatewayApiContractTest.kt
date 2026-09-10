@@ -263,12 +263,12 @@ class EarthlinkGatewayApiContractTest {
                     "totalCount": 1,
                     "itemsList": [
                         {
-                            "occurredAt": "2026-08-27 10:30:00",
+                            "date": "2026-08-27 10:30:00",
                             "operation": "Withdraw",
-                            "withdrawalAmount": 35000.0,
-                            "depositAmount": 0.0,
+                            "withdrawal": 35000.0,
+                            "deposit": 0.0,
                             "note": "Refill sub_test_01",
-                            "balanceAfter": 1490000.0,
+                            "balance": 1490000.0,
                             "userID": "sub_test_01"
                         }
                     ]

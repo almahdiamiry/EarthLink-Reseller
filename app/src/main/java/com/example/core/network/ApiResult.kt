@@ -17,6 +17,16 @@ class EarthlinkTransportException(
 ) : EarthlinkGatewayException(message, cause)
 
 /**
+ * Inconclusive Outcome: Gateway accepted request or returned success, but vital payload
+ * (such as userIndex) was missing. Handled as INCONCLUSIVE to preserve recovery path.
+ */
+class EarthlinkInconclusiveException(
+    val statusCode: Int? = null,
+    override val message: String,
+    cause: Throwable? = null
+) : EarthlinkGatewayException(message, cause)
+
+/**
  * Definitive Business Rejection: ISP explicitly processed and rejected the request.
  * Handled as: EXPLICIT_FAILURE -> FAILED. Zero ledger mutation.
  */

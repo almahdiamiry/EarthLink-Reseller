@@ -43,7 +43,8 @@ object SubscriberMatcher {
             val phoneMatches = candidates.filter { acc ->
                 val matchesPhone = acc.phone1?.trim() == cleanPhone || acc.phone2?.trim() == cleanPhone
                 val conflictingExtId = cleanExtId != null && !acc.sourceExternalId.isNullOrEmpty() && acc.sourceExternalId != cleanExtId
-                matchesPhone && !conflictingExtId
+                val conflictingUsername = cleanUsername != null && !acc.earthlinkUsername.isNullOrEmpty() && !acc.earthlinkUsername.equals(cleanUsername, ignoreCase = true)
+                matchesPhone && !conflictingExtId && !conflictingUsername
             }
             if (phoneMatches.size == 1) return phoneMatches.first()
         }

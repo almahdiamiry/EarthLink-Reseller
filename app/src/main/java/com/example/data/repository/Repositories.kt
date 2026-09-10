@@ -781,7 +781,7 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
                 invalidateBalanceCache()
                 return userPass
             } else {
-                throw EarthlinkBusinessException(statusCode = 200, errorMessage = "API returned success without valid userIndex payload.")
+                throw EarthlinkInconclusiveException(statusCode = 200, message = "API returned success without valid userIndex payload.")
             }
         } else {
             throw EarthlinkBusinessException(statusCode = result.statusCode ?: 200, errorMessage = result.errorMessage ?: "Failed to create user using deposit")
@@ -1196,6 +1196,9 @@ class LocalLedgerRepositoryImpl(
         ledgerDao.getByAccountId(accountId).distinctUntilChanged()
 
     override suspend fun recordPendingOperation(operation: PendingExternalOperation): PendingExternalOperation {
+        require(operation.amountIqd >= 0L && operation.amountIqd % 250L == 0L) {
+            "Amount must be non-negative and a multiple of 250 IQD"
+        }
         return com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
             database.withTransaction {
                 val existingByIntent = pendingDao.getByOperationIntentId(operation.operationIntentId)
@@ -1205,6 +1208,12 @@ class LocalLedgerRepositoryImpl(
                 val existingByTx = pendingDao.getByBusinessTransactionId(operation.businessTransactionId)
                 if (existingByTx != null) {
                     return@withTransaction existingByTx
+                }
+                if (operation.dispatchClaimCount == 0) {
+                    val activeForAccount = pendingDao.getActiveByAccountId(operation.accountId)
+                    if (activeForAccount != null) {
+                        return@withTransaction activeForAccount
+                    }
                 }
                 pendingDao.insert(operation)
                 operation
@@ -1249,7 +1258,7 @@ class LocalLedgerRepositoryImpl(
                     if (reset != 1) continue
                 }
 
-                val resolution = verifyAndResolvePendingOperation(
+                val resolution = resolvePendingOperationSerialized(
                     businessTransactionId = op.businessTransactionId,
                     gateway = gateway,
                     baselineExpirationDate = null
@@ -1414,7 +1423,11 @@ class LocalLedgerRepositoryImpl(
         private val THREAD_LOCAL_STATEMENT_FORMATTERS = ThreadLocal.withInitial {
             STATEMENT_PATTERNS.map { pattern ->
                 java.text.SimpleDateFormat(pattern, java.util.Locale.US).apply {
-                    timeZone = java.util.TimeZone.getTimeZone("UTC")
+                    timeZone = if (pattern.contains("T")) {
+                        java.util.TimeZone.getTimeZone("UTC")
+                    } else {
+                        java.util.TimeZone.getTimeZone("Asia/Baghdad")
+                    }
                 }
             }
         }
@@ -1542,6 +1555,14 @@ class LocalLedgerRepositoryImpl(
                 diagnosticMessage = op.lastError ?: "Operation was previously marked failed"
             )
         }
+        if (op.status == "RESOLVING") {
+            return PendingOperationResolution(
+                result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
+                operation = op,
+                ledgerEntry = null,
+                diagnosticMessage = "Operation is already actively resolving by another caller"
+            )
+        }
 
         if (op.status == "PENDING") {
             val rows = pendingDao.transitionToResolving(businessTransactionId, System.currentTimeMillis())
@@ -1562,6 +1583,14 @@ class LocalLedgerRepositoryImpl(
                         operation = current,
                         ledgerEntry = null,
                         diagnosticMessage = current.lastError ?: "Operation was previously marked failed"
+                    )
+                }
+                if (current != null && current.status == "RESOLVING") {
+                    return PendingOperationResolution(
+                        result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
+                        operation = current,
+                        ledgerEntry = null,
+                        diagnosticMessage = "Operation is already actively resolving by another caller"
                     )
                 }
             }
@@ -2082,7 +2111,7 @@ class LocalLedgerRepositoryImpl(
     }
 
     private suspend fun addPaymentInternal(accountId: String, amount: Double, note: String?, idempotencyKey: String? = null): LocalLedgerEntry {
-        require(amount > 0.0) { "Payment amount must be greater than zero." }
+        require(amount > 0.0 && amount % 250.0 == 0.0) { "Payment amount must be greater than zero and a multiple of 250 IQD." }
         
         val entryId = idempotencyKey ?: java.util.UUID.randomUUID().toString()
         if (idempotencyKey != null) {
@@ -2135,7 +2164,7 @@ class LocalLedgerRepositoryImpl(
     }
 
     private suspend fun addDebtInternal(accountId: String, amount: Double, note: String?, idempotencyKey: String? = null): LocalLedgerEntry {
-        require(amount > 0.0) { "Debt amount must be greater than zero." }
+        require(amount > 0.0 && amount % 250.0 == 0.0) { "Debt amount must be greater than zero and a multiple of 250 IQD." }
         
         val entryId = idempotencyKey ?: java.util.UUID.randomUUID().toString()
         if (idempotencyKey != null) {
@@ -2322,16 +2351,48 @@ class LocalLedgerRepositoryImpl(
                 val origAmount = rootOriginal.amountIqd
                 require(intendedAmount >= 0.0) { "Intended amount must be non-negative." }
 
-                // Calculate economic difference
-                // For "took" / "renewal": original effect was +debt of origAmount. Intended effect is +debt of intendedAmount.
-                // Difference = intendedAmount - origAmount.
-                // If diff > 0: need MORE debt -> correction typeRaw = "took", amount = diff.
-                // If diff < 0: need LESS debt (reversal if intended=0) -> correction typeRaw = "gave", amount = -diff.
-                // For "gave": original effect was -debt (payment) of origAmount. Intended effect is -debt of intendedAmount.
-                // Difference = intendedAmount - origAmount.
-                // If diff > 0: need MORE payment -> correction typeRaw = "gave", amount = diff.
-                // If diff < 0: need LESS payment (reversal if intended=0) -> correction typeRaw = "took", amount = -diff.
-                val diff = intendedAmount - origAmount
+                val allPriors = ledgerDao.getByCorrectsEntryId(rootOriginalId)
+                val priorCorrections = if (idempotencyKey != null) allPriors.filter { it.id != idempotencyKey } else allPriors
+
+                // Calculate economic difference against effective position (root + prior corrections)
+                val currentEffective = when (origType) {
+                    "took", "renewal" -> {
+                        var eff = origAmount
+                        for (c in priorCorrections) {
+                            val cType = com.example.core.ledger.TransactionTypeNormalizer.normalize(c.typeRaw)
+                            if (cType == "took" || cType == "renewal") {
+                                eff += c.amountIqd
+                            } else if (cType == "gave") {
+                                eff -= c.amountIqd
+                            }
+                        }
+                        eff
+                    }
+                    "gave" -> {
+                        var eff = origAmount
+                        for (c in priorCorrections) {
+                            val cType = com.example.core.ledger.TransactionTypeNormalizer.normalize(c.typeRaw)
+                            if (cType == "gave") {
+                                eff += c.amountIqd
+                            } else if (cType == "took" || cType == "renewal") {
+                                eff -= c.amountIqd
+                            }
+                        }
+                        eff
+                    }
+                    else -> origAmount
+                }
+                val diff = intendedAmount - currentEffective
+
+                // If diff is 0 and no explicit idempotency key is supplied, the transaction already reflects intendedAmount
+                if (idempotencyKey == null && kotlin.math.abs(diff) < 0.0001) {
+                    if (allPriors.isNotEmpty()) {
+                        return@withTransaction allPriors.last()
+                    } else {
+                        return@withTransaction rootOriginal
+                    }
+                }
+
                 val (corrType, corrAmount) = when (origType) {
                     "took", "renewal" -> {
                         if (diff > 0) "took" to diff
@@ -2346,12 +2407,9 @@ class LocalLedgerRepositoryImpl(
                     }
                 }
 
-                // Deterministic identity for idempotency:
-                val entryId = idempotencyKey ?: java.util.UUID.nameUUIDFromBytes(
-                    "correction:$rootOriginalId:$intendedAmount:${note ?: ""}".toByteArray()
-                ).toString()
+                val entryId = idempotencyKey ?: java.util.UUID.randomUUID().toString()
+                val existing = if (idempotencyKey != null) ledgerDao.getByIdOneShot(entryId) else null
 
-                val existing = ledgerDao.getByIdOneShot(entryId)
                 if (existing != null) {
                     val isIdentical = existing.accountId == accountId &&
                             existing.correctsEntryId == rootOriginalId &&
