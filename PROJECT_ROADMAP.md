@@ -18,8 +18,8 @@
 ├────────────────────────────────────────────────────────────────────────────────────────┤
 │ OPERATING MODE:                 POST-V1 / STABLE MAINTENANCE                           │
 │ ACTIVE WORKSTREAM:              NONE — SYSTEM IDLE                                     │
-│ CURRENT VERIFIED TEST BASELINE: 579 / 579 TESTS PASSING (100% GREEN)                   │
-│ CURRENT CHECKPOINT:             1a8c8c9                                                │
+│ CURRENT VERIFIED TEST BASELINE: 607 / 607 TESTS PASSING (100% GREEN)                   │
+│ CURRENT CHECKPOINT:             ff574cc                                                │
 │ GOVERNING PLAYBOOK:             OPERATIONAL TESTING PLAYBOOK (AGENTS.md §9)            │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -38,6 +38,7 @@ All foundational remediation, verification, and maintainability phases are **for
 | **PHASE-03** | G4 Lineage, G5 Identity and G8 Certification | **CLOSED** | 79 G8 adversarial checks, sealed release APK, [`evidence/`](evidence/) |
 | **PHASE-04** | V1 Closure and Governance Consolidation | **CLOSED** | [`AGENTS.md`](AGENTS.md) (V1 Operating Government) |
 | **MNT-PASS** | V1 Maintainability and Seam Cleanup | **CLOSED** | Dead code removal, boundary cleanup, string normalization |
+| **SAFETY-RECON** | V1 Safety Fixes & Concurrency Hardening | **CLOSED** | WS1–WS9 verified (25 new tests, 607/607 green), commits `b68916f`, `ff574cc` |
 
 ---
 
