@@ -704,10 +704,10 @@ fun ImportUtowerScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                                val batchDateFormat = remember { SimpleDateFormat("yyyy/MM/dd · hh:mm a", Locale.getDefault()) }
                                 batches.forEachIndexed { index, batch ->
                                     val isAccepted = batch.status == "completed" || batch.status == "accepted"
-                                    val dateFormat = SimpleDateFormat("yyyy/MM/dd · hh:mm a", Locale.getDefault())
-                                    val formattedDate = dateFormat.format(Date(batch.createdAt))
+                                    val formattedDate = batchDateFormat.format(Date(batch.createdAt))
 
                                     Row(
                                         modifier = Modifier
