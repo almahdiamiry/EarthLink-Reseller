@@ -80,7 +80,7 @@ class EarthlinkSearchViewModel(
     fun hasDepositPassword(): Boolean = !prefs.getDepositPassword().isNullOrBlank()
 
     fun getAccountByUsernameOrId(username: String): Flow<LocalAccount?> =
-        localAccountRepository.getAccountByUsernameOrId(username)
+        localAccountRepository.getActiveAccountByUsernameOrId(username)
 
     fun getLedgerForAccount(accountId: String): Flow<List<com.example.core.model.LocalLedgerEntry>> =
         localLedgerRepository.getLedgerForAccount(accountId)
@@ -260,7 +260,7 @@ class EarthlinkSearchViewModel(
                 try {
                     foundLocal = withContext(Dispatchers.IO) {
                         if (!knownUserId.isNullOrBlank()) {
-                            localAccountRepository.findAccountByUsernameOrIdOneShot(knownUserId)
+                            localAccountRepository.findActiveAccountByUsernameOrIdOneShot(knownUserId)
                         } else {
                             // Target lookup via search instead of full table scan
                             localAccountRepository.searchAccounts("", limit = 200, offset = 0).find { 
@@ -494,11 +494,12 @@ class EarthlinkSearchViewModel(
 
                 val generatedPassword = gateway.createUserUsingDeposit(username, phone, fullName, pkgIndex, depositPass)
                 if (generatedPassword != null) {
-                    val localAcc = localAccountRepository.getAccountByIdOneShot(username)
-                        ?: localAccountRepository.findAccountByUsernameOrIdOneShot(username)
+                    val localAcc = localAccountRepository.getAccountByIdOneShot(username)?.takeIf { !it.isHistoryOnlySubscriber }
+                        ?: localAccountRepository.findActiveAccountByUsernameOrIdOneShot(username)
                     if (localAcc == null) {
+                        val newId = if (localAccountRepository.getAccountByIdOneShot(username) == null) username else java.util.UUID.randomUUID().toString()
                         val newAcc = LocalAccount(
-                            id = username,
+                            id = newId,
                             earthlinkUsername = username,
                             displayName = fullName.ifBlank { username },
                             phone1 = phone,
@@ -688,8 +689,8 @@ class EarthlinkSearchViewModel(
                 }
                 val exactAmountIqd = authoritativePrice.toLong()
 
-                val localAcc = localAccountRepository.getAccountByIdOneShot(userId)
-                    ?: localAccountRepository.findAccountByUsernameOrIdOneShot(userId)
+                val localAcc = localAccountRepository.getAccountByIdOneShot(userId)?.takeIf { !it.isHistoryOnlySubscriber }
+                    ?: localAccountRepository.findActiveAccountByUsernameOrIdOneShot(userId)
                 val effectiveAcc = if (localAcc == null) {
                     val snapshotUser = _selectedUser.value?.takeIf { it.userID.equals(userId, ignoreCase = true) }
                     val snapshotListItem = _usersList.value.find { it.userID.equals(userId, ignoreCase = true) }
@@ -699,12 +700,19 @@ class EarthlinkSearchViewModel(
                         ?: userId
                     val phone = account?.phone1 ?: snapshotUser?.mobileNumber ?: snapshotListItem?.mobileNumber
                     val pkgName = account?.packageName ?: snapshotUser?.packageName ?: snapshotListItem?.packageName ?: "Default"
+                    val resolvedId = if (!account?.id.isNullOrBlank() && localAccountRepository.getAccountByIdOneShot(account.id) == null) {
+                        account.id
+                    } else if (localAccountRepository.getAccountByIdOneShot(userId) == null) {
+                        userId
+                    } else {
+                        java.util.UUID.randomUUID().toString()
+                    }
                     val newAcc = account?.copy(
-                        id = if (account.id.isNotBlank()) account.id else userId,
+                        id = resolvedId,
                         earthlinkUsername = userId,
                         currentPriceIqd = exactAmountIqd.toDouble()
                     ) ?: LocalAccount(
-                        id = userId,
+                        id = resolvedId,
                         earthlinkUsername = userId,
                         displayName = displayName.ifBlank { userId },
                         phone1 = phone,

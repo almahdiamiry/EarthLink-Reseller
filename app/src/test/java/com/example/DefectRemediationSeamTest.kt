@@ -18,13 +18,22 @@ import com.example.domain.repository.LocalLedgerRepository
 import com.example.ui.screens.DashboardStatusClassifier
 import com.example.ui.screens.DashboardStatusFilter
 import com.example.ui.screens.LocalAccountMatcher
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
+import org.mockito.Mockito.mock
+import org.mockito.Mockito.`when`
+import com.example.ui.viewmodels.LocalAccountsViewModel
+import com.example.domain.repository.AuditRepository
+import com.example.domain.repository.SyncRepository
+import com.example.domain.repository.UtowerImportRepository
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -557,6 +566,37 @@ class DefectRemediationSeamTest {
         assertEquals("Address must persist across saveAccount", "Al-Mansour District St 12", fetched.address)
     }
 
+    @Test
+    fun fix4b_saveAccountInternal_persistsPhone2TowerNameAndAddressViaLedgerOperations() = runBlocking {
+        val initial = LocalAccount(
+            id = "acc_internal_001",
+            displayName = "Subscriber Alpha",
+            phone1 = "07700000000",
+            phone2 = "Old Phone2",
+            towerName = "Old Tower",
+            address = "Old Address"
+        )
+        accountDao.insert(initial)
+
+        val updatedAccount = initial.copy(
+            phone2 = "07800000001",
+            towerName = "New Station 99",
+            address = "Karrada District St 5"
+        )
+
+        ledgerRepository.recordAccountPayment(
+            account = updatedAccount,
+            amount = 25000.0,
+            note = "Payment Note",
+            idempotencyKey = "tx_pay_int_001"
+        )
+
+        val fetched = accountDao.getByIdOneShot("acc_internal_001")!!
+        assertEquals("phone2 must persist across saveAccountInternal", "07800000001", fetched.phone2)
+        assertEquals("towerName must persist across saveAccountInternal", "New Station 99", fetched.towerName)
+        assertEquals("address must persist across saveAccountInternal", "Karrada District St 5", fetched.address)
+    }
+
     // =========================================================================
     // FIX 5: correctTransaction Boundary Validation
     // =========================================================================
@@ -608,5 +648,128 @@ class DefectRemediationSeamTest {
         // 6. Valid: 5000.0 (Standard multiple of 250)
         val validCorr = ledgerRepository.correctTransaction("tx_orig_001", 5000.0, "Partial correction")
         assertNotNull("intendedAmount=5000.0 must be accepted", validCorr)
+    }
+
+    // =========================================================================
+    // F-04: PPPoE Username Recycling & History-Only Decoupling
+    // =========================================================================
+
+    @Test
+    fun f04_pppoeReuse_historyOnlyAccountNotReturnedByCurrentIspPath_independentEntityCreated() = runBlocking {
+        // 1. Initial State: Old subscriber with PPPoE username "reused_user_01" has accumulated debt
+        val oldAccount = LocalAccount(
+            id = "acc_old_departed_001",
+            earthlinkUsername = "reused_user_01",
+            displayName = "Old Departed Person",
+            phone1 = "07701111111",
+            debtIqd = 0.0,
+            isHistoryOnlySubscriber = false
+        )
+        accountDao.insert(oldAccount)
+        val oldDebtEntry = ledgerRepository.addDebt("acc_old_departed_001", 50000.0, "Old Debt", "tx_old_001")
+        assertNotNull(oldDebtEntry)
+
+        // 2. Old subscriber leaves ISP -> transitions to isHistoryOnlySubscriber = true
+        accountRepository.deleteAccount("acc_old_departed_001")
+        val postDeleteOld = accountDao.getByIdOneShot("acc_old_departed_001")!!
+        assertTrue("Old account must be history-only", postDeleteOld.isHistoryOnlySubscriber)
+        assertEquals("Old account debt must remain 50,000 IQD", 50000.0, postDeleteOld.debtIqd, 0.001)
+
+        // 3. Same PPPoE username reused by new ISP user -> Current ISP lookup must NOT return old account
+        val activeLookup = accountRepository.findActiveAccountByUsernameOrIdOneShot("reused_user_01")
+        assertNull("Current ISP path must NOT return history-only account", activeLookup)
+
+        val activeFlowResult = accountRepository.getActiveAccountByUsernameOrId("reused_user_01").first()
+        assertNull("Current ISP flow must NOT return history-only account", activeFlowResult)
+
+        // Historical lookup still sees old account for lineage/integrity
+        val historicalLookup = accountRepository.findAccountByUsernameOrIdOneShot("reused_user_01")
+        assertNotNull("Historical lookup must preserve lineage of departed account", historicalLookup)
+        assertEquals("acc_old_departed_001", historicalLookup!!.id)
+
+        // 4. Save new active account with same username as an independent entity
+        val newAccount = LocalAccount(
+            id = "acc_new_active_002",
+            earthlinkUsername = "reused_user_01",
+            displayName = "New ISP Subscriber",
+            phone1 = "07802222222",
+            debtIqd = 0.0,
+            isHistoryOnlySubscriber = false
+        )
+        val savedNew = accountRepository.saveAccount(newAccount)
+        assertEquals("New account must retain its own ID", "acc_new_active_002", savedNew.id)
+        assertEquals("New account must be active", false, savedNew.isHistoryOnlySubscriber)
+
+        // 5. Verify both accounts coexist independently
+        val allAccounts = accountDao.getAllPersistedOneShot()
+        assertEquals("Both accounts must exist in database", 2, allAccounts.size)
+
+        val fetchedOld = accountDao.getByIdOneShot("acc_old_departed_001")!!
+        assertEquals("Old account ID must not change", "acc_old_departed_001", fetchedOld.id)
+        assertEquals("Old account displayName must not change", "Old Departed Person", fetchedOld.displayName)
+        assertEquals("Old account debt must remain 50,000 IQD", 50000.0, fetchedOld.debtIqd, 0.001)
+        assertTrue("Old account must remain history-only", fetchedOld.isHistoryOnlySubscriber)
+
+        val fetchedNew = accountDao.getByIdOneShot("acc_new_active_002")!!
+        assertEquals("New account ID must be acc_new_active_002", "acc_new_active_002", fetchedNew.id)
+        assertEquals("New account displayName must be New ISP Subscriber", "New ISP Subscriber", fetchedNew.displayName)
+        assertEquals("New account debt must be 0", 0.0, fetchedNew.debtIqd, 0.001)
+        assertFalse("New account must be active", fetchedNew.isHistoryOnlySubscriber)
+
+        // Current ISP path now resolves the new active account
+        val activeLookupAfterCreation = accountRepository.findActiveAccountByUsernameOrIdOneShot("reused_user_01")
+        assertNotNull("Current ISP path must resolve newly created active account", activeLookupAfterCreation)
+        assertEquals("acc_new_active_002", activeLookupAfterCreation!!.id)
+
+        // Historical ledger entries for old account remain untouched
+        val oldLedger = ledgerRepository.getLedgerForAccount("acc_old_departed_001").first()
+        assertEquals("Old ledger entries must remain intact", 1, oldLedger.size)
+        assertEquals("tx_old_001", oldLedger[0].id)
+    }
+
+    // =========================================================================
+    // F-02: Error Emission & Clear on Validation/Execution Failure
+    // =========================================================================
+
+    @Test
+    fun f02_localAccountDetail_invalidAmountRejection_emitsErrorAndClears() = runBlocking {
+        val testAccount = LocalAccount(
+            id = "acc_f02_test",
+            displayName = "F02 Test Account",
+            debtIqd = 10000.0
+        )
+        accountDao.insert(testAccount)
+
+        val mockAudit = mock(AuditRepository::class.java)
+        val mockSync = mock(SyncRepository::class.java)
+        val mockUtower = mock(UtowerImportRepository::class.java)
+        `when`(mockUtower.getImportBatches()).thenReturn(flowOf(emptyList()))
+
+        val vm = LocalAccountsViewModel(
+            localRepo = accountRepository,
+            ledgerRepo = ledgerRepository,
+            utowerRepo = mockUtower,
+            audit = mockAudit,
+            syncRepo = mockSync,
+            appDatabase = db
+        )
+
+        // Realistic failure: user inputs 1,200 IQD (not a multiple of 250 IQD)
+        vm.addPaymentLocal("acc_f02_test", 1200.0, "Invalid 1200 Payment")
+
+        var attempts = 0
+        while (vm.error.value == null && attempts < 50) {
+            org.robolectric.shadows.ShadowLooper.idleMainLooper()
+            kotlinx.coroutines.delay(50)
+            attempts++
+        }
+
+        val emittedError = vm.error.value
+        assertNotNull("Error must be emitted upon invalid payment input", emittedError)
+        assertTrue("Error must explain multiple of 250 IQD requirement", emittedError!!.contains("250 IQD"))
+
+        // clearError resets state
+        vm.clearError()
+        assertNull("clearError must reset error to null", vm.error.value)
     }
 }

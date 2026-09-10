@@ -1095,12 +1095,22 @@ class LocalAccountRepositoryImpl(
     override suspend fun findAccountByUsernameOrIdOneShot(username: String): LocalAccount? {
         return accountDao.findAccountByUsernameOrIdOneShot(username)
     }
+    override fun getActiveAccountByUsernameOrId(username: String): Flow<LocalAccount?> {
+        return accountDao.getActiveAccountByUsernameOrId(username).distinctUntilChanged()
+    }
+    override suspend fun findActiveAccountByUsernameOrIdOneShot(username: String): LocalAccount? {
+        return accountDao.findActiveAccountByUsernameOrIdOneShot(username)
+    }
     override suspend fun saveAccount(account: LocalAccount): LocalAccount {
         return com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
             database.withTransaction {
                 val existing = accountDao.getByIdOneShot(account.id)
                     ?: if (!account.earthlinkUsername.isNullOrBlank()) {
-                        accountDao.findAccountByUsernameOrIdOneShot(account.earthlinkUsername)
+                        if (!account.isHistoryOnlySubscriber) {
+                            accountDao.findActiveAccountByUsernameOrIdOneShot(account.earthlinkUsername)
+                        } else {
+                            accountDao.findAccountByUsernameOrIdOneShot(account.earthlinkUsername)
+                        }
                     } else null
 
                 val updated = if (existing != null) {
@@ -1345,13 +1355,14 @@ class LocalLedgerRepositoryImpl(
                     }
 
                     val payloadObj = try { JSONObject(op.payloadJson) } catch (_: Exception) { JSONObject() }
-                    val localAcc = accountDao.getByIdOneShot(op.accountId)
-                        ?: accountDao.findAccountByUsernameOrIdOneShot(op.accountId)
+                    val localAcc = accountDao.getByIdOneShot(op.accountId)?.takeIf { !it.isHistoryOnlySubscriber }
+                        ?: accountDao.findActiveAccountByUsernameOrIdOneShot(op.accountId)
                         ?: if (op.operationType.equals("ACTIVATION", ignoreCase = true) && payloadObj.has("username") && payloadObj.optString("username").isNotBlank()) {
                             val parsedFullName = payloadObj.optString("fullName").takeIf { it.isNotBlank() }
                             val parsedPhone = payloadObj.optString("phone").takeIf { it.isNotBlank() }
+                            val shellId = if (accountDao.getByIdOneShot(op.accountId) == null) op.accountId else java.util.UUID.randomUUID().toString()
                             val shellAcc = LocalAccount(
-                                id = op.accountId,
+                                id = shellId,
                                 earthlinkUsername = op.accountId,
                                 displayName = parsedFullName ?: op.accountId,
                                 phone1 = parsedPhone,
@@ -2106,16 +2117,23 @@ class LocalLedgerRepositoryImpl(
     private suspend fun saveAccountInternal(account: LocalAccount): LocalAccount {
         val existing = accountDao.getByIdOneShot(account.id)
             ?: if (!account.earthlinkUsername.isNullOrBlank()) {
-                accountDao.findAccountByUsernameOrIdOneShot(account.earthlinkUsername)
+                if (!account.isHistoryOnlySubscriber) {
+                    accountDao.findActiveAccountByUsernameOrIdOneShot(account.earthlinkUsername)
+                } else {
+                    accountDao.findAccountByUsernameOrIdOneShot(account.earthlinkUsername)
+                }
             } else null
 
         val updated = if (existing != null) {
             existing.copy(
                 displayName = if (account.displayName.isNotBlank()) account.displayName else existing.displayName,
                 phone1 = account.phone1 ?: existing.phone1,
+                phone2 = account.phone2 ?: existing.phone2,
                 packageName = account.packageName ?: existing.packageName,
                 currentPriceIqd = if (account.currentPriceIqd > 0.0) account.currentPriceIqd else existing.currentPriceIqd,
                 nanoIp = account.nanoIp ?: existing.nanoIp,
+                towerName = account.towerName ?: existing.towerName,
+                address = account.address ?: existing.address,
                 note = account.note ?: existing.note,
                 latitude = account.latitude ?: existing.latitude,
                 longitude = account.longitude ?: existing.longitude,

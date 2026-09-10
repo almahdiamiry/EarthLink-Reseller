@@ -101,6 +101,10 @@ class LocalAccountsViewModel(
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
 
+    fun clearError() {
+        _error.value = null
+    }
+
     fun setSearchQuery(value: String) { _displayLimit.value = 50; _searchQuery.value = value }
     fun toggleFilterDebt() { _displayLimit.value = 50; _filterDebt.value = !_filterDebt.value }
     fun toggleFilterAdvance() { _displayLimit.value = 50; _filterAdvance.value = !_filterAdvance.value }

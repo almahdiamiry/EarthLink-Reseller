@@ -72,6 +72,12 @@ interface LocalAccountDao {
     @Query("SELECT * FROM local_accounts WHERE id = :username OR (earthlinkUsername IS NOT NULL AND LOWER(earthlinkUsername) = LOWER(:username)) LIMIT 1")
     suspend fun findAccountByUsernameOrIdOneShot(username: String): LocalAccount?
 
+    @Query("SELECT * FROM local_accounts WHERE isHistoryOnlySubscriber = 0 AND (id = :username OR (earthlinkUsername IS NOT NULL AND LOWER(earthlinkUsername) = LOWER(:username))) LIMIT 1")
+    fun getActiveAccountByUsernameOrId(username: String): Flow<LocalAccount?>
+
+    @Query("SELECT * FROM local_accounts WHERE isHistoryOnlySubscriber = 0 AND (id = :username OR (earthlinkUsername IS NOT NULL AND LOWER(earthlinkUsername) = LOWER(:username))) LIMIT 1")
+    suspend fun findActiveAccountByUsernameOrIdOneShot(username: String): LocalAccount?
+
     @Query("""
         SELECT * FROM local_accounts 
         WHERE isHistoryOnlySubscriber = 0 AND (:query = '' OR displayName LIKE :query || '%' OR earthlinkUsername LIKE :query || '%' OR phone1 LIKE :query || '%' OR phone2 LIKE :query || '%')

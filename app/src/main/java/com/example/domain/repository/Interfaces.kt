@@ -63,6 +63,8 @@ interface LocalAccountRepository {
     suspend fun getAccountByIdOneShot(id: String): LocalAccount?
     fun getAccountByUsernameOrId(username: String): Flow<LocalAccount?>
     suspend fun findAccountByUsernameOrIdOneShot(username: String): LocalAccount?
+    fun getActiveAccountByUsernameOrId(username: String): Flow<LocalAccount?>
+    suspend fun findActiveAccountByUsernameOrIdOneShot(username: String): LocalAccount?
     suspend fun saveAccount(account: LocalAccount): LocalAccount
     suspend fun deleteAccount(id: String)
 

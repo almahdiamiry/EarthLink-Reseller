@@ -74,6 +74,15 @@ fun LocalAccountDetailScreen(
     val account by viewModel.selectedAccount.collectAsStateWithLifecycle()
     val ledger by viewModel.ledgerEntries.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    LaunchedEffect(error) {
+        val msg = error
+        if (!msg.isNullOrBlank()) {
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+            viewModel.clearError()
+        }
+    }
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
