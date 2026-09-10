@@ -9,6 +9,7 @@ import com.example.core.database.LocalLedgerEntryDao
 import com.example.core.database.PendingExternalOperationDao
 import com.example.core.database.SyncOutboxDao
 import com.example.core.model.LocalAccount
+import com.example.core.model.LocalLedgerEntry
 import com.example.core.model.PendingExternalOperation
 import com.example.core.model.UserListItem
 import com.example.data.repository.LocalAccountRepositoryImpl
@@ -725,6 +726,96 @@ class DefectRemediationSeamTest {
         val oldLedger = ledgerRepository.getLedgerForAccount("acc_old_departed_001").first()
         assertEquals("Old ledger entries must remain intact", 1, oldLedger.size)
         assertEquals("tx_old_001", oldLedger[0].id)
+    }
+
+    @Test
+    fun f04_pppoeMultiCycleReuse_threeGenerations_preservesHistoryAndNoDebtPollution() = runBlocking {
+        // Generation 1: Departed subscriber with debt
+        val gen1 = LocalAccount(
+            id = "reused_multigen",
+            earthlinkUsername = "reused_multigen",
+            displayName = "Generation 1 Subscriber",
+            debtIqd = 35000.0,
+            isHistoryOnlySubscriber = true
+        )
+        accountDao.insert(gen1)
+        ledgerDao.insert(
+            LocalLedgerEntry(
+                id = "tx_gen1",
+                accountId = "reused_multigen",
+                typeRaw = "took",
+                amountIqd = 35000.0,
+                debtAfterIqd = 35000.0
+            )
+        )
+
+        // Generation 2: Reused username, accrued debt, then also departed
+        val gen2 = LocalAccount(
+            id = "acc_gen2_uuid",
+            earthlinkUsername = "reused_multigen",
+            displayName = "Generation 2 Subscriber",
+            debtIqd = 0.0,
+            isHistoryOnlySubscriber = false
+        )
+        accountRepository.saveAccount(gen2)
+        ledgerRepository.addDebt("acc_gen2_uuid", 40000.0, "Gen 2 Debt", "tx_gen2")
+        val gen2Departed = accountDao.getByIdOneShot("acc_gen2_uuid")!!.copy(isHistoryOnlySubscriber = true)
+        accountDao.update(gen2Departed)
+
+        // Generation 3: Reused username for a third subscriber
+        val gen3 = LocalAccount(
+            id = "acc_gen3_uuid",
+            earthlinkUsername = "reused_multigen",
+            displayName = "Generation 3 Subscriber",
+            debtIqd = 0.0,
+            isHistoryOnlySubscriber = false
+        )
+        accountRepository.saveAccount(gen3)
+        ledgerRepository.addDebt("acc_gen3_uuid", 15000.0, "Gen 3 Debt", "tx_gen3")
+
+        // 1. All 3 accounts coexist independently in Room
+        val allPersisted = accountDao.getAllPersistedOneShot().filter { it.earthlinkUsername == "reused_multigen" }
+        assertEquals("All 3 generations must coexist in database", 3, allPersisted.size)
+
+        // 2. Generation 1 checks
+        val fetchedGen1 = accountDao.getByIdOneShot("reused_multigen")!!
+        assertEquals("Gen 1 must remain history-only", true, fetchedGen1.isHistoryOnlySubscriber)
+        assertEquals("Gen 1 debt must remain 35,000 IQD", 35000.0, fetchedGen1.debtIqd, 0.001)
+
+        // 3. Generation 2 checks
+        val fetchedGen2 = accountDao.getByIdOneShot("acc_gen2_uuid")!!
+        assertEquals("Gen 2 must remain history-only", true, fetchedGen2.isHistoryOnlySubscriber)
+        assertEquals("Gen 2 debt must remain 40,000 IQD", 40000.0, fetchedGen2.debtIqd, 0.001)
+
+        // 4. Generation 3 checks
+        val fetchedGen3 = accountDao.getByIdOneShot("acc_gen3_uuid")!!
+        assertEquals("Gen 3 must be active", false, fetchedGen3.isHistoryOnlySubscriber)
+        assertEquals("Gen 3 debt must be 15,000 IQD", 15000.0, fetchedGen3.debtIqd, 0.001)
+
+        // 5. Active queries must return ONLY Generation 3
+        val activeOneShot = accountRepository.findActiveAccountByUsernameOrIdOneShot("reused_multigen")
+        assertNotNull("Active one-shot must find an active account", activeOneShot)
+        assertEquals("Active one-shot must return Gen 3", "acc_gen3_uuid", activeOneShot!!.id)
+
+        val activeFlow = accountRepository.getActiveAccountByUsernameOrId("reused_multigen").first()
+        assertNotNull("Active flow must emit an active account", activeFlow)
+        assertEquals("Active flow must emit Gen 3", "acc_gen3_uuid", activeFlow!!.id)
+
+        // 6. Ledger entry isolation: each generation has strictly its own ledger entry
+        val gen1Ledger = ledgerRepository.getLedgerForAccount("reused_multigen").first()
+        assertEquals(1, gen1Ledger.size)
+        assertEquals("tx_gen1", gen1Ledger[0].id)
+        assertEquals(35000.0, gen1Ledger[0].amountIqd, 0.001)
+
+        val gen2Ledger = ledgerRepository.getLedgerForAccount("acc_gen2_uuid").first()
+        assertEquals(1, gen2Ledger.size)
+        assertEquals("tx_gen2", gen2Ledger[0].id)
+        assertEquals(40000.0, gen2Ledger[0].amountIqd, 0.001)
+
+        val gen3Ledger = ledgerRepository.getLedgerForAccount("acc_gen3_uuid").first()
+        assertEquals(1, gen3Ledger.size)
+        assertEquals("tx_gen3", gen3Ledger[0].id)
+        assertEquals(15000.0, gen3Ledger[0].amountIqd, 0.001)
     }
 
     // =========================================================================
