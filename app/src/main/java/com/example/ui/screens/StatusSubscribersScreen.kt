@@ -119,7 +119,7 @@ fun StatusSubscribersScreen(
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = if (lang == "ar") "رجوع" else "Back",
                             tint = Color.White
                         )
                     }

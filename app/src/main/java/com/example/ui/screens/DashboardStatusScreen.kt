@@ -27,6 +27,7 @@ fun DashboardStatusScreen(
     onBack: () -> Unit,
     onCardClick: (DashboardStatusFilter) -> Unit
 ) {
+    val currentLang by viewModel.prefs.languageFlow.collectAsStateWithLifecycle(initialValue = viewModel.prefs.getLanguage())
     val balance by viewModel.balance.collectAsStateWithLifecycle()
     val subscribers by viewModel.subscribersList.collectAsStateWithLifecycle()
     val localAccounts by viewModel.localAccounts.collectAsStateWithLifecycle(emptyList())
@@ -87,7 +88,7 @@ fun DashboardStatusScreen(
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = if (currentLang == "ar") "رجوع" else "Back",
                             tint = Color.White
                         )
                     }
