@@ -75,6 +75,7 @@ fun LocalAccountDetailScreen(
     val ledger by viewModel.ledgerEntries.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val isAr = LocalLayoutDirection.current == LayoutDirection.Rtl
 
     LaunchedEffect(error) {
         val msg = error
@@ -226,7 +227,10 @@ fun LocalAccountDetailScreen(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
-                Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = if (isAr) "رجوع" else "Back"
+                )
             }
             Spacer(modifier = Modifier.width(8.dp))
             Text(text = "Local Customer File", fontSize = 20.sp, fontWeight = FontWeight.Bold)
@@ -245,7 +249,10 @@ fun LocalAccountDetailScreen(
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(text = acc.displayName, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     IconButton(onClick = { showEditDialog = true }) {
-                        Icon(imageVector = Icons.Default.Edit, contentDescription = "Edit")
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = if (isAr) "تعديل" else "Edit"
+                        )
                     }
                 }
                 Text(text = "Earthlink Username: ${acc.earthlinkUsername ?: "Unassociated"}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
@@ -263,7 +270,12 @@ fun LocalAccountDetailScreen(
                             .clickable { onMapOpen(lat, lon) },
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(imageVector = Icons.Default.LocationOn, contentDescription = "GPS", tint = Color.Red, modifier = Modifier.size(24.dp))
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = if (isAr) "موقع GPS" else "GPS Location",
+                            tint = Color.Red,
+                            modifier = Modifier.size(24.dp)
+                        )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(text = "GPS Coordinates: $lat, $lon (Tap to open coordinates)", fontSize = 12.sp, color = Color.Blue)
                     }
