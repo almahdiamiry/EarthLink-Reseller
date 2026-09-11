@@ -75,6 +75,9 @@ fun LocalAccountDetailScreen(
     val ledger by viewModel.ledgerEntries.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val prefs = remember(context) { (context.applicationContext as EarthlinkApp).preferenceManager }
+    val currentLang by prefs.languageFlow.collectAsStateWithLifecycle(initialValue = prefs.getLanguage())
+    val isAr = currentLang == "ar"
 
     LaunchedEffect(error) {
         val msg = error
@@ -217,57 +220,69 @@ fun LocalAccountDetailScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
-                Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(text = "Local Customer File", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        }
-
-        val acc = account
-        if (acc == null) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-            return
-        }
-
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(text = acc.displayName, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    IconButton(onClick = { showEditDialog = true }) {
-                        Icon(imageVector = Icons.Default.Edit, contentDescription = "Edit")
-                    }
+    CompositionLocalProvider(LocalLayoutDirection provides (if (isAr) LayoutDirection.Rtl else LayoutDirection.Ltr)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = if (isAr) "رجوع" else "Back"
+                    )
                 }
-                Text(text = "Earthlink Username: ${acc.earthlinkUsername ?: "Unassociated"}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                Text(text = "Primary Phone: ${acc.phone1 ?: "N/A"}", fontSize = 13.sp)
-                Text(text = "Backup Phone: ${acc.phone2 ?: "N/A"}", fontSize = 13.sp)
-                Text(text = "Tower node: ${acc.towerName ?: "N/A"} | IP: ${acc.nanoIp ?: "N/A"}", fontSize = 13.sp)
-                Text(text = "Address: ${acc.address ?: "N/A"}", fontSize = 13.sp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = "Local Customer File", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            }
 
-                val lat = acc.latitude
-                val lon = acc.longitude
-                if (lat != null && lon != null) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onMapOpen(lat, lon) },
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(imageVector = Icons.Default.LocationOn, contentDescription = "GPS", tint = Color.Red, modifier = Modifier.size(24.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(text = "GPS Coordinates: $lat, $lon (Tap to open coordinates)", fontSize = 12.sp, color = Color.Blue)
-                    }
+            val acc = account
+            if (acc == null) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
                 }
+                return@Column
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(text = acc.displayName, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        IconButton(onClick = { showEditDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = if (isAr) "تعديل" else "Edit"
+                            )
+                        }
+                    }
+                    Text(text = "Earthlink Username: ${acc.earthlinkUsername ?: "Unassociated"}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text(text = "Primary Phone: ${acc.phone1 ?: "N/A"}", fontSize = 13.sp)
+                    Text(text = "Backup Phone: ${acc.phone2 ?: "N/A"}", fontSize = 13.sp)
+                    Text(text = "Tower node: ${acc.towerName ?: "N/A"} | IP: ${acc.nanoIp ?: "N/A"}", fontSize = 13.sp)
+                    Text(text = "Address: ${acc.address ?: "N/A"}", fontSize = 13.sp)
+
+                    val lat = acc.latitude
+                    val lon = acc.longitude
+                    if (lat != null && lon != null) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onMapOpen(lat, lon) },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.LocationOn,
+                                contentDescription = if (isAr) "موقع GPS" else "GPS Location",
+                                tint = Color.Red,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(text = "GPS Coordinates: $lat, $lon (Tap to open coordinates)", fontSize = 12.sp, color = Color.Blue)
+                        }
+                    }
 
                 Spacer(modifier = Modifier.height(6.dp))
                 HorizontalDivider()
@@ -366,20 +381,21 @@ fun LocalAccountDetailScreen(
             }
         }
 
-        if (showEditDialog) {
-            EditLocalAccountDialog(
-                account = acc,
-                onDismiss = { showEditDialog = false },
-                onSave = {
-                    showEditDialog = false
-                    viewModel.saveAccountEdit(it)
-                },
-                onDelete = {
-                    showEditDialog = false
-                    viewModel.deleteAccountLocal(acc.id)
-                    onBack()
-                }
-            )
+            if (showEditDialog) {
+                EditLocalAccountDialog(
+                    account = acc,
+                    onDismiss = { showEditDialog = false },
+                    onSave = {
+                        showEditDialog = false
+                        viewModel.saveAccountEdit(it)
+                    },
+                    onDelete = {
+                        showEditDialog = false
+                        viewModel.deleteAccountLocal(acc.id)
+                        onBack()
+                    }
+                )
+            }
         }
     }
 }
