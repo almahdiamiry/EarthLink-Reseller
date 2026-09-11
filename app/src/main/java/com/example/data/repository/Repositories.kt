@@ -1106,6 +1106,7 @@ class LocalAccountRepositoryImpl(
             database.withTransaction {
                 val existing = accountDao.getByIdOneShot(account.id)
                     ?: if (!account.earthlinkUsername.isNullOrBlank()) {
+                        // Matches active accounts separately to avoid merging active updates into archived recycled usernames.
                         if (!account.isHistoryOnlySubscriber) {
                             accountDao.findActiveAccountByUsernameOrIdOneShot(account.earthlinkUsername)
                         } else {
@@ -1355,6 +1356,7 @@ class LocalLedgerRepositoryImpl(
                     }
 
                     val payloadObj = try { JSONObject(op.payloadJson) } catch (_: Exception) { JSONObject() }
+                    // Filters out archived accounts so recycled ISP usernames anchor financial mutations to the active subscriber.
                     val localAcc = accountDao.getByIdOneShot(op.accountId)?.takeIf { !it.isHistoryOnlySubscriber }
                         ?: accountDao.findActiveAccountByUsernameOrIdOneShot(op.accountId)
                         ?: if (op.operationType.equals("ACTIVATION", ignoreCase = true) && payloadObj.has("username") && payloadObj.optString("username").isNotBlank()) {
@@ -1376,6 +1378,7 @@ class LocalLedgerRepositoryImpl(
 
                     val operationPrice = op.amountIqd.toDouble()
                     val isWasil = payloadObj.optBoolean("isWasil", false)
+                    // Re-resolution idempotency: returns existing matching ledger entry to avoid duplicate debt on replay.
                     val existing = ledgerDao.getByIdOneShot(businessTransactionId)
                     if (existing != null) {
                         val isIdentical = existing.accountId == localAcc.id &&
@@ -1784,6 +1787,7 @@ class LocalLedgerRepositoryImpl(
                             val statementResolution = verifyRenewalViaStatement(op, gateway)
                             when (statementResolution) {
                                 UnknownOutcomeResolutionResult.VERIFIED_SUCCESS -> {
+                                    // Rejects external gateway matches if this local operation was never dispatched before the crash.
                                     if (op.dispatchClaimCount == 0) {
                                         val diag = "Renewal was not dispatched prior to process termination (dispatchClaimCount=0); cannot materialize verified success"
                                         resolvePendingOperationVerifiedFailure(businessTransactionId, diag)
