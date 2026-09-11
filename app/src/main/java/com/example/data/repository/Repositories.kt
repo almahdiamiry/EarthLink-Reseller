@@ -1399,6 +1399,7 @@ class LocalLedgerRepositoryImpl(
 
                     val defaultNote = if (op.operationType.equals("ACTIVATION", ignoreCase = true)) "[VERIFIED ACTIVATION]" else null
                     val finalNote = if (!chargeNote.isNullOrBlank()) chargeNote else defaultNote
+                    // Records verified ISP charge as local debt and optional payment to preserve financial history.
                     val accountWithPrice = localAcc.copy(currentPriceIqd = operationPrice)
                     val savedAcc = saveAccountInternal(accountWithPrice)
                     val chargeEntry = addDebtInternal(savedAcc.id, operationPrice, finalNote, businessTransactionId)
@@ -1409,6 +1410,7 @@ class LocalLedgerRepositoryImpl(
                     pendingDao.updateStatus(businessTransactionId, "COMPLETED", System.currentTimeMillis(), null)
                     chargeEntry
                 } else {
+                    // Non-financial operations (EXTEND, TEST_USER) intentionally record zero debt upon verified success.
                     pendingDao.updateStatus(businessTransactionId, "COMPLETED", System.currentTimeMillis(), null)
                     null
                 }
@@ -2117,6 +2119,7 @@ class LocalLedgerRepositoryImpl(
     private suspend fun saveAccountInternal(account: LocalAccount): LocalAccount {
         val existing = accountDao.getByIdOneShot(account.id)
             ?: if (!account.earthlinkUsername.isNullOrBlank()) {
+                // Active accounts must not merge with historical accounts when EarthLink usernames are recycled.
                 if (!account.isHistoryOnlySubscriber) {
                     accountDao.findActiveAccountByUsernameOrIdOneShot(account.earthlinkUsername)
                 } else {
@@ -2124,6 +2127,7 @@ class LocalLedgerRepositoryImpl(
                 }
             } else null
 
+        // Preserves derived financial balances and historical flags; updates only reseller-editable metadata.
         val updated = if (existing != null) {
             existing.copy(
                 displayName = if (account.displayName.isNotBlank()) account.displayName else existing.displayName,
@@ -2214,6 +2218,7 @@ class LocalLedgerRepositoryImpl(
         if (idempotencyKey != null) {
             val existing = ledgerDao.getByIdOneShot(idempotencyKey)
             if (existing != null) {
+                // Deterministic idempotency: returns existing matching entry to prevent duplicate balance mutation on replay.
                 val isIdentical = existing.accountId == accountId &&
                         existing.typeRaw == "took" &&
                         kotlin.math.abs(existing.amountIqd - amount) < 0.0001

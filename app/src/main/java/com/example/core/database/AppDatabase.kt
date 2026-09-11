@@ -66,6 +66,7 @@ interface LocalAccountDao {
     @Query("SELECT * FROM local_accounts WHERE (earthlinkUsername IS NOT NULL AND earthlinkUsername = :username) OR (phone1 IS NOT NULL AND phone1 = :phone) OR (displayName = :name)")
     suspend fun findDuplicates(username: String?, phone: String?, name: String?): List<LocalAccount>
 
+    // Intentionally unfiltered: retrieves account regardless of history-only status for historical and conflict lookups.
     @Query("SELECT * FROM local_accounts WHERE id = :username OR (earthlinkUsername IS NOT NULL AND LOWER(earthlinkUsername) = LOWER(:username)) LIMIT 1")
     fun getAccountByUsernameOrId(username: String): Flow<LocalAccount?>
 

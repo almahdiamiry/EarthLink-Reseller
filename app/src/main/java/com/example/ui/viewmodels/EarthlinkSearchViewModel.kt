@@ -497,6 +497,7 @@ class EarthlinkSearchViewModel(
                     val localAcc = localAccountRepository.getAccountByIdOneShot(username)?.takeIf { !it.isHistoryOnlySubscriber }
                         ?: localAccountRepository.findActiveAccountByUsernameOrIdOneShot(username)
                     if (localAcc == null) {
+                        // Persists local subscriber target for verified gateway activation to anchor subsequent ledger debt.
                         val newId = if (localAccountRepository.getAccountByIdOneShot(username) == null) username else java.util.UUID.randomUUID().toString()
                         val newAcc = LocalAccount(
                             id = newId,
@@ -1133,6 +1134,7 @@ class EarthlinkSearchViewModel(
             _error.value = null
             try {
                 if (account != null) {
+                    // Reseller-owned field: persisted locally regardless of gateway API update outcome.
                     val updated = account.copy(
                         displayName = newName,
                         updatedAt = System.currentTimeMillis()
