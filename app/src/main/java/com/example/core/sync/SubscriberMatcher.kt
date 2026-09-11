@@ -23,14 +23,21 @@ object SubscriberMatcher {
         name: String? = null
     ): LocalAccount? {
         val cleanUsername = username?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
+        val cleanExtId = extId?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
+
         if (cleanUsername != null) {
             val usernameMatches = candidates.filter { acc ->
-                acc.earthlinkUsername?.trim()?.equals(cleanUsername, ignoreCase = true) == true
+                val matchesUsername = acc.earthlinkUsername?.trim()?.equals(cleanUsername, ignoreCase = true) == true
+                if (!matchesUsername) return@filter false
+                if (acc.isHistoryOnlySubscriber) {
+                    cleanExtId != null && acc.sourceExternalId == cleanExtId
+                } else {
+                    true
+                }
             }
             if (usernameMatches.size == 1) return usernameMatches.first()
         }
 
-        val cleanExtId = extId?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
         if (cleanExtId != null) {
             val extIdMatches = candidates.filter { acc ->
                 acc.sourceExternalId == cleanExtId || acc.id == cleanExtId
@@ -41,6 +48,7 @@ object SubscriberMatcher {
         val cleanPhone = phone?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
         if (cleanPhone != null) {
             val phoneMatches = candidates.filter { acc ->
+                if (acc.isHistoryOnlySubscriber) return@filter false
                 val matchesPhone = acc.phone1?.trim() == cleanPhone || acc.phone2?.trim() == cleanPhone
                 val conflictingExtId = cleanExtId != null && !acc.sourceExternalId.isNullOrEmpty() && acc.sourceExternalId != cleanExtId
                 val conflictingUsername = cleanUsername != null && !acc.earthlinkUsername.isNullOrEmpty() && !acc.earthlinkUsername.equals(cleanUsername, ignoreCase = true)
@@ -52,6 +60,7 @@ object SubscriberMatcher {
         val cleanName = name?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
         if (cleanName != null) {
             val nameMatches = candidates.filter { acc ->
+                if (acc.isHistoryOnlySubscriber) return@filter false
                 val matchesName = acc.displayName.trim().equals(cleanName, ignoreCase = true)
                 val conflictingExtId = cleanExtId != null && !acc.sourceExternalId.isNullOrEmpty() && acc.sourceExternalId != cleanExtId
                 val conflictingUsername = cleanUsername != null && !acc.earthlinkUsername.isNullOrEmpty() && !acc.earthlinkUsername.equals(cleanUsername, ignoreCase = true)
