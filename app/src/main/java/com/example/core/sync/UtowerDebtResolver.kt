@@ -28,7 +28,7 @@ object UtowerDebtResolver {
         }
 
         // Priority 2: Latest post-reset transaction with explicit debtAfter snapshot (including 0.0)
-        val latestTxWithDebtAfter = postResetTxs.reversed().firstOrNull { tx ->
+        val latestTxIndex = postResetTxs.indexOfLast { tx ->
             if (!tx.rawJson.isNullOrEmpty()) {
                 try {
                     val json = JSONObject(tx.rawJson)
@@ -41,8 +41,22 @@ object UtowerDebtResolver {
             }
         }
 
-        if (latestTxWithDebtAfter != null) {
-            return latestTxWithDebtAfter.debtAfterIqd
+        if (latestTxIndex != -1) {
+            val latestTxWithDebtAfter = postResetTxs[latestTxIndex]
+            var resolvedDebt = latestTxWithDebtAfter.debtAfterIqd
+            var resolvedAdvance = 0.0
+            var resolvedLoan = 0.0
+
+            for (i in (latestTxIndex + 1) until postResetTxs.size) {
+                val tx = postResetTxs[i]
+                val canonicalType = TransactionTypeNormalizer.normalizeTransactionType(tx.typeRaw)
+                val balances = BalanceCalculator.applyTransaction(resolvedDebt, resolvedAdvance, resolvedLoan, canonicalType, tx.amountIqd)
+                resolvedDebt = balances.debtIqd
+                resolvedAdvance = balances.advanceIqd
+                resolvedLoan = balances.loanIqd
+            }
+
+            return resolvedDebt
         }
 
         // Priority 3: Reconstruct incrementally from valid post-reset movements

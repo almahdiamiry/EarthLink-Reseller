@@ -92,6 +92,45 @@ class Workstream7And8SafetyNetTest {
     }
 
     @Test
+    fun testUtowerDebtResolverAppliesSubsequentTransactionsAfterSnapshot() {
+        val account = LocalAccount(
+            id = "acc_utower_2",
+            displayName = "Snapshot User",
+            debtIqd = 0.0
+        )
+
+        // Tx1 has explicit snapshot debt
+        val txSnapshot = LocalLedgerEntry(
+            id = "tx_snap",
+            accountId = "acc_utower_2",
+            amountIqd = 35000.0,
+            debtAfterIqd = 35000.0,
+            typeRaw = "renewal",
+            occurredAt = 100000L,
+            rawJson = """{"debt_after": 35000}"""
+        )
+
+        // Tx2 occurs after Tx1 and is a payment without explicit debtAfter in rawJson
+        val txPayment = LocalLedgerEntry(
+            id = "tx_pay",
+            accountId = "acc_utower_2",
+            amountIqd = 20000.0,
+            debtAfterIqd = 0.0,
+            typeRaw = "gave",
+            occurredAt = 200000L,
+            rawJson = """{"note": "payment"}"""
+        )
+
+        val resolved = UtowerDebtResolver.resolveDebtForAccount(
+            account = account,
+            postResetTxs = listOf(txSnapshot, txPayment)
+        )
+
+        // 35,000 snapshot debt - 20,000 payment = 15,000 IQD final debt
+        assertEquals(15000.0, resolved, 0.01)
+    }
+
+    @Test
     fun testSubscriberMatcherMergesOnFieldChangedReImport() {
         val existingAccount = LocalAccount(
             id = "acc_uuid_123",
