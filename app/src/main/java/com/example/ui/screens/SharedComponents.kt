@@ -70,14 +70,27 @@ internal val DATE_REGEX = """(\d{1,4})[/-](\d{1,2})[/-](\d{1,4})""".toRegex()
  * Normalizes Eastern Arabic ('٠'..'٩') and Persian ('۰'..'۹') numerals to standard ASCII digits ('0'..'9').
  */
 internal fun normalizeArabicPersianDigits(input: String): String {
-    val arabicDigits = charArrayOf('٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩')
-    val persianDigits = charArrayOf('۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '٨', '٩')
-    var result = input
-    for (i in 0..9) {
-        result = result.replace(arabicDigits[i], (i + 48).toChar())
-        result = result.replace(persianDigits[i], (i + 48).toChar())
+    var hasDigitsToNormalize = false
+    val len = input.length
+    for (i in 0 until len) {
+        val c = input[i]
+        if (c in '٠'..'٩' || c in '۰'..'۹') {
+            hasDigitsToNormalize = true
+            break
+        }
     }
-    return result
+    if (!hasDigitsToNormalize) return input
+
+    val sb = StringBuilder(len)
+    for (i in 0 until len) {
+        val c = input[i]
+        when (c) {
+            in '٠'..'٩' -> sb.append((c - '٠' + '0'.code).toChar())
+            in '۰'..'۹' -> sb.append((c - '۰' + '0'.code).toChar())
+            else -> sb.append(c)
+        }
+    }
+    return sb.toString()
 }
 
 /**
