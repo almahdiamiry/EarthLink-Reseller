@@ -637,6 +637,84 @@ class FinalCrossDeviceFirestoreSimulationTest {
         assertTrue(deviceA.accountDao.getByIdOneShot("acc_rev_2")!!.isHistoryOnlySubscriber)
         assertFalse(deviceA.accountDao.getByIdOneShot("acc_rev_3")!!.isHistoryOnlySubscriber)
     }
+
+    /**
+     * R6 Verification: Authoritative ISP Disappearance Reconciliation & Cross-Device Monotonic Convergence.
+     *
+     * Core Triad:
+     * 1. Claim: INV-02 / INV-06 / INV-12:
+     *    - Device A performs a verified complete ISP fetch where subscriber is absent, transitioning it to history-only.
+     *    - Device B has an incomplete/failed fetch; it refuses to infer disappearance locally (INV-12).
+     *    - When Device A pushes to cloud and Device B pulls, Device B converges monotonically to history-only.
+     *    - Financial debt and ledger history remain completely preserved (INV-01 / INV-02).
+     * 2. Seam: ROBOLECTRIC multi-device isolated Room + simulated Firestore outbox sync.
+     * 3. Independent Oracle:
+     *    - Device B local reconciliation returns 0 transitions.
+     *    - Device A local reconciliation transitions exactly [acc_shared_disp_1].
+     *    - Post-sync Device B has isHistoryOnlySubscriber = true, debt = 30000.0 IQD, active lookup = null.
+     */
+    @Test
+    fun testTwoDevice_ispDisappearanceReconciliation_propagatesMonotonicallyAcrossIncompletePeer() = runBlocking {
+        val subscriberUsername = "user_disappearing_1"
+        val accountId = "acc_shared_disp_1"
+        val initialAccount = LocalAccount(
+            id = accountId,
+            displayName = "Disappearing User",
+            earthlinkUsername = subscriberUsername,
+            debtIqd = 30000.0,
+            isHistoryOnlySubscriber = false,
+            updatedAt = 1000L
+        )
+
+        // Pre-populate both isolated devices
+        deviceA.accountDao.insert(initialAccount)
+        deviceB.accountDao.insert(initialAccount)
+
+        // Device B has an INCOMPLETE or FAILED ISP fetch (e.g. network timeout or partial payload)
+        // Device B calls reconcile with isFetchComplete = false -> MUST ABORT WITHOUT TRANSITIONS
+        val deviceBTransitions = deviceB.accountRepository.reconcileIspDisappearance(
+            authoritativeIspUserIds = emptySet(),
+            isFetchComplete = false
+        )
+        assertTrue("Incomplete fetch on Device B must not infer disappearance", deviceBTransitions.isEmpty())
+        val deviceBAccBefore = deviceB.accountDao.getByIdOneShot(accountId)
+        assertNotNull(deviceBAccBefore)
+        assertFalse("Account on Device B must remain active after incomplete fetch", deviceBAccBefore!!.isHistoryOnlySubscriber)
+
+        // Device A has a COMPLETE authoritative ISP fetch where user_disappearing_1 is absent
+        val authoritativeIspAtA = setOf("other_active_user")
+        val deviceATransitions = deviceA.accountRepository.reconcileIspDisappearance(
+            authoritativeIspUserIds = authoritativeIspAtA,
+            isFetchComplete = true
+        )
+        assertEquals(listOf(accountId), deviceATransitions)
+        val deviceAAccAfter = deviceA.accountDao.getByIdOneShot(accountId)
+        assertNotNull(deviceAAccAfter)
+        assertTrue("Account on Device A must transition to history-only", deviceAAccAfter!!.isHistoryOnlySubscriber)
+
+        // Device A pushes outbox mutation to simulated cloud
+        val pushedFromA = deviceA.pushToCloud()
+        assertTrue("Device A must push outbox mutation", pushedFromA > 0)
+
+        // Device B pulls updates from simulated cloud
+        val pulledByB = deviceB.pullFromCloud()
+        assertTrue("Device B must pull updates", pulledByB > 0)
+
+        // Device B converges monotonically upon receiving Device A's remote update
+        val deviceBAccAfter = deviceB.accountDao.getByIdOneShot(accountId)
+        assertNotNull(deviceBAccAfter)
+        assertTrue("Device B must monotonically converge to history-only from cloud sync", deviceBAccAfter!!.isHistoryOnlySubscriber)
+        assertEquals(30000.0, deviceBAccAfter.debtIqd, 0.001)
+
+        // Active lookup on Device B now excludes the transitioned account
+        val activeB = deviceB.accountDao.findActiveAccountByUsernameOrIdOneShot(subscriberUsername)
+        assertNull("Active lookup must exclude history-only account on Device B", activeB)
+
+        // Historical lookup still finds the account intact
+        val historicalB = deviceB.accountDao.getByIdOneShot(accountId)
+        assertNotNull(historicalB)
+        assertEquals("Disappearing User", historicalB!!.displayName)
+    }
 }
 
 // =================================================================================================

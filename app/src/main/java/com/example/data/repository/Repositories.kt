@@ -1192,6 +1192,19 @@ class LocalAccountRepositoryImpl(
             database.clearAllData()
         }
     }
+
+    override suspend fun reconcileIspDisappearance(authoritativeIspUserIds: Set<String>, isFetchComplete: Boolean): List<String> {
+        if (!isFetchComplete || authoritativeIspUserIds.isEmpty()) return emptyList()
+        return com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
+            com.example.core.sync.IspDisappearanceReconciler.reconcile(
+                database = database,
+                accountDao = accountDao,
+                auditDao = database.auditLogDao(),
+                authoritativeIspUserIds = authoritativeIspUserIds,
+                isFetchComplete = isFetchComplete
+            )
+        }
+    }
 }
 class LocalLedgerRepositoryImpl(
     private val database: AppDatabase,

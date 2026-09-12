@@ -64,12 +64,12 @@ class DashboardViewModel(
         loadDashboardData()
     }
 
-    fun loadDashboardData() {
+    fun loadDashboardData(): kotlinx.coroutines.Job {
         val token = prefs.getAuthToken()
         val isDemo = prefs.getDemoMode()
         if (token.isNullOrEmpty() && !isDemo) {
             _isLoading.value = false
-            return
+            return kotlinx.coroutines.Job().apply { complete() }
         }
 
         if (!isDemo && (prefs.getIspAdminUsername().isNullOrBlank() || prefs.getIspAdminPassword().isNullOrBlank())) {
@@ -77,12 +77,12 @@ class DashboardViewModel(
             _isLoading.value = false
             _error.value = null
             _subscribersList.value = emptyList()
-            return
+            return kotlinx.coroutines.Job().apply { complete() }
         } else {
             _isCredentialsEmpty.value = false
         }
 
-        viewModelScope.launch {
+        return viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
             
@@ -107,7 +107,27 @@ class DashboardViewModel(
                 val subJob = async {
                     try {
                         val subListRes = gateway.searchUsers(query = "", startIndex = 0, rowCount = 5000)
-                        _subscribersList.value = subListRes.itemsList ?: emptyList()
+                        val items = subListRes.itemsList ?: emptyList()
+                        _subscribersList.value = items
+
+                        val total = subListRes.totalCount
+                        val isComplete = subListRes.itemsList != null && total != null && total > 0 && items.isNotEmpty() && items.size >= total
+                        if (isComplete) {
+                            val allItemsHaveValidUserId = items.all { it.userID.isNotBlank() }
+                            if (allItemsHaveValidUserId) {
+                                val authoritativeUsernames = items.map { it.userID.trim() }.toSet()
+                                kotlinx.coroutines.withContext(ioDispatcher) {
+                                    try {
+                                        localAccountRepository.reconcileIspDisappearance(authoritativeUsernames, isFetchComplete = true)
+                                    } catch (e: Exception) {
+                                        if (e is kotlinx.coroutines.CancellationException) throw e
+                                        android.util.Log.e("DashboardViewModel", "ISP disappearance reconciliation failed: ${e.message}", e)
+                                    }
+                                }
+                            } else {
+                                android.util.Log.w("DashboardViewModel", "ISP disappearance reconciliation skipped: snapshot contains item with blank/invalid userID")
+                            }
+                        }
                     } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
                         if (e.message?.contains("Session expired") == true) {
                             android.util.Log.w("DashboardViewModel", "Subscribers fetch canceled due to session expiration.")

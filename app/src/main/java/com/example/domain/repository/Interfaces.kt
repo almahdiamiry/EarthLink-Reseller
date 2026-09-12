@@ -80,6 +80,16 @@ interface LocalAccountRepository {
      * the local generation counter (g4_local_generation). Used exclusively for dataset restore or full reset.
      */
     suspend fun clearAllData(): Long
+
+    /**
+     * Reconciles local active accounts against an authoritative set of ISP user IDs.
+     * Active accounts absent from the authoritative set transition monotonically to history-only.
+     *
+     * @param authoritativeIspUserIds Set of user IDs from a verified complete ISP fetch
+     * @param isFetchComplete If false, aborts immediately without transitions
+     * @return List of local account IDs that transitioned to history-only
+     */
+    suspend fun reconcileIspDisappearance(authoritativeIspUserIds: Set<String>, isFetchComplete: Boolean): List<String>
 }
 
 interface LocalLedgerRepository {
