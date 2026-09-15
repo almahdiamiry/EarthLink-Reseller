@@ -144,6 +144,12 @@ interface LocalLedgerEntryDao {
     @Query("SELECT * FROM local_ledger_entries WHERE accountId = :accountId ORDER BY occurredAt DESC, createdAt DESC, id DESC LIMIT :limit")
     suspend fun getByAccountIdOneShot(accountId: String, limit: Int = 100000): List<LocalLedgerEntry>
 
+    @Query("SELECT * FROM local_ledger_entries WHERE accountId IN (:accountIds) ORDER BY occurredAt DESC, createdAt DESC, id DESC LIMIT :limit")
+    fun getByAccountIds(accountIds: List<String>, limit: Int = 100000): Flow<List<LocalLedgerEntry>>
+
+    @Query("SELECT * FROM local_ledger_entries WHERE accountId IN (:accountIds) ORDER BY occurredAt DESC, createdAt DESC, id DESC LIMIT :limit")
+    suspend fun getByAccountIdsOneShot(accountIds: List<String>, limit: Int = 100000): List<LocalLedgerEntry>
+
     @Query("""
         SELECT * FROM local_ledger_entries 
         WHERE accountId = :accountId 

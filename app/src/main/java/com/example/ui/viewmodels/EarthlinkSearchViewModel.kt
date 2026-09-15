@@ -85,6 +85,40 @@ class EarthlinkSearchViewModel(
     fun getLedgerForAccount(accountId: String): Flow<List<com.example.core.model.LocalLedgerEntry>> =
         localLedgerRepository.getLedgerForAccount(accountId)
 
+    fun getUnifiedLedgerForSubscriber(
+        userIndex: Int?,
+        username: String?,
+        fallbackAccountId: String? = null
+    ): Flow<List<com.example.core.model.LocalLedgerEntry>> = flow {
+        val peerAccounts = localAccountRepository.findActiveAccountsBySubscriberIdentity(userIndex, username)
+        val accountIds = peerAccounts.map { it.id }.toMutableList()
+        if (!fallbackAccountId.isNullOrBlank() && fallbackAccountId !in accountIds) {
+            val fallbackAcc = localAccountRepository.getAccountByIdOneShot(fallbackAccountId)
+            if (fallbackAcc != null) {
+                val matches = if (userIndex != null && userIndex > 0) {
+                    if (fallbackAcc.ispUserIndex != null) {
+                        fallbackAcc.ispUserIndex == userIndex
+                    } else {
+                        !username.isNullOrBlank() && fallbackAcc.earthlinkUsername?.equals(username, ignoreCase = true) == true
+                    }
+                } else if (!username.isNullOrBlank()) {
+                    fallbackAcc.earthlinkUsername?.equals(username, ignoreCase = true) == true
+                } else {
+                    fallbackAcc.id == fallbackAccountId
+                }
+                if (matches) {
+                    accountIds.add(fallbackAccountId)
+                }
+            }
+        }
+        val distinctIds = accountIds.filter { it.isNotBlank() }.distinct()
+        if (distinctIds.isEmpty()) {
+            emit(emptyList())
+        } else {
+            emitAll(localLedgerRepository.getLedgerForAccounts(distinctIds))
+        }
+    }
+
     suspend fun getResellerBalance(): Double = withContext(Dispatchers.IO) {
         try {
             gateway.getBalance()
@@ -698,7 +732,7 @@ class EarthlinkSearchViewModel(
                 }
                 val exactAmountIqd = authoritativePrice.toLong()
 
-                val localAcc = account?.let { localAccountRepository.getAccountByIdOneShot(it.id)?.takeIf { !it.isHistoryOnlySubscriber } ?: it }
+                val localAcc = account?.let { localAccountRepository.getAccountByIdOneShot(it.id)?.takeIf { !it.isHistoryOnlySubscriber } }
                     ?: (localAccountRepository.getAccountByIdOneShot(userId)?.takeIf { !it.isHistoryOnlySubscriber }
                         ?: localAccountRepository.findActiveAccountByUsernameOrIdOneShot(userId))
                 val effectiveAcc = if (localAcc == null) {

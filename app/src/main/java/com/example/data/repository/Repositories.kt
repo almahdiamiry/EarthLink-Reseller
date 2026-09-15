@@ -1264,6 +1264,20 @@ class LocalLedgerRepositoryImpl(
     override fun getLedgerForAccount(accountId: String): Flow<List<LocalLedgerEntry>> =
         ledgerDao.getByAccountId(accountId).distinctUntilChanged()
 
+    override fun getLedgerForAccounts(accountIds: List<String>): Flow<List<LocalLedgerEntry>> {
+        val validIds = accountIds.filter { it.isNotBlank() }.distinct()
+        if (validIds.isEmpty()) return kotlinx.coroutines.flow.flowOf(emptyList())
+        if (validIds.size == 1) return ledgerDao.getByAccountId(validIds.first()).distinctUntilChanged()
+        return ledgerDao.getByAccountIds(validIds).distinctUntilChanged()
+    }
+
+    override suspend fun getLedgerForAccountsOneShot(accountIds: List<String>): List<LocalLedgerEntry> {
+        val validIds = accountIds.filter { it.isNotBlank() }.distinct()
+        if (validIds.isEmpty()) return emptyList()
+        if (validIds.size == 1) return ledgerDao.getByAccountIdOneShot(validIds.first())
+        return ledgerDao.getByAccountIdsOneShot(validIds)
+    }
+
     override suspend fun recordPendingOperation(operation: PendingExternalOperation): PendingExternalOperation {
         require(operation.amountIqd >= 0L && operation.amountIqd % 250L == 0L) {
             "Amount must be non-negative and a multiple of 250 IQD"

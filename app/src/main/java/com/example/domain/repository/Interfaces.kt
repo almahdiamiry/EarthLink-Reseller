@@ -122,6 +122,8 @@ interface LocalAccountRepository {
 
 interface LocalLedgerRepository {
     fun getLedgerForAccount(accountId: String): Flow<List<LocalLedgerEntry>>
+    fun getLedgerForAccounts(accountIds: List<String>): Flow<List<LocalLedgerEntry>>
+    suspend fun getLedgerForAccountsOneShot(accountIds: List<String>): List<LocalLedgerEntry>
     suspend fun addPayment(accountId: String, amount: Double, note: String?, idempotencyKey: String? = null): LocalLedgerEntry
     suspend fun addDebt(accountId: String, amount: Double, note: String?, idempotencyKey: String? = null): LocalLedgerEntry
     suspend fun addNoteTransaction(accountId: String, note: String): LocalLedgerEntry
