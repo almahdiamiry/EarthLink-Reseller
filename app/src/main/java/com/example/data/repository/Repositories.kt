@@ -2463,6 +2463,9 @@ class LocalLedgerRepositoryImpl(
                 require(intendedAmount.isFinite() && intendedAmount >= 0.0 && intendedAmount % 250.0 == 0.0) {
                     "Intended amount must be finite, non-negative, and a multiple of 250 IQD."
                 }
+                require(origType in setOf("took", "renewal", "gave")) {
+                    "Cannot apply financial correction to unsupported ledger type '$origType'"
+                }
 
                 val allPriors = ledgerDao.getByCorrectsEntryId(rootOriginalId)
                 val priorCorrections = if (idempotencyKey != null) allPriors.filter { it.id != idempotencyKey } else allPriors
