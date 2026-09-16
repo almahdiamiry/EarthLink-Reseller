@@ -377,7 +377,10 @@ class UtowerImporter(
                 val totalOpeningDebt = freshAccounts.sumOf { it.openingDebtIqd }
                 Log.i("UtowerImporter", "Reconciliation Report -> Total Current Debt: $totalImportedDebt, Total Opening Debt: $totalOpeningDebt, Diff: ${totalImportedDebt - totalOpeningDebt}")
 
-                val warningsStr = preview.warnings.joinToString("; ")
+                val allWarnings = mutableListOf<String>()
+                allWarnings.addAll(preview.warnings)
+                allWarnings.addAll(session.warningMessages)
+                val warningsStr = if (allWarnings.isNotEmpty()) org.json.JSONArray(allWarnings).toString() else null
                 finalizedBatch = ImportBatch(
                     id = batchId,
                     fileName = fileName,
@@ -385,7 +388,7 @@ class UtowerImporter(
                     accountsImported = session.subsImported,
                     transactionsImported = session.txImported,
                     totalDebtIqd = totalImportedDebt,
-                    warningsJson = if (warningsStr.isNotEmpty()) warningsStr else null,
+                    warningsJson = warningsStr,
                     status = "completed",
                     createdAt = existingBatch?.createdAt ?: System.currentTimeMillis()
                 )
@@ -746,6 +749,7 @@ class UtowerImporter(
                     val totalOpeningDebt = freshAccounts.sumOf { it.openingDebtIqd }
                     Log.i("UtowerImporter", "Reconciliation Report -> Total Current Debt: $totalImportedDebt, Total Opening Debt: $totalOpeningDebt, Diff: ${totalImportedDebt - totalOpeningDebt}")
 
+                    val warningsStr = if (session.warningMessages.isNotEmpty()) org.json.JSONArray(session.warningMessages).toString() else null
                     val finalizedBatch = ImportBatch(
                         id = batchId,
                         fileName = sourceFile.name,
@@ -753,6 +757,7 @@ class UtowerImporter(
                         accountsImported = session.subsImported,
                         transactionsImported = session.txImported,
                         totalDebtIqd = totalImportedDebt,
+                        warningsJson = warningsStr,
                         status = "completed",
                         createdAt = existingBatch?.createdAt ?: System.currentTimeMillis()
                     )
@@ -1088,6 +1093,9 @@ private class ImportSession(
     data class ParsedSub(val sourceKey: String, val json: JSONObject, val isLegacyJsonFormat: Boolean, val originalId: String? = null)
     data class ParsedTx(val sourceKey: String, val json: JSONObject)
 
+    val warningMessages = mutableListOf<String>()
+    val quarantinedSubscriberKeys = mutableSetOf<String>()
+
     val subscriberMap = mutableMapOf<String, String>()
     val subscriberByUsername = mutableMapOf<String, String>()
     val subscriberByPhone = mutableMapOf<String, String>()
@@ -1109,10 +1117,12 @@ private class ImportSession(
     fun init(existingAccs: List<LocalAccount>, existingTxs: List<LocalLedgerEntry>) {
         existingAccounts = existingAccs
         accountsById = existingAccounts.associateBy { it.id }.toMutableMap()
-        accountsByUsername = existingAccounts.filter { !it.earthlinkUsername.isNullOrEmpty() }.associateBy { it.earthlinkUsername!! }.toMutableMap()
+        val usernameGroups = existingAccounts.filter { !it.earthlinkUsername.isNullOrEmpty() }.groupBy { it.earthlinkUsername!! }
+        accountsByUsername = usernameGroups.filter { it.value.size == 1 }.mapValues { it.value.first() }.toMutableMap()
         val phoneGroups = existingAccounts.filter { !it.phone1.isNullOrEmpty() }.groupBy { it.phone1!! }
         accountsByPhone = phoneGroups.filter { it.value.size == 1 }.mapValues { it.value.first() }.toMutableMap()
-        accountsBySourceId = existingAccounts.filter { !it.sourceExternalId.isNullOrEmpty() }.associateBy { it.sourceExternalId!! }.toMutableMap()
+        val sourceIdGroups = existingAccounts.filter { !it.sourceExternalId.isNullOrEmpty() }.groupBy { it.sourceExternalId!! }
+        accountsBySourceId = sourceIdGroups.filter { it.value.size == 1 }.mapValues { it.value.first() }.toMutableMap()
         val nameGroups = existingAccounts.filter { !it.displayName.isEmpty() }.groupBy { it.displayName }
         accountsByName = nameGroups.filter { it.value.size == 1 }.mapValues { it.value.first() }.toMutableMap()
 
@@ -1164,7 +1174,7 @@ private class ImportSession(
                 name = json.optString("display_name", json.optString("name"))?.trim()
             }
 
-            val existing: LocalAccount? = SubscriberMatcher.matchSubscriber(
+            val matchResult = SubscriberMatcher.matchSubscriber(
                 candidates = accountsById.values,
                 extId = sourceKey,
                 username = earthlinkUsername,
@@ -1230,102 +1240,120 @@ private class ImportSession(
             val endMs = if (isLegacyJsonFormat) (json.optLong("end", 0L).takeIf { it > 0L } ?: json.optLong("subscription_end_ms", 0L)) else (liveObj.optLong("end", 0L).takeIf { it > 0L } ?: json.optLong("subscription_end_ms", 0L))
             val expiresAt = if (endMs > 0) formatBghFull(endMs) else null
 
-            val finalId = if (existing != null) {
-                subsMerged++
-                subscribersMerged++
-                val targetDebt = debtIqd
-                val targetAdvance = 0.0 // B2: Never derive openingAdvanceIqd from history
-                val targetLoan = loanIqdVal
-                val updated = existing.copy(
-                    displayName = name?.takeIf { it.isNotBlank() } ?: existing.displayName,
-                    earthlinkUsername = earthlinkUsername?.takeIf { it.isNotBlank() && it != "null" } ?: existing.earthlinkUsername,
-                    phone1 = phone1?.takeIf { it.isNotBlank() && it != "null" } ?: existing.phone1,
-                    debtIqd = targetDebt,
-                    advanceIqd = targetAdvance,
-                    loanIqd = targetLoan,
-                    openingDebtIqd = debtIqd,
-                    openingAdvanceIqd = targetAdvance,
-                    openingLoanIqd = targetLoan,
-                    stateSource = resolvedStateSource,
-                    stateConfidence = "AUTHORITATIVE",
-                    snapshotCapturedAt = System.currentTimeMillis(),
-                    currentPriceIqd = if (existing.currentPriceIqd == 0.0) priceIqd else existing.currentPriceIqd,
-                    nanoIp = existing.nanoIp.takeIf { !it.isNullOrBlank() } ?: nanoIp.takeIf { it != "null" },
-                    note = existing.note.takeIf { !it.isNullOrBlank() } ?: note.takeIf { it != "null" },
-                    expiresAt = existing.expiresAt.takeIf { !it.isNullOrBlank() } ?: expiresAt,
-                    updatedAt = System.currentTimeMillis()
-                )
-                appDatabase.localAccountDao().update(updated)
-
-                accountsById[existing.id] = updated
-                accountsBySourceId[sourceKey] = updated
-                updated.sourceExternalId?.let { accountsBySourceId[it] = updated }
-                updated.earthlinkUsername?.let { accountsByUsername[it] = updated }
-                updated.phone1?.let { accountsByPhone[it] = updated }
-
-                OutboxManager.upsertWithOutbox(appDatabase.syncOutboxDao(), "local_accounts", existing.id, accountAdapter.toJson(updated), importBatchId = batchId)
-                existing.id
-            } else {
-                val newId = UUID.randomUUID().toString()
-
-                val newAcc = LocalAccount(
-                    id = newId,
-                    sourceExternalId = sourceKey,
-                    sourceBatchId = batchId,
-                    displayName = name ?: "",
-                    earthlinkUsername = if (earthlinkUsername == "null") null else earthlinkUsername,
-                    phone1 = if (phone1 == "null") null else phone1,
-                    phone2 = utowerObj.optString("phoneNumber2").takeIf { it != "null" },
-                    packageName = (if (isLegacyJsonFormat) json.optString("packageName") else liveObj.optString("profileName")).takeIf { !it.isNullOrBlank() && it != "null" },
-                    currentPriceIqd = priceIqd,
-                    debtIqd = debtIqd,
-                    loanIqd = loanIqdVal,
-                    advanceIqd = 0.0, // B2: Never derive openingAdvanceIqd from history
-                    openingDebtIqd = debtIqd,
-                    openingAdvanceIqd = 0.0,
-                    openingLoanIqd = loanIqdVal,
-                    stateSource = resolvedStateSource,
-                    stateConfidence = "AUTHORITATIVE",
-                    snapshotCapturedAt = System.currentTimeMillis(),
-                    towerName = utowerObj.optString("boardName").takeIf { it != "null" },
-                    nanoIp = nanoIp.takeIf { it != "null" },
-                    note = note.takeIf { it != "null" },
-                    expiresAt = expiresAt,
-                    rawJson = json.toString(),
-                    createdAt = System.currentTimeMillis(),
-                    updatedAt = System.currentTimeMillis()
-                )
-                val rowId = appDatabase.localAccountDao().insert(newAcc)
-                if (rowId <= 0L) {
+            val finalId = when (matchResult) {
+                is SubscriberMatchResult.Unique -> {
+                    val existing = matchResult.account
                     subsMerged++
                     subscribersMerged++
-                    val resolvedAcc = (if (sourceKey.isNotEmpty()) appDatabase.localAccountDao().findBySourceExternalId(sourceKey) else null)
-                        ?: accountsBySourceId[sourceKey]
-                        ?: (if (!earthlinkUsername.isNullOrEmpty() && earthlinkUsername != "null") accountsByUsername[earthlinkUsername] else null)
-                        ?: (if (!phone1.isNullOrEmpty() && phone1 != "null") accountsByPhone[phone1] else null)
-                        ?: (if (!name.isNullOrEmpty() && name != "null") accountsByName[name] else null)
-                        ?: accountsById[newId]
+                    val targetDebt = debtIqd
+                    val targetAdvance = 0.0 // B2: Never derive openingAdvanceIqd from history
+                    val targetLoan = loanIqdVal
+                    val updated = existing.copy(
+                        displayName = name?.takeIf { it.isNotBlank() } ?: existing.displayName,
+                        earthlinkUsername = earthlinkUsername?.takeIf { it.isNotBlank() && it != "null" } ?: existing.earthlinkUsername,
+                        phone1 = phone1?.takeIf { it.isNotBlank() && it != "null" } ?: existing.phone1,
+                        debtIqd = targetDebt,
+                        advanceIqd = targetAdvance,
+                        loanIqd = targetLoan,
+                        openingDebtIqd = debtIqd,
+                        openingAdvanceIqd = targetAdvance,
+                        openingLoanIqd = targetLoan,
+                        stateSource = resolvedStateSource,
+                        stateConfidence = "AUTHORITATIVE",
+                        snapshotCapturedAt = System.currentTimeMillis(),
+                        currentPriceIqd = if (existing.currentPriceIqd == 0.0) priceIqd else existing.currentPriceIqd,
+                        nanoIp = existing.nanoIp.takeIf { !it.isNullOrBlank() } ?: nanoIp.takeIf { it != "null" },
+                        note = existing.note.takeIf { !it.isNullOrBlank() } ?: note.takeIf { it != "null" },
+                        expiresAt = existing.expiresAt.takeIf { !it.isNullOrBlank() } ?: expiresAt,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                    appDatabase.localAccountDao().update(updated)
 
-                    val resolvedId = resolvedAcc?.id ?: newId
-                    if (resolvedAcc != null) {
-                        accountsById[resolvedId] = resolvedAcc
-                        accountsBySourceId[sourceKey] = resolvedAcc
-                        resolvedAcc.sourceExternalId?.let { accountsBySourceId[it] = resolvedAcc }
-                        resolvedAcc.earthlinkUsername?.let { accountsByUsername[it] = resolvedAcc }
-                        resolvedAcc.phone1?.let { accountsByPhone[it] = resolvedAcc }
+                    accountsById[existing.id] = updated
+                    accountsBySourceId[sourceKey] = updated
+                    updated.sourceExternalId?.let { accountsBySourceId[it] = updated }
+                    updated.earthlinkUsername?.let { accountsByUsername[it] = updated }
+                    updated.phone1?.let { accountsByPhone[it] = updated }
+
+                    OutboxManager.upsertWithOutbox(appDatabase.syncOutboxDao(), "local_accounts", existing.id, accountAdapter.toJson(updated), importBatchId = batchId)
+                    existing.id
+                }
+                is SubscriberMatchResult.Ambiguous -> {
+                    warnings++
+                    subscribersSkipped++
+                    val warningMsg = matchResult.message
+                    Log.w("UtowerImporter", warningMsg)
+                    warningMessages.add(warningMsg)
+                    val cleanExtId = sourceKey.trim().takeIf { it.isNotEmpty() && it != "null" }
+                    val cleanUsername = earthlinkUsername?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
+                    if (cleanExtId != null) quarantinedSubscriberKeys.add(cleanExtId)
+                    if (cleanUsername != null) quarantinedSubscriberKeys.add(cleanUsername)
+                    if (!originalId.isNullOrEmpty()) quarantinedSubscriberKeys.add(originalId)
+                    matchResult.candidateIds.forEach { quarantinedSubscriberKeys.add(it) }
+                    return
+                }
+                is SubscriberMatchResult.NoMatch -> {
+                    val newId = UUID.randomUUID().toString()
+
+                    val newAcc = LocalAccount(
+                        id = newId,
+                        sourceExternalId = sourceKey,
+                        sourceBatchId = batchId,
+                        displayName = name ?: "",
+                        earthlinkUsername = if (earthlinkUsername == "null") null else earthlinkUsername,
+                        phone1 = if (phone1 == "null") null else phone1,
+                        phone2 = utowerObj.optString("phoneNumber2").takeIf { it != "null" },
+                        packageName = (if (isLegacyJsonFormat) json.optString("packageName") else liveObj.optString("profileName")).takeIf { !it.isNullOrBlank() && it != "null" },
+                        currentPriceIqd = priceIqd,
+                        debtIqd = debtIqd,
+                        loanIqd = loanIqdVal,
+                        advanceIqd = 0.0, // B2: Never derive openingAdvanceIqd from history
+                        openingDebtIqd = debtIqd,
+                        openingAdvanceIqd = 0.0,
+                        openingLoanIqd = loanIqdVal,
+                        stateSource = resolvedStateSource,
+                        stateConfidence = "AUTHORITATIVE",
+                        snapshotCapturedAt = System.currentTimeMillis(),
+                        towerName = utowerObj.optString("boardName").takeIf { it != "null" },
+                        nanoIp = nanoIp.takeIf { it != "null" },
+                        note = note.takeIf { it != "null" },
+                        expiresAt = expiresAt,
+                        rawJson = json.toString(),
+                        createdAt = System.currentTimeMillis(),
+                        updatedAt = System.currentTimeMillis()
+                    )
+                    val rowId = appDatabase.localAccountDao().insert(newAcc)
+                    if (rowId <= 0L) {
+                        subsMerged++
+                        subscribersMerged++
+                        val resolvedAcc = (if (sourceKey.isNotEmpty()) appDatabase.localAccountDao().findBySourceExternalId(sourceKey) else null)
+                            ?: accountsBySourceId[sourceKey]
+                            ?: (if (!earthlinkUsername.isNullOrEmpty() && earthlinkUsername != "null") accountsByUsername[earthlinkUsername] else null)
+                            ?: (if (!phone1.isNullOrEmpty() && phone1 != "null") accountsByPhone[phone1] else null)
+                            ?: (if (!name.isNullOrEmpty() && name != "null") accountsByName[name] else null)
+                            ?: accountsById[newId]
+
+                        val resolvedId = resolvedAcc?.id ?: newId
+                        if (resolvedAcc != null) {
+                            accountsById[resolvedId] = resolvedAcc
+                            accountsBySourceId[sourceKey] = resolvedAcc
+                            resolvedAcc.sourceExternalId?.let { accountsBySourceId[it] = resolvedAcc }
+                            resolvedAcc.earthlinkUsername?.let { accountsByUsername[it] = resolvedAcc }
+                            resolvedAcc.phone1?.let { accountsByPhone[it] = resolvedAcc }
+                        }
+                        resolvedId
+                    } else {
+                        subsImported++
+                        subscribersInserted++
+                        accountsById[newAcc.id] = newAcc
+                        accountsBySourceId[sourceKey] = newAcc
+                        newAcc.sourceExternalId?.let { accountsBySourceId[it] = newAcc }
+                        newAcc.earthlinkUsername?.let { accountsByUsername[it] = newAcc }
+                        newAcc.phone1?.let { accountsByPhone[it] = newAcc }
+
+                        OutboxManager.upsertWithOutbox(appDatabase.syncOutboxDao(), "local_accounts", newId, accountAdapter.toJson(newAcc), importBatchId = batchId)
+                        newId
                     }
-                    resolvedId
-                } else {
-                    subsImported++
-                    subscribersInserted++
-                    accountsById[newAcc.id] = newAcc
-                    accountsBySourceId[sourceKey] = newAcc
-                    newAcc.sourceExternalId?.let { accountsBySourceId[it] = newAcc }
-                    newAcc.earthlinkUsername?.let { accountsByUsername[it] = newAcc }
-                    newAcc.phone1?.let { accountsByPhone[it] = newAcc }
-
-                    OutboxManager.upsertWithOutbox(appDatabase.syncOutboxDao(), "local_accounts", newId, accountAdapter.toJson(newAcc), importBatchId = batchId)
-                    newId
                 }
             }
 
@@ -1433,6 +1461,25 @@ private class ImportSession(
                 if (indexStr.isNotEmpty() && indexStr != "null") {
                     subscriberRef = indexStr.split("|")[0]
                 }
+            }
+
+            val cleanRef = subscriberRef?.removePrefix("e_")?.removePrefix("user_")?.removePrefix("sub_")
+            val isQuarantined = subscriberRef != null && (
+                quarantinedSubscriberKeys.contains(subscriberRef) ||
+                (cleanRef != null && (
+                    quarantinedSubscriberKeys.contains(cleanRef) ||
+                    quarantinedSubscriberKeys.contains("e_$cleanRef") ||
+                    quarantinedSubscriberKeys.contains("user_$cleanRef") ||
+                    quarantinedSubscriberKeys.contains("sub_$cleanRef")
+                ))
+            )
+            if (isQuarantined) {
+                warnings++
+                transactionsSkipped++
+                val warningMsg = "Transaction $sourceKey skipped: references ambiguous/quarantined subscriber '$subscriberRef'."
+                Log.w("UtowerImporter", warningMsg)
+                warningMessages.add(warningMsg)
+                return
             }
 
             var accountId = subscriberMap[subscriberRef] ?: accountsBySourceId[subscriberRef]?.id ?: accountsById[subscriberRef]?.id
@@ -1600,6 +1647,9 @@ private class ImportSession(
             } else {
                 warnings++
                 transactionsSkipped++
+                val warningMsg = "Transaction $sourceKey skipped: could not resolve single unambiguous account for ref '$subscriberRef'."
+                Log.w("UtowerImporter", warningMsg)
+                warningMessages.add(warningMsg)
             }
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e

@@ -85,6 +85,40 @@ class EarthlinkSearchViewModel(
     fun getLedgerForAccount(accountId: String): Flow<List<com.example.core.model.LocalLedgerEntry>> =
         localLedgerRepository.getLedgerForAccount(accountId)
 
+    fun getUnifiedLedgerForSubscriber(
+        userIndex: Int?,
+        username: String?,
+        fallbackAccountId: String? = null
+    ): Flow<List<com.example.core.model.LocalLedgerEntry>> = flow {
+        val peerAccounts = localAccountRepository.findActiveAccountsBySubscriberIdentity(userIndex, username)
+        val accountIds = peerAccounts.map { it.id }.toMutableList()
+        if (!fallbackAccountId.isNullOrBlank() && fallbackAccountId !in accountIds) {
+            val fallbackAcc = localAccountRepository.getAccountByIdOneShot(fallbackAccountId)
+            if (fallbackAcc != null) {
+                val matches = if (userIndex != null && userIndex > 0) {
+                    if (fallbackAcc.ispUserIndex != null) {
+                        fallbackAcc.ispUserIndex == userIndex
+                    } else {
+                        !username.isNullOrBlank() && fallbackAcc.earthlinkUsername?.equals(username, ignoreCase = true) == true
+                    }
+                } else if (!username.isNullOrBlank()) {
+                    fallbackAcc.earthlinkUsername?.equals(username, ignoreCase = true) == true
+                } else {
+                    fallbackAcc.id == fallbackAccountId
+                }
+                if (matches) {
+                    accountIds.add(fallbackAccountId)
+                }
+            }
+        }
+        val distinctIds = accountIds.filter { it.isNotBlank() }.distinct()
+        if (distinctIds.isEmpty()) {
+            emit(emptyList())
+        } else {
+            emitAll(localLedgerRepository.getLedgerForAccounts(distinctIds))
+        }
+    }
+
     suspend fun getResellerBalance(): Double = withContext(Dispatchers.IO) {
         try {
             gateway.getBalance()
@@ -313,6 +347,14 @@ class EarthlinkSearchViewModel(
                 try {
                     val detail = gateway.getUserDetail(userIndex)
                     _selectedUser.value = detail
+                    if (foundLocal != null && detail.userIndex > 0) {
+                        try {
+                            localAccountRepository.bindIspIdentity(foundLocal.id, detail.userIndex)
+                        } catch (e: Exception) {
+                            if (e is kotlinx.coroutines.CancellationException) throw e
+                            Log.w("EarthlinkSearchVM", "ISP identity binding skipped: ${e.message}")
+                        }
+                    }
                 } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
                     if (_selectedUser.value == null) {
                         _error.value = e.message
@@ -690,8 +732,9 @@ class EarthlinkSearchViewModel(
                 }
                 val exactAmountIqd = authoritativePrice.toLong()
 
-                val localAcc = localAccountRepository.getAccountByIdOneShot(userId)?.takeIf { !it.isHistoryOnlySubscriber }
-                    ?: localAccountRepository.findActiveAccountByUsernameOrIdOneShot(userId)
+                val localAcc = account?.let { localAccountRepository.getAccountByIdOneShot(it.id)?.takeIf { !it.isHistoryOnlySubscriber } }
+                    ?: (localAccountRepository.getAccountByIdOneShot(userId)?.takeIf { !it.isHistoryOnlySubscriber }
+                        ?: localAccountRepository.findActiveAccountByUsernameOrIdOneShot(userId))
                 val effectiveAcc = if (localAcc == null) {
                     val snapshotUser = _selectedUser.value?.takeIf { it.userID.equals(userId, ignoreCase = true) }
                     val snapshotListItem = _usersList.value.find { it.userID.equals(userId, ignoreCase = true) }
@@ -762,6 +805,15 @@ class EarthlinkSearchViewModel(
                                 payNote = payNoteToUse,
                                 idempotencyKey = businessTxId
                             )
+                            val confirmedUserIndex = _selectedUser.value?.userIndex?.takeIf { it > 0 }
+                            if (confirmedUserIndex != null) {
+                                try {
+                                    localAccountRepository.bindIspIdentity(effectiveAcc.id, confirmedUserIndex)
+                                } catch (e: Exception) {
+                                    if (e is kotlinx.coroutines.CancellationException) throw e
+                                    Log.w("EarthlinkSearchVM", "ISP identity binding on refill skipped: ${e.message}")
+                                }
+                            }
                             syncRepo?.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
                         } catch (e: Exception) {
                             if (e is kotlinx.coroutines.CancellationException) throw e

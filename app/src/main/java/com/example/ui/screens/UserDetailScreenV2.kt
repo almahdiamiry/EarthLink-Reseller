@@ -153,6 +153,63 @@ object HistoryPresentationManager {
             }
         }
     }
+
+    fun computeEntryBalancesMap(
+        finalLedgerList: List<com.example.core.model.LocalLedgerEntry>,
+        matchingAccount: com.example.core.model.LocalAccount?
+    ): Map<String, Pair<Double, Double>> {
+        val currentAccId = matchingAccount?.id ?: return emptyMap()
+        val openingDebt = matchingAccount.openingDebtIqd ?: 0.0
+        val openingAdvance = matchingAccount.openingAdvanceIqd ?: 0.0
+        val openingLoan = matchingAccount.openingLoanIqd ?: 0.0
+
+        val eligibleTxs = finalLedgerList.filter { tx ->
+            tx.accountId == currentAccId && (matchingAccount.stateSource == null || !tx.isSnapshotHistory)
+        }
+
+        val sortedTxs = eligibleTxs.sortedWith(
+            compareBy<com.example.core.model.LocalLedgerEntry> { it.occurredAt }
+                .thenBy { it.sourceExternalId ?: "" }
+                .thenBy { it.id }
+        )
+
+        var runningDebt = openingDebt
+        var runningAdvance = openingAdvance
+        var runningLoan = openingLoan
+
+        val map = mutableMapOf<String, Pair<Double, Double>>()
+        for (tx in sortedTxs) {
+            val canonicalType = com.example.core.ledger.TransactionTypeNormalizer.normalizeTransactionType(tx.typeRaw)
+            val updatedBalances = com.example.core.ledger.BalanceCalculator.applyTransaction(
+                currentDebt = runningDebt,
+                currentAdvance = runningAdvance,
+                currentLoan = runningLoan,
+                txType = canonicalType,
+                amount = tx.amountIqd
+            )
+            runningDebt = updatedBalances.debtIqd
+            runningAdvance = updatedBalances.advanceIqd
+            runningLoan = updatedBalances.loanIqd
+            map[tx.id] = Pair(runningDebt, runningAdvance)
+        }
+        return map
+    }
+
+    fun resolveRowPostBalances(
+        entry: com.example.core.model.LocalLedgerEntry,
+        matchingAccount: com.example.core.model.LocalAccount?,
+        entryBalancesMap: Map<String, Pair<Double, Double>>
+    ): Pair<Double, Double> {
+        return if (matchingAccount != null && entry.accountId == matchingAccount.id) {
+            entryBalancesMap[entry.id] ?: storedFallbackBalance(entry)
+        } else {
+            storedFallbackBalance(entry)
+        }
+    }
+
+    fun storedFallbackBalance(entry: com.example.core.model.LocalLedgerEntry): Pair<Double, Double> {
+        return if (entry.debtAfterIqd < 0.0) Pair(0.0, -entry.debtAfterIqd.toDouble()) else Pair(entry.debtAfterIqd.toDouble(), 0.0)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -201,10 +258,15 @@ fun UserDetailScreenV2(
     val context = LocalContext.current
 
     var ledgerList by remember { mutableStateOf<List<com.example.core.model.LocalLedgerEntry>>(emptyList()) }
-    LaunchedEffect(matchingAccount?.id, showHistoryDialog) {
-        val currentAcc = matchingAccount
-        if (showHistoryDialog && currentAcc != null) {
-            viewModel.getLedgerForAccount(currentAcc.id).collect {
+    LaunchedEffect(userIndex, targetUsername, matchingAccount?.id, showHistoryDialog) {
+        if (showHistoryDialog) {
+            val effIndex = if (userIndex > 0) userIndex else matchingAccount?.ispUserIndex
+            val effUsername = targetUsername.ifBlank { matchingAccount?.earthlinkUsername } ?: userId
+            viewModel.getUnifiedLedgerForSubscriber(
+                userIndex = effIndex,
+                username = effUsername,
+                fallbackAccountId = matchingAccount?.id
+            ).collect {
                 ledgerList = it
             }
         }
@@ -1382,42 +1444,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                 ledgerDateFormat.format(java.util.Date(timestamp))
             }
             val entryBalancesMap = remember(finalLedgerList, matchingAccount) {
-                val openingDebt = matchingAccount?.openingDebtIqd ?: 0.0
-                val openingAdvance = matchingAccount?.openingAdvanceIqd ?: 0.0
-                val openingLoan = matchingAccount?.openingLoanIqd ?: 0.0
-
-                val eligibleTxs = if (matchingAccount?.stateSource != null) {
-                    finalLedgerList.filter { !it.isSnapshotHistory }
-                } else {
-                    finalLedgerList
-                }
-
-                val sortedTxs = eligibleTxs.sortedWith(
-                    compareBy<com.example.core.model.LocalLedgerEntry> { it.occurredAt }
-                        .thenBy { it.sourceExternalId ?: "" }
-                        .thenBy { it.id }
-                )
-
-                var runningDebt = openingDebt
-                var runningAdvance = openingAdvance
-                var runningLoan = openingLoan
-
-                val map = mutableMapOf<String, Pair<Double, Double>>()
-                for (tx in sortedTxs) {
-                    val canonicalType = com.example.core.ledger.TransactionTypeNormalizer.normalizeTransactionType(tx.typeRaw)
-                    val updatedBalances = com.example.core.ledger.BalanceCalculator.applyTransaction(
-                        currentDebt = runningDebt,
-                        currentAdvance = runningAdvance,
-                        currentLoan = runningLoan,
-                        txType = canonicalType,
-                        amount = tx.amountIqd
-                    )
-                    runningDebt = updatedBalances.debtIqd
-                    runningAdvance = updatedBalances.advanceIqd
-                    runningLoan = updatedBalances.loanIqd
-                    map[tx.id] = Pair(runningDebt, runningAdvance)
-                }
-                map
+                HistoryPresentationManager.computeEntryBalancesMap(finalLedgerList, matchingAccount)
             }
             CompositionLocalProvider(LocalLayoutDirection provides (if (currentLang == "ar") LayoutDirection.Rtl else LayoutDirection.Ltr)) {
                 Scaffold(
@@ -1556,8 +1583,11 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                             color = Color(0xFF8E8E93)
                                         )
                                         
-                                        val (postDebt, postAdvance) = entryBalancesMap[entry.id]
-                                            ?: if (entry.debtAfterIqd < 0.0) Pair(0.0, -entry.debtAfterIqd.toDouble()) else Pair(entry.debtAfterIqd.toDouble(), 0.0)
+                                        val (postDebt, postAdvance) = HistoryPresentationManager.resolveRowPostBalances(
+                                            entry = entry,
+                                            matchingAccount = matchingAccount,
+                                            entryBalancesMap = entryBalancesMap
+                                        )
                                         
                                         val balanceText = when {
                                             postDebt > 0.0 && postAdvance > 0.0 -> {

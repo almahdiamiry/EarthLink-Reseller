@@ -79,6 +79,26 @@ interface LocalAccountDao {
     @Query("SELECT * FROM local_accounts WHERE isHistoryOnlySubscriber = 0 AND (id = :username OR (earthlinkUsername IS NOT NULL AND LOWER(earthlinkUsername) = LOWER(:username))) LIMIT 1")
     suspend fun findActiveAccountByUsernameOrIdOneShot(username: String): LocalAccount?
 
+    /**
+     * Resolves all active physical containers bound to the authoritative [userIndex].
+     *
+     * CONTRACT:
+     * Returns all matching peer containers without identity precedence or ordering.
+     * Callers must not interpret list position as ownership.
+     */
+    @Query("SELECT * FROM local_accounts WHERE isHistoryOnlySubscriber = 0 AND ispUserIndex = :userIndex")
+    suspend fun findActiveAccountsByIspUserIndex(userIndex: Int): List<LocalAccount>
+
+    /**
+     * Resolves all active physical containers matching the operational [username] (case-insensitive fallback).
+     *
+     * CONTRACT:
+     * Returns all matching peer containers without identity precedence or ordering.
+     * Callers must not interpret list position as ownership.
+     */
+    @Query("SELECT * FROM local_accounts WHERE isHistoryOnlySubscriber = 0 AND earthlinkUsername IS NOT NULL AND LOWER(earthlinkUsername) = LOWER(:username)")
+    suspend fun findActiveAccountsByUsername(username: String): List<LocalAccount>
+
     @Query("""
         SELECT * FROM local_accounts 
         WHERE isHistoryOnlySubscriber = 0 AND (:query = '' OR displayName LIKE :query || '%' OR earthlinkUsername LIKE :query || '%' OR phone1 LIKE :query || '%' OR phone2 LIKE :query || '%')
@@ -123,6 +143,12 @@ interface LocalLedgerEntryDao {
 
     @Query("SELECT * FROM local_ledger_entries WHERE accountId = :accountId ORDER BY occurredAt DESC, createdAt DESC, id DESC LIMIT :limit")
     suspend fun getByAccountIdOneShot(accountId: String, limit: Int = 100000): List<LocalLedgerEntry>
+
+    @Query("SELECT * FROM local_ledger_entries WHERE accountId IN (:accountIds) ORDER BY occurredAt DESC, createdAt DESC, id DESC LIMIT :limit")
+    fun getByAccountIds(accountIds: List<String>, limit: Int = 100000): Flow<List<LocalLedgerEntry>>
+
+    @Query("SELECT * FROM local_ledger_entries WHERE accountId IN (:accountIds) ORDER BY occurredAt DESC, createdAt DESC, id DESC LIMIT :limit")
+    suspend fun getByAccountIdsOneShot(accountIds: List<String>, limit: Int = 100000): List<LocalLedgerEntry>
 
     @Query("""
         SELECT * FROM local_ledger_entries 
@@ -537,7 +563,7 @@ abstract class AppDatabase : RoomDatabase() {
     }
 
     companion object {
-        const val VERSION = 17
+        const val VERSION = 18
 
         @Volatile
         private var INSTANCE: AppDatabase? = null
@@ -906,6 +932,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_17_18 = object : androidx.room.migration.Migration(17, 18) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `local_accounts` ADD COLUMN `ispSubscriberId` TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE `local_accounts` ADD COLUMN `ispUserIndex` INTEGER DEFAULT NULL")
+                db.execSQL("DROP INDEX IF EXISTS `index_local_accounts_sourceExternalId`")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_local_accounts_sourceExternalId` ON `local_accounts` (`sourceExternalId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_local_accounts_ispUserIndex` ON `local_accounts` (`ispUserIndex`)")
+            }
+        }
+
         private val INSTANCES = java.util.concurrent.ConcurrentHashMap<String, AppDatabase>()
 
         fun getDatabase(context: Context, passphrase: ByteArray, dbName: String = "earthlink_reseller_db"): AppDatabase {
@@ -926,7 +962,7 @@ abstract class AppDatabase : RoomDatabase() {
                 // FW-04 is deferred migration-history maintenance, not an unrelated cleanup task.
                 // Do NOT attempt to squash or rewrite these migrations during routine maintenance.
                 val builder = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, dbName)
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                             super.onCreate(db)
