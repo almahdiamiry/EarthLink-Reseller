@@ -2,7 +2,6 @@ package com.example
 
 import com.example.core.model.LocalAccount
 import com.example.core.sync.SubscriberMatcher
-import com.example.core.sync.SubscriberMatchResult
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -30,7 +29,7 @@ class Workstream7ImportMatchingCollisionTest {
             phone = "07701234567"
         )
 
-        assertNull("Stage 3 phone match must reject candidate with conflicting username", matched.accountOrNull)
+        assertNull("Stage 3 phone match must reject candidate with conflicting username", matched)
     }
 
     @Test
@@ -48,8 +47,8 @@ class Workstream7ImportMatchingCollisionTest {
             phone = "07701234567"
         )
 
-        assertNotNull("Stage 3 phone match succeeds when candidate has no conflicting username", matched.accountOrNull)
-        assertEquals("acc_002", matched.accountOrNull?.id)
+        assertNotNull("Stage 3 phone match succeeds when candidate has no conflicting username", matched)
+        assertEquals("acc_002", matched?.id)
     }
 
     @Test
@@ -61,8 +60,7 @@ class Workstream7ImportMatchingCollisionTest {
             candidates = listOf(c1, c2),
             phone = "07709999999"
         )
-        assertTrue("Ambiguous phone matching multiple candidates must return Ambiguous", matched is SubscriberMatchResult.Ambiguous)
-        assertNull("Ambiguous phone matching multiple candidates must have null accountOrNull", matched.accountOrNull)
+        assertNull("Ambiguous phone matching multiple candidates must return null", matched)
     }
 
     @Test
@@ -78,6 +76,6 @@ class Workstream7ImportMatchingCollisionTest {
             username = "user_y",
             name = "Ali Hassan"
         )
-        assertNull("Stage 4 name match must reject candidate with conflicting username", matched.accountOrNull)
+        assertNull("Stage 4 name match must reject candidate with conflicting username", matched)
     }
 }

@@ -1,4 +1,4 @@
-package com.example.core.sync
+﻿package com.example.core.sync
 
 import android.content.Context
 import androidx.room.Room
@@ -253,7 +253,7 @@ class HistoricalSubscriberMatchingSafetyTest {
             username = "other_user@sacx",
             phone = "07709999999"
         )
-        assertNull("Historical account must NEVER be matched via phone fallback", matched.accountOrNull)
+        assertNull("Historical account must NEVER be matched via phone fallback", matched)
     }
 
     @Test
@@ -275,7 +275,7 @@ class HistoricalSubscriberMatchingSafetyTest {
             username = "other_user@sacx",
             name = "Same Common Name"
         )
-        assertNull("Historical account must NEVER be matched via name fallback", matched.accountOrNull)
+        assertNull("Historical account must NEVER be matched via name fallback", matched)
     }
 
     @Test
@@ -296,8 +296,8 @@ class HistoricalSubscriberMatchingSafetyTest {
             extId = "e_33333",
             username = "active_user@sacx"
         )
-        assertNotNull(matched.accountOrNull)
-        assertEquals("acc_act_1", matched.accountOrNull!!.id)
+        assertNotNull(matched)
+        assertEquals("acc_act_1", matched!!.id)
     }
 
     @Test
@@ -323,8 +323,8 @@ class HistoricalSubscriberMatchingSafetyTest {
             extId = "e_new",
             username = "shared_user@sacx"
         )
-        assertNotNull(matched.accountOrNull)
-        assertEquals("Must select the active candidate and ignore the historical candidate", "acc_act_shared", matched.accountOrNull!!.id)
+        assertNotNull(matched)
+        assertEquals("Must select the active candidate and ignore the historical candidate", "acc_act_shared", matched!!.id)
     }
 
     @Test
@@ -343,6 +343,6 @@ class HistoricalSubscriberMatchingSafetyTest {
             extId = null,
             username = "recycled_user@sacx"
         )
-        assertNull("Historical account must NOT be matched by username when incoming extId is null", matched.accountOrNull)
+        assertNull("Historical account must NOT be matched by username when incoming extId is null", matched)
     }
 }

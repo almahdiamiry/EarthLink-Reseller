@@ -101,8 +101,6 @@ object RemoteEntityValidator {
             stateSource = stateSource,
             stateConfidence = stateConfidence,
             snapshotCapturedAt = snapshotCapturedAt,
-            ispSubscriberId = d["ispSubscriberId"] as? String ?: existingLocalAccount?.ispSubscriberId,
-            ispUserIndex = (d["ispUserIndex"] as? Number)?.toInt() ?: existingLocalAccount?.ispUserIndex,
             createdAt = createdAt,
             updatedAt = remoteUpdatedAt
         )

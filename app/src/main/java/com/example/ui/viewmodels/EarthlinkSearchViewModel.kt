@@ -313,14 +313,6 @@ class EarthlinkSearchViewModel(
                 try {
                     val detail = gateway.getUserDetail(userIndex)
                     _selectedUser.value = detail
-                    if (foundLocal != null && detail.userIndex > 0) {
-                        try {
-                            localAccountRepository.bindIspIdentity(foundLocal.id, detail.userIndex)
-                        } catch (e: Exception) {
-                            if (e is kotlinx.coroutines.CancellationException) throw e
-                            Log.w("EarthlinkSearchVM", "ISP identity binding skipped: ${e.message}")
-                        }
-                    }
                 } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
                     if (_selectedUser.value == null) {
                         _error.value = e.message
@@ -698,9 +690,8 @@ class EarthlinkSearchViewModel(
                 }
                 val exactAmountIqd = authoritativePrice.toLong()
 
-                val localAcc = account?.let { localAccountRepository.getAccountByIdOneShot(it.id)?.takeIf { !it.isHistoryOnlySubscriber } ?: it }
-                    ?: (localAccountRepository.getAccountByIdOneShot(userId)?.takeIf { !it.isHistoryOnlySubscriber }
-                        ?: localAccountRepository.findActiveAccountByUsernameOrIdOneShot(userId))
+                val localAcc = localAccountRepository.getAccountByIdOneShot(userId)?.takeIf { !it.isHistoryOnlySubscriber }
+                    ?: localAccountRepository.findActiveAccountByUsernameOrIdOneShot(userId)
                 val effectiveAcc = if (localAcc == null) {
                     val snapshotUser = _selectedUser.value?.takeIf { it.userID.equals(userId, ignoreCase = true) }
                     val snapshotListItem = _usersList.value.find { it.userID.equals(userId, ignoreCase = true) }
@@ -771,15 +762,6 @@ class EarthlinkSearchViewModel(
                                 payNote = payNoteToUse,
                                 idempotencyKey = businessTxId
                             )
-                            val confirmedUserIndex = _selectedUser.value?.userIndex?.takeIf { it > 0 }
-                            if (confirmedUserIndex != null) {
-                                try {
-                                    localAccountRepository.bindIspIdentity(effectiveAcc.id, confirmedUserIndex)
-                                } catch (e: Exception) {
-                                    if (e is kotlinx.coroutines.CancellationException) throw e
-                                    Log.w("EarthlinkSearchVM", "ISP identity binding on refill skipped: ${e.message}")
-                                }
-                            }
                             syncRepo?.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
                         } catch (e: Exception) {
                             if (e is kotlinx.coroutines.CancellationException) throw e

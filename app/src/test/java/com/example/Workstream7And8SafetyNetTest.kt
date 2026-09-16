@@ -110,7 +110,7 @@ class Workstream7And8SafetyNetTest {
             name = "Alpha User"
         )
 
-        assertNotNull(matched.accountOrNull)
-        assertEquals("acc_uuid_123", matched.accountOrNull?.id)
+        assertNotNull(matched)
+        assertEquals("acc_uuid_123", matched?.id)
     }
 }

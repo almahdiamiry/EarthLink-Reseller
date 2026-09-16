@@ -292,19 +292,17 @@ class RemoteSyncCoordinator(
                 )
                 if (decision == ConflictDecision.APPLY_UPSERT) {
                     val payloadHash = event.account.hashCode().toString()
-                    val collisionAudit = AuditLog(
-                        action = "IDENTITY_COLLISION_RECORDED",
+                    val quarantineAudit = AuditLog(
+                        action = "QUARANTINE_IDENTITY_CONFLICT",
                         entityType = "local_accounts",
                         entityId = event.entityId,
-                        summary = "Recorded authentic peer container with shared sourceExternalId: remote=${event.entityId}, local=${duplicate.id}, sourceExternalId=$incomingExternalId, version=${event.remoteVersion}, payloadHash=$payloadHash",
+                        summary = "Quarantined deterministic sourceExternalId conflict: remote=${event.entityId}, local=${duplicate.id}, sourceExternalId=$incomingExternalId, reason=APPLY_UPSERT_COLLISION, version=${event.remoteVersion}, payloadHash=$payloadHash",
                         createdAt = System.currentTimeMillis(),
-                        severity = "INFO",
+                        severity = "WARNING",
                         origin = AuditOrigin.SYSTEM_ACTION.name
                     )
-                    auditDao?.insert(collisionAudit)
-                    accountDao.upsert(account)
-                    metadataDao.putMonotonicRemoteVersion("remote_version:account:${event.entityId}", event.remoteVersion)
-                    return EventSyncResult.APPLIED
+                    auditDao?.insert(quarantineAudit)
+                    return EventSyncResult.QUARANTINED_CONFLICT
                 } else if (decision == ConflictDecision.REJECT_MALFORMED) {
                     val quarantineAudit = AuditLog(
                         action = "MALFORMED_REMOTE_EVENT",

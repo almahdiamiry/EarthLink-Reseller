@@ -444,7 +444,7 @@ class Phase5IspLifecycleAndHistoryOnlyTest {
             phone = "07700000000"
         )
         // SubscriberMatcher must NOT match historical acc1
-        assertNull("SubscriberMatcher must not match historical account for active incoming subscriber", matched.accountOrNull)
+        assertNull("SubscriberMatcher must not match historical account for active incoming subscriber", matched)
 
         // Step 4: Create new active Account 2 for the recycled username
         val acc2 = LocalAccount(

@@ -379,8 +379,7 @@ data class PasswordPayload(
         Index(value = ["displayName"]),
         Index(value = ["updatedAt"]),
         Index(value = ["sourceBatchId"]),
-        Index(value = ["sourceExternalId"]),
-        Index(value = ["ispUserIndex"])
+        Index(value = ["sourceExternalId"], unique = true)
     ]
 )
 @JsonClass(generateAdapter = true)
@@ -415,8 +414,6 @@ data class LocalAccount(
     val stateSource: String? = null,
     val stateConfidence: String? = null,
     val snapshotCapturedAt: Long? = null,
-    val ispSubscriberId: String? = null,
-    val ispUserIndex: Int? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 ) {
