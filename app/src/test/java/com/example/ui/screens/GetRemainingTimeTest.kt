@@ -95,6 +95,7 @@ class GetRemainingTimeTest {
     fun testNormalizeArabicPersianDigits() {
         assertEquals("0123456789", normalizeArabicPersianDigits("٠١٢٣٤٥٦٧٨٩"))
         assertEquals("0123456789", normalizeArabicPersianDigits("۰۱۲۳۴۵۶۷٨٩"))
+        assertEquals("0123456789", normalizeArabicPersianDigits("۰۱۲۳۴۵۶۷۸۹")) // Complete true Persian range U+06F0..U+06F9 including ۸ (U+06F8) and ۹ (U+06F9)
         assertEquals("Active 123 days", normalizeArabicPersianDigits("Active 123 days"))
         assertEquals("الاشتراك 5 أيام و 0 ساعة", normalizeArabicPersianDigits("الاشتراك ٥ أيام و ۰ ساعة"))
     }
