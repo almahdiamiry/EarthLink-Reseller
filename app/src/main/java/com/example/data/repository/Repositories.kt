@@ -1101,6 +1101,47 @@ class LocalAccountRepositoryImpl(
     override suspend fun findActiveAccountByUsernameOrIdOneShot(username: String): LocalAccount? {
         return accountDao.findActiveAccountByUsernameOrIdOneShot(username)
     }
+
+    override suspend fun findActiveAccountsBySubscriberIdentity(userIndex: Int?, username: String?): List<LocalAccount> {
+        if (userIndex != null && userIndex > 0) {
+            val byIndex = accountDao.findActiveAccountsByIspUserIndex(userIndex)
+            if (byIndex.isNotEmpty()) return byIndex
+        }
+        if (!username.isNullOrBlank()) {
+            val byUsername = accountDao.findActiveAccountsByUsername(username)
+            return if (userIndex != null && userIndex > 0) {
+                byUsername.filter { it.ispUserIndex == null || it.ispUserIndex == userIndex }
+            } else {
+                byUsername
+            }
+        }
+        return emptyList()
+    }
+
+    override suspend fun bindIspIdentity(accountId: String, userIndex: Int, ispSubscriberId: String?): LocalAccount {
+        require(userIndex > 0) { "userIndex must be positive" }
+        return com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
+            database.withTransaction {
+                val existing = accountDao.getByIdOneShot(accountId)
+                    ?: throw NoSuchElementException("Account $accountId not found for ISP identity binding")
+                if (existing.ispUserIndex != null && existing.ispUserIndex != userIndex) {
+                    throw IllegalStateException("Identity conflict: Account $accountId is already bound to ispUserIndex ${existing.ispUserIndex}; cannot re-bind to $userIndex")
+                }
+                if (existing.ispUserIndex == userIndex && (ispSubscriberId == null || existing.ispSubscriberId == ispSubscriberId)) {
+                    return@withTransaction existing
+                }
+                val updated = existing.copy(
+                    ispUserIndex = userIndex,
+                    ispSubscriberId = ispSubscriberId ?: existing.ispSubscriberId,
+                    updatedAt = System.currentTimeMillis()
+                )
+                accountDao.update(updated)
+                OutboxManager.upsertWithOutbox(outboxDao, "local_accounts", updated.id, adapter.toJson(updated))
+                updated
+            }
+        }
+    }
+
     override suspend fun saveAccount(account: LocalAccount): LocalAccount {
         return com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
             database.withTransaction {
@@ -1127,6 +1168,8 @@ class LocalAccountRepositoryImpl(
                         note = account.note ?: existing.note,
                         latitude = account.latitude ?: existing.latitude,
                         longitude = account.longitude ?: existing.longitude,
+                        ispSubscriberId = if (existing.ispSubscriberId == null) account.ispSubscriberId else existing.ispSubscriberId,
+                        ispUserIndex = if (existing.ispUserIndex == null) account.ispUserIndex else existing.ispUserIndex,
                         updatedAt = System.currentTimeMillis()
                     )
                 } else {
@@ -1220,6 +1263,20 @@ class LocalLedgerRepositoryImpl(
 
     override fun getLedgerForAccount(accountId: String): Flow<List<LocalLedgerEntry>> =
         ledgerDao.getByAccountId(accountId).distinctUntilChanged()
+
+    override fun getLedgerForAccounts(accountIds: List<String>): Flow<List<LocalLedgerEntry>> {
+        val validIds = accountIds.filter { it.isNotBlank() }.distinct()
+        if (validIds.isEmpty()) return kotlinx.coroutines.flow.flowOf(emptyList())
+        if (validIds.size == 1) return ledgerDao.getByAccountId(validIds.first()).distinctUntilChanged()
+        return ledgerDao.getByAccountIds(validIds).distinctUntilChanged()
+    }
+
+    override suspend fun getLedgerForAccountsOneShot(accountIds: List<String>): List<LocalLedgerEntry> {
+        val validIds = accountIds.filter { it.isNotBlank() }.distinct()
+        if (validIds.isEmpty()) return emptyList()
+        if (validIds.size == 1) return ledgerDao.getByAccountIdOneShot(validIds.first())
+        return ledgerDao.getByAccountIdsOneShot(validIds)
+    }
 
     override suspend fun recordPendingOperation(operation: PendingExternalOperation): PendingExternalOperation {
         require(operation.amountIqd >= 0L && operation.amountIqd % 250L == 0L) {
@@ -2158,6 +2215,8 @@ class LocalLedgerRepositoryImpl(
                 note = account.note ?: existing.note,
                 latitude = account.latitude ?: existing.latitude,
                 longitude = account.longitude ?: existing.longitude,
+                ispSubscriberId = if (existing.ispSubscriberId == null) account.ispSubscriberId else existing.ispSubscriberId,
+                ispUserIndex = if (existing.ispUserIndex == null) account.ispUserIndex else existing.ispUserIndex,
                 updatedAt = System.currentTimeMillis()
             )
         } else {
@@ -2417,6 +2476,9 @@ class LocalLedgerRepositoryImpl(
                 val origAmount = rootOriginal.amountIqd
                 require(intendedAmount.isFinite() && intendedAmount >= 0.0 && intendedAmount % 250.0 == 0.0) {
                     "Intended amount must be finite, non-negative, and a multiple of 250 IQD."
+                }
+                require(origType in setOf("took", "renewal", "gave")) {
+                    "Cannot apply financial correction to unsupported ledger type '$origType'"
                 }
 
                 val allPriors = ledgerDao.getByCorrectsEntryId(rootOriginalId)

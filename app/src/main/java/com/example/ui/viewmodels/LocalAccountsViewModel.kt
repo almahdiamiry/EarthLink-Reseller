@@ -116,12 +116,25 @@ class LocalAccountsViewModel(
         _displayLimit.value += 50
     }
 
+    private var ledgerJob: kotlinx.coroutines.Job? = null
+
     fun selectAccount(account: LocalAccount?) {
+        ledgerJob?.cancel()
         _selectedAccount.value = account
         if (account != null) {
-            viewModelScope.launch {
-                ledgerRepo.getLedgerForAccount(account.id).collect {
-                    _ledgerEntries.value = it
+            ledgerJob = viewModelScope.launch {
+                val peerAccounts = localRepo.findActiveAccountsBySubscriberIdentity(account.ispUserIndex, account.earthlinkUsername)
+                val accountIds = peerAccounts.map { it.id }.toMutableList()
+                if (account.id !in accountIds) {
+                    accountIds.add(account.id)
+                }
+                val distinctIds = accountIds.filter { it.isNotBlank() }.distinct()
+                if (distinctIds.isEmpty()) {
+                    _ledgerEntries.value = emptyList()
+                } else {
+                    ledgerRepo.getLedgerForAccounts(distinctIds).collect {
+                        _ledgerEntries.value = it
+                    }
                 }
             }
         } else {

@@ -474,7 +474,7 @@ fun DashboardScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.AccountBalanceWallet,
-                                        contentDescription = null,
+                                        contentDescription = "Balance summary",
                                         tint = Color(0xFF0A84FF),
                                         modifier = Modifier.size(16.dp)
                                     )
@@ -544,7 +544,7 @@ fun DashboardScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.CloudOff,
-                                        contentDescription = null,
+                                        contentDescription = "Offline",
                                         tint = Color(0xFFFF9F0A),
                                         modifier = Modifier.size(18.dp)
                                     )
@@ -583,7 +583,7 @@ fun DashboardScreen(
                                     ) {
                                         Icon(
                                             imageVector = androidx.compose.material.icons.Icons.Default.Warning,
-                                            contentDescription = null,
+                                            contentDescription = "Warning",
                                             tint = Color(0xFFFF453A),
                                             modifier = Modifier.size(18.dp)
                                         )
@@ -747,7 +747,7 @@ fun DashboardScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Cancel,
-                                        contentDescription = if (lang == "ar") "مسح" else "Clear",
+                                        contentDescription = "Clear",
                                         tint = Color(0xFF8E8E93),
                                         modifier = Modifier.size(16.dp)
                                     )
@@ -771,7 +771,7 @@ fun DashboardScreen(
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.Default.Close,
-                                    contentDescription = if (lang == "ar") "إلغاء" else "Cancel",
+                                contentDescription = "Cancel",
                                 tint = Color.White,
                                 modifier = Modifier.size(18.dp)
                             )
@@ -850,7 +850,6 @@ fun DashboardScreen(
                     testCount = testCount,
                     days = prepaidNeededDays,
                     isLoading = isLoading || isPrepaidLoading,
-                    lang = lang,
                     onDaysChanged = { newDays -> viewModel.setPrepaidNeededDays(newDays) },
                     onRefresh = { viewModel.loadDashboardData() },
                     onDismissRequest = { showFinancialSummarySheet = false }
@@ -870,7 +869,6 @@ fun FinancialSummaryBottomSheet(
     testCount: Int,
     days: Int = 7,
     isLoading: Boolean,
-    lang: String = "ar",
     onDaysChanged: (Int) -> Unit = {},
     onRefresh: () -> Unit,
     onDismissRequest: () -> Unit
@@ -958,7 +956,7 @@ fun FinancialSummaryBottomSheet(
                             } else {
                                 Icon(
                                     imageVector = Icons.Default.Refresh,
-                                    contentDescription = if (lang == "ar") "تحديث" else "Refresh",
+                                    contentDescription = "تحديث",
                                     tint = Color.White,
                                     modifier = Modifier.size(17.dp)
                                 )
@@ -1418,7 +1416,7 @@ fun SortAndFilterBottomSheet(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.RestartAlt,
-                                contentDescription = null,
+                                contentDescription = "إعادة ضبط",
                                 tint = Color(0xFF94A3B8),
                                 modifier = Modifier.size(14.dp)
                             )

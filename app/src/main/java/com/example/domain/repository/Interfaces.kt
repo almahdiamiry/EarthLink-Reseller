@@ -65,6 +65,34 @@ interface LocalAccountRepository {
     suspend fun findAccountByUsernameOrIdOneShot(username: String): LocalAccount?
     fun getActiveAccountByUsernameOrId(username: String): Flow<LocalAccount?>
     suspend fun findActiveAccountByUsernameOrIdOneShot(username: String): LocalAccount?
+
+    /**
+     * Resolves all active physical containers representing the subscriber identity.
+     *
+     * Staged resolution:
+     * 1. If [userIndex] is provided, queries by authoritative [ispUserIndex].
+     * 2. If [userIndex] is null or no active containers match, falls back to operational [username] (case-insensitive),
+     *    strictly filtering out any container already bound to a conflicting [ispUserIndex].
+     *
+     * CONTRACT:
+     * Returns an unordered peer set of matching physical containers.
+     * Callers must not interpret list position as ownership.
+     */
+    suspend fun findActiveAccountsBySubscriberIdentity(userIndex: Int?, username: String?): List<LocalAccount>
+
+    /**
+     * Binds authoritative ISP subscriber identity ([userIndex], optional [ispSubscriberId])
+     * to an existing physical container identified by [accountId].
+     *
+     * CONTRACT:
+     * 1. Safe Binding: If existing account has ispUserIndex == null, binds userIndex.
+     * 2. Re-assertion: If existing account already has ispUserIndex == userIndex, safe no-op.
+     * 3. Identity Conflict: If existing account has a different ispUserIndex != userIndex,
+     *    refuses to overwrite and throws [IllegalStateException].
+     * 4. Physical Identity: Preserves LocalAccount.id, sourceExternalId, and ledger history.
+     */
+    suspend fun bindIspIdentity(accountId: String, userIndex: Int, ispSubscriberId: String? = null): LocalAccount
+
     suspend fun saveAccount(account: LocalAccount): LocalAccount
     suspend fun deleteAccount(id: String)
 
@@ -94,6 +122,8 @@ interface LocalAccountRepository {
 
 interface LocalLedgerRepository {
     fun getLedgerForAccount(accountId: String): Flow<List<LocalLedgerEntry>>
+    fun getLedgerForAccounts(accountIds: List<String>): Flow<List<LocalLedgerEntry>>
+    suspend fun getLedgerForAccountsOneShot(accountIds: List<String>): List<LocalLedgerEntry>
     suspend fun addPayment(accountId: String, amount: Double, note: String?, idempotencyKey: String? = null): LocalLedgerEntry
     suspend fun addDebt(accountId: String, amount: Double, note: String?, idempotencyKey: String? = null): LocalLedgerEntry
     suspend fun addNoteTransaction(accountId: String, note: String): LocalLedgerEntry

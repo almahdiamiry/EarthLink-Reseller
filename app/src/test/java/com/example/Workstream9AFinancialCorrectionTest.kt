@@ -416,4 +416,432 @@ class Workstream9AFinancialCorrectionTest {
             assertTrue(e.message?.contains("divergent payload conflict") == true)
         }
     }
+
+    /**
+     * CLAIM: INV-01 (Financial Correctness) & INV-02 (History Preservation)
+     * SEAM: ROBOLECTRIC (LocalLedgerRepositoryImpl + SQLite Room)
+     * ORACLE: Non-financial or legacy types ("extend", "edit", "note") cannot be corrected;
+     *         calling correctTransaction must fail-closed with IllegalArgumentException,
+     *         leaving ledger rows, account balances, and sync outbox completely unmutated.
+     */
+    @Test
+    fun testCorrectTransaction_rejectsUnrecognizedLegacyType_extend_failsClosed() = runBlocking {
+        val accountId = "acc_legacy_extend"
+        val account = LocalAccount(
+            id = accountId,
+            displayName = "User Extend",
+            openingDebtIqd = 0.0,
+            debtIqd = 50000.0,
+            advanceIqd = 0.0,
+            loanIqd = 0.0
+        )
+        accountRepository.saveAccount(account)
+
+        val originalTx = LocalLedgerEntry(
+            id = "tx_extend_1",
+            accountId = accountId,
+            typeRaw = "extend",
+            amountIqd = 0.0,
+            debtAfterIqd = 50000.0,
+            occurredAt = 1000L
+        )
+        database.localLedgerEntryDao().insert(originalTx)
+
+        val outboxBefore = database.syncOutboxDao().getPending()
+        val entriesBefore = database.localLedgerEntryDao().getByAccountIdOneShot(accountId)
+        val accBefore = database.localAccountDao().getByIdOneShot(accountId)!!
+
+        try {
+            ledgerRepository.correctTransaction(
+                originalEntryId = "tx_extend_1",
+                intendedAmount = 25000.0,
+                note = "Attempted correction on extend"
+            )
+            fail("Expected IllegalArgumentException for unsupported type 'extend'")
+        } catch (e: IllegalArgumentException) {
+            // Success: fail-closed exception thrown
+        }
+
+        // State preservation negative oracles:
+        // 1. Original ledger entry unchanged
+        val origInDb = database.localLedgerEntryDao().getByIdOneShot("tx_extend_1")
+        assertNotNull("Original entry must remain in database", origInDb)
+        assertEquals(originalTx, origInDb)
+
+        // 2. Ledger row count unchanged
+        val entriesAfter = database.localLedgerEntryDao().getByAccountIdOneShot(accountId)
+        assertEquals("Ledger entry count must be unchanged", entriesBefore.size, entriesAfter.size)
+
+        // 3. No correction row created
+        val corrections = database.localLedgerEntryDao().getByCorrectsEntryId("tx_extend_1")
+        assertTrue("No correction row must be created", corrections.isEmpty())
+
+        // 4. Account balance unchanged
+        val accAfter = database.localAccountDao().getByIdOneShot(accountId)!!
+        assertEquals("Debt must remain unchanged", accBefore.debtIqd, accAfter.debtIqd, 0.001)
+        assertEquals("Advance must remain unchanged", accBefore.advanceIqd, accAfter.advanceIqd, 0.001)
+        assertEquals("Loan must remain unchanged", accBefore.loanIqd, accAfter.loanIqd, 0.001)
+
+        // 5. No outbound outbox mutation created
+        val outboxAfter = database.syncOutboxDao().getPending()
+        assertEquals("Outbox pending mutations count must be unchanged", outboxBefore.size, outboxAfter.size)
+        val newOutboxEntries = outboxAfter.filter { after -> outboxBefore.none { it.id == after.id } }
+        assertTrue("No new outbox mutation must be created", newOutboxEntries.isEmpty())
+    }
+
+    @Test
+    fun testCorrectTransaction_rejectsUnrecognizedLegacyType_edit_failsClosed() = runBlocking {
+        val accountId = "acc_legacy_edit"
+        val account = LocalAccount(
+            id = accountId,
+            displayName = "User Edit",
+            openingDebtIqd = 0.0,
+            debtIqd = 50000.0,
+            advanceIqd = 0.0,
+            loanIqd = 0.0
+        )
+        accountRepository.saveAccount(account)
+
+        val originalTx = LocalLedgerEntry(
+            id = "tx_edit_1",
+            accountId = accountId,
+            typeRaw = "edit",
+            amountIqd = 0.0,
+            debtAfterIqd = 50000.0,
+            occurredAt = 1000L
+        )
+        database.localLedgerEntryDao().insert(originalTx)
+
+        val outboxBefore = database.syncOutboxDao().getPending()
+        val entriesBefore = database.localLedgerEntryDao().getByAccountIdOneShot(accountId)
+        val accBefore = database.localAccountDao().getByIdOneShot(accountId)!!
+
+        try {
+            ledgerRepository.correctTransaction(
+                originalEntryId = "tx_edit_1",
+                intendedAmount = 25000.0,
+                note = "Attempted correction on edit"
+            )
+            fail("Expected IllegalArgumentException for unsupported type 'edit'")
+        } catch (e: IllegalArgumentException) {
+            // Success: fail-closed exception thrown
+        }
+
+        // State preservation negative oracles:
+        // 1. Original ledger entry unchanged
+        val origInDb = database.localLedgerEntryDao().getByIdOneShot("tx_edit_1")
+        assertNotNull("Original entry must remain in database", origInDb)
+        assertEquals(originalTx, origInDb)
+
+        // 2. Ledger row count unchanged
+        val entriesAfter = database.localLedgerEntryDao().getByAccountIdOneShot(accountId)
+        assertEquals("Ledger entry count must be unchanged", entriesBefore.size, entriesAfter.size)
+
+        // 3. No correction row created
+        val corrections = database.localLedgerEntryDao().getByCorrectsEntryId("tx_edit_1")
+        assertTrue("No correction row must be created", corrections.isEmpty())
+
+        // 4. Account balance unchanged
+        val accAfter = database.localAccountDao().getByIdOneShot(accountId)!!
+        assertEquals("Debt must remain unchanged", accBefore.debtIqd, accAfter.debtIqd, 0.001)
+        assertEquals("Advance must remain unchanged", accBefore.advanceIqd, accAfter.advanceIqd, 0.001)
+        assertEquals("Loan must remain unchanged", accBefore.loanIqd, accAfter.loanIqd, 0.001)
+
+        // 5. No outbound outbox mutation created
+        val outboxAfter = database.syncOutboxDao().getPending()
+        assertEquals("Outbox pending mutations count must be unchanged", outboxBefore.size, outboxAfter.size)
+        val newOutboxEntries = outboxAfter.filter { after -> outboxBefore.none { it.id == after.id } }
+        assertTrue("No new outbox mutation must be created", newOutboxEntries.isEmpty())
+    }
+
+    @Test
+    fun testCorrectTransaction_rejectsRecognizedNonFinancialType_note_failsClosed() = runBlocking {
+        val accountId = "acc_recognized_note"
+        val account = LocalAccount(
+            id = accountId,
+            displayName = "User Note",
+            openingDebtIqd = 0.0,
+            debtIqd = 50000.0,
+            advanceIqd = 0.0,
+            loanIqd = 0.0
+        )
+        accountRepository.saveAccount(account)
+
+        val originalTx = LocalLedgerEntry(
+            id = "tx_note_1",
+            accountId = accountId,
+            typeRaw = "note",
+            amountIqd = 0.0,
+            debtAfterIqd = 50000.0,
+            occurredAt = 1000L,
+            note = "Informational note only"
+        )
+        database.localLedgerEntryDao().insert(originalTx)
+
+        val outboxBefore = database.syncOutboxDao().getPending()
+        val entriesBefore = database.localLedgerEntryDao().getByAccountIdOneShot(accountId)
+        val accBefore = database.localAccountDao().getByIdOneShot(accountId)!!
+
+        try {
+            ledgerRepository.correctTransaction(
+                originalEntryId = "tx_note_1",
+                intendedAmount = 25000.0,
+                note = "Attempted correction on note"
+            )
+            fail("Expected IllegalArgumentException for unsupported type 'note'")
+        } catch (e: IllegalArgumentException) {
+            // Success: fail-closed exception thrown
+        }
+
+        // State preservation negative oracles:
+        // 1. Original ledger entry unchanged
+        val origInDb = database.localLedgerEntryDao().getByIdOneShot("tx_note_1")
+        assertNotNull("Original entry must remain in database", origInDb)
+        assertEquals(originalTx, origInDb)
+
+        // 2. Ledger row count unchanged
+        val entriesAfter = database.localLedgerEntryDao().getByAccountIdOneShot(accountId)
+        assertEquals("Ledger entry count must be unchanged", entriesBefore.size, entriesAfter.size)
+
+        // 3. No correction row created
+        val corrections = database.localLedgerEntryDao().getByCorrectsEntryId("tx_note_1")
+        assertTrue("No correction row must be created", corrections.isEmpty())
+
+        // 4. Account balance unchanged
+        val accAfter = database.localAccountDao().getByIdOneShot(accountId)!!
+        assertEquals("Debt must remain unchanged", accBefore.debtIqd, accAfter.debtIqd, 0.001)
+        assertEquals("Advance must remain unchanged", accBefore.advanceIqd, accAfter.advanceIqd, 0.001)
+        assertEquals("Loan must remain unchanged", accBefore.loanIqd, accAfter.loanIqd, 0.001)
+
+        // 5. No outbound outbox mutation created
+        val outboxAfter = database.syncOutboxDao().getPending()
+        assertEquals("Outbox pending mutations count must be unchanged", outboxBefore.size, outboxAfter.size)
+        val newOutboxEntries = outboxAfter.filter { after -> outboxBefore.none { it.id == after.id } }
+        assertTrue("No new outbox mutation must be created", newOutboxEntries.isEmpty())
+    }
+
+    @Test
+    fun testCorrectionByDifference_renewalSupported_createsPaymentCorrection() = runBlocking {
+        val accountId = "acc_corr_renewal"
+        val account = LocalAccount(
+            id = accountId,
+            displayName = "User Renewal",
+            openingDebtIqd = 0.0,
+            debtIqd = 40000.0,
+            advanceIqd = 0.0,
+            loanIqd = 0.0
+        )
+        accountRepository.saveAccount(account)
+
+        val originalTx = LocalLedgerEntry(
+            id = "tx_orig_renewal",
+            accountId = accountId,
+            typeRaw = "renewal",
+            amountIqd = 40000.0,
+            debtAfterIqd = 40000.0,
+            occurredAt = 1000L
+        )
+        database.localLedgerEntryDao().insert(originalTx)
+
+        // User intended renewal fee was 35,000 instead of 40,000 (overcharged by 5,000)
+        val correction = ledgerRepository.correctTransaction(
+            originalEntryId = "tx_orig_renewal",
+            intendedAmount = 35000.0,
+            note = "Adjusted renewal package fee"
+        )
+
+        // Correction must be "gave" (payment/credit) of 5,000
+        assertEquals("gave", correction.typeRaw)
+        assertEquals(5000.0, correction.amountIqd, 0.001)
+        assertEquals("tx_orig_renewal", correction.correctsEntryId)
+
+        // Account debt must now be 35,000
+        val updatedAcc = database.localAccountDao().getByIdOneShot(accountId)
+        assertNotNull(updatedAcc)
+        assertEquals(35000.0, updatedAcc!!.debtIqd, 0.001)
+    }
+
+    @Test
+    fun testDeleteTransaction_rejectsUnrecognizedLegacyType_extend_failsClosed() = runBlocking {
+        val accountId = "acc_del_legacy_extend"
+        val account = LocalAccount(
+            id = accountId,
+            displayName = "User Del Extend",
+            openingDebtIqd = 0.0,
+            debtIqd = 50000.0,
+            advanceIqd = 0.0,
+            loanIqd = 0.0
+        )
+        accountRepository.saveAccount(account)
+
+        val originalTx = LocalLedgerEntry(
+            id = "tx_del_extend_1",
+            accountId = accountId,
+            typeRaw = "extend",
+            amountIqd = 0.0,
+            debtAfterIqd = 50000.0,
+            occurredAt = 1000L
+        )
+        database.localLedgerEntryDao().insert(originalTx)
+
+        val outboxBefore = database.syncOutboxDao().getPending()
+        val entriesBefore = database.localLedgerEntryDao().getByAccountIdOneShot(accountId)
+        val accBefore = database.localAccountDao().getByIdOneShot(accountId)!!
+
+        try {
+            ledgerRepository.deleteTransaction("tx_del_extend_1")
+            fail("Expected IllegalArgumentException for deleteTransaction on unsupported type 'extend'")
+        } catch (e: IllegalArgumentException) {
+            // Success: fail-closed exception thrown
+        }
+
+        // State preservation negative oracles:
+        // 1. Original ledger entry unchanged
+        val origInDb = database.localLedgerEntryDao().getByIdOneShot("tx_del_extend_1")
+        assertNotNull("Original entry must remain in database", origInDb)
+        assertEquals(originalTx, origInDb)
+
+        // 2. Ledger row count unchanged
+        val entriesAfter = database.localLedgerEntryDao().getByAccountIdOneShot(accountId)
+        assertEquals("Ledger entry count must be unchanged", entriesBefore.size, entriesAfter.size)
+
+        // 3. No correction row created
+        val corrections = database.localLedgerEntryDao().getByCorrectsEntryId("tx_del_extend_1")
+        assertTrue("No correction row must be created", corrections.isEmpty())
+
+        // 4. Account balance unchanged
+        val accAfter = database.localAccountDao().getByIdOneShot(accountId)!!
+        assertEquals("Debt must remain unchanged", accBefore.debtIqd, accAfter.debtIqd, 0.001)
+        assertEquals("Advance must remain unchanged", accBefore.advanceIqd, accAfter.advanceIqd, 0.001)
+        assertEquals("Loan must remain unchanged", accBefore.loanIqd, accAfter.loanIqd, 0.001)
+
+        // 5. No outbound outbox mutation created
+        val outboxAfter = database.syncOutboxDao().getPending()
+        assertEquals("Outbox pending mutations count must be unchanged", outboxBefore.size, outboxAfter.size)
+        val newOutboxEntries = outboxAfter.filter { after -> outboxBefore.none { it.id == after.id } }
+        assertTrue("No new outbox mutation must be created", newOutboxEntries.isEmpty())
+    }
+
+    @Test
+    fun testDeleteTransaction_rejectsUnrecognizedLegacyType_edit_failsClosed() = runBlocking {
+        val accountId = "acc_del_legacy_edit"
+        val account = LocalAccount(
+            id = accountId,
+            displayName = "User Del Edit",
+            openingDebtIqd = 0.0,
+            debtIqd = 50000.0,
+            advanceIqd = 0.0,
+            loanIqd = 0.0
+        )
+        accountRepository.saveAccount(account)
+
+        val originalTx = LocalLedgerEntry(
+            id = "tx_del_edit_1",
+            accountId = accountId,
+            typeRaw = "edit",
+            amountIqd = 0.0,
+            debtAfterIqd = 50000.0,
+            occurredAt = 1000L
+        )
+        database.localLedgerEntryDao().insert(originalTx)
+
+        val outboxBefore = database.syncOutboxDao().getPending()
+        val entriesBefore = database.localLedgerEntryDao().getByAccountIdOneShot(accountId)
+        val accBefore = database.localAccountDao().getByIdOneShot(accountId)!!
+
+        try {
+            ledgerRepository.deleteTransaction("tx_del_edit_1")
+            fail("Expected IllegalArgumentException for deleteTransaction on unsupported type 'edit'")
+        } catch (e: IllegalArgumentException) {
+            // Success: fail-closed exception thrown
+        }
+
+        // State preservation negative oracles:
+        // 1. Original ledger entry unchanged
+        val origInDb = database.localLedgerEntryDao().getByIdOneShot("tx_del_edit_1")
+        assertNotNull("Original entry must remain in database", origInDb)
+        assertEquals(originalTx, origInDb)
+
+        // 2. Ledger row count unchanged
+        val entriesAfter = database.localLedgerEntryDao().getByAccountIdOneShot(accountId)
+        assertEquals("Ledger entry count must be unchanged", entriesBefore.size, entriesAfter.size)
+
+        // 3. No correction row created
+        val corrections = database.localLedgerEntryDao().getByCorrectsEntryId("tx_del_edit_1")
+        assertTrue("No correction row must be created", corrections.isEmpty())
+
+        // 4. Account balance unchanged
+        val accAfter = database.localAccountDao().getByIdOneShot(accountId)!!
+        assertEquals("Debt must remain unchanged", accBefore.debtIqd, accAfter.debtIqd, 0.001)
+        assertEquals("Advance must remain unchanged", accBefore.advanceIqd, accAfter.advanceIqd, 0.001)
+        assertEquals("Loan must remain unchanged", accBefore.loanIqd, accAfter.loanIqd, 0.001)
+
+        // 5. No outbound outbox mutation created
+        val outboxAfter = database.syncOutboxDao().getPending()
+        assertEquals("Outbox pending mutations count must be unchanged", outboxBefore.size, outboxAfter.size)
+        val newOutboxEntries = outboxAfter.filter { after -> outboxBefore.none { it.id == after.id } }
+        assertTrue("No new outbox mutation must be created", newOutboxEntries.isEmpty())
+    }
+
+    @Test
+    fun testDeleteTransaction_rejectsRecognizedNonFinancialType_note_failsClosed() = runBlocking {
+        val accountId = "acc_del_recognized_note"
+        val account = LocalAccount(
+            id = accountId,
+            displayName = "User Del Note",
+            openingDebtIqd = 0.0,
+            debtIqd = 50000.0,
+            advanceIqd = 0.0,
+            loanIqd = 0.0
+        )
+        accountRepository.saveAccount(account)
+
+        val originalTx = LocalLedgerEntry(
+            id = "tx_del_note_1",
+            accountId = accountId,
+            typeRaw = "note",
+            amountIqd = 0.0,
+            debtAfterIqd = 50000.0,
+            occurredAt = 1000L,
+            note = "Informational note only"
+        )
+        database.localLedgerEntryDao().insert(originalTx)
+
+        val outboxBefore = database.syncOutboxDao().getPending()
+        val entriesBefore = database.localLedgerEntryDao().getByAccountIdOneShot(accountId)
+        val accBefore = database.localAccountDao().getByIdOneShot(accountId)!!
+
+        try {
+            ledgerRepository.deleteTransaction("tx_del_note_1")
+            fail("Expected IllegalArgumentException for deleteTransaction on unsupported type 'note'")
+        } catch (e: IllegalArgumentException) {
+            // Success: fail-closed exception thrown
+        }
+
+        // State preservation negative oracles:
+        // 1. Original ledger entry unchanged
+        val origInDb = database.localLedgerEntryDao().getByIdOneShot("tx_del_note_1")
+        assertNotNull("Original entry must remain in database", origInDb)
+        assertEquals(originalTx, origInDb)
+
+        // 2. Ledger row count unchanged
+        val entriesAfter = database.localLedgerEntryDao().getByAccountIdOneShot(accountId)
+        assertEquals("Ledger entry count must be unchanged", entriesBefore.size, entriesAfter.size)
+
+        // 3. No correction row created
+        val corrections = database.localLedgerEntryDao().getByCorrectsEntryId("tx_del_note_1")
+        assertTrue("No correction row must be created", corrections.isEmpty())
+
+        // 4. Account balance unchanged
+        val accAfter = database.localAccountDao().getByIdOneShot(accountId)!!
+        assertEquals("Debt must remain unchanged", accBefore.debtIqd, accAfter.debtIqd, 0.001)
+        assertEquals("Advance must remain unchanged", accBefore.advanceIqd, accAfter.advanceIqd, 0.001)
+        assertEquals("Loan must remain unchanged", accBefore.loanIqd, accAfter.loanIqd, 0.001)
+
+        // 5. No outbound outbox mutation created
+        val outboxAfter = database.syncOutboxDao().getPending()
+        assertEquals("Outbox pending mutations count must be unchanged", outboxBefore.size, outboxAfter.size)
+        val newOutboxEntries = outboxAfter.filter { after -> outboxBefore.none { it.id == after.id } }
+        assertTrue("No new outbox mutation must be created", newOutboxEntries.isEmpty())
+    }
 }
