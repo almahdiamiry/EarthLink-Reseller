@@ -19,6 +19,80 @@ jobs:
           ref: fix/identity-aware-account-resolution
           fetch-depth: 0
 
+      - name: Apply loadUserDetail compatibility fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/com/example/ui/viewmodels/EarthlinkSearchViewModel.kt')
+          text = path.read_text()
+          old = '''                    foundLocal = withContext(Dispatchers.IO) {
+                        if (!knownUserId.isNullOrBlank()) {
+                            if (userIndex > 0) {
+                                val resolution = resolveAccountFromSnapshot(
+                                    localAccountRepository.getAllAccountsOneShot(),
+                                    userIndex,
+                                    knownUserId
+                                )
+                                if (resolution.status == AccountResolutionStatus.CONFLICT ||
+                                    resolution.status == AccountResolutionStatus.AMBIGUOUS) {
+                                    identityBlocked = true
+                                }
+                                resolution.account
+                            } else {
+                                localAccountRepository.findActiveAccountByUsernameOrIdOneShot(knownUserId)
+                            }
+                        } else {
+                            // Target lookup via search instead of full table scan
+                            localAccountRepository.searchAccounts("", limit = 200, offset = 0).find { 
+                                (it.earthlinkUsername != null && it.earthlinkUsername.hashCode() == userIndex) || 
+                                (it.id.hashCode() == userIndex)
+                            }
+                        }
+                    }'''
+          new = '''                    foundLocal = withContext(Dispatchers.IO) {
+                        if (!knownUserId.isNullOrBlank()) {
+                            val exactId = localAccountRepository.getAccountByIdOneShot(knownUserId)
+                                ?.takeIf { !it.isHistoryOnlySubscriber }
+                            if (exactId != null) {
+                                if (userIndex > 0 && exactId.earthlinkUsername.isNullOrBlank()) {
+                                    // Strictly local account: preserve provenance guard and do not call ISP.
+                                    exactId
+                                } else if (userIndex > 0 && exactId.ispUserIndex != null && exactId.ispUserIndex != userIndex) {
+                                    identityBlocked = true
+                                    null
+                                } else {
+                                    exactId
+                                }
+                            } else if (userIndex > 0) {
+                                val resolution = resolveAccountFromSnapshot(
+                                    localAccountRepository.getAllAccountsOneShot(),
+                                    userIndex,
+                                    knownUserId
+                                )
+                                if (resolution.status == AccountResolutionStatus.CONFLICT ||
+                                    resolution.status == AccountResolutionStatus.AMBIGUOUS) {
+                                    identityBlocked = true
+                                }
+                                resolution.account
+                            } else {
+                                localAccountRepository.findActiveAccountByUsernameOrIdOneShot(knownUserId)
+                            }
+                        } else {
+                            // Target lookup via search instead of full table scan
+                            localAccountRepository.searchAccounts("", limit = 200, offset = 0).find { 
+                                (it.earthlinkUsername != null && it.earthlinkUsername.hashCode() == userIndex) || 
+                                (it.id.hashCode() == userIndex)
+                            }
+                        }
+                    }'''
+          if text.count(old) != 1:
+              raise SystemExit(f'expected exactly one loadUserDetail block, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+
       - name: Compile and run focused tests
         shell: bash
         run: |
@@ -27,16 +101,18 @@ jobs:
           ./gradlew testDebugUnitTest -x processDebugGoogleServices \
             --tests com.example.IdentityAwareAccountResolutionRegressionTest \
             --tests com.example.Phase1DuplicateInitiationProtectionTest \
-            --tests com.example.N2AccountResolutionTest
+            --tests com.example.N2AccountResolutionTest \
+            --tests com.example.Workstream6LocalAccountProvenanceGuardTest
           python3 scripts/scan_forbidden_patterns.py
           ./gradlew :app:compileDebugKotlin :app:compileDebugUnitTestKotlin -x processDebugGoogleServices
 
-      - name: Remove temporary verifier
+      - name: Remove temporary verifier and commit corrected source
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm .github/workflows/pr63-verify.yml
-          git commit -m "test(pr63): remove temporary verifier"
+          git add app/src/main/java/com/example/ui/viewmodels/EarthlinkSearchViewModel.kt
+          git commit -m "fix(identity): preserve exact local account lookup"
           git push origin HEAD:fix/identity-aware-account-resolution
