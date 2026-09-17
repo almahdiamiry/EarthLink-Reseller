@@ -19,7 +19,7 @@ jobs:
           ref: fix/identity-aware-account-resolution
           fetch-depth: 0
 
-      - name: Apply loadUserDetail compatibility fix
+      - name: Apply compatibility and compile fixes
         shell: bash
         run: |
           set -euo pipefail
@@ -28,11 +28,12 @@ jobs:
 
           path = Path('app/src/main/java/com/example/ui/viewmodels/EarthlinkSearchViewModel.kt')
           lines = path.read_text().splitlines()
+
+          # Preserve exact local-account-ID lookup in loadUserDetail while using authoritative identity for username lookup.
           start = next((i for i, line in enumerate(lines) if line.strip() == 'foundLocal = withContext(Dispatchers.IO) {'), None)
           end = next((i for i in range((start or 0) + 1, len(lines)) if lines[i].strip() == 'if (identityBlocked) {'), None)
           if start is None or end is None:
               raise SystemExit(f'loadUserDetail markers not found: start={start}, end={end}')
-
           block = '''                    foundLocal = withContext(Dispatchers.IO) {
                         if (!knownUserId.isNullOrBlank()) {
                             val exactId = localAccountRepository.getAccountByIdOneShot(knownUserId)
@@ -69,7 +70,26 @@ jobs:
                         }
                     }'''.splitlines()
           lines[start:end] = block
-          path.write_text('\n'.join(lines) + '\n')
+
+          # Fix the refill resolution switch: switch on enum status, not the resolution data class.
+          text = '\n'.join(lines) + '\n'
+          old = '''                    when (val resolution = resolveAccountFromSnapshot(
+                        localAccountRepository.getAllAccountsOneShot(),
+                        selectedIndex,
+                        userId
+                    )) {
+                        AccountResolutionStatus.UNIQUE -> resolution.account!!'''
+          new = '''                    val resolution = resolveAccountFromSnapshot(
+                        localAccountRepository.getAllAccountsOneShot(),
+                        selectedIndex,
+                        userId
+                    )
+                    when (resolution.status) {
+                        AccountResolutionStatus.UNIQUE -> resolution.account!!'''
+          if text.count(old) != 1:
+              raise SystemExit(f'refill resolution block not found exactly once: {text.count(old)}')
+          text = text.replace(old, new, 1)
+          path.write_text(text)
           PY
 
       - name: Compile and run focused tests
@@ -93,5 +113,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm .github/workflows/pr63-verify.yml
           git add app/src/main/java/com/example/ui/viewmodels/EarthlinkSearchViewModel.kt
-          git commit -m "fix(identity): preserve exact local account lookup"
+          git commit -m "fix(identity): preserve exact local account lookup and compile correctness"
           git push origin HEAD:fix/identity-aware-account-resolution
