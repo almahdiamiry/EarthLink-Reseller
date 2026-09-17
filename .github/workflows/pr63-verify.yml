@@ -19,7 +19,7 @@ jobs:
           ref: fix/identity-aware-account-resolution
           fetch-depth: 0
 
-      - name: Apply compatibility and compile fixes
+      - name: Apply loadUserDetail compatibility fix
         shell: bash
         run: |
           set -euo pipefail
@@ -29,11 +29,11 @@ jobs:
           path = Path('app/src/main/java/com/example/ui/viewmodels/EarthlinkSearchViewModel.kt')
           lines = path.read_text().splitlines()
 
-          # Preserve exact local-account-ID lookup in loadUserDetail while using authoritative identity for username lookup.
           start = next((i for i, line in enumerate(lines) if line.strip() == 'foundLocal = withContext(Dispatchers.IO) {'), None)
           end = next((i for i in range((start or 0) + 1, len(lines)) if lines[i].strip() == 'if (identityBlocked) {'), None)
           if start is None or end is None:
               raise SystemExit(f'loadUserDetail markers not found: start={start}, end={end}')
+
           block = '''                    foundLocal = withContext(Dispatchers.IO) {
                         if (!knownUserId.isNullOrBlank()) {
                             val exactId = localAccountRepository.getAccountByIdOneShot(knownUserId)
@@ -71,25 +71,27 @@ jobs:
                     }'''.splitlines()
           lines[start:end] = block
 
-          # Fix the refill resolution switch: switch on enum status, not the resolution data class.
-          text = '\n'.join(lines) + '\n'
-          old = '''                    when (val resolution = resolveAccountFromSnapshot(
-                        localAccountRepository.getAllAccountsOneShot(),
-                        selectedIndex,
-                        userId
-                    )) {
-                        AccountResolutionStatus.UNIQUE -> resolution.account!!'''
-          new = '''                    val resolution = resolveAccountFromSnapshot(
-                        localAccountRepository.getAllAccountsOneShot(),
-                        selectedIndex,
-                        userId
-                    )
-                    when (resolution.status) {
-                        AccountResolutionStatus.UNIQUE -> resolution.account!!'''
-          if text.count(old) != 1:
-              raise SystemExit(f'refill resolution block not found exactly once: {text.count(old)}')
-          text = text.replace(old, new, 1)
-          path.write_text(text)
+          # Locate the refill resolver by its unique operation boundary, then normalize it to status-based switching.
+          op_start = next((i for i, line in enumerate(lines) if 'val exactAmountIqd = authoritativePrice.toLong()' in line), None)
+          record_pending = next((i for i, line in enumerate(lines) if 'localLedgerRepository.recordPendingOperation(' in line and i > (op_start or 0)), None)
+          if op_start is None or record_pending is None:
+              raise SystemExit(f'refill boundary markers not found: op_start={op_start}, record_pending={record_pending}')
+          when_line = next((i for i in range(op_start, record_pending) if 'when (val resolution = resolveAccountFromSnapshot' in lines[i]), None)
+          if when_line is not None:
+              # Replace only the opening of this when; the existing branch body remains intact.
+              lines[when_line:when_line + 5] = [
+                  '                    val resolution = resolveAccountFromSnapshot(',
+                  '                        localAccountRepository.getAllAccountsOneShot(),',
+                  '                        selectedIndex,',
+                  '                        userId',
+                  '                    )',
+                  '                    when (resolution.status) {'
+              ]
+          else:
+              if not any('when (resolution.status)' in line for line in lines[op_start:record_pending]):
+                  raise SystemExit('refill status switch marker not found')
+
+          path.write_text('\n'.join(lines) + '\n')
           PY
 
       - name: Compile and run focused tests
