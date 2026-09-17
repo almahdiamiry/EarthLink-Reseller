@@ -19,7 +19,7 @@ jobs:
           ref: fix/identity-aware-account-resolution
           fetch-depth: 0
 
-      - name: Apply loadUserDetail compatibility fix
+      - name: Apply exact-id compatibility and refill syntax fix
         shell: bash
         run: |
           set -euo pipefail
@@ -29,11 +29,11 @@ jobs:
           path = Path('app/src/main/java/com/example/ui/viewmodels/EarthlinkSearchViewModel.kt')
           lines = path.read_text().splitlines()
 
+          # Preserve the pre-existing exact LocalAccount-ID path in loadUserDetail.
           start = next((i for i, line in enumerate(lines) if line.strip() == 'foundLocal = withContext(Dispatchers.IO) {'), None)
           end = next((i for i in range((start or 0) + 1, len(lines)) if lines[i].strip() == 'if (identityBlocked) {'), None)
           if start is None or end is None:
               raise SystemExit(f'loadUserDetail markers not found: start={start}, end={end}')
-
           block = '''                    foundLocal = withContext(Dispatchers.IO) {
                         if (!knownUserId.isNullOrBlank()) {
                             val exactId = localAccountRepository.getAccountByIdOneShot(knownUserId)
@@ -62,7 +62,6 @@ jobs:
                                 localAccountRepository.findActiveAccountByUsernameOrIdOneShot(knownUserId)
                             }
                         } else {
-                            // Target lookup via search instead of full table scan
                             localAccountRepository.searchAccounts("", limit = 200, offset = 0).find {
                                 (it.earthlinkUsername != null && it.earthlinkUsername.hashCode() == userIndex) ||
                                 (it.id.hashCode() == userIndex)
@@ -71,26 +70,20 @@ jobs:
                     }'''.splitlines()
           lines[start:end] = block
 
-          # Locate the refill resolver by its unique operation boundary, then normalize it to status-based switching.
-          op_start = next((i for i, line in enumerate(lines) if 'val exactAmountIqd = authoritativePrice.toLong()' in line), None)
-          record_pending = next((i for i, line in enumerate(lines) if 'localLedgerRepository.recordPendingOperation(' in line and i > (op_start or 0)), None)
-          if op_start is None or record_pending is None:
-              raise SystemExit(f'refill boundary markers not found: op_start={op_start}, record_pending={record_pending}')
-          when_line = next((i for i in range(op_start, record_pending) if 'when (val resolution = resolveAccountFromSnapshot' in lines[i]), None)
-          if when_line is not None:
-              # Replace only the opening of this when; the existing branch body remains intact.
-              lines[when_line:when_line + 5] = [
-                  '                    val resolution = resolveAccountFromSnapshot(',
-                  '                        localAccountRepository.getAllAccountsOneShot(),',
-                  '                        selectedIndex,',
-                  '                        userId',
-                  '                    )',
-                  '                    when (resolution.status) {'
-              ]
-          else:
-              if not any('when (resolution.status)' in line for line in lines[op_start:record_pending]):
-                  raise SystemExit('refill status switch marker not found')
-
+          # There is exactly one refill block using the incorrect data-class switch.
+          matches = [i for i, line in enumerate(lines) if 'when (val resolution = resolveAccountFromSnapshot' in line]
+          if len(matches) != 1:
+              raise SystemExit(f'expected exactly one bad refill when, found {len(matches)} at {matches}')
+          i = matches[0]
+          replacement = [
+              '                    val resolution = resolveAccountFromSnapshot(',
+              '                        localAccountRepository.getAllAccountsOneShot(),',
+              '                        selectedIndex,',
+              '                        userId',
+              '                    )',
+              '                    when (resolution.status) {'
+          ]
+          lines[i:i + 5] = replacement
           path.write_text('\n'.join(lines) + '\n')
           PY
 
