@@ -27,24 +27,14 @@ jobs:
           from pathlib import Path
 
           path = Path('app/src/main/java/com/example/ui/viewmodels/EarthlinkSearchViewModel.kt')
-          text = path.read_text()
-          old = '''                        if (!knownUserId.isNullOrBlank()) {
-                            if (userIndex > 0) {
-                                val resolution = resolveAccountFromSnapshot(
-                                    localAccountRepository.getAllAccountsOneShot(),
-                                    userIndex,
-                                    knownUserId
-                                )
-                                if (resolution.status == AccountResolutionStatus.CONFLICT ||
-                                    resolution.status == AccountResolutionStatus.AMBIGUOUS) {
-                                    identityBlocked = true
-                                }
-                                resolution.account
-                            } else {
-                                localAccountRepository.findActiveAccountByUsernameOrIdOneShot(knownUserId)
-                            }
-                        } else {'''
-          new = '''                        if (!knownUserId.isNullOrBlank()) {
+          lines = path.read_text().splitlines()
+          start = next((i for i, line in enumerate(lines) if line.strip() == 'foundLocal = withContext(Dispatchers.IO) {'), None)
+          end = next((i for i in range((start or 0) + 1, len(lines)) if lines[i].strip() == 'if (identityBlocked) {'), None)
+          if start is None or end is None:
+              raise SystemExit(f'loadUserDetail markers not found: start={start}, end={end}')
+
+          block = '''                    foundLocal = withContext(Dispatchers.IO) {
+                        if (!knownUserId.isNullOrBlank()) {
                             val exactId = localAccountRepository.getAccountByIdOneShot(knownUserId)
                                 ?.takeIf { !it.isHistoryOnlySubscriber }
                             if (exactId != null) {
@@ -70,10 +60,16 @@ jobs:
                             } else {
                                 localAccountRepository.findActiveAccountByUsernameOrIdOneShot(knownUserId)
                             }
-                        } else {'''
-          if text.count(old) != 1:
-              raise SystemExit(f'expected exactly one loadUserDetail inner block, found {text.count(old)}')
-          path.write_text(text.replace(old, new, 1))
+                        } else {
+                            // Target lookup via search instead of full table scan
+                            localAccountRepository.searchAccounts("", limit = 200, offset = 0).find {
+                                (it.earthlinkUsername != null && it.earthlinkUsername.hashCode() == userIndex) ||
+                                (it.id.hashCode() == userIndex)
+                            }
+                        }
+                    }'''.splitlines()
+          lines[start:end] = block
+          path.write_text('\n'.join(lines) + '\n')
           PY
 
       - name: Compile and run focused tests
