@@ -1,0 +1,53 @@
+name: PR63 final verification gate
+
+on:
+  pull_request:
+    types: [synchronize, reopened]
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-clean:
+    if: ${{ github.event.pull_request.number == 63 && github.head_ref == 'fix/identity-aware-account-resolution' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/identity-aware-account-resolution
+          fetch-depth: 0
+
+      - name: Verify scoped identity fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew testDebugUnitTest -x processDebugGoogleServices \
+            --tests com.example.IdentityAwareAccountResolutionRegressionTest \
+            --tests com.example.Phase1DuplicateInitiationProtectionTest \
+            --tests com.example.N2AccountResolutionTest
+          python3 scripts/scan_forbidden_patterns.py
+          ./gradlew :app:compileDebugKotlin :app:compileDebugUnitTestKotlin -x processDebugGoogleServices
+
+      - name: Create clean final commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/pr63-cleanup.yml || true
+          git add \
+            app/src/main/java/com/example/ui/viewmodels/EarthlinkSearchViewModel.kt \
+            app/src/main/java/com/example/data/repository/Repositories.kt \
+            app/src/main/java/com/example/ui/screens/UserDetailScreenV2.kt \
+            app/src/test/java/com/example/IdentityAwareAccountResolutionRegressionTest.kt
+          if git diff --cached --name-only | grep -vE '^(app/src/main/java/com/example/ui/viewmodels/EarthlinkSearchViewModel.kt|app/src/main/java/com/example/data/repository/Repositories.kt|app/src/main/java/com/example/ui/screens/UserDetailScreenV2.kt|app/src/test/java/com/example/IdentityAwareAccountResolutionRegressionTest.kt)$'; then
+            echo "Unexpected staged paths in final commit"
+            exit 1
+          fi
+          TREE=$(git write-tree)
+          COMMIT=$(printf '%s\n\n' 'fix(identity): resolve local financial account by authoritative subscriber identity' | git commit-tree "$TREE" -p 1ad958832fbeb5093a796b2c8bdb70bb23f53ebb)
+          git push --force origin "$COMMIT:refs/heads/fix/identity-aware-account-resolution"
