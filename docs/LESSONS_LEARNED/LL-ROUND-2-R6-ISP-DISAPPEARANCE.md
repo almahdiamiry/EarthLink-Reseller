@@ -1,6 +1,6 @@
 # Lesson Learned: Round-2 Forensic Analysis of Finding R6 (ISP Disappearance Reconciliation)
 
-**Identifier:** `LL-ROUND-2-R6-ISP-DISAPPEARANCE`  
+**Identifier:** `LL-ROUND-2-R6-ISP-DISAPPEARANCE`
 **Status:** Historical forensic knowledge; non-authoritative practical engineering note.
 
 ---
