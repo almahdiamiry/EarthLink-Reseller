@@ -374,29 +374,39 @@ class EarthlinkSearchViewModel(
             if (_selectedUser.value == null) {
                 try {
                     foundLocal = withContext(Dispatchers.IO) {
-                        if (!knownUserId.isNullOrBlank()) {
-                            if (userIndex > 0) {
-                                val resolution = resolveAccountFromSnapshot(
-                                    localAccountRepository.getAllAccountsOneShot(),
-                                    userIndex,
-                                    knownUserId
-                                )
-                                if (resolution.status == AccountResolutionStatus.CONFLICT ||
-                                    resolution.status == AccountResolutionStatus.AMBIGUOUS) {
-                                    identityBlocked = true
-                                }
-                                resolution.account
-                            } else {
-                                localAccountRepository.findActiveAccountByUsernameOrIdOneShot(knownUserId)
-                            }
-                        } else {
-                            // Target lookup via search instead of full table scan
-                            localAccountRepository.searchAccounts("", limit = 200, offset = 0).find { 
-                                (it.earthlinkUsername != null && it.earthlinkUsername.hashCode() == userIndex) || 
-                                (it.id.hashCode() == userIndex)
-                            }
-                        }
-                    }
+              if (!knownUserId.isNullOrBlank()) {
+                  val exactId = localAccountRepository.getAccountByIdOneShot(knownUserId)
+                      ?.takeIf { !it.isHistoryOnlySubscriber }
+                  if (exactId != null) {
+                      if (userIndex > 0 && exactId.earthlinkUsername.isNullOrBlank()) {
+                          exactId
+                      } else if (userIndex > 0 && exactId.ispUserIndex != null && exactId.ispUserIndex != userIndex) {
+                          identityBlocked = true
+                          null
+                      } else {
+                          exactId
+                      }
+                  } else if (userIndex > 0) {
+                      val resolution = resolveAccountFromSnapshot(
+                          localAccountRepository.getAllAccountsOneShot(),
+                          userIndex,
+                          knownUserId
+                      )
+                      if (resolution.status == AccountResolutionStatus.CONFLICT ||
+                          resolution.status == AccountResolutionStatus.AMBIGUOUS) {
+                          identityBlocked = true
+                      }
+                      resolution.account
+                  } else {
+                      localAccountRepository.findActiveAccountByUsernameOrIdOneShot(knownUserId)
+                  }
+              } else {
+                  localAccountRepository.searchAccounts("", limit = 200, offset = 0).find {
+                      (it.earthlinkUsername != null && it.earthlinkUsername.hashCode() == userIndex) ||
+                      (it.id.hashCode() == userIndex)
+                  }
+              }
+          }
                     if (identityBlocked) {
                         _error.value = "Local account identity is conflicting or ambiguous; remote detail lookup was blocked."
                         _isLoading.value = false
@@ -846,11 +856,12 @@ class EarthlinkSearchViewModel(
                     }
                 } else {
                     val selectedIndex = _selectedUser.value?.userIndex?.takeIf { it > 0 }
-                    when (val resolution = resolveAccountFromSnapshot(
+                    val resolution = resolveAccountFromSnapshot(
                         localAccountRepository.getAllAccountsOneShot(),
                         selectedIndex,
                         userId
-                    )) {
+                    )
+                    when (resolution.status) {
                         AccountResolutionStatus.UNIQUE -> resolution.account!!
                         AccountResolutionStatus.NOT_FOUND -> {
                             val newId = if (localAccountRepository.getAccountByIdOneShot(userId) == null) {
