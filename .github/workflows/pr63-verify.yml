@@ -28,8 +28,7 @@ jobs:
 
           path = Path('app/src/main/java/com/example/ui/viewmodels/EarthlinkSearchViewModel.kt')
           text = path.read_text()
-          old = '''                    foundLocal = withContext(Dispatchers.IO) {
-                        if (!knownUserId.isNullOrBlank()) {
+          old = '''                        if (!knownUserId.isNullOrBlank()) {
                             if (userIndex > 0) {
                                 val resolution = resolveAccountFromSnapshot(
                                     localAccountRepository.getAllAccountsOneShot(),
@@ -44,21 +43,12 @@ jobs:
                             } else {
                                 localAccountRepository.findActiveAccountByUsernameOrIdOneShot(knownUserId)
                             }
-                        } else {
-                            // Target lookup via search instead of full table scan
-                            localAccountRepository.searchAccounts("", limit = 200, offset = 0).find { 
-                                (it.earthlinkUsername != null && it.earthlinkUsername.hashCode() == userIndex) || 
-                                (it.id.hashCode() == userIndex)
-                            }
-                        }
-                    }'''
-          new = '''                    foundLocal = withContext(Dispatchers.IO) {
-                        if (!knownUserId.isNullOrBlank()) {
+                        } else {'''
+          new = '''                        if (!knownUserId.isNullOrBlank()) {
                             val exactId = localAccountRepository.getAccountByIdOneShot(knownUserId)
                                 ?.takeIf { !it.isHistoryOnlySubscriber }
                             if (exactId != null) {
                                 if (userIndex > 0 && exactId.earthlinkUsername.isNullOrBlank()) {
-                                    // Strictly local account: preserve provenance guard and do not call ISP.
                                     exactId
                                 } else if (userIndex > 0 && exactId.ispUserIndex != null && exactId.ispUserIndex != userIndex) {
                                     identityBlocked = true
@@ -80,16 +70,9 @@ jobs:
                             } else {
                                 localAccountRepository.findActiveAccountByUsernameOrIdOneShot(knownUserId)
                             }
-                        } else {
-                            // Target lookup via search instead of full table scan
-                            localAccountRepository.searchAccounts("", limit = 200, offset = 0).find { 
-                                (it.earthlinkUsername != null && it.earthlinkUsername.hashCode() == userIndex) || 
-                                (it.id.hashCode() == userIndex)
-                            }
-                        }
-                    }'''
+                        } else {'''
           if text.count(old) != 1:
-              raise SystemExit(f'expected exactly one loadUserDetail block, found {text.count(old)}')
+              raise SystemExit(f'expected exactly one loadUserDetail inner block, found {text.count(old)}')
           path.write_text(text.replace(old, new, 1))
           PY
 
@@ -106,7 +89,7 @@ jobs:
           python3 scripts/scan_forbidden_patterns.py
           ./gradlew :app:compileDebugKotlin :app:compileDebugUnitTestKotlin -x processDebugGoogleServices
 
-      - name: Remove temporary verifier and commit corrected source
+      - name: Commit corrected source and remove temporary verifier
         shell: bash
         run: |
           set -euo pipefail
