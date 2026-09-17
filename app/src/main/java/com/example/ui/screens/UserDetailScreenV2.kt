@@ -2725,7 +2725,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Icon(
                                     imageVector = Icons.Default.ContentCopy,
-                                    contentDescription = "Copy",
+                                    contentDescription = if (currentLang == "ar") "نسخ" else "Copy",
                                     tint = Color(0xFF90CAF9),
                                     modifier = Modifier.size(13.dp)
                                 )
@@ -2795,7 +2795,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Icon(
                                         imageVector = Icons.Default.OpenInNew,
-                                        contentDescription = "Open",
+                                        contentDescription = if (currentLang == "ar") "فتح" else "Open",
                                         tint = Color(0xFF4FC3F7),
                                         modifier = Modifier.size(13.dp)
                                     )
@@ -2845,7 +2845,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Icon(
                                         imageVector = Icons.Default.OpenInNew,
-                                        contentDescription = "Open",
+                                        contentDescription = if (currentLang == "ar") "فتح" else "Open",
                                         tint = Color(0xFF4FC3F7),
                                         modifier = Modifier.size(13.dp)
                                     )
@@ -2915,7 +2915,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                             }
                                             Icon(
                                                 imageVector = if (dropdownExpanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
-                                                contentDescription = "Dropdown"
+                                                contentDescription = if (currentLang == "ar") "قائمة الخيارات" else "Dropdown"
                                             )
                                         }
                                     }

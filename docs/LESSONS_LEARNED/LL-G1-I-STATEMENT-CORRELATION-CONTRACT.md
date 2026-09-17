@@ -1,6 +1,6 @@
 # Lesson Learned: G1-I — Statement Correlation Contract Closure
 
-**Identifier:** `LL-G1-I-STATEMENT-CORRELATION-CONTRACT`  
+**Identifier:** `LL-G1-I-STATEMENT-CORRELATION-CONTRACT`
 **Status:** Historical forensic knowledge; non-authoritative practical engineering note.
 
 > **Important Boundary:** This document is historical forensic knowledge and prior investigation evidence. It is **NON-AUTHORITATIVE** and does **NOT** override current code, `AGENTS.md`, or product contracts (`Target Product Contract v0.6`, `Final Independent Adjudication Memo`). Current code and authoritative project documents remain primary.
