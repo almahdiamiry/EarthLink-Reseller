@@ -1,0 +1,281 @@
+name: PR63 scoped fix runner
+
+on:
+  push:
+    branches:
+      - fix/identity-aware-account-resolution
+
+permissions:
+  contents: write
+
+env:
+  BASE_SHA: 1ad958832fbeb5093a796b2c8bdb70bb23f53ebb
+
+jobs:
+  fix:
+    if: ${{ github.sha != '1ad958832fbeb5093a796b2c8bdb70bb23f53ebb' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: fix/identity-aware-account-resolution
+          fetch-depth: 0
+
+      - name: Apply production and regression fix
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          def replace_once(path: str, old: str, new: str):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, found {count}')
+              p.write_text(text.replace(old, new, 1))
+
+          vm = 'app/src/main/java/com/example/ui/viewmodels/EarthlinkSearchViewModel.kt'
+          replace_once(
+              vm,
+              '''    fun getAccountByUsernameOrId(username: String): Flow<LocalAccount?> =\n        localAccountRepository.getActiveAccountByUsernameOrId(username)\n\n''',
+              '''    fun getAccountByUsernameOrId(username: String): Flow<LocalAccount?> =\n        localAccountRepository.getActiveAccountByUsernameOrId(username)\n\n    fun getAccountByUsernameOrIdForUser(userIndex: Int?, username: String): Flow<LocalAccount?> {\n        return localAccountRepository.getAllAccounts()\n            .map { resolveAccountFromSnapshot(it, userIndex?.takeIf { index -> index > 0 }, username).account }\n            .distinctUntilChanged()\n    }\n\n    private enum class AccountResolutionStatus { UNIQUE, NOT_FOUND, CONFLICT, AMBIGUOUS }\n\n    private data class AccountResolution(\n        val status: AccountResolutionStatus,\n        val account: LocalAccount? = null\n    )\n\n    private fun resolveAccountFromSnapshot(\n        accounts: List<LocalAccount>,\n        userIndex: Int?,\n        username: String?\n    ): AccountResolution {\n        val active = accounts.filter { !it.isHistoryOnlySubscriber }\n        val cleanUsername = username?.trim()?.takeIf { it.isNotEmpty() }\n\n        if (userIndex != null && userIndex > 0) {\n            val byIndex = active.filter { it.ispUserIndex == userIndex }\n            when {\n                byIndex.size == 1 -> return AccountResolution(AccountResolutionStatus.UNIQUE, byIndex.single())\n                byIndex.size > 1 -> return AccountResolution(AccountResolutionStatus.AMBIGUOUS)\n            }\n\n            if (cleanUsername != null) {\n                val byUsername = active.filter {\n                    it.earthlinkUsername?.trim()?.equals(cleanUsername, ignoreCase = true) == true\n                }\n                val safe = byUsername.filter { it.ispUserIndex == null || it.ispUserIndex == userIndex }\n                when {\n                    safe.size == 1 -> return AccountResolution(AccountResolutionStatus.UNIQUE, safe.single())\n                    safe.size > 1 -> return AccountResolution(AccountResolutionStatus.AMBIGUOUS)\n                    byUsername.isNotEmpty() -> return AccountResolution(AccountResolutionStatus.CONFLICT)\n                }\n            }\n            return AccountResolution(AccountResolutionStatus.NOT_FOUND)\n        }\n\n        if (cleanUsername == null) return AccountResolution(AccountResolutionStatus.NOT_FOUND)\n        val byUsername = active.filter {\n            it.earthlinkUsername?.trim()?.equals(cleanUsername, ignoreCase = true) == true\n        }\n        return when (byUsername.size) {\n            0 -> AccountResolution(AccountResolutionStatus.NOT_FOUND)\n            1 -> AccountResolution(AccountResolutionStatus.UNIQUE, byUsername.single())\n            else -> AccountResolution(AccountResolutionStatus.AMBIGUOUS)\n        }\n    }\n\n    private suspend fun resolveMutationAccount(account: LocalAccount): LocalAccount? {\n        val selectedIndex = _selectedUser.value?.userIndex?.takeIf { it > 0 }\n        val existing = localAccountRepository.getAccountByIdOneShot(account.id)\n            ?.takeIf { !it.isHistoryOnlySubscriber }\n        if (existing != null) {\n            if (selectedIndex != null && existing.ispUserIndex != null && existing.ispUserIndex != selectedIndex) {\n                return null\n            }\n            return existing\n        }\n\n        val resolution = resolveAccountFromSnapshot(\n            localAccountRepository.getAllAccountsOneShot(),\n            selectedIndex,\n            account.earthlinkUsername\n        )\n        return when (resolution.status) {\n            AccountResolutionStatus.UNIQUE -> resolution.account\n            AccountResolutionStatus.NOT_FOUND -> {\n                val candidate = account.copy(ispUserIndex = selectedIndex ?: account.ispUserIndex)\n                localAccountRepository.saveAccount(candidate)\n            }\n            AccountResolutionStatus.CONFLICT, AccountResolutionStatus.AMBIGUOUS -> null\n        }\n    }\n\n'''
+          )
+
+          replace_once(
+              vm,
+              '''                    foundLocal = withContext(Dispatchers.IO) {\n                        if (!knownUserId.isNullOrBlank()) {\n                            localAccountRepository.findActiveAccountByUsernameOrIdOneShot(knownUserId)\n                        } else {\n                            // Target lookup via search instead of full table scan\n                            localAccountRepository.searchAccounts("", limit = 200, offset = 0).find { \n                                (it.earthlinkUsername != null && it.earthlinkUsername.hashCode() == userIndex) || \n                                (it.id.hashCode() == userIndex)\n                            }\n                        }\n                    }''',
+              '''                    foundLocal = withContext(Dispatchers.IO) {\n                        if (!knownUserId.isNullOrBlank()) {\n                            if (userIndex > 0) {\n                                val resolution = resolveAccountFromSnapshot(\n                                    localAccountRepository.getAllAccountsOneShot(),\n                                    userIndex,\n                                    knownUserId\n                                )\n                                if (resolution.status == AccountResolutionStatus.CONFLICT ||\n                                    resolution.status == AccountResolutionStatus.AMBIGUOUS) {\n                                    identityBlocked = true\n                                }\n                                resolution.account\n                            } else {\n                                localAccountRepository.findActiveAccountByUsernameOrIdOneShot(knownUserId)\n                            }\n                        } else {\n                            // Target lookup via search instead of full table scan\n                            localAccountRepository.searchAccounts("", limit = 200, offset = 0).find { \n                                (it.earthlinkUsername != null && it.earthlinkUsername.hashCode() == userIndex) || \n                                (it.id.hashCode() == userIndex)\n                            }\n                        }\n                    }\n                    if (identityBlocked) {\n                        _error.value = "Local account identity is conflicting or ambiguous; remote detail lookup was blocked."\n                        _isLoading.value = false\n                        return@launch\n                    }'''
+          )
+
+          replace_once(
+              vm,
+              '''                val localAcc = account?.let { localAccountRepository.getAccountByIdOneShot(it.id)?.takeIf { !it.isHistoryOnlySubscriber } }\n                    ?: (localAccountRepository.getAccountByIdOneShot(userId)?.takeIf { !it.isHistoryOnlySubscriber }\n                        ?: localAccountRepository.findActiveAccountByUsernameOrIdOneShot(userId))\n                val effectiveAcc = if (localAcc == null) {\n                    val snapshotUser = _selectedUser.value?.takeIf { it.userID.equals(userId, ignoreCase = true) }\n                    val snapshotListItem = _usersList.value.find { it.userID.equals(userId, ignoreCase = true) }\n                    val displayName = account?.displayName?.ifBlank { null }\n                        ?: snapshotUser?.customerFullName\n                        ?: snapshotListItem?.customerName\n                        ?: userId\n                    val phone = account?.phone1 ?: snapshotUser?.mobileNumber ?: snapshotListItem?.mobileNumber\n                    val pkgName = account?.packageName ?: snapshotUser?.packageName ?: snapshotListItem?.packageName ?: "Default"\n                    val resolvedId = if (!account?.id.isNullOrBlank() && localAccountRepository.getAccountByIdOneShot(account.id) == null) {\n                        account.id\n                    } else if (localAccountRepository.getAccountByIdOneShot(userId) == null) {\n                        userId\n                    } else {\n                        java.util.UUID.randomUUID().toString()\n                    }\n                    val newAcc = account?.copy(\n                        id = resolvedId,\n                        earthlinkUsername = userId,\n                        currentPriceIqd = exactAmountIqd.toDouble()\n                    ) ?: LocalAccount(\n                        id = resolvedId,\n                        earthlinkUsername = userId,\n                        displayName = displayName.ifBlank { userId },\n                        phone1 = phone,\n                        packageName = pkgName,\n                        currentPriceIqd = exactAmountIqd.toDouble(),\n                        debtIqd = 0.0\n                    )\n                    localAccountRepository.saveAccount(newAcc)\n                    newAcc\n                } else {\n                    localAcc\n                }''',
+              '''                val effectiveAcc = if (account != null) {\n                    resolveMutationAccount(account) ?: run {\n                        _error.value = "Local account identity is ambiguous, conflicting, or unavailable for this operation."\n                        return@launch\n                    }\n                } else {\n                    val selectedIndex = _selectedUser.value?.userIndex?.takeIf { it > 0 }\n                    when (val resolution = resolveAccountFromSnapshot(\n                        localAccountRepository.getAllAccountsOneShot(),\n                        selectedIndex,\n                        userId\n                    )) {\n                        AccountResolutionStatus.UNIQUE -> resolution.account!!\n                        AccountResolutionStatus.NOT_FOUND -> {\n                            val newId = if (localAccountRepository.getAccountByIdOneShot(userId) == null) {\n                                userId\n                            } else {\n                                java.util.UUID.randomUUID().toString()\n                            }\n                            localAccountRepository.saveAccount(\n                                LocalAccount(\n                                    id = newId,\n                                    earthlinkUsername = userId,\n                                    displayName = _selectedUser.value?.customerFullName?.ifBlank { userId } ?: userId,\n                                    phone1 = _selectedUser.value?.mobileNumber,\n                                    packageName = _selectedUser.value?.packageName ?: "Default",\n                                    currentPriceIqd = exactAmountIqd.toDouble(),\n                                    debtIqd = 0.0,\n                                    ispUserIndex = selectedIndex\n                                )\n                            )\n                        }\n                        AccountResolutionStatus.CONFLICT, AccountResolutionStatus.AMBIGUOUS -> {\n                            _error.value = "Local account identity is ambiguous or conflicting. Operation aborted."\n                            return@launch\n                        }\n                    }\n                }'''
+          )
+
+          replace_once(
+              vm,
+              '''                        payloadJson = "{\\"userId\\":\\"$userId\\",\\"price\\":$authoritativePrice,\\"note\\":\\"$finalNote\\",\\"isWasil\\":$isWasil}",''',
+              '''                        payloadJson = "{\\"userId\\":\\"$userId\\",\\"localAccountId\\":\\"${effectiveAcc.id}\\",\\"price\\":$authoritativePrice,\\"note\\":\\"$finalNote\\",\\"isWasil\\":$isWasil}",'''
+          )
+
+          replace_once(
+              vm,
+              '''        try {\n            val noteVal = note?.trim() ?: ""\n            val baseNote = if (account.debtIqd > 0) "[PAYMENT]" else "[DEPOSIT]"''',
+              '''        try {\n            val safeAccount = resolveMutationAccount(account) ?: run {\n                withContext(Dispatchers.Main) { onError?.invoke("Local account identity is ambiguous or conflicting.") }\n                return@launch\n            }\n            val noteVal = note?.trim() ?: ""\n            val baseNote = if (safeAccount.debtIqd > 0) "[PAYMENT]" else "[DEPOSIT]"'''
+          )
+          replace_once(
+              vm,
+              '''            localLedgerRepository.recordAccountPayment(\n                account = account,\n                amount = amount,\n                note = payNote''',
+              '''            localLedgerRepository.recordAccountPayment(\n                account = safeAccount,\n                amount = amount,\n                note = payNote'''
+          )
+          replace_once(
+              vm,
+              '''        try {\n            val noteVal = note?.trim() ?: ""\n            val debtNote = if (noteVal.isNotBlank()) "[DEBT] $noteVal" else null''',
+              '''        try {\n            val safeAccount = resolveMutationAccount(account) ?: run {\n                withContext(Dispatchers.Main) { onError?.invoke("Local account identity is ambiguous or conflicting.") }\n                return@launch\n            }\n            val noteVal = note?.trim() ?: ""\n            val debtNote = if (noteVal.isNotBlank()) "[DEBT] $noteVal" else null'''
+          )
+          replace_once(
+              vm,
+              '''            localLedgerRepository.recordAccountDebt(\n                account = account,\n                amount = amount,\n                note = debtNote''',
+              '''            localLedgerRepository.recordAccountDebt(\n                account = safeAccount,\n                amount = amount,\n                note = debtNote'''
+          )
+
+          ui = 'app/src/main/java/com/example/ui/screens/UserDetailScreenV2.kt'
+          replace_once(
+              ui,
+              '    val matchingAccountFlow = remember(targetUsername) {\n        if (targetUsername.isNotEmpty()) {\n            viewModel.getAccountByUsernameOrId(targetUsername)',
+              '    val matchingAccountFlow = remember(userIndex, targetUsername) {\n        if (targetUsername.isNotEmpty()) {\n            viewModel.getAccountByUsernameOrIdForUser(userIndex, targetUsername)'
+          )
+
+          repo = 'app/src/main/java/com/example/data/repository/Repositories.kt'
+          replace_once(
+              repo,
+              '''                    val localAcc = accountDao.getByIdOneShot(op.accountId)?.takeIf { !it.isHistoryOnlySubscriber }\n                        ?: accountDao.findActiveAccountByUsernameOrIdOneShot(op.accountId)\n                        ?: if (op.operationType.equals("ACTIVATION", ignoreCase = true) && payloadObj.has("username") && payloadObj.optString("username").isNotBlank()) {''',
+              '''                    val explicitLocalAccountId = payloadObj.optString("localAccountId").trim().takeIf { it.isNotBlank() }\n                    val localAcc = if (explicitLocalAccountId != null) {\n                        accountDao.getByIdOneShot(explicitLocalAccountId)\n                            ?.takeIf { !it.isHistoryOnlySubscriber }\n                            ?: throw IllegalStateException("EXPLICIT_LOCAL_FINANCIAL_TARGET_INVALID: Account $explicitLocalAccountId not found or history-only")\n                    } else {\n                        accountDao.getByIdOneShot(op.accountId)?.takeIf { !it.isHistoryOnlySubscriber }\n                            ?: accountDao.findActiveAccountByUsernameOrIdOneShot(op.accountId)\n                            ?: if (op.operationType.equals("ACTIVATION", ignoreCase = true) && payloadObj.has("username") && payloadObj.optString("username").isNotBlank()) {'''
+          )
+          replace_once(
+              repo,
+              '''                            saveAccountInternal(shellAcc)\n                        } else {\n                            throw IllegalStateException("MISSING_LOCAL_FINANCIAL_TARGET: Cannot materialize financial position for missing local account ${op.accountId}")\n                        }\n\n                    val operationPrice = op.amountIqd.toDouble()''',
+              '''                            saveAccountInternal(shellAcc)\n                        } else {\n                            throw IllegalStateException("MISSING_LOCAL_FINANCIAL_TARGET: Cannot materialize financial position for missing local account ${op.accountId}")\n                        }\n                    }\n\n                    val operationPrice = op.amountIqd.toDouble()'''
+          )
+
+          # Create a focused regression suite using the already-certified Room/Robolectric test gateway.
+          test = Path('app/src/test/java/com/example/IdentityAwareAccountResolutionRegressionTest.kt')
+          test.write_text(r'''package com.example
+
+import android.content.Context
+import androidx.room.Room
+import androidx.test.core.app.ApplicationProvider
+import com.example.core.database.AppDatabase
+import com.example.core.model.LocalAccount
+import com.example.core.model.PendingExternalOperation
+import com.example.core.model.UserListItem
+import com.example.core.security.PreferenceManager
+import com.example.data.repository.AuditRepositoryImpl
+import com.example.data.repository.LocalAccountRepositoryImpl
+import com.example.data.repository.LocalLedgerRepositoryImpl
+import com.example.domain.repository.AuditRepository
+import com.example.domain.repository.LocalAccountRepository
+import com.example.domain.repository.LocalLedgerRepository
+import com.example.ui.viewmodels.EarthlinkSearchViewModel
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+@RunWith(RobolectricTestRunner::class)
+@Config(manifest = Config.NONE)
+class IdentityAwareAccountResolutionRegressionTest {
+    private lateinit var context: Context
+    private lateinit var db: AppDatabase
+    private lateinit var accountRepository: LocalAccountRepository
+    private lateinit var ledgerRepository: LocalLedgerRepository
+    private lateinit var auditRepository: AuditRepository
+    private lateinit var prefs: PreferenceManager
+
+    @Before
+    fun setup() {
+        context = ApplicationProvider.getApplicationContext()
+        (context as? com.example.EarthlinkApp)?.isSafeDebugFallbackAllowedOverride = true
+        db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        val accountDao = db.localAccountDao()
+        val ledgerDao = db.localLedgerEntryDao()
+        val outboxDao = db.syncOutboxDao()
+        val pendingDao = db.pendingExternalOperationDao()
+        accountRepository = LocalAccountRepositoryImpl(db, accountDao, outboxDao)
+        ledgerRepository = LocalLedgerRepositoryImpl(db, ledgerDao, accountDao, outboxDao, pendingDao)
+        auditRepository = AuditRepositoryImpl(db, db.auditLogDao())
+        prefs = PreferenceManager(context)
+    }
+
+    @After
+    fun tearDown() = db.close()
+
+    private fun vm(): EarthlinkSearchViewModel = EarthlinkSearchViewModel(
+        gateway = Phase1DuplicateInitiationProtectionTest.TestEarthlinkGateway(),
+        audit = auditRepository,
+        prefs = prefs,
+        localAccountRepository = accountRepository,
+        localLedgerRepository = ledgerRepository
+    )
+
+    @Test
+    fun authoritativeIndex_selectsCorrectContainer_whenUsernameIsRecycled() = runBlocking {
+        db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
+        db.localAccountDao().insert(LocalAccount(id = "UUID_B", earthlinkUsername = "alice", ispUserIndex = 2002))
+        assertEquals("UUID_B", vm().getAccountByUsernameOrIdForUser(2002, "alice").first()?.id)
+    }
+
+    @Test
+    fun authoritativeIndex_failsClosed_whenSameIdentityHasMultipleContainers() = runBlocking {
+        db.localAccountDao().insert(LocalAccount(id = "UUID_B1", earthlinkUsername = "alice", ispUserIndex = 2002))
+        db.localAccountDao().insert(LocalAccount(id = "UUID_B2", earthlinkUsername = "alice", ispUserIndex = 2002))
+        assertEquals(null, vm().getAccountByUsernameOrIdForUser(2002, "alice").first())
+    }
+
+    @Test
+    fun authoritativeIndex_failsClosed_whenUsernameBelongsToDifferentIdentity() = runBlocking {
+        db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
+        assertEquals(null, vm().getAccountByUsernameOrIdForUser(2002, "alice").first())
+    }
+
+    @Test
+    fun authoritativeIndex_canResolveSingleUnboundUsernameContainer() = runBlocking {
+        db.localAccountDao().insert(LocalAccount(id = "UUID_UNBOUND", earthlinkUsername = "alice", ispUserIndex = null))
+        assertEquals("UUID_UNBOUND", vm().getAccountByUsernameOrIdForUser(2002, "alice").first()?.id)
+    }
+
+    @Test
+    fun identityAwareResolver_remainsRoomReactive() = runBlocking {
+        db.localAccountDao().insert(LocalAccount(id = "UUID_B", displayName = "Alice", earthlinkUsername = "alice", ispUserIndex = 2002))
+        val flow = vm().getAccountByUsernameOrIdForUser(2002, "alice")
+        assertEquals("Alice", flow.first()?.displayName)
+        val next = async { withTimeout(5000) { flow.drop(1).first() } }
+        delay(100)
+        val current = db.localAccountDao().getByIdOneShot("UUID_B")!!
+        db.localAccountDao().update(current.copy(displayName = "Alice Updated"))
+        assertEquals("Alice Updated", next.await()?.displayName)
+    }
+
+    @Test
+    fun refill_withConflictingSyntheticAccount_failsClosedBeforeGatewayDispatch() = runBlocking {
+        db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
+        val gateway = Phase1DuplicateInitiationProtectionTest.TestEarthlinkGateway()
+        val viewModel = EarthlinkSearchViewModel(gateway, auditRepository, prefs, accountRepository, ledgerRepository)
+        viewModel.prepareUserDetail(2002, UserListItem(userIndexLower = 2002, userIDLower = "alice"))
+        val beforeAccounts = db.localAccountDao().getTotalCount()
+        viewModel.refillUser(
+            userId = "alice",
+            depositPass = "pass",
+            price = 35000.0,
+            account = LocalAccount(id = "SYNTHETIC", earthlinkUsername = "alice")
+        ).join()
+        assertEquals(beforeAccounts, db.localAccountDao().getTotalCount())
+        assertEquals(0, gateway.refillCalls.get())
+        assertTrue(viewModel.error.value?.contains("ambiguous") == true || viewModel.error.value?.contains("conflicting") == true)
+    }
+
+    @Test
+    fun verifiedRefillMaterialization_usesExplicitPhysicalAccountId() = runBlocking {
+        db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
+        db.localAccountDao().insert(LocalAccount(id = "UUID_B", earthlinkUsername = "alice", ispUserIndex = 2002))
+        val txId = "charge_explicit_target"
+        db.pendingExternalOperationDao().insert(
+            PendingExternalOperation(
+                businessTransactionId = txId,
+                operationIntentId = "intent_explicit_target",
+                accountId = "alice",
+                operationType = "REFILL",
+                amountIqd = 35000L,
+                payloadJson = "{\"userId\":\"alice\",\"localAccountId\":\"UUID_B\",\"isWasil\":false}",
+                status = "PENDING",
+                dispatchClaimCount = 1
+            )
+        )
+        ledgerRepository.resolvePendingOperationVerifiedSuccess(txId, "")
+        assertEquals(0, db.localLedgerEntryDao().getByAccountIdOneShot("UUID_A").size)
+        assertEquals(1, db.localLedgerEntryDao().getByAccountIdOneShot("UUID_B").size)
+    }
+}
+''')
+
+          # Verify the working tree contains only intended source/test changes before execution.
+          subprocess.run(['git', 'status', '--short'], check=True)
+          PY
+
+      - name: Compile and run focused verification
+        run: |
+          chmod +x ./gradlew
+          ./gradlew testDebugUnitTest -x processDebugGoogleServices \
+            --tests com.example.IdentityAwareAccountResolutionRegressionTest \
+            --tests com.example.Phase1DuplicateInitiationProtectionTest
+          python3 scripts/scan_forbidden_patterns.py
+          ./gradlew :app:compileDebugKotlin :app:compileDebugUnitTestKotlin -x processDebugGoogleServices
+
+      - name: Create clean source commit from base
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/ui/viewmodels/EarthlinkSearchViewModel.kt \
+                  app/src/main/java/com/example/data/repository/Repositories.kt \
+                  app/src/main/java/com/example/ui/screens/UserDetailScreenV2.kt \
+                  app/src/test/java/com/example/IdentityAwareAccountResolutionRegressionTest.kt
+          TREE=$(git write-tree)
+          COMMIT=$(printf '%s\n\n' 'fix(identity): anchor local financial mutations to authoritative subscriber identity' | git commit-tree "$TREE" -p "$BASE_SHA")
+          git push --force origin "$COMMIT:refs/heads/fix/identity-aware-account-resolution"

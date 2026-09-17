@@ -1427,9 +1427,15 @@ class LocalLedgerRepositoryImpl(
 
                     val payloadObj = try { JSONObject(op.payloadJson) } catch (_: Exception) { JSONObject() }
                     // Filters out archived accounts so recycled ISP usernames anchor financial mutations to the active subscriber.
-                    val localAcc = accountDao.getByIdOneShot(op.accountId)?.takeIf { !it.isHistoryOnlySubscriber }
-                        ?: accountDao.findActiveAccountByUsernameOrIdOneShot(op.accountId)
-                        ?: if (op.operationType.equals("ACTIVATION", ignoreCase = true) && payloadObj.has("username") && payloadObj.optString("username").isNotBlank()) {
+                    val explicitLocalAccountId = payloadObj.optString("localAccountId").trim().takeIf { it.isNotBlank() }
+                    val localAcc = if (explicitLocalAccountId != null) {
+                        accountDao.getByIdOneShot(explicitLocalAccountId)
+                            ?.takeIf { !it.isHistoryOnlySubscriber }
+                            ?: throw IllegalStateException("EXPLICIT_LOCAL_FINANCIAL_TARGET_INVALID: Account $explicitLocalAccountId not found or history-only")
+                    } else {
+                        accountDao.getByIdOneShot(op.accountId)?.takeIf { !it.isHistoryOnlySubscriber }
+                            ?: accountDao.findActiveAccountByUsernameOrIdOneShot(op.accountId)
+                            ?: if (op.operationType.equals("ACTIVATION", ignoreCase = true) && payloadObj.has("username") && payloadObj.optString("username").isNotBlank()) {
                             val parsedFullName = payloadObj.optString("fullName").takeIf { it.isNotBlank() }
                             val parsedPhone = payloadObj.optString("phone").takeIf { it.isNotBlank() }
                             val shellId = if (accountDao.getByIdOneShot(op.accountId) == null) op.accountId else java.util.UUID.randomUUID().toString()
@@ -1445,6 +1451,7 @@ class LocalLedgerRepositoryImpl(
                         } else {
                             throw IllegalStateException("MISSING_LOCAL_FINANCIAL_TARGET: Cannot materialize financial position for missing local account ${op.accountId}")
                         }
+                    }
 
                     val operationPrice = op.amountIqd.toDouble()
                     val isWasil = payloadObj.optBoolean("isWasil", false)

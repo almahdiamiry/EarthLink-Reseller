@@ -1,0 +1,24 @@
+name: PR63 scoped fix on PR
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: ${{ github.event.pull_request.number == 63 && github.head_ref == 'fix/identity-aware-account-resolution' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/identity-aware-account-resolution
+          fetch-depth: 0
+      - name: Apply fix and verify
+        run: |
+          python3 scripts/pr63_apply_fix.py

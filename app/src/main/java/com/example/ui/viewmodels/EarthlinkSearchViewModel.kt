@@ -82,6 +82,86 @@ class EarthlinkSearchViewModel(
     fun getAccountByUsernameOrId(username: String): Flow<LocalAccount?> =
         localAccountRepository.getActiveAccountByUsernameOrId(username)
 
+    fun getAccountByUsernameOrIdForUser(userIndex: Int?, username: String): Flow<LocalAccount?> {
+        return localAccountRepository.getAllAccounts()
+            .map { resolveAccountFromSnapshot(it, userIndex?.takeIf { index -> index > 0 }, username).account }
+            .distinctUntilChanged()
+    }
+
+    private enum class AccountResolutionStatus { UNIQUE, NOT_FOUND, CONFLICT, AMBIGUOUS }
+
+    private data class AccountResolution(
+        val status: AccountResolutionStatus,
+        val account: LocalAccount? = null
+    )
+
+    private fun resolveAccountFromSnapshot(
+        accounts: List<LocalAccount>,
+        userIndex: Int?,
+        username: String?
+    ): AccountResolution {
+        val active = accounts.filter { !it.isHistoryOnlySubscriber }
+        val cleanUsername = username?.trim()?.takeIf { it.isNotEmpty() }
+
+        if (userIndex != null && userIndex > 0) {
+            val byIndex = active.filter { it.ispUserIndex == userIndex }
+            when {
+                byIndex.size == 1 -> return AccountResolution(AccountResolutionStatus.UNIQUE, byIndex.single())
+                byIndex.size > 1 -> return AccountResolution(AccountResolutionStatus.AMBIGUOUS)
+            }
+
+            if (cleanUsername != null) {
+                val byUsername = active.filter {
+                    it.earthlinkUsername?.trim()?.equals(cleanUsername, ignoreCase = true) == true
+                }
+                val safe = byUsername.filter { it.ispUserIndex == null || it.ispUserIndex == userIndex }
+                when {
+                    safe.size == 1 -> return AccountResolution(AccountResolutionStatus.UNIQUE, safe.single())
+                    safe.size > 1 -> return AccountResolution(AccountResolutionStatus.AMBIGUOUS)
+                    byUsername.isNotEmpty() -> return AccountResolution(AccountResolutionStatus.CONFLICT)
+                }
+            }
+            return AccountResolution(AccountResolutionStatus.NOT_FOUND)
+        }
+
+        if (cleanUsername == null) return AccountResolution(AccountResolutionStatus.NOT_FOUND)
+        val byUsername = active.filter {
+            it.earthlinkUsername?.trim()?.equals(cleanUsername, ignoreCase = true) == true
+        }
+        return when (byUsername.size) {
+            0 -> AccountResolution(AccountResolutionStatus.NOT_FOUND)
+            1 -> AccountResolution(AccountResolutionStatus.UNIQUE, byUsername.single())
+            else -> AccountResolution(AccountResolutionStatus.AMBIGUOUS)
+        }
+    }
+
+    private suspend fun resolveMutationAccount(account: LocalAccount): LocalAccount? {
+        val selectedIndex = _selectedUser.value?.userIndex?.takeIf { it > 0 }
+        val existing = localAccountRepository.getAccountByIdOneShot(account.id)
+            ?.takeIf { !it.isHistoryOnlySubscriber }
+        if (existing != null) {
+            if (selectedIndex != null && existing.ispUserIndex != null && existing.ispUserIndex != selectedIndex) {
+                return null
+            }
+            return existing
+        }
+
+        val resolution = resolveAccountFromSnapshot(
+            localAccountRepository.getAllAccountsOneShot(),
+            selectedIndex,
+            account.earthlinkUsername
+        )
+        return when (resolution.status) {
+            AccountResolutionStatus.UNIQUE -> resolution.account
+            AccountResolutionStatus.NOT_FOUND -> {
+                localAccountRepository.saveAccount(
+                    account.copy(ispUserIndex = selectedIndex ?: account.ispUserIndex)
+                )
+            }
+            AccountResolutionStatus.CONFLICT, AccountResolutionStatus.AMBIGUOUS -> null
+        }
+    }
+
     fun getLedgerForAccount(accountId: String): Flow<List<com.example.core.model.LocalLedgerEntry>> =
         localLedgerRepository.getLedgerForAccount(accountId)
 
@@ -289,12 +369,26 @@ class EarthlinkSearchViewModel(
             prepareUserDetail(userIndex)
 
             var foundLocal: LocalAccount? = null
+            var identityBlocked = false
             // If still null, try finding in local DB via targeted lookup
             if (_selectedUser.value == null) {
                 try {
                     foundLocal = withContext(Dispatchers.IO) {
                         if (!knownUserId.isNullOrBlank()) {
-                            localAccountRepository.findActiveAccountByUsernameOrIdOneShot(knownUserId)
+                            if (userIndex > 0) {
+                                val resolution = resolveAccountFromSnapshot(
+                                    localAccountRepository.getAllAccountsOneShot(),
+                                    userIndex,
+                                    knownUserId
+                                )
+                                if (resolution.status == AccountResolutionStatus.CONFLICT ||
+                                    resolution.status == AccountResolutionStatus.AMBIGUOUS) {
+                                    identityBlocked = true
+                                }
+                                resolution.account
+                            } else {
+                                localAccountRepository.findActiveAccountByUsernameOrIdOneShot(knownUserId)
+                            }
                         } else {
                             // Target lookup via search instead of full table scan
                             localAccountRepository.searchAccounts("", limit = 200, offset = 0).find { 
@@ -302,6 +396,11 @@ class EarthlinkSearchViewModel(
                                 (it.id.hashCode() == userIndex)
                             }
                         }
+                    }
+                    if (identityBlocked) {
+                        _error.value = "Local account identity is conflicting or ambiguous; remote detail lookup was blocked."
+                        _isLoading.value = false
+                        return@launch
                     }
                     if (foundLocal != null) {
                         _selectedUser.value = com.example.core.model.UserDetail(
@@ -589,12 +688,16 @@ class EarthlinkSearchViewModel(
         onError: ((String) -> Unit)? = null
     ): kotlinx.coroutines.Job = viewModelScope.launch(Dispatchers.IO) {
         try {
+            val safeAccount = resolveMutationAccount(account) ?: run {
+                withContext(Dispatchers.Main) { onError?.invoke("Local account identity is ambiguous or conflicting.") }
+                return@launch
+            }
             val noteVal = note?.trim() ?: ""
-            val baseNote = if (account.debtIqd > 0) "[PAYMENT]" else "[DEPOSIT]"
+            val baseNote = if (safeAccount.debtIqd > 0) "[PAYMENT]" else "[DEPOSIT]"
             val payNote = if (noteVal.isNotBlank()) "$baseNote $noteVal" else null
 
             localLedgerRepository.recordAccountPayment(
-                account = account,
+                account = safeAccount,
                 amount = amount,
                 note = payNote
             )
@@ -629,11 +732,15 @@ class EarthlinkSearchViewModel(
         onError: ((String) -> Unit)? = null
     ): kotlinx.coroutines.Job = viewModelScope.launch(Dispatchers.IO) {
         try {
+            val safeAccount = resolveMutationAccount(account) ?: run {
+                withContext(Dispatchers.Main) { onError?.invoke("Local account identity is ambiguous or conflicting.") }
+                return@launch
+            }
             val noteVal = note?.trim() ?: ""
             val debtNote = if (noteVal.isNotBlank()) "[DEBT] $noteVal" else null
 
             localLedgerRepository.recordAccountDebt(
-                account = account,
+                account = safeAccount,
                 amount = amount,
                 note = debtNote
             )
@@ -732,42 +839,43 @@ class EarthlinkSearchViewModel(
                 }
                 val exactAmountIqd = authoritativePrice.toLong()
 
-                val localAcc = account?.let { localAccountRepository.getAccountByIdOneShot(it.id)?.takeIf { !it.isHistoryOnlySubscriber } }
-                    ?: (localAccountRepository.getAccountByIdOneShot(userId)?.takeIf { !it.isHistoryOnlySubscriber }
-                        ?: localAccountRepository.findActiveAccountByUsernameOrIdOneShot(userId))
-                val effectiveAcc = if (localAcc == null) {
-                    val snapshotUser = _selectedUser.value?.takeIf { it.userID.equals(userId, ignoreCase = true) }
-                    val snapshotListItem = _usersList.value.find { it.userID.equals(userId, ignoreCase = true) }
-                    val displayName = account?.displayName?.ifBlank { null }
-                        ?: snapshotUser?.customerFullName
-                        ?: snapshotListItem?.customerName
-                        ?: userId
-                    val phone = account?.phone1 ?: snapshotUser?.mobileNumber ?: snapshotListItem?.mobileNumber
-                    val pkgName = account?.packageName ?: snapshotUser?.packageName ?: snapshotListItem?.packageName ?: "Default"
-                    val resolvedId = if (!account?.id.isNullOrBlank() && localAccountRepository.getAccountByIdOneShot(account.id) == null) {
-                        account.id
-                    } else if (localAccountRepository.getAccountByIdOneShot(userId) == null) {
-                        userId
-                    } else {
-                        java.util.UUID.randomUUID().toString()
+                val effectiveAcc = if (account != null) {
+                    resolveMutationAccount(account) ?: run {
+                        _error.value = "Local account identity is ambiguous, conflicting, or unavailable for this operation."
+                        return@launch
                     }
-                    val newAcc = account?.copy(
-                        id = resolvedId,
-                        earthlinkUsername = userId,
-                        currentPriceIqd = exactAmountIqd.toDouble()
-                    ) ?: LocalAccount(
-                        id = resolvedId,
-                        earthlinkUsername = userId,
-                        displayName = displayName.ifBlank { userId },
-                        phone1 = phone,
-                        packageName = pkgName,
-                        currentPriceIqd = exactAmountIqd.toDouble(),
-                        debtIqd = 0.0
-                    )
-                    localAccountRepository.saveAccount(newAcc)
-                    newAcc
                 } else {
-                    localAcc
+                    val selectedIndex = _selectedUser.value?.userIndex?.takeIf { it > 0 }
+                    when (val resolution = resolveAccountFromSnapshot(
+                        localAccountRepository.getAllAccountsOneShot(),
+                        selectedIndex,
+                        userId
+                    )) {
+                        AccountResolutionStatus.UNIQUE -> resolution.account!!
+                        AccountResolutionStatus.NOT_FOUND -> {
+                            val newId = if (localAccountRepository.getAccountByIdOneShot(userId) == null) {
+                                userId
+                            } else {
+                                java.util.UUID.randomUUID().toString()
+                            }
+                            localAccountRepository.saveAccount(
+                                LocalAccount(
+                                    id = newId,
+                                    earthlinkUsername = userId,
+                                    displayName = _selectedUser.value?.customerFullName?.ifBlank { userId } ?: userId,
+                                    phone1 = _selectedUser.value?.mobileNumber,
+                                    packageName = _selectedUser.value?.packageName ?: "Default",
+                                    currentPriceIqd = exactAmountIqd.toDouble(),
+                                    debtIqd = 0.0,
+                                    ispUserIndex = selectedIndex
+                                )
+                            )
+                        }
+                        AccountResolutionStatus.CONFLICT, AccountResolutionStatus.AMBIGUOUS -> {
+                            _error.value = "Local account identity is ambiguous or conflicting. Operation aborted."
+                            return@launch
+                        }
+                    }
                 }
 
                 localLedgerRepository.recordPendingOperation(
@@ -777,7 +885,7 @@ class EarthlinkSearchViewModel(
                         accountId = userId,
                         operationType = "REFILL",
                         amountIqd = exactAmountIqd,
-                        payloadJson = "{\"userId\":\"$userId\",\"price\":$authoritativePrice,\"note\":\"$finalNote\",\"isWasil\":$isWasil}",
+                        payloadJson = "{\"userId\":\"$userId\",\"localAccountId\":\"${effectiveAcc.id}\",\"price\":$authoritativePrice,\"note\":\"$finalNote\",\"isWasil\":$isWasil}",
                         status = "PENDING",
                         dispatchClaimCount = 0
                     )
