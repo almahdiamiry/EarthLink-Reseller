@@ -789,8 +789,7 @@ class EarthlinkSearchViewModelSeamTest {
         db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
         val selected = LocalAccount(id = "UUID_B", earthlinkUsername = "alice", ispUserIndex = 2002)
         db.localAccountDao().insert(selected)
-        val gateway = EarthlinkSearchViewModelSeamTest.SeamTestGateway()
-        val viewModel = EarthlinkSearchViewModel(gateway, auditRepository, prefs, accountRepository, ledgerRepository)
+        val viewModel = createViewModel()
         viewModel.prepareUserDetail(2002, UserListItem(userIndexLower = 2002, userIDLower = "alice"))
 
         viewModel.refillUser(
@@ -826,7 +825,7 @@ class EarthlinkSearchViewModelSeamTest {
                 dispatchClaimCount = 1
             )
         )
-        ledgerRepository.resolvePendingOperationVerifiedSuccess(txId, "")
+        ledgerRepo.resolvePendingOperationVerifiedSuccess(txId, "")
         assertEquals(0, db.localLedgerEntryDao().getByAccountIdOneShot("UUID_A").size)
         assertEquals(1, db.localLedgerEntryDao().getByAccountIdOneShot("UUID_B").size)
     }
