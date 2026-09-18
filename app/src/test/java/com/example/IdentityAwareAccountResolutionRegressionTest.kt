@@ -125,6 +125,51 @@ class IdentityAwareAccountResolutionRegressionTest {
     }
 
     @Test
+    fun conflictingIdentity_failsClosedForAllLocalMetadataMutations() = runBlocking {
+        db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
+        val viewModel = vm()
+        viewModel.prepareUserDetail(2002, UserListItem(userIndexLower = 2002, userIDLower = "alice"))
+
+        val synthetic = LocalAccount(id = "SYNTHETIC", earthlinkUsername = "alice")
+
+        viewModel.saveCustomerNote(synthetic, "must not persist").join()
+        viewModel.saveCustomNanoIp(synthetic, "192.168.10.25").join()
+
+        assertEquals(null, db.localAccountDao().getByIdOneShot("SYNTHETIC"))
+        assertTrue(viewModel.error.value?.contains("ambiguous") == true || viewModel.error.value?.contains("conflicting") == true)
+    }
+
+    @Test
+    fun conflictingIdentity_failsClosedForRemoteMutationsBeforeGatewayDispatch() = runBlocking {
+        db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
+        val gateway = Phase1DuplicateInitiationProtectionTest.TestEarthlinkGateway()
+        val viewModel = EarthlinkSearchViewModel(gateway, auditRepository, prefs, accountRepository, ledgerRepository)
+        viewModel.prepareUserDetail(2002, UserListItem(userIndexLower = 2002, userIDLower = "alice"))
+
+        val synthetic = LocalAccount(id = "SYNTHETIC", earthlinkUsername = "alice")
+
+        viewModel.changeAccountType(
+            userIndex = 2002,
+            userId = "alice",
+            accountIndex = 3,
+            accountName = "Active",
+            account = synthetic,
+            newPriceIqd = 50000.0
+        ).join()
+
+        viewModel.updateUserDisplayName(
+            userIndex = 2002,
+            newName = "Should Not Persist",
+            account = synthetic
+        ).join()
+
+        assertEquals(null, db.localAccountDao().getByIdOneShot("SYNTHETIC"))
+        assertEquals(0, gateway.changeAccountTypeCalls.get())
+        assertEquals(0, gateway.updateDisplayNameCalls.get())
+        assertTrue(viewModel.error.value?.contains("ambiguous") == true || viewModel.error.value?.contains("conflicting") == true)
+    }
+
+    @Test
     fun verifiedRefillMaterialization_usesExplicitPhysicalAccountId() = runBlocking {
         db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
         db.localAccountDao().insert(LocalAccount(id = "UUID_B", earthlinkUsername = "alice", ispUserIndex = 2002))
@@ -136,7 +181,7 @@ class IdentityAwareAccountResolutionRegressionTest {
                 accountId = "alice",
                 operationType = "REFILL",
                 amountIqd = 35000L,
-                payloadJson = "{\"userId\":\"alice\",\"localAccountId\":\"UUID_B\",\"isWasil\":false}",
+                payloadJson = "{"userId":"alice","localAccountId":"UUID_B","isWasil":false}",
                 status = "PENDING",
                 dispatchClaimCount = 1
             )
