@@ -66,6 +66,8 @@ class Phase1DuplicateInitiationProtectionTest {
         val createTestUserCalls = AtomicInteger(0)
         val createUserUsingDepositCalls = AtomicInteger(0)
         val extendUserCalls = AtomicInteger(0)
+        val changeAccountTypeCalls = AtomicInteger(0)
+        val updateDisplayNameCalls = AtomicInteger(0)
         val customStatements = mutableListOf<AccountStatementItem>()
 
         var shouldFailRefill = false
@@ -113,8 +115,14 @@ class Phase1DuplicateInitiationProtectionTest {
         override suspend fun changeUserPassword(userIndex: Int, userId: String, newPass: String): Boolean = true
         override suspend fun changeAccountPassword(userIndex: Int, userId: String, newPass: String): Boolean = true
         override suspend fun toggleUserActive(userIndex: Int, active: Boolean): Boolean = true
-        override suspend fun changeAccountType(userIndex: Int, userId: String, accountIndex: Int): Boolean = true
-        override suspend fun updateUserDisplayName(userIndex: Int, newName: String): Boolean = true
+        override suspend fun changeAccountType(userIndex: Int, userId: String, accountIndex: Int): Boolean {
+            changeAccountTypeCalls.incrementAndGet()
+            return true
+        }
+        override suspend fun updateUserDisplayName(userIndex: Int, newName: String): Boolean {
+            updateDisplayNameCalls.incrementAndGet()
+            return true
+        }
         override suspend fun login(username: String, password: String): LoginResponse = LoginResponse(accessToken = "test_token", tokenType = "Bearer", expiresIn = 3600)
         override suspend fun getTestUsersCount(affiliateIndex: Int?): Int = 0
         override suspend fun getActiveTestUsersCount(): Int = 0

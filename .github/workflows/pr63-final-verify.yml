@@ -1,0 +1,53 @@
+name: PR63 final verification
+
+on:
+  push:
+    branches:
+      - fix/identity-aware-account-resolution
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/identity-aware-account-resolution
+          fetch-depth: 0
+
+      - name: Focused PR63 regression suite
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew testDebugUnitTest -x processDebugGoogleServices \
+            --tests com.example.IdentityAwareAccountResolutionRegressionTest \
+            --tests com.example.Phase1DuplicateInitiationProtectionTest \
+            --tests com.example.N2AccountResolutionTest \
+            --tests com.example.Workstream6LocalAccountProvenanceGuardTest
+
+      - name: Forbidden pattern scan
+        run: |
+          set -euo pipefail
+          python3 scripts/scan_forbidden_patterns.py
+
+      - name: Compile
+        run: |
+          set -euo pipefail
+          ./gradlew :app:compileDebugKotlin :app:compileDebugUnitTestKotlin -x processDebugGoogleServices
+
+      - name: Production gate
+        run: |
+          set -euo pipefail
+          chmod +x ./scripts/production_gate.sh
+          ./scripts/production_gate.sh
+
+      - name: Remove temporary verifier
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/pr63-final-verify.yml
+          git commit -m "test(pr63): remove temporary final verifier"
+          git push origin HEAD:fix/identity-aware-account-resolution

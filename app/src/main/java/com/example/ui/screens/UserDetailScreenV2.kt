@@ -230,9 +230,9 @@ fun UserDetailScreenV2(
     val success by viewModel.actionSuccess.collectAsStateWithLifecycle()
 
     val targetUsername = detail?.userID?.trim() ?: ""
-    val matchingAccountFlow = remember(targetUsername) {
+    val matchingAccountFlow = remember(userIndex, targetUsername) {
         if (targetUsername.isNotEmpty()) {
-            viewModel.getAccountByUsernameOrId(targetUsername)
+            viewModel.getAccountByUsernameOrIdForUser(userIndex, targetUsername)
         } else {
             emptyFlow()
         }
