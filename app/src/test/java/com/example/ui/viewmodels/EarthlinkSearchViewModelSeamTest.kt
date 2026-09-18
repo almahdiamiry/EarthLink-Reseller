@@ -809,6 +809,33 @@ class EarthlinkSearchViewModelSeamTest {
     }
 
     @Test
+    fun refill_withoutExplicitAccount_failsClosedOnRecycledUsername() = runBlocking {
+        db.localAccountDao().insert(
+            LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001)
+        )
+        val viewModel = createViewModel()
+        viewModel.prepareUserDetail(
+            2002,
+            UserListItem(userIndexLower = 2002, userIDLower = "alice")
+        )
+
+        val beforeAccounts = db.localAccountDao().getTotalCount()
+        viewModel.refillUser(
+            userId = "alice",
+            depositPass = "pass",
+            price = 35000.0,
+            account = null
+        ).join()
+
+        assertEquals(beforeAccounts, db.localAccountDao().getTotalCount())
+        assertEquals(0, testGateway.refillCalls.get())
+        assertTrue(
+            viewModel.error.value?.contains("ambiguous") == true ||
+                viewModel.error.value?.contains("conflicting") == true
+        )
+    }
+
+@Test
     fun verifiedRefillMaterialization_usesExplicitPhysicalAccountId() = runBlocking {
         db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
         db.localAccountDao().insert(LocalAccount(id = "UUID_B", earthlinkUsername = "alice", ispUserIndex = 2002))
