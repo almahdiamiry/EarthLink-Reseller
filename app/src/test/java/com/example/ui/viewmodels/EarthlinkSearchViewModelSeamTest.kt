@@ -56,10 +56,12 @@ import org.robolectric.annotation.Config
  * Seam / Environment: ROBOLECTRIC tier, in-memory Room SQLite database.
  * Independent Oracle: Literal constants derived from Target Product Contract v0.6
  *   and docs/MNT-09-BEFORE-REFACTOR-BASELINE.md.
+ * Identity regression oracle: N2AccountResolutionTest + Workstream6LocalAccountProvenanceGuardTest;
+ * scope is limited to PR63 account-identity resolution and physical financial targeting.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
-@Config(manifest = Config.NONE)
+@Config(sdk = [34], manifest = Config.NONE)
 class EarthlinkSearchViewModelSeamTest {
 
     private lateinit var db: AppDatabase
