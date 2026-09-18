@@ -11,6 +11,13 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+      RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+      KEYSTORE_PATH: ${{ secrets.KEYSTORE_PATH }}
+      STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
         with:
