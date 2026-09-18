@@ -17,28 +17,39 @@ jobs:
           ref: fix/identity-aware-account-resolution
           fetch-depth: 0
 
-      - name: Diagnose PR63 regression discovery
+      - name: Focused PR63 identity regression suite
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew compileDebugUnitTestKotlin -x processDebugGoogleServices --no-daemon --console=plain
-          echo "=== Matching compiled classes ==="
-          find app/build -type f | grep -E 'IdentityAwareAccountResolutionRegressionTest|IdentityAwareAccount' || true
-          echo "=== Matching source ==="
-          find app/src/test -type f -name '*IdentityAwareAccountResolutionRegressionTest*' -print
-          echo "=== Test implementation markers ==="
-          grep -nE 'class IdentityAwareAccountResolutionRegressionTest|@Test|@RunWith|@Config' app/src/test/java/com/example/IdentityAwareAccountResolutionRegressionTest.kt
-          echo "=== Test classpath entries ==="
-          find app/build/classes -type f -name '*.class' | grep -E 'IdentityAware|EarthlinkSearchViewModelSeamTest' || true
+          ./gradlew :app:testDebugUnitTest             --tests "com.example.ui.viewmodels.EarthlinkSearchViewModelSeamTest"             --tests "com.example.N2AccountResolutionTest"             --tests "com.example.Workstream6LocalAccountProvenanceGuardTest"             --tests "com.example.Phase1DuplicateInitiationProtectionTest"             -x processDebugGoogleServices             --no-daemon             --console=plain
+
+      - name: Verify PR63 test result XMLs
+        run: |
+          set -euo pipefail
+          TEST_RESULTS_DIR="app/build/test-results/testDebugUnitTest"
+          test -d "$TEST_RESULTS_DIR"
+          FAILURES=$(grep -h "failures=\"[1-9]" "$TEST_RESULTS_DIR"/*.xml 2>/dev/null | wc -l || true)
+          ERRORS=$(grep -h "errors=\"[1-9]" "$TEST_RESULTS_DIR"/*.xml 2>/dev/null | wc -l || true)
+          echo "FAILURES=$FAILURES ERRORS=$ERRORS"
+          test "$FAILURES" -eq 0
+          test "$ERRORS" -eq 0
+
       - name: Forbidden pattern scan
         run: |
           set -euo pipefail
           python3 scripts/scan_forbidden_patterns.py
 
-      - name: Compile
+      - name: Production compile
         run: |
           set -euo pipefail
-          ./gradlew :app:compileDebugKotlin :app:compileDebugUnitTestKotlin -x processDebugGoogleServices
+          ./gradlew :app:compileDebugKotlin :app:compileDebugUnitTestKotlin             -x processDebugGoogleServices             --no-daemon             --console=plain
+
+      - name: Full production gate
+        timeout-minutes: 30
+        run: |
+          set -euo pipefail
+          chmod +x ./scripts/production_gate.sh
+          ./scripts/production_gate.sh
 
       - name: Remove temporary verifier
         run: |
