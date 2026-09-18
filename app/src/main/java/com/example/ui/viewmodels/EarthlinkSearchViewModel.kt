@@ -84,7 +84,9 @@ class EarthlinkSearchViewModel(
 
     fun getAccountByUsernameOrIdForUser(userIndex: Int?, username: String): Flow<LocalAccount?> {
         return localAccountRepository.getAllAccounts()
-            .map { resolveAccountFromSnapshot(it, userIndex?.takeIf { index -> index > 0 }, username).account }
+            .map {
+                resolveAccountByAuthoritativeIdentity(userIndex, username).account
+            }
             .distinctUntilChanged()
     }
 
@@ -95,42 +97,55 @@ class EarthlinkSearchViewModel(
         val account: LocalAccount? = null
     )
 
-    private fun resolveAccountFromSnapshot(
-        accounts: List<LocalAccount>,
+    /**
+     * Identity authority boundary:
+     * the repository owns authoritative identity matching and returns unordered peer containers.
+     * The ViewModel may classify the returned peer set, but must never select by list position.
+     */
+    private suspend fun resolveAccountByAuthoritativeIdentity(
         userIndex: Int?,
         username: String?
     ): AccountResolution {
-        val active = accounts.filter { !it.isHistoryOnlySubscriber }
         val cleanUsername = username?.trim()?.takeIf { it.isNotEmpty() }
+        val selectedIndex = userIndex?.takeIf { it > 0 }
 
-        if (userIndex != null && userIndex > 0) {
-            val byIndex = active.filter { it.ispUserIndex == userIndex }
-            when {
-                byIndex.size == 1 -> return AccountResolution(AccountResolutionStatus.UNIQUE, byIndex.single())
-                byIndex.size > 1 -> return AccountResolution(AccountResolutionStatus.AMBIGUOUS)
+        if (selectedIndex == null) {
+            val matches = localAccountRepository.findActiveAccountsBySubscriberIdentity(null, cleanUsername)
+            return when (matches.size) {
+                0 -> AccountResolution(AccountResolutionStatus.NOT_FOUND)
+                1 -> AccountResolution(AccountResolutionStatus.UNIQUE, matches.single())
+                else -> AccountResolution(AccountResolutionStatus.AMBIGUOUS)
             }
+        }
 
-            if (cleanUsername != null) {
-                val byUsername = active.filter {
-                    it.earthlinkUsername?.trim()?.equals(cleanUsername, ignoreCase = true) == true
-                }
-                val safe = byUsername.filter { it.ispUserIndex == null || it.ispUserIndex == userIndex }
-                when {
-                    safe.size == 1 -> return AccountResolution(AccountResolutionStatus.UNIQUE, safe.single())
-                    safe.size > 1 -> return AccountResolution(AccountResolutionStatus.AMBIGUOUS)
-                    byUsername.isNotEmpty() -> return AccountResolution(AccountResolutionStatus.CONFLICT)
-                }
-            }
+        val authoritativeMatches = localAccountRepository.findActiveAccountsBySubscriberIdentity(
+            selectedIndex,
+            cleanUsername
+        )
+        when {
+            authoritativeMatches.size == 1 ->
+                return AccountResolution(AccountResolutionStatus.UNIQUE, authoritativeMatches.single())
+            authoritativeMatches.size > 1 ->
+                return AccountResolution(AccountResolutionStatus.AMBIGUOUS)
+        }
+
+        if (cleanUsername == null) {
             return AccountResolution(AccountResolutionStatus.NOT_FOUND)
         }
 
-        if (cleanUsername == null) return AccountResolution(AccountResolutionStatus.NOT_FOUND)
-        val byUsername = active.filter {
-            it.earthlinkUsername?.trim()?.equals(cleanUsername, ignoreCase = true) == true
-        }
-        return when (byUsername.size) {
+        // Distinguish a legitimate unbound container from a username bound to another identity.
+        val usernameMatches = localAccountRepository.findActiveAccountsBySubscriberIdentity(null, cleanUsername)
+        return when (usernameMatches.size) {
             0 -> AccountResolution(AccountResolutionStatus.NOT_FOUND)
-            1 -> AccountResolution(AccountResolutionStatus.UNIQUE, byUsername.single())
+            1 -> {
+                val only = usernameMatches.single()
+                when {
+                    only.ispUserIndex == null || only.ispUserIndex == selectedIndex ->
+                        AccountResolution(AccountResolutionStatus.UNIQUE, only)
+                    else ->
+                        AccountResolution(AccountResolutionStatus.CONFLICT)
+                }
+            }
             else -> AccountResolution(AccountResolutionStatus.AMBIGUOUS)
         }
     }
@@ -150,11 +165,7 @@ class EarthlinkSearchViewModel(
             return existing
         }
 
-        val resolution = resolveAccountFromSnapshot(
-            localAccountRepository.getAllAccountsOneShot(),
-            selectedIndex,
-            account.earthlinkUsername
-        )
+        val resolution = resolveAccountByAuthoritativeIdentity(selectedIndex, account.earthlinkUsername)
         return when (resolution.status) {
             AccountResolutionStatus.UNIQUE -> resolution.account
             AccountResolutionStatus.NOT_FOUND -> {
@@ -391,8 +402,7 @@ class EarthlinkSearchViewModel(
                           exactId
                       }
                   } else if (userIndex > 0) {
-                      val resolution = resolveAccountFromSnapshot(
-                          localAccountRepository.getAllAccountsOneShot(),
+                      val resolution = resolveAccountByAuthoritativeIdentity(
                           userIndex,
                           knownUserId
                       )
