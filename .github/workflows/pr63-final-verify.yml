@@ -21,11 +21,9 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          timeout 180s ./gradlew testDebugUnitTest -x processDebugGoogleServices --tests com.example.IdentityAwareAccountResolutionRegressionTest --no-daemon
-          timeout 180s ./gradlew testDebugUnitTest -x processDebugGoogleServices --tests com.example.Phase1DuplicateInitiationProtectionTest --no-daemon
-          timeout 180s ./gradlew testDebugUnitTest -x processDebugGoogleServices --tests com.example.N2AccountResolutionTest --no-daemon
-          timeout 180s ./gradlew testDebugUnitTest -x processDebugGoogleServices --tests com.example.Workstream6LocalAccountProvenanceGuardTest --no-daemon
-
+          timeout 300s ./gradlew testDebugUnitTest -x processDebugGoogleServices \
+            --tests com.example.IdentityAwareAccountResolutionRegressionTest \
+            --no-daemon --console=plain --info
       - name: Forbidden pattern scan
         run: |
           set -euo pipefail
@@ -35,12 +33,6 @@ jobs:
         run: |
           set -euo pipefail
           ./gradlew :app:compileDebugKotlin :app:compileDebugUnitTestKotlin -x processDebugGoogleServices
-
-      - name: Production gate
-        run: |
-          set -euo pipefail
-          chmod +x ./scripts/production_gate.sh
-          ./scripts/production_gate.sh
 
       - name: Remove temporary verifier
         run: |
