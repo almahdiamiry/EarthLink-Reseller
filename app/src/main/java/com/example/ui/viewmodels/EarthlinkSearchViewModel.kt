@@ -1339,3 +1339,27 @@ class EarthlinkSearchViewModel(
                     val updated = safeAccount.copy(
                         displayName = newName,
                         updatedAt = System.currentTimeMillis()
+                    )
+                    withContext(Dispatchers.IO) {
+                        localAccountRepository.saveAccount(updated)
+                    }
+                }
+                val success = gateway.updateUserDisplayName(userIndex, newName)
+                if (success) {
+                    _actionSuccess.value = if (prefs.getLanguage() == "ar") {
+                        "تم تعديل اسم المشترك بنجاح."
+                    } else {
+                        "Subscriber display name updated successfully."
+                    }
+                    audit.logAction("UPDATE_DISPLAY_NAME", "USER", userIndex.toString(), "Updated display name to $newName")
+                    loadUserDetail(userIndex, _selectedUser.value?.userIDLower)
+                } else {
+                    _error.value = "Failed to update display name on Earthlink."
+                }
+            } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+                _error.value = e.message
+            } finally {
+                _isActionLoading.value = false
+            }
+        }
+}
