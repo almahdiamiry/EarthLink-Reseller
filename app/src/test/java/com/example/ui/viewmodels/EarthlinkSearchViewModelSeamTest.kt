@@ -20,12 +20,17 @@ import com.example.domain.repository.SyncReason
 import com.example.domain.repository.SyncRepository
 import com.example.domain.repository.SyncStatusState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -684,32 +689,32 @@ class EarthlinkSearchViewModelSeamTest {
     fun authoritativeIndex_selectsCorrectContainer_whenUsernameIsRecycled() = runBlocking {
         db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
         db.localAccountDao().insert(LocalAccount(id = "UUID_B", earthlinkUsername = "alice", ispUserIndex = 2002))
-        assertEquals("UUID_B", vm().getAccountByUsernameOrIdForUser(2002, "alice").first()?.id)
+        assertEquals("UUID_B", createViewModel().getAccountByUsernameOrIdForUser(2002, "alice").first()?.id)
     }
 
     @Test
     fun authoritativeIndex_failsClosed_whenSameIdentityHasMultipleContainers() = runBlocking {
         db.localAccountDao().insert(LocalAccount(id = "UUID_B1", earthlinkUsername = "alice", ispUserIndex = 2002))
         db.localAccountDao().insert(LocalAccount(id = "UUID_B2", earthlinkUsername = "alice", ispUserIndex = 2002))
-        assertEquals(null, vm().getAccountByUsernameOrIdForUser(2002, "alice").first())
+        assertEquals(null, createViewModel().getAccountByUsernameOrIdForUser(2002, "alice").first())
     }
 
     @Test
     fun authoritativeIndex_failsClosed_whenUsernameBelongsToDifferentIdentity() = runBlocking {
         db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
-        assertEquals(null, vm().getAccountByUsernameOrIdForUser(2002, "alice").first())
+        assertEquals(null, createViewModel().getAccountByUsernameOrIdForUser(2002, "alice").first())
     }
 
     @Test
     fun authoritativeIndex_canResolveSingleUnboundUsernameContainer() = runBlocking {
         db.localAccountDao().insert(LocalAccount(id = "UUID_UNBOUND", earthlinkUsername = "alice", ispUserIndex = null))
-        assertEquals("UUID_UNBOUND", vm().getAccountByUsernameOrIdForUser(2002, "alice").first()?.id)
+        assertEquals("UUID_UNBOUND", createViewModel().getAccountByUsernameOrIdForUser(2002, "alice").first()?.id)
     }
 
     @Test
     fun identityAwareResolver_remainsRoomReactive() = runBlocking {
         db.localAccountDao().insert(LocalAccount(id = "UUID_B", displayName = "Alice", earthlinkUsername = "alice", ispUserIndex = 2002))
-        val flow = vm().getAccountByUsernameOrIdForUser(2002, "alice")
+        val flow = createViewModel().getAccountByUsernameOrIdForUser(2002, "alice")
         assertEquals("Alice", flow.first()?.displayName)
         val next = async { withTimeout(5000) { flow.drop(1).first() } }
         delay(100)
@@ -721,8 +726,7 @@ class EarthlinkSearchViewModelSeamTest {
     @Test
     fun refill_withConflictingSyntheticAccount_failsClosedBeforeGatewayDispatch() = runBlocking {
         db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
-        val gateway = EarthlinkSearchViewModelSeamTest.SeamTestGateway()
-        val viewModel = EarthlinkSearchViewModel(gateway, auditRepository, prefs, accountRepository, ledgerRepository)
+        val viewModel = createViewModel()
         viewModel.prepareUserDetail(2002, UserListItem(userIndexLower = 2002, userIDLower = "alice"))
         val beforeAccounts = db.localAccountDao().getTotalCount()
         viewModel.refillUser(
@@ -732,14 +736,14 @@ class EarthlinkSearchViewModelSeamTest {
             account = LocalAccount(id = "SYNTHETIC", earthlinkUsername = "alice")
         ).join()
         assertEquals(beforeAccounts, db.localAccountDao().getTotalCount())
-        assertEquals(0, gateway.refillCalls.get())
+        assertEquals(0, testGateway.refillCalls.get())
         assertTrue(viewModel.error.value?.contains("ambiguous") == true || viewModel.error.value?.contains("conflicting") == true)
     }
 
     @Test
     fun conflictingIdentity_failsClosedForAllLocalMetadataMutations() = runBlocking {
         db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
-        val viewModel = vm()
+        val viewModel = createViewModel()
         viewModel.prepareUserDetail(2002, UserListItem(userIndexLower = 2002, userIDLower = "alice"))
 
         val synthetic = LocalAccount(id = "SYNTHETIC", earthlinkUsername = "alice")
@@ -754,8 +758,7 @@ class EarthlinkSearchViewModelSeamTest {
     @Test
     fun conflictingIdentity_failsClosedForRemoteMutationsBeforeGatewayDispatch() = runBlocking {
         db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
-        val gateway = EarthlinkSearchViewModelSeamTest.SeamTestGateway()
-        val viewModel = EarthlinkSearchViewModel(gateway, auditRepository, prefs, accountRepository, ledgerRepository)
+        val viewModel = createViewModel()
         viewModel.prepareUserDetail(2002, UserListItem(userIndexLower = 2002, userIDLower = "alice"))
 
         val synthetic = LocalAccount(id = "SYNTHETIC", earthlinkUsername = "alice")
@@ -776,8 +779,8 @@ class EarthlinkSearchViewModelSeamTest {
         ).join()
 
         assertEquals(null, db.localAccountDao().getByIdOneShot("SYNTHETIC"))
-        assertEquals(0, gateway.changeAccountTypeCalls.get())
-        assertEquals(0, gateway.updateDisplayNameCalls.get())
+        assertEquals(0, testGateway.changeAccountTypeCalls.get())
+        assertEquals(0, testGateway.updateDisplayNameCalls.get())
         assertTrue(viewModel.error.value?.contains("ambiguous") == true || viewModel.error.value?.contains("conflicting") == true)
     }
 
