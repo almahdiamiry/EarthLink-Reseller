@@ -135,8 +135,12 @@ class EarthlinkSearchViewModel(
         }
     }
 
-    private suspend fun resolveMutationAccount(account: LocalAccount): LocalAccount? {
-        val selectedIndex = _selectedUser.value?.userIndex?.takeIf { it > 0 }
+    private suspend fun resolveMutationAccount(
+        account: LocalAccount,
+        authoritativeUserIndex: Int? = null
+    ): LocalAccount? {
+        val selectedIndex = authoritativeUserIndex?.takeIf { it > 0 }
+            ?: _selectedUser.value?.userIndex?.takeIf { it > 0 }
         val existing = localAccountRepository.getAccountByIdOneShot(account.id)
             ?.takeIf { !it.isHistoryOnlySubscriber }
         if (existing != null) {
@@ -716,7 +720,7 @@ class EarthlinkSearchViewModel(
                 audit.logAction(
                     action = "DEPOSIT_PAYMENT",
                     entityType = "USER",
-                    entityId = account.earthlinkUsername ?: account.id,
+                    entityId = safeAccount.earthlinkUsername ?: safeAccount.id,
                     summary = "Recorded payment amount $amount. Note: $payNote"
                 )
             } catch (e: Exception) {
@@ -759,7 +763,7 @@ class EarthlinkSearchViewModel(
                 audit.logAction(
                     action = "ADD_DEBT",
                     entityType = "USER",
-                    entityId = account.earthlinkUsername ?: account.id,
+                    entityId = safeAccount.earthlinkUsername ?: safeAccount.id,
                     summary = "Added debt amount $amount. Note: $debtNote"
                 )
             } catch (e: Exception) {
@@ -779,7 +783,11 @@ class EarthlinkSearchViewModel(
 
     fun saveCustomerNote(account: LocalAccount, note: String): kotlinx.coroutines.Job =
         viewModelScope.launch(Dispatchers.IO) {
-            val updated = account.copy(
+            val safeAccount = resolveMutationAccount(account) ?: run {
+                _error.value = "Local account identity is ambiguous or conflicting."
+                return@launch
+            }
+            val updated = safeAccount.copy(
                 note = note,
                 updatedAt = System.currentTimeMillis()
             )
@@ -788,7 +796,11 @@ class EarthlinkSearchViewModel(
 
     fun saveCustomNanoIp(account: LocalAccount, nanoIp: String?): kotlinx.coroutines.Job =
         viewModelScope.launch(Dispatchers.IO) {
-            val updated = account.copy(
+            val safeAccount = resolveMutationAccount(account) ?: run {
+                _error.value = "Local account identity is ambiguous or conflicting."
+                return@launch
+            }
+            val updated = safeAccount.copy(
                 nanoIp = nanoIp?.trim()?.ifEmpty { null },
                 updatedAt = System.currentTimeMillis()
             )
@@ -1192,9 +1204,15 @@ class EarthlinkSearchViewModel(
             _error.value = null
             try {
                 if (account != null) {
-                    val updated = account.copy(
+                    val safeAccount = withContext(Dispatchers.IO) {
+                        resolveMutationAccount(account, userIndex)
+                    } ?: run {
+                        _error.value = "Local account identity is ambiguous or conflicting."
+                        return@launch
+                    }
+                    val updated = safeAccount.copy(
                         packageName = accountName,
-                        currentPriceIqd = newPriceIqd ?: account.currentPriceIqd,
+                        currentPriceIqd = newPriceIqd ?: safeAccount.currentPriceIqd,
                         updatedAt = System.currentTimeMillis()
                     )
                     withContext(Dispatchers.IO) {
@@ -1306,7 +1324,13 @@ class EarthlinkSearchViewModel(
             try {
                 if (account != null) {
                     // Reseller-owned field: persisted locally regardless of gateway API update outcome.
-                    val updated = account.copy(
+                    val safeAccount = withContext(Dispatchers.IO) {
+                        resolveMutationAccount(account, userIndex)
+                    } ?: run {
+                        _error.value = "Local account identity is ambiguous or conflicting."
+                        return@launch
+                    }
+                    val updated = safeAccount.copy(
                         displayName = newName,
                         updatedAt = System.currentTimeMillis()
                     )
