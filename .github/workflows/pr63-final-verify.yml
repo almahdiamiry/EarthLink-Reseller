@@ -4,12 +4,16 @@ on:
   push:
     branches:
       - fix/identity-aware-account-resolution
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
 
 jobs:
   verify:
+    if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     env:
       GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
