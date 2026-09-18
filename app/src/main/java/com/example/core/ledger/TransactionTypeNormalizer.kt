@@ -18,6 +18,16 @@ object TransactionTypeNormalizer {
      */
     fun normalizeTransactionType(rawType: String?): String {
         if (rawType.isNullOrBlank()) return "note"
+
+        // Fast-path exact canonical and common raw string literals to avoid
+        // temporary .trim().uppercase() string allocations in high-frequency loops.
+        when (rawType) {
+            "renewal", "RENEWAL", "RENEW", "SUB_RENEW", "SUB_RENEWAL", "RENEWAL_PAYMENT", "DEBT_RENEW", "ADD" -> return "renewal"
+            "took", "TOOK", "DEBT_ADD", "DEBT", "DEBT_ADDED" -> return "took"
+            "gave", "GAVE", "PAYMENT", "DEPOSIT", "PAY" -> return "gave"
+            "note", "NOTE" -> return "note"
+        }
+
         val trimmedUpper = rawType.trim().uppercase()
         return when {
             trimmedUpper in RENEWAL_TYPES -> "renewal"
