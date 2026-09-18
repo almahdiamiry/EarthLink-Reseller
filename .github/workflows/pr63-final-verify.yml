@@ -17,13 +17,19 @@ jobs:
           ref: fix/identity-aware-account-resolution
           fetch-depth: 0
 
-      - name: Focused PR63 regression suite
+      - name: Diagnose PR63 regression discovery
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          timeout 300s ./gradlew testDebugUnitTest -x processDebugGoogleServices \
-            --tests "com.example.IdentityAwareAccountResolutionRegressionTest.*" \
-            --rerun-tasks --no-daemon --console=plain --info
+          ./gradlew compileDebugUnitTestKotlin -x processDebugGoogleServices --no-daemon --console=plain
+          echo "=== Matching compiled classes ==="
+          find app/build -type f | grep -E 'IdentityAwareAccountResolutionRegressionTest|IdentityAwareAccount' || true
+          echo "=== Matching source ==="
+          find app/src/test -type f -name '*IdentityAwareAccountResolutionRegressionTest*' -print
+          echo "=== Test implementation markers ==="
+          grep -nE 'class IdentityAwareAccountResolutionRegressionTest|@Test|@RunWith|@Config' app/src/test/java/com/example/IdentityAwareAccountResolutionRegressionTest.kt
+          echo "=== Test classpath entries ==="
+          find app/build/classes -type f -name '*.class' | grep -E 'IdentityAware|EarthlinkSearchViewModelSeamTest' || true
       - name: Forbidden pattern scan
         run: |
           set -euo pipefail
