@@ -109,7 +109,7 @@ class IdentityAwareAccountResolutionRegressionTest {
     @Test
     fun refill_withConflictingSyntheticAccount_failsClosedBeforeGatewayDispatch() = runBlocking {
         db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
-        val gateway = Phase1DuplicateInitiationProtectionTest.TestEarthlinkGateway()
+        val gateway = EarthlinkSearchViewModelSeamTest.SeamTestGateway()
         val viewModel = EarthlinkSearchViewModel(gateway, auditRepository, prefs, accountRepository, ledgerRepository)
         viewModel.prepareUserDetail(2002, UserListItem(userIndexLower = 2002, userIDLower = "alice"))
         val beforeAccounts = db.localAccountDao().getTotalCount()
@@ -142,7 +142,7 @@ class IdentityAwareAccountResolutionRegressionTest {
     @Test
     fun conflictingIdentity_failsClosedForRemoteMutationsBeforeGatewayDispatch() = runBlocking {
         db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
-        val gateway = Phase1DuplicateInitiationProtectionTest.TestEarthlinkGateway()
+        val gateway = EarthlinkSearchViewModelSeamTest.SeamTestGateway()
         val viewModel = EarthlinkSearchViewModel(gateway, auditRepository, prefs, accountRepository, ledgerRepository)
         viewModel.prepareUserDetail(2002, UserListItem(userIndexLower = 2002, userIDLower = "alice"))
 
@@ -174,7 +174,7 @@ class IdentityAwareAccountResolutionRegressionTest {
         db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
         val selected = LocalAccount(id = "UUID_B", earthlinkUsername = "alice", ispUserIndex = 2002)
         db.localAccountDao().insert(selected)
-        val gateway = Phase1DuplicateInitiationProtectionTest.TestEarthlinkGateway()
+        val gateway = EarthlinkSearchViewModelSeamTest.SeamTestGateway()
         val viewModel = EarthlinkSearchViewModel(gateway, auditRepository, prefs, accountRepository, ledgerRepository)
         viewModel.prepareUserDetail(2002, UserListItem(userIndexLower = 2002, userIDLower = "alice"))
 
@@ -206,7 +206,7 @@ class IdentityAwareAccountResolutionRegressionTest {
                 accountId = "alice",
                 operationType = "REFILL",
                 amountIqd = 35000L,
-                payloadJson = "{"userId":"alice","localAccountId":"UUID_B","isWasil":false}",
+                payloadJson = "{\"userId\":\"alice\",\"localAccountId\":\"UUID_B\",\"isWasil\":false}",
                 status = "PENDING",
                 dispatchClaimCount = 1
             )
