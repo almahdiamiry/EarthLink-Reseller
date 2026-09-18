@@ -170,6 +170,31 @@ class IdentityAwareAccountResolutionRegressionTest {
     }
 
     @Test
+    fun refill_withQuotedNote_keepsExplicitPhysicalTargetInValidJson() = runBlocking {
+        db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
+        val selected = LocalAccount(id = "UUID_B", earthlinkUsername = "alice", ispUserIndex = 2002)
+        db.localAccountDao().insert(selected)
+        val gateway = Phase1DuplicateInitiationProtectionTest.TestEarthlinkGateway()
+        val viewModel = EarthlinkSearchViewModel(gateway, auditRepository, prefs, accountRepository, ledgerRepository)
+        viewModel.prepareUserDetail(2002, UserListItem(userIndexLower = 2002, userIDLower = "alice"))
+
+        viewModel.refillUser(
+            userId = "alice",
+            depositPass = "pass",
+            price = 35000.0,
+            note = "Customer said \"renew\" today",
+            account = selected
+        ).join()
+
+        val pending = db.pendingExternalOperationDao().getAllOneShot().single()
+        val payload = org.json.JSONObject(pending.payloadJson)
+        assertEquals("UUID_B", payload.getString("localAccountId"))
+        assertEquals("Customer said \"renew\" today", payload.getString("note"))
+        assertEquals(1, db.localLedgerEntryDao().getByAccountIdOneShot("UUID_B").size)
+        assertEquals(0, db.localLedgerEntryDao().getByAccountIdOneShot("UUID_A").size)
+    }
+
+    @Test
     fun verifiedRefillMaterialization_usesExplicitPhysicalAccountId() = runBlocking {
         db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
         db.localAccountDao().insert(LocalAccount(id = "UUID_B", earthlinkUsername = "alice", ispUserIndex = 2002))
