@@ -25,21 +25,45 @@ jobs:
           fetch-depth: 0
 
       - name: Focused PR63 identity regression suite
+        timeout-minutes: 20
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest             --tests "com.example.ui.viewmodels.EarthlinkSearchViewModelSeamTest"             --tests "com.example.N2AccountResolutionTest"             --tests "com.example.Workstream6LocalAccountProvenanceGuardTest"             --tests "com.example.Phase1DuplicateInitiationProtectionTest"             -x processDebugGoogleServices             --no-daemon             --console=plain
+          ./gradlew :app:testDebugUnitTest \
+            --tests "com.example.ui.viewmodels.EarthlinkSearchViewModelSeamTest" \
+            --tests "com.example.N2AccountResolutionTest" \
+            --tests "com.example.Workstream6LocalAccountProvenanceGuardTest" \
+            --tests "com.example.Phase1DuplicateInitiationProtectionTest" \
+            -x processDebugGoogleServices \
+            --no-daemon \
+            --console=plain
 
       - name: Verify PR63 test result XMLs
         run: |
           set -euo pipefail
-          TEST_RESULTS_DIR="app/build/test-results/testDebugUnitTest"
-          test -d "$TEST_RESULTS_DIR"
-          FAILURES=$(grep -h "failures=\"[1-9]" "$TEST_RESULTS_DIR"/*.xml 2>/dev/null | wc -l || true)
-          ERRORS=$(grep -h "errors=\"[1-9]" "$TEST_RESULTS_DIR"/*.xml 2>/dev/null | wc -l || true)
-          echo "FAILURES=$FAILURES ERRORS=$ERRORS"
-          test "$FAILURES" -eq 0
-          test "$ERRORS" -eq 0
+          python3 - <<'PY'
+          from pathlib import Path
+          import sys
+          import xml.etree.ElementTree as ET
+
+          root = Path("app/build/test-results/testDebugUnitTest")
+          files = sorted(root.glob("TEST-*.xml"))
+          if not files:
+              print("No focused test result XML files found.", file=sys.stderr)
+              sys.exit(1)
+
+          total = failures = errors = skipped = 0
+          for path in files:
+              suite = ET.parse(path).getroot()
+              total += int(suite.attrib.get("tests", "0"))
+              failures += int(suite.attrib.get("failures", "0"))
+              errors += int(suite.attrib.get("errors", "0"))
+              skipped += int(suite.attrib.get("skipped", "0"))
+
+          print(f"TESTS={total} FAILURES={failures} ERRORS={errors} SKIPPED={skipped}")
+          if failures or errors:
+              sys.exit(1)
+          PY
 
       - name: Forbidden pattern scan
         run: |
@@ -49,7 +73,10 @@ jobs:
       - name: Production compile
         run: |
           set -euo pipefail
-          ./gradlew :app:compileDebugKotlin :app:compileDebugUnitTestKotlin             -x processDebugGoogleServices             --no-daemon             --console=plain
+          ./gradlew :app:compileDebugKotlin :app:compileDebugUnitTestKotlin \
+            -x processDebugGoogleServices \
+            --no-daemon \
+            --console=plain
 
       - name: Full production gate
         timeout-minutes: 30
