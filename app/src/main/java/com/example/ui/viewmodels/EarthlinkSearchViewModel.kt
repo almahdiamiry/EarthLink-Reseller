@@ -878,8 +878,7 @@ class EarthlinkSearchViewModel(
                     }
                 } else {
                     val selectedIndex = _selectedUser.value?.userIndex?.takeIf { it > 0 }
-                    val resolution = resolveAccountFromSnapshot(
-                        localAccountRepository.getAllAccountsOneShot(),
+                    val resolution = resolveAccountByAuthoritativeIdentity(
                         selectedIndex,
                         userId
                     )
