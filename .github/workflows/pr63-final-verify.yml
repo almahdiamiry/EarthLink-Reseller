@@ -22,8 +22,8 @@ jobs:
           set -euo pipefail
           chmod +x ./gradlew
           timeout 300s ./gradlew testDebugUnitTest -x processDebugGoogleServices \
-            --tests com.example.IdentityAwareAccountResolutionRegressionTest \
-            --no-daemon --console=plain --info
+            --tests "com.example.IdentityAwareAccountResolutionRegressionTest.*" \
+            --rerun-tasks --no-daemon --console=plain --info
       - name: Forbidden pattern scan
         run: |
           set -euo pipefail
