@@ -278,7 +278,7 @@ fun StatusSubscribersScreen(
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Cancel,
-                                            contentDescription = "Clear",
+                                            contentDescription = if (lang == "ar") "مسح" else "Clear",
                                             tint = Color(0xFF8E8E93),
                                             modifier = Modifier.size(16.dp)
                                         )
@@ -302,7 +302,7 @@ fun StatusSubscribersScreen(
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = Icons.Default.Close,
-                                    contentDescription = "Cancel",
+                                    contentDescription = if (lang == "ar") "إلغاء" else "Cancel",
                                     tint = Color.White,
                                     modifier = Modifier.size(18.dp)
                                 )
