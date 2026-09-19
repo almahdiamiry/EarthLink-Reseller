@@ -6,6 +6,8 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.Phase1DuplicateInitiationProtectionTest
 import com.example.core.database.AppDatabase
 import com.example.core.model.LocalAccount
+import com.example.core.model.PendingExternalOperation
+import com.example.core.model.UserListItem
 import com.example.core.security.PreferenceManager
 import com.example.data.repository.AuditRepositoryImpl
 import com.example.data.repository.LocalAccountRepositoryImpl
@@ -18,12 +20,17 @@ import com.example.domain.repository.SyncReason
 import com.example.domain.repository.SyncRepository
 import com.example.domain.repository.SyncStatusState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -49,14 +56,17 @@ import org.robolectric.annotation.Config
  *   - Customer note & Nano IP local persistence
  *   - Display name update (local Room persistence, gateway dispatch, failure isolation)
  *   - Package type update (local Room persistence, gateway dispatch, failure isolation)
+ *   - Identity-aware account resolution (authoritative index selection, ambiguity/conflict fail-closed, physical refill target)
  *
  * Seam / Environment: ROBOLECTRIC tier, in-memory Room SQLite database.
  * Independent Oracle: Literal constants derived from Target Product Contract v0.6
  *   and docs/MNT-09-BEFORE-REFACTOR-BASELINE.md.
+ * Identity regression oracle: N2AccountResolutionTest + Workstream6LocalAccountProvenanceGuardTest;
+ * scope is limited to PR63 account-identity resolution and physical financial targeting.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
-@Config(manifest = Config.NONE)
+@Config(sdk = [34], manifest = Config.NONE)
 class EarthlinkSearchViewModelSeamTest {
 
     private lateinit var db: AppDatabase
@@ -674,4 +684,177 @@ class EarthlinkSearchViewModelSeamTest {
         val entries = db.localLedgerEntryDao().getByAccountIdOneShot("failing_db_user")
         assertEquals(0, entries.size)
     }
+
+@Test
+    fun authoritativeIndex_selectsCorrectContainer_whenUsernameIsRecycled() = runBlocking {
+        db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
+        db.localAccountDao().insert(LocalAccount(id = "UUID_B", earthlinkUsername = "alice", ispUserIndex = 2002))
+        assertEquals("UUID_B", createViewModel().getAccountByUsernameOrIdForUser(2002, "alice").first()?.id)
+    }
+
+    @Test
+    fun authoritativeIndex_failsClosed_whenSameIdentityHasMultipleContainers() = runBlocking {
+        db.localAccountDao().insert(LocalAccount(id = "UUID_B1", earthlinkUsername = "alice", ispUserIndex = 2002))
+        db.localAccountDao().insert(LocalAccount(id = "UUID_B2", earthlinkUsername = "alice", ispUserIndex = 2002))
+        assertEquals(null, createViewModel().getAccountByUsernameOrIdForUser(2002, "alice").first())
+    }
+
+    @Test
+    fun authoritativeIndex_failsClosed_whenUsernameBelongsToDifferentIdentity() = runBlocking {
+        db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
+        assertEquals(null, createViewModel().getAccountByUsernameOrIdForUser(2002, "alice").first())
+    }
+
+    @Test
+    fun authoritativeIndex_canResolveSingleUnboundUsernameContainer() = runBlocking {
+        db.localAccountDao().insert(LocalAccount(id = "UUID_UNBOUND", earthlinkUsername = "alice", ispUserIndex = null))
+        assertEquals("UUID_UNBOUND", createViewModel().getAccountByUsernameOrIdForUser(2002, "alice").first()?.id)
+    }
+
+    @Test
+    fun identityAwareResolver_remainsRoomReactive() = runBlocking {
+        db.localAccountDao().insert(LocalAccount(id = "UUID_B", displayName = "Alice", earthlinkUsername = "alice", ispUserIndex = 2002))
+        val flow = createViewModel().getAccountByUsernameOrIdForUser(2002, "alice")
+        assertEquals("Alice", flow.first()?.displayName)
+        val next = async { withTimeout(5000) { flow.drop(1).first() } }
+        delay(100)
+        val current = db.localAccountDao().getByIdOneShot("UUID_B")!!
+        db.localAccountDao().update(current.copy(displayName = "Alice Updated"))
+        assertEquals("Alice Updated", next.await()?.displayName)
+    }
+
+    @Test
+    fun refill_withConflictingSyntheticAccount_failsClosedBeforeGatewayDispatch() = runBlocking {
+        db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
+        val viewModel = createViewModel()
+        viewModel.prepareUserDetail(2002, UserListItem(userIndexLower = 2002, userIDLower = "alice"))
+        val beforeAccounts = db.localAccountDao().getTotalCount()
+        viewModel.refillUser(
+            userId = "alice",
+            depositPass = "pass",
+            price = 35000.0,
+            account = LocalAccount(id = "SYNTHETIC", earthlinkUsername = "alice")
+        ).join()
+        assertEquals(beforeAccounts, db.localAccountDao().getTotalCount())
+        assertEquals(0, testGateway.refillCalls.get())
+        assertTrue(viewModel.error.value?.contains("ambiguous") == true || viewModel.error.value?.contains("conflicting") == true)
+    }
+
+    @Test
+    fun conflictingIdentity_failsClosedForAllLocalMetadataMutations() = runBlocking {
+        db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
+        val viewModel = createViewModel()
+        viewModel.prepareUserDetail(2002, UserListItem(userIndexLower = 2002, userIDLower = "alice"))
+
+        val synthetic = LocalAccount(id = "SYNTHETIC", earthlinkUsername = "alice")
+
+        viewModel.saveCustomerNote(synthetic, "must not persist").join()
+        viewModel.saveCustomNanoIp(synthetic, "192.168.10.25").join()
+
+        assertEquals(null, db.localAccountDao().getByIdOneShot("SYNTHETIC"))
+        assertTrue(viewModel.error.value?.contains("ambiguous") == true || viewModel.error.value?.contains("conflicting") == true)
+    }
+
+    @Test
+    fun conflictingIdentity_failsClosedForRemoteMutationsBeforeGatewayDispatch() = runBlocking {
+        db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
+        val viewModel = createViewModel()
+        viewModel.prepareUserDetail(2002, UserListItem(userIndexLower = 2002, userIDLower = "alice"))
+
+        val synthetic = LocalAccount(id = "SYNTHETIC", earthlinkUsername = "alice")
+
+        viewModel.changeAccountType(
+            userIndex = 2002,
+            userId = "alice",
+            accountIndex = 3,
+            accountName = "Active",
+            account = synthetic,
+            newPriceIqd = 50000.0
+        ).join()
+
+        viewModel.updateUserDisplayName(
+            userIndex = 2002,
+            newName = "Should Not Persist",
+            account = synthetic
+        ).join()
+
+        assertEquals(null, db.localAccountDao().getByIdOneShot("SYNTHETIC"))
+        assertEquals(0, testGateway.changeAccountTypeCalls.get())
+        assertEquals(0, testGateway.updateDisplayNameCalls.get())
+        assertTrue(viewModel.error.value?.contains("ambiguous") == true || viewModel.error.value?.contains("conflicting") == true)
+    }
+
+    @Test
+    fun refill_withQuotedNote_keepsExplicitPhysicalTargetInValidJson() = runBlocking {
+        db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
+        val selected = LocalAccount(id = "UUID_B", earthlinkUsername = "alice", ispUserIndex = 2002)
+        db.localAccountDao().insert(selected)
+        val viewModel = createViewModel()
+        viewModel.prepareUserDetail(2002, UserListItem(userIndexLower = 2002, userIDLower = "alice"))
+
+        viewModel.refillUser(
+            userId = "alice",
+            depositPass = "pass",
+            price = 35000.0,
+            note = "Customer said \"renew\" today",
+            account = selected
+        ).join()
+
+        val pending = db.pendingExternalOperationDao().getAllOneShot().single()
+        val payload = org.json.JSONObject(pending.payloadJson)
+        assertEquals("UUID_B", payload.getString("localAccountId"))
+        assertEquals("Customer said \"renew\" today", payload.getString("note"))
+        assertEquals(1, db.localLedgerEntryDao().getByAccountIdOneShot("UUID_B").size)
+        assertEquals(0, db.localLedgerEntryDao().getByAccountIdOneShot("UUID_A").size)
+    }
+
+    @Test
+    fun refill_withoutExplicitAccount_failsClosedOnRecycledUsername() = runBlocking {
+        db.localAccountDao().insert(
+            LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001)
+        )
+        val viewModel = createViewModel()
+        viewModel.prepareUserDetail(
+            2002,
+            UserListItem(userIndexLower = 2002, userIDLower = "alice")
+        )
+
+        val beforeAccounts = db.localAccountDao().getTotalCount()
+        viewModel.refillUser(
+            userId = "alice",
+            depositPass = "pass",
+            price = 35000.0,
+            account = null
+        ).join()
+
+        assertEquals(beforeAccounts, db.localAccountDao().getTotalCount())
+        assertEquals(0, testGateway.refillCalls.get())
+        assertTrue(
+            viewModel.error.value?.contains("ambiguous") == true ||
+                viewModel.error.value?.contains("conflicting") == true
+        )
+    }
+
+@Test
+    fun verifiedRefillMaterialization_usesExplicitPhysicalAccountId() = runBlocking {
+        db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
+        db.localAccountDao().insert(LocalAccount(id = "UUID_B", earthlinkUsername = "alice", ispUserIndex = 2002))
+        val txId = "charge_explicit_target"
+        db.pendingExternalOperationDao().insert(
+            PendingExternalOperation(
+                businessTransactionId = txId,
+                operationIntentId = "intent_explicit_target",
+                accountId = "alice",
+                operationType = "REFILL",
+                amountIqd = 35000L,
+                payloadJson = "{\"userId\":\"alice\",\"localAccountId\":\"UUID_B\",\"isWasil\":false}",
+                status = "PENDING",
+                dispatchClaimCount = 1
+            )
+        )
+        ledgerRepo.resolvePendingOperationVerifiedSuccess(txId, "")
+        assertEquals(0, db.localLedgerEntryDao().getByAccountIdOneShot("UUID_A").size)
+        assertEquals(1, db.localLedgerEntryDao().getByAccountIdOneShot("UUID_B").size)
+    }
+
 }
