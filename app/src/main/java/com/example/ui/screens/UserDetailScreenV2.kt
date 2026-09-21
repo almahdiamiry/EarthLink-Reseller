@@ -1638,7 +1638,11 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                     ) {
                                         Icon(
                                             imageVector = stateIcon,
-                                            contentDescription = if (isPaidState) "Paid" else "Debt",
+                                            contentDescription = if (isPaidState) {
+                                                if (currentLang == "ar") "واصل" else "Paid"
+                                            } else {
+                                                if (currentLang == "ar") "دين" else "Debt"
+                                            },
                                             tint = Color.White,
                                             modifier = Modifier.size(22.dp)
                                         )
