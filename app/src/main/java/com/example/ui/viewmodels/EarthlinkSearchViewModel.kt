@@ -82,6 +82,9 @@ class EarthlinkSearchViewModel(
     fun getAccountByUsernameOrId(username: String): Flow<LocalAccount?> =
         localAccountRepository.getActiveAccountByUsernameOrId(username)
 
+    fun getAccountByUsernameOrIdForUser(userIndex: Int?, username: String): Flow<LocalAccount?> =
+        localAccountRepository.observeAccountBySubscriberIdentity(userIndex, username)
+
     fun getLedgerForAccount(accountId: String): Flow<List<com.example.core.model.LocalLedgerEntry>> =
         localLedgerRepository.getLedgerForAccount(accountId)
 
@@ -281,7 +284,7 @@ class EarthlinkSearchViewModel(
         }
     }
 
-    fun loadUserDetail(userIndex: Int, knownUserId: String? = null) {
+    fun loadUserDetail(userIndex: Int, knownUserId: String? = null): kotlinx.coroutines.Job =
         viewModelScope.launch {
             _error.value = null
             
@@ -294,7 +297,18 @@ class EarthlinkSearchViewModel(
                 try {
                     foundLocal = withContext(Dispatchers.IO) {
                         if (!knownUserId.isNullOrBlank()) {
-                            localAccountRepository.findActiveAccountByUsernameOrIdOneShot(knownUserId)
+                            val matches = if (userIndex > 0) {
+                                localAccountRepository.findActiveAccountsBySubscriberIdentity(userIndex, knownUserId)
+                            } else {
+                                emptyList()
+                            }
+                            if (matches.size == 1) {
+                                matches.single()
+                            } else if (matches.isEmpty() && userIndex <= 0) {
+                                localAccountRepository.findActiveAccountByUsernameOrIdOneShot(knownUserId)
+                            } else {
+                                null
+                            }
                         } else {
                             // Target lookup via search instead of full table scan
                             localAccountRepository.searchAccounts("", limit = 200, offset = 0).find { 
@@ -368,7 +382,6 @@ class EarthlinkSearchViewModel(
                 _isRefreshingDetail.value = false
             }
         }
-    }
 
     private fun loadPackages() {
         val token = prefs.getAuthToken()
@@ -732,43 +745,70 @@ class EarthlinkSearchViewModel(
                 }
                 val exactAmountIqd = authoritativePrice.toLong()
 
-                val localAcc = account?.let { localAccountRepository.getAccountByIdOneShot(it.id)?.takeIf { !it.isHistoryOnlySubscriber } }
-                    ?: (localAccountRepository.getAccountByIdOneShot(userId)?.takeIf { !it.isHistoryOnlySubscriber }
-                        ?: localAccountRepository.findActiveAccountByUsernameOrIdOneShot(userId))
-                val effectiveAcc = if (localAcc == null) {
-                    val snapshotUser = _selectedUser.value?.takeIf { it.userID.equals(userId, ignoreCase = true) }
-                    val snapshotListItem = _usersList.value.find { it.userID.equals(userId, ignoreCase = true) }
-                    val displayName = account?.displayName?.ifBlank { null }
-                        ?: snapshotUser?.customerFullName
-                        ?: snapshotListItem?.customerName
-                        ?: userId
-                    val phone = account?.phone1 ?: snapshotUser?.mobileNumber ?: snapshotListItem?.mobileNumber
-                    val pkgName = account?.packageName ?: snapshotUser?.packageName ?: snapshotListItem?.packageName ?: "Default"
-                    val resolvedId = if (!account?.id.isNullOrBlank() && localAccountRepository.getAccountByIdOneShot(account.id) == null) {
-                        account.id
-                    } else if (localAccountRepository.getAccountByIdOneShot(userId) == null) {
-                        userId
+                val selectedIndex = _selectedUser.value?.userIndex?.takeIf { it > 0 }
+                val effectiveAcc = if (account != null) {
+                    val existing = localAccountRepository.getAccountByIdOneShot(account.id)?.takeIf { !it.isHistoryOnlySubscriber }
+                    if (existing != null) {
+                        if (selectedIndex != null && existing.ispUserIndex != null && existing.ispUserIndex != selectedIndex) {
+                            _error.value = "Local account identity is conflicting with selected subscriber. Operation aborted."
+                            return@launch
+                        }
+                        existing
+                    } else if (selectedIndex != null && account.ispUserIndex != null && account.ispUserIndex != selectedIndex) {
+                        _error.value = "Local account identity is conflicting with selected subscriber. Operation aborted."
+                        return@launch
                     } else {
-                        java.util.UUID.randomUUID().toString()
+                        val toSave = if (selectedIndex != null && account.ispUserIndex == null) {
+                            account.copy(currentPriceIqd = exactAmountIqd.toDouble(), ispUserIndex = selectedIndex)
+                        } else {
+                            account.copy(currentPriceIqd = exactAmountIqd.toDouble())
+                        }
+                        localAccountRepository.saveAccount(toSave)
                     }
-                    val newAcc = account?.copy(
-                        id = resolvedId,
-                        earthlinkUsername = userId,
-                        currentPriceIqd = exactAmountIqd.toDouble()
-                    ) ?: LocalAccount(
-                        id = resolvedId,
-                        earthlinkUsername = userId,
-                        displayName = displayName.ifBlank { userId },
-                        phone1 = phone,
-                        packageName = pkgName,
-                        currentPriceIqd = exactAmountIqd.toDouble(),
-                        debtIqd = 0.0
-                    )
-                    localAccountRepository.saveAccount(newAcc)
-                    newAcc
                 } else {
-                    localAcc
+                    val matches = localAccountRepository.findActiveAccountsBySubscriberIdentity(selectedIndex, userId)
+                    when {
+                        matches.size > 1 -> {
+                            _error.value = "Multiple local accounts found for subscriber. Operation aborted to prevent ambiguous financial assignment."
+                            return@launch
+                        }
+                        matches.size == 1 -> matches.single()
+                        else -> {
+                            val snapshotUser = _selectedUser.value?.takeIf { it.userID.equals(userId, ignoreCase = true) }
+                            val snapshotListItem = _usersList.value.find { it.userID.equals(userId, ignoreCase = true) }
+                            val displayName = snapshotUser?.customerFullName
+                                ?: snapshotListItem?.customerName
+                                ?: userId
+                            val phone = snapshotUser?.mobileNumber ?: snapshotListItem?.mobileNumber
+                            val pkgName = snapshotUser?.packageName ?: snapshotListItem?.packageName ?: "Default"
+                            val resolvedId = if (localAccountRepository.getAccountByIdOneShot(userId) == null) {
+                                userId
+                            } else {
+                                java.util.UUID.randomUUID().toString()
+                            }
+                            val newAcc = LocalAccount(
+                                id = resolvedId,
+                                earthlinkUsername = userId,
+                                displayName = displayName.ifBlank { userId },
+                                phone1 = phone,
+                                packageName = pkgName,
+                                currentPriceIqd = exactAmountIqd.toDouble(),
+                                debtIqd = 0.0,
+                                ispUserIndex = selectedIndex
+                            )
+                            localAccountRepository.saveAccount(newAcc)
+                            newAcc
+                        }
+                    }
                 }
+
+                val payloadJson = org.json.JSONObject().apply {
+                    put("userId", userId)
+                    put("localAccountId", effectiveAcc.id)
+                    put("price", authoritativePrice)
+                    put("note", finalNote)
+                    put("isWasil", isWasil)
+                }.toString()
 
                 localLedgerRepository.recordPendingOperation(
                     PendingExternalOperation(
@@ -777,7 +817,7 @@ class EarthlinkSearchViewModel(
                         accountId = userId,
                         operationType = "REFILL",
                         amountIqd = exactAmountIqd,
-                        payloadJson = "{\"userId\":\"$userId\",\"price\":$authoritativePrice,\"note\":\"$finalNote\",\"isWasil\":$isWasil}",
+                        payloadJson = payloadJson,
                         status = "PENDING",
                         dispatchClaimCount = 0
                     )

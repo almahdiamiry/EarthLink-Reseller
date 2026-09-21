@@ -81,6 +81,14 @@ interface LocalAccountRepository {
     suspend fun findActiveAccountsBySubscriberIdentity(userIndex: Int?, username: String?): List<LocalAccount>
 
     /**
+     * Observes the active physical container representing the authoritative subscriber identity.
+     * Applies identical identity semantics to [findActiveAccountsBySubscriberIdentity]:
+     * - Returns UNIQUE matching container.
+     * - Returns null on NOT_FOUND, CONFLICT, or AMBIGUOUS (fails closed; no winner chosen).
+     */
+    fun observeAccountBySubscriberIdentity(userIndex: Int?, username: String?): Flow<LocalAccount?>
+
+    /**
      * Binds authoritative ISP subscriber identity ([userIndex], optional [ispSubscriberId])
      * to an existing physical container identified by [accountId].
      *

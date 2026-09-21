@@ -23,9 +23,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+import com.example.core.model.PendingExternalOperation
+import com.example.core.model.UserListItem
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -673,5 +676,132 @@ class EarthlinkSearchViewModelSeamTest {
         // 4. Zero ledger entries materialized
         val entries = db.localLedgerEntryDao().getByAccountIdOneShot("failing_db_user")
         assertEquals(0, entries.size)
+    }
+
+    @Test
+    fun authoritativeIndex_resolvesCorrectPhysicalContainer_onRecycledUsername() = runBlocking {
+        db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001))
+        db.localAccountDao().insert(LocalAccount(id = "UUID_B", earthlinkUsername = "alice", ispUserIndex = 2002))
+
+        val vm = createViewModel()
+        val account2002 = vm.getAccountByUsernameOrIdForUser(2002, "alice").first()
+        val account1001 = vm.getAccountByUsernameOrIdForUser(1001, "alice").first()
+
+        assertEquals("UUID_B", account2002?.id)
+        assertEquals("UUID_A", account1001?.id)
+    }
+
+    @Test
+    fun authoritativeIndex_failsClosed_onConflictOrAmbiguity() = runBlocking {
+        // Multiple containers under same identity -> AMBIGUOUS -> fails closed
+        db.localAccountDao().insert(LocalAccount(id = "UUID_B1", earthlinkUsername = "alice", ispUserIndex = 2002))
+        db.localAccountDao().insert(LocalAccount(id = "UUID_B2", earthlinkUsername = "alice", ispUserIndex = 2002))
+        val vm = createViewModel()
+        assertEquals(null, vm.getAccountByUsernameOrIdForUser(2002, "alice").first())
+
+        // Username bound to different identity -> CONFLICT -> fails closed
+        db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "charlie", ispUserIndex = 1001))
+        assertEquals(null, vm.getAccountByUsernameOrIdForUser(2002, "charlie").first())
+    }
+
+    @Test
+    fun remoteGatewayRead_remainsAvailable_whenLocalAccountIsAmbiguous() = runBlocking {
+        // Two local accounts under userIndex 2002 (ambiguous local state)
+        db.localAccountDao().insert(LocalAccount(id = "UUID_B1", earthlinkUsername = "alice", ispUserIndex = 2002))
+        db.localAccountDao().insert(LocalAccount(id = "UUID_B2", earthlinkUsername = "alice", ispUserIndex = 2002))
+
+        val vm = createViewModel()
+        val job = vm.loadUserDetail(2002, "alice")
+        job.join()
+
+        // Remote gateway detail read must still proceed without being blocked
+        assertNull("Error must not be set to block remote read", vm.error.value)
+        assertNotNull("Selected user should be populated from remote gateway or list", vm.selectedUser.value)
+    }
+
+    @Test
+    fun refillPayload_persistsExplicitLocalAccountId_andMaterializesToExactPhysicalTarget() = runBlocking {
+        db.localAccountDao().insert(LocalAccount(id = "UUID_A", earthlinkUsername = "alice", ispUserIndex = 1001, currentPriceIqd = 35000.0))
+        val accountB = LocalAccount(id = "UUID_B", earthlinkUsername = "alice", ispUserIndex = 2002, currentPriceIqd = 35000.0)
+        db.localAccountDao().insert(accountB)
+
+        prefs.saveDepositPassword("valid_deposit_pass")
+        val vm = createViewModel()
+        vm.prepareUserDetail(2002, UserListItem(userIndexLower = 2002, userIDLower = "alice"))
+
+        val txId = "refill_explicit_target_tx"
+        val job = vm.refillUser(
+            userId = "alice",
+            price = 35000.0,
+            account = accountB,
+            intentId = txId,
+            note = "Customer note with \"quotes\""
+        )
+        job.join()
+
+        val pending = ledgerRepo.getPendingOperationByIntentId(txId)
+        assertNotNull(pending)
+        val payload = org.json.JSONObject(pending!!.payloadJson)
+        assertEquals("UUID_B", payload.getString("localAccountId"))
+        assertEquals("Customer note with \"quotes\"", payload.getString("note"))
+
+        // Materialize verified success
+        ledgerRepo.resolvePendingOperationVerifiedSuccess(pending.businessTransactionId, "Verified refill")
+
+        // Exact physical target verification: ledger entries must belong to UUID_B, 0 to UUID_A
+        val entriesA = db.localLedgerEntryDao().getByAccountIdOneShot("UUID_A")
+        val entriesB = db.localLedgerEntryDao().getByAccountIdOneShot("UUID_B")
+        assertEquals(0, entriesA.size)
+        assertEquals(1, entriesB.size)
+        assertEquals("UUID_B", entriesB.first().accountId)
+        assertEquals(35000.0, entriesB.first().amountIqd, 0.001)
+    }
+
+    @Test
+    fun legacyPendingOperation_remainsCompatible_withoutExplicitTarget() = runBlocking {
+        val legacyAccount = LocalAccount(id = "legacy_user_01", earthlinkUsername = "legacy_user_01", currentPriceIqd = 25000.0)
+        db.localAccountDao().insert(legacyAccount)
+
+        val txId = "legacy_tx_01"
+        db.pendingExternalOperationDao().insert(
+            PendingExternalOperation(
+                businessTransactionId = txId,
+                operationIntentId = "legacy_intent_01",
+                accountId = "legacy_user_01",
+                operationType = "REFILL",
+                amountIqd = 25000L,
+                payloadJson = "{\"userId\":\"legacy_user_01\",\"price\":25000.0,\"isWasil\":false}",
+                status = "PENDING",
+                dispatchClaimCount = 1
+            )
+        )
+
+        // Must materialize successfully via legacy fallback path without throwing
+        val entry = ledgerRepo.resolvePendingOperationVerifiedSuccess(txId, "Legacy refill note")
+        assertNotNull(entry)
+        assertEquals("legacy_user_01", entry!!.accountId)
+        assertEquals(25000.0, entry.amountIqd, 0.001)
+    }
+
+    @Test
+    fun unrelatedAccountUpdate_doesNotCauseDownstreamFlowChurn() = runBlocking {
+        val alice = LocalAccount(id = "UUID_ALICE", earthlinkUsername = "alice", ispUserIndex = 2002)
+        val bob = LocalAccount(id = "UUID_BOB", earthlinkUsername = "bob", ispUserIndex = 3003, displayName = "Bob")
+        db.localAccountDao().insert(alice)
+        db.localAccountDao().insert(bob)
+
+        val vm = createViewModel()
+        val flow = vm.getAccountByUsernameOrIdForUser(2002, "alice")
+
+        // First emission
+        val firstEmission = flow.first()
+        assertEquals("UUID_ALICE", firstEmission?.id)
+
+        // Mutating unrelated account bob in SQLite table
+        db.localAccountDao().update(bob.copy(displayName = "Bob Updated"))
+
+        // Observing alice must still resolve to UUID_ALICE with zero change in identity
+        val afterUpdate = flow.first()
+        assertEquals("UUID_ALICE", afterUpdate?.id)
     }
 }

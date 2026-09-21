@@ -1118,6 +1118,43 @@ class LocalAccountRepositoryImpl(
         return emptyList()
     }
 
+    override fun observeAccountBySubscriberIdentity(userIndex: Int?, username: String?): Flow<LocalAccount?> {
+        val cleanIndex = userIndex?.takeIf { it > 0 }
+        val cleanUser = username?.trim()?.takeIf { it.isNotEmpty() }
+
+        return accountDao.observeCandidateAccountsForIdentity(cleanIndex, cleanUser)
+            .map { candidates ->
+                if (cleanIndex != null) {
+                    val byIndex = candidates.filter { it.ispUserIndex == cleanIndex }
+                    when {
+                        byIndex.size == 1 -> byIndex.single()
+                        byIndex.size > 1 -> null
+                        cleanUser == null -> null
+                        else -> {
+                            val byUsername = candidates.filter {
+                                it.earthlinkUsername != null && it.earthlinkUsername.equals(cleanUser, ignoreCase = true)
+                            }
+                            when {
+                                byUsername.size == 1 -> {
+                                    val only = byUsername.single()
+                                    if (only.ispUserIndex == null || only.ispUserIndex == cleanIndex) only else null
+                                }
+                                else -> null
+                            }
+                        }
+                    }
+                } else if (cleanUser != null) {
+                    val byUsername = candidates.filter {
+                        it.earthlinkUsername != null && it.earthlinkUsername.equals(cleanUser, ignoreCase = true)
+                    }
+                    if (byUsername.size == 1) byUsername.single() else null
+                } else {
+                    null
+                }
+            }
+            .distinctUntilChanged()
+    }
+
     override suspend fun bindIspIdentity(accountId: String, userIndex: Int, ispSubscriberId: String?): LocalAccount {
         require(userIndex > 0) { "userIndex must be positive" }
         return com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
@@ -1426,25 +1463,31 @@ class LocalLedgerRepositoryImpl(
                     }
 
                     val payloadObj = try { JSONObject(op.payloadJson) } catch (_: Exception) { JSONObject() }
-                    // Filters out archived accounts so recycled ISP usernames anchor financial mutations to the active subscriber.
-                    val localAcc = accountDao.getByIdOneShot(op.accountId)?.takeIf { !it.isHistoryOnlySubscriber }
-                        ?: accountDao.findActiveAccountByUsernameOrIdOneShot(op.accountId)
-                        ?: if (op.operationType.equals("ACTIVATION", ignoreCase = true) && payloadObj.has("username") && payloadObj.optString("username").isNotBlank()) {
-                            val parsedFullName = payloadObj.optString("fullName").takeIf { it.isNotBlank() }
-                            val parsedPhone = payloadObj.optString("phone").takeIf { it.isNotBlank() }
-                            val shellId = if (accountDao.getByIdOneShot(op.accountId) == null) op.accountId else java.util.UUID.randomUUID().toString()
-                            val shellAcc = LocalAccount(
-                                id = shellId,
-                                earthlinkUsername = op.accountId,
-                                displayName = parsedFullName ?: op.accountId,
-                                phone1 = parsedPhone,
-                                currentPriceIqd = op.amountIqd.toDouble(),
-                                debtIqd = 0.0
-                            )
-                            saveAccountInternal(shellAcc)
-                        } else {
-                            throw IllegalStateException("MISSING_LOCAL_FINANCIAL_TARGET: Cannot materialize financial position for missing local account ${op.accountId}")
-                        }
+                    val explicitLocalAccountId = payloadObj.optString("localAccountId").trim().takeIf { it.isNotBlank() }
+                    val localAcc = if (explicitLocalAccountId != null) {
+                        accountDao.getByIdOneShot(explicitLocalAccountId)
+                            ?.takeIf { !it.isHistoryOnlySubscriber }
+                            ?: throw IllegalStateException("EXPLICIT_LOCAL_FINANCIAL_TARGET_INVALID: Account $explicitLocalAccountId not found or history-only")
+                    } else {
+                        accountDao.getByIdOneShot(op.accountId)?.takeIf { !it.isHistoryOnlySubscriber }
+                            ?: accountDao.findActiveAccountByUsernameOrIdOneShot(op.accountId)
+                            ?: if (op.operationType.equals("ACTIVATION", ignoreCase = true) && payloadObj.has("username") && payloadObj.optString("username").isNotBlank()) {
+                                val parsedFullName = payloadObj.optString("fullName").takeIf { it.isNotBlank() }
+                                val parsedPhone = payloadObj.optString("phone").takeIf { it.isNotBlank() }
+                                val shellId = if (accountDao.getByIdOneShot(op.accountId) == null) op.accountId else java.util.UUID.randomUUID().toString()
+                                val shellAcc = LocalAccount(
+                                    id = shellId,
+                                    earthlinkUsername = op.accountId,
+                                    displayName = parsedFullName ?: op.accountId,
+                                    phone1 = parsedPhone,
+                                    currentPriceIqd = op.amountIqd.toDouble(),
+                                    debtIqd = 0.0
+                                )
+                                saveAccountInternal(shellAcc)
+                            } else {
+                                throw IllegalStateException("MISSING_LOCAL_FINANCIAL_TARGET: Cannot materialize financial position for missing local account ${op.accountId}")
+                            }
+                    }
 
                     val operationPrice = op.amountIqd.toDouble()
                     val isWasil = payloadObj.optBoolean("isWasil", false)

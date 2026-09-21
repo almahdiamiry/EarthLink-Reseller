@@ -724,7 +724,7 @@ fun ArabicSubscriberCard(
                             if (matchingAccount != null) {
                                 Icon(
                                     imageVector = Icons.Default.CheckCircle,
-                                    contentDescription = "Verified subscriber",
+                                    contentDescription = if (lang == "ar") "مشترك موثق" else "Verified subscriber",
                                     tint = Color(0xFF0A84FF),
                                     modifier = Modifier.size(14.dp)
                                 )

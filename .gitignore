@@ -34,3 +34,6 @@ build_release.ps1
 utower_data_c.tgz
 *.tgz
 .zvec-grep
+Archify/
+mega-archify/
+tools/

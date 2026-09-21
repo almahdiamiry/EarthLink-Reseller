@@ -99,6 +99,21 @@ interface LocalAccountDao {
     @Query("SELECT * FROM local_accounts WHERE isHistoryOnlySubscriber = 0 AND earthlinkUsername IS NOT NULL AND LOWER(earthlinkUsername) = LOWER(:username)")
     suspend fun findActiveAccountsByUsername(username: String): List<LocalAccount>
 
+    /**
+     * Targeted candidate query with narrow result set for subscriber identity observation.
+     * Selects only active candidate containers matching the authoritative userIndex or operational username.
+     */
+    @Query("""
+        SELECT * FROM local_accounts 
+        WHERE isHistoryOnlySubscriber = 0 
+          AND (
+               (:userIndex IS NOT NULL AND :userIndex > 0 AND ispUserIndex = :userIndex) 
+               OR 
+               (:username IS NOT NULL AND earthlinkUsername IS NOT NULL AND LOWER(earthlinkUsername) = LOWER(:username))
+          )
+    """)
+    fun observeCandidateAccountsForIdentity(userIndex: Int?, username: String?): Flow<List<LocalAccount>>
+
     @Query("""
         SELECT * FROM local_accounts 
         WHERE isHistoryOnlySubscriber = 0 AND (:query = '' OR displayName LIKE :query || '%' OR earthlinkUsername LIKE :query || '%' OR phone1 LIKE :query || '%' OR phone2 LIKE :query || '%')

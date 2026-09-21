@@ -230,9 +230,9 @@ fun UserDetailScreenV2(
     val success by viewModel.actionSuccess.collectAsStateWithLifecycle()
 
     val targetUsername = detail?.userID?.trim() ?: ""
-    val matchingAccountFlow = remember(targetUsername) {
-        if (targetUsername.isNotEmpty()) {
-            viewModel.getAccountByUsernameOrId(targetUsername)
+    val matchingAccountFlow = remember(userIndex, targetUsername) {
+        if (targetUsername.isNotEmpty() || (userIndex != null && userIndex > 0)) {
+            viewModel.getAccountByUsernameOrIdForUser(userIndex, targetUsername)
         } else {
             emptyFlow()
         }
@@ -1638,7 +1638,11 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                     ) {
                                         Icon(
                                             imageVector = stateIcon,
-                                            contentDescription = if (isPaidState) "Paid" else "Debt",
+                                            contentDescription = if (isPaidState) {
+                                                if (currentLang == "ar") "واصل" else "Paid"
+                                            } else {
+                                                if (currentLang == "ar") "دين" else "Debt"
+                                            },
                                             tint = Color.White,
                                             modifier = Modifier.size(22.dp)
                                         )
