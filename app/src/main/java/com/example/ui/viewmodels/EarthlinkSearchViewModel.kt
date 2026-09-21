@@ -132,12 +132,7 @@ class EarthlinkSearchViewModel(
     }
 
     suspend fun getAccountCost(accountIndex: Int): Double = withContext(Dispatchers.IO) {
-        try {
-            gateway.getAccountCost(accountIndex)
-        } catch (e: Exception) {
-            if (e is kotlinx.coroutines.CancellationException) throw e
-            0.0
-        }
+        gateway.getAccountCost(accountIndex)
     }
 
 
@@ -403,6 +398,7 @@ class EarthlinkSearchViewModel(
     }
 
     fun previewPackageCost(pkgIndex: Int) {
+        _costPreview.value = null
         viewModelScope.launch {
             try {
                 val cost = gateway.getAccountCost(pkgIndex)
@@ -521,7 +517,17 @@ class EarthlinkSearchViewModel(
                     return@launch
                 }
 
-                val cost = try { gateway.getAccountCost(pkgIndex) } catch (e: Exception) { 0.0 }
+                val cost = try {
+                    gateway.getAccountCost(pkgIndex)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: EarthlinkGatewayException) {
+                    _error.value = "Failed to determine package cost: ${e.message ?: "API error"}. Operation aborted."
+                    return@launch
+                } catch (e: Exception) {
+                    _error.value = "Failed to determine package cost: ${e.message ?: "error"}. Operation aborted."
+                    return@launch
+                }
                 if (!cost.isFinite() || cost <= 0.0 || cost % 1.0 != 0.0 || cost % 250.0 != 0.0) {
                     _error.value = "Failed to determine a valid IQD package cost. Operation aborted."
                     return@launch

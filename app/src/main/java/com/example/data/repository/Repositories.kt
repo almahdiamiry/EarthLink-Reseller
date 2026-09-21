@@ -40,6 +40,11 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
                 isDemoUsersGenerated.set(false)
             }
         }
+
+        @VisibleForTesting
+        fun clearCostCache() {
+            cachedCosts.clear()
+        }
         /**
          * DEV / DEMO-ONLY: Generates synthetic in-memory demo subscriber data for testing and offline demo mode.
          * Must NOT be used for live production ISP subscriber operations.
@@ -112,36 +117,40 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
         }
     }
 
+    private fun mapGatewayException(e: Exception): EarthlinkGatewayException {
+        if (e is EarthlinkGatewayException) return e
+        val msg = e.localizedMessage ?: "Unknown connection error"
+        if (e is java.io.IOException || e is java.net.SocketTimeoutException || e is java.net.ConnectException || e is java.net.UnknownHostException || e is javax.net.ssl.SSLHandshakeException) {
+            return EarthlinkTransportException("Network unavailable. Check connection and retry. Detail: $msg", e)
+        } else if (e is retrofit2.HttpException) {
+            val code = e.code()
+            val errorBody = try { e.response()?.errorBody()?.string() } catch(ex: Exception) { if (ex is kotlinx.coroutines.CancellationException) throw ex; null }
+            if (code == 401) {
+                val isGoogle = prefs.getAuthToken()?.startsWith("google_oauth_session_") == true
+                if (isGoogle) {
+                    prefs.saveEarthlinkApiToken(null)
+                    return EarthlinkAuthException("Earthlink API unauthorized. Please check ISP Admin credentials in Settings.", e)
+                } else {
+                    prefs.clearAuthToken()
+                    return EarthlinkAuthException("Session expired. Please log in again.", e)
+                }
+            } else if (code in 500..599) {
+                return EarthlinkTransportException("Server HTTP Error (Status $code) - live rapi.earthlink.iq reseller endpoint error. Detail: ${errorBody ?: msg}", e)
+            } else {
+                return EarthlinkBusinessException(statusCode = code, errorMessage = errorBody ?: msg, cause = e)
+            }
+        } else if (e is com.squareup.moshi.JsonDataException || e is com.squareup.moshi.JsonEncodingException) {
+            return EarthlinkTransportException("Moshi JSON Deserialization Mismatch: ${e.message}", e)
+        }
+        return EarthlinkTransportException("API Protocol Error: $msg", e)
+    }
+
     private inline suspend fun <reified T> safeApiCall(defaultOnNull: T? = null, call: suspend () -> ApiEnvelope<T>): T {
         val response = try {
             call()
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
-            if (e is EarthlinkGatewayException) throw e
-            val msg = e.localizedMessage ?: "Unknown connection error"
-            if (e is java.io.IOException || e is java.net.SocketTimeoutException || e is java.net.ConnectException || e is java.net.UnknownHostException || e is javax.net.ssl.SSLHandshakeException) {
-                throw EarthlinkTransportException("Network unavailable. Check connection and retry. Detail: $msg", e)
-            } else if (e is retrofit2.HttpException) {
-                val code = e.code()
-                val errorBody = try { e.response()?.errorBody()?.string() } catch(ex: Exception) { if (ex is kotlinx.coroutines.CancellationException) throw ex; null }
-                if (code == 401) {
-                    val isGoogle = prefs.getAuthToken()?.startsWith("google_oauth_session_") == true
-                    if (isGoogle) {
-                        prefs.saveEarthlinkApiToken(null)
-                        throw EarthlinkAuthException("Earthlink API unauthorized. Please check ISP Admin credentials in Settings.", e)
-                    } else {
-                        prefs.clearAuthToken()
-                        throw EarthlinkAuthException("Session expired. Please log in again.", e)
-                    }
-                } else if (code in 500..599) {
-                    throw EarthlinkTransportException("Server HTTP Error (Status $code) - live rapi.earthlink.iq reseller endpoint error. Detail: ${errorBody ?: msg}", e)
-                } else {
-                    throw EarthlinkBusinessException(statusCode = code, errorMessage = errorBody ?: msg, cause = e)
-                }
-            } else if (e is com.squareup.moshi.JsonDataException || e is com.squareup.moshi.JsonEncodingException) {
-                throw EarthlinkTransportException("Moshi JSON Deserialization Mismatch: ${e.message}", e)
-            }
-            throw EarthlinkTransportException("API Protocol Error: $msg", e)
+            throw mapGatewayException(e)
         }
         if (response.isSuccessful == true) {
             val value = response.value
@@ -235,28 +244,34 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
         }
     }
     override suspend fun getTestUsersCount(affiliateIndex: Int?): Int {
+        val responseBody = try {
+            apiService.getTestUsersCount(affiliateIndex).string()
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            throw mapGatewayException(e)
+        }
+        if (AppBuildConfig.DEBUG) {
+            android.util.Log.d("EarthlinkRepository", "DEBUG: getTestUsersCount RAW: $responseBody")
+        }
         return try {
-            val responseBody = apiService.getTestUsersCount(affiliateIndex).string()
-            if (AppBuildConfig.DEBUG) {
-                android.util.Log.d("EarthlinkRepository", "DEBUG: getTestUsersCount RAW: $responseBody")
+            val json = org.json.JSONObject(responseBody)
+            if (json.has("value") && !json.isNull("value")) {
+                json.getInt("value")
+            } else if (json.has("Value") && !json.isNull("Value")) {
+                json.getInt("Value")
+            } else if (json.has("count") && !json.isNull("count")) {
+                json.getInt("count")
+            } else if (json.has("Count") && !json.isNull("Count")) {
+                json.getInt("Count")
+            } else {
+                throw EarthlinkBusinessException(statusCode = 200, errorMessage = "Missing test users count field in response: $responseBody")
             }
-            try {
-                val json = org.json.JSONObject(responseBody)
-                val value = json.optInt("value", json.optInt("Value", -1))
-                if (value != -1) {
-                    value 
-                } else {
-                    json.optInt("count", json.optInt("Count", 0))
-                }
-            } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                // If it's not valid JSON, it might just be a raw number string
-                responseBody.trim().toDoubleOrNull()?.toInt() ?: 0
-            }
-        } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-            if (AppBuildConfig.DEBUG) {
-                android.util.Log.d("EarthlinkRepository", "DEBUG: getTestUsersCount EXCEPTION: ${e.message}")
-            }
-            0
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            if (e is EarthlinkGatewayException) throw e
+            // If it's not valid JSON, it might just be a raw number string
+            responseBody.trim().toDoubleOrNull()?.toInt()
+                ?: throw EarthlinkBusinessException(statusCode = 200, errorMessage = "Failed to parse test users count from response: $responseBody", cause = e)
         }
     }
     override suspend fun getActiveTestUsersCount(): Int {
@@ -398,64 +413,70 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
             if (retry != null && retry > 0.0) {
                 return@withLock retry
             }
-            val cost = try {
-                val responseBody = apiService.getAccountCost(accountIndex)
-                val jsonString = responseBody.use { it.string() }
-                var c = 0.0
-                try {
-                    val jsonObject = org.json.JSONObject(jsonString)
-                    if (jsonObject.has("value") && !jsonObject.isNull("value")) {
-                        val valueObj = jsonObject.get("value")
-                        if (valueObj is org.json.JSONObject && valueObj.has("value") && !valueObj.isNull("value")) {
-                            c = valueObj.optDouble("value", 0.0)
-                            if (c == 0.0) {
-                                val str = valueObj.optString("value", "").replace(Regex("[^0-9.]"), "")
-                                c = str.toDoubleOrNull() ?: 0.0
-                            }
+            val responseBody = try {
+                apiService.getAccountCost(accountIndex)
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                throw mapGatewayException(e)
+            }
+
+            val jsonString = responseBody.use { it.string() }
+            var c = 0.0
+            try {
+                val jsonObject = org.json.JSONObject(jsonString)
+                if (jsonObject.has("value") && !jsonObject.isNull("value")) {
+                    val valueObj = jsonObject.get("value")
+                    if (valueObj is org.json.JSONObject && valueObj.has("value") && !valueObj.isNull("value")) {
+                        c = valueObj.optDouble("value", 0.0)
+                        if (c == 0.0) {
+                            val str = valueObj.optString("value", "").replace(Regex("[^0-9.]"), "")
+                            c = str.toDoubleOrNull() ?: 0.0
                         }
-                     else {
-                            c = jsonObject.optDouble("value", 0.0)
-                            if (c == 0.0) {
-                                val str = jsonObject.optString("value", "").replace(Regex("[^0-9.]"), "")
-                                c = str.toDoubleOrNull() ?: 0.0
-                            }
-                     }
+                    } else {
+                        c = jsonObject.optDouble("value", 0.0)
+                        if (c == 0.0) {
+                            val str = jsonObject.optString("value", "").replace(Regex("[^0-9.]"), "")
+                            c = str.toDoubleOrNull() ?: 0.0
+                        }
                     }
-                    if (c == 0.0 && (jsonObject.has("responseMessage") || jsonObject.has("error"))) {
-                        val msg = jsonObject.optString("responseMessage", "") + jsonObject.optString("error", "")
-                        val parts = msg.split(Regex("(?i)Account cost is "))
-                        if (parts.size > 1) {
-                            val costPart = parts[1].split(Regex("(?i) IQD"))
-                            if (costPart.isNotEmpty()) {
-                                val numStr = costPart[0].replace(Regex("[^0-9.]"), "")
-                                c = numStr.toDoubleOrNull() ?: 0.0
-                            }
+                }
+                if (c == 0.0 && (jsonObject.has("responseMessage") || jsonObject.has("error"))) {
+                    val msg = jsonObject.optString("responseMessage", "") + jsonObject.optString("error", "")
+                    val parts = msg.split(Regex("(?i)Account cost is "))
+                    if (parts.size > 1) {
+                        val costPart = parts[1].split(Regex("(?i) IQD"))
+                        if (costPart.isNotEmpty()) {
+                            val numStr = costPart[0].replace(Regex("[^0-9.]"), "")
+                            c = numStr.toDoubleOrNull() ?: 0.0
                         }
-                     else {
-                            val cParts = msg.split(Regex("(?i)cost[\\s:]+"))
-                            if (cParts.size > 1) {
-                                val cPart = cParts[1].split(Regex("[^0-9.]"))
-                                for (p in cPart) {
-                                    val d = p.toDoubleOrNull()
-                                    if (d != null && d > 1000.0) {
-                                        c = d
-                                        break
-                                    }
+                    } else {
+                        val cParts = msg.split(Regex("(?i)cost[\\s:]+"))
+                        if (cParts.size > 1) {
+                            val cPart = cParts[1].split(Regex("[^0-9.]"))
+                            for (p in cPart) {
+                                val d = p.toDoubleOrNull()
+                                if (d != null && d > 1000.0) {
+                                    c = d
+                                    break
                                 }
                             }
-                     }
+                        }
                     }
-                } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                    // Ignore parse errors, returning 0.0 instead
                 }
-                c
-            } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                0.0
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                throw EarthlinkBusinessException(statusCode = 200, errorMessage = "Failed to parse account cost from response: $jsonString", cause = e)
             }
-            if (cost > 0.0) {
-                cachedCosts[accountIndex] = cost
+
+            if (c <= 0.0) {
+                throw EarthlinkBusinessException(
+                    statusCode = 200,
+                    errorMessage = "Failed to determine valid package cost from server response: $jsonString"
+                )
             }
-            cost
+
+            cachedCosts[accountIndex] = c
+            c
         }
     }
     override suspend fun searchUsers(query: String, startIndex: Int, rowCount: Int): UserListResponse {

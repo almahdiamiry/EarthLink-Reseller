@@ -2007,7 +2007,7 @@ private fun PricingManagementDialog(
             )
 
             var packagesList by remember { mutableStateOf<List<Triple<String, String, Int>>>(fallbackPackages) }
-            val apiCosts = remember { mutableStateMapOf<String, Double>() }
+            val apiCosts = remember { mutableStateMapOf<String, Double?>() }
             val apiLoading = remember { mutableStateMapOf<String, Boolean>() }
             val localInputs = remember { mutableStateMapOf<String, String>() }
 
@@ -2052,7 +2052,7 @@ private fun PricingManagementDialog(
                             apiCosts[key] = cost
                         } catch (e: Exception) {
                             if (e is kotlinx.coroutines.CancellationException) throw e
-                            apiCosts[key] = 0.0
+                            apiCosts[key] = null
                         } finally {
                             apiLoading[key] = false
                         }
@@ -2089,9 +2089,9 @@ private fun PricingManagementDialog(
 
                     packagesList.forEach { (key, label, _) ->
                         val sellingPriceInput = localInputs[key] ?: ""
-                        val apiCost = apiCosts[key] ?: 0.0
+                        val apiCost = apiCosts[key]
                         val customSellingPrice = MoneyParser.parseSubscriptionPriceIqd(sellingPriceInput)?.toDouble() ?: 0.0
-                        val profit = customSellingPrice - apiCost
+                        val profit = if (apiCost != null && apiCost > 0.0) customSellingPrice - apiCost else null
 
                         Surface(
                             shape = RoundedCornerShape(12.dp),
@@ -2114,7 +2114,7 @@ private fun PricingManagementDialog(
                                             CircularProgressIndicator(modifier = Modifier.size(8.dp), color = Color(0xFF38BDF8), strokeWidth = 1.dp)
                                         } else {
                                             Text(
-                                                text = if (apiCost > 0.0) "${MoneyParser.formatIqdForDisplay(apiCost)} ${if (currentLang == "ar") "د.ع" else "IQD"}" else "N/A",
+                                                text = if (apiCost != null && apiCost > 0.0) "${MoneyParser.formatIqdForDisplay(apiCost)} ${if (currentLang == "ar") "د.ع" else "IQD"}" else "N/A",
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.SemiBold,
                                                 color = Color.White.copy(alpha = 0.8f)
@@ -2122,7 +2122,7 @@ private fun PricingManagementDialog(
                                         }
                                     }
 
-                                    if (customSellingPrice > 0.0 && apiCost > 0.0) {
+                                    if (customSellingPrice > 0.0 && profit != null) {
                                         Text(
                                             text = "${if (currentLang == "ar") "الربح:" else "Profit:"} +${MoneyParser.formatIqdForDisplay(profit)} ${if (currentLang == "ar") "د.ع" else "IQD"}",
                                             fontSize = 10.sp,
@@ -2150,7 +2150,7 @@ private fun PricingManagementDialog(
                                     },
                                     placeholder = {
                                         Text(
-                                            text = MoneyParser.formatIqdToUiString(apiCost).ifEmpty { "0" },
+                                            text = if (apiCost != null && apiCost > 0.0) MoneyParser.formatIqdToUiString(apiCost) else "—",
                                             color = Color.White.copy(alpha = 0.2f),
                                             fontSize = 11.sp,
                                             textAlign = TextAlign.Center,

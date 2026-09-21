@@ -67,11 +67,18 @@ fun CreateUsingDepositScreen(
 
     if (showConfirmDialog) {
         val selectedPkgName = pkgs.find { it.accountIndex == selectedPkgIndex }?.accountName ?: ""
-        val costStr = if (costPreview != null) formatIqd(costPreview!!) else if (isAr) "سعر الباقة المحسوب" else "calculated tier price"
+        val hasValidCost = costPreview != null && costPreview!! > 0.0
+        val costMsg = if (hasValidCost) {
+            if (isAr) "سيتم خصم مبلغ ${formatIqd(costPreview!!)} من رصيد الصندوق."
+            else "Consumes ${formatIqd(costPreview!!)} from your deposit balance."
+        } else {
+            if (isAr) "التكلفة غير متوفرة حالياً وسيتم التحقق منها قبل الخصم."
+            else "Package cost is currently unavailable and will be verified before deduction."
+        }
         ConfirmationDialog(
             title = if (isAr) "تأكيد إنشاء مشترك مدفوع" else "Confirm Paid Account Creation",
-            message = if (isAr) "هل تود إنشاء وتفعيل المشترك $userId على الباقة $selectedPkgName؟ سيتم خصم مبلغ $costStr من رصيد الصندوق."
-            else "Generate paid subscription $userId with package $selectedPkgName? Consumes $costStr from your deposit balance.",
+            message = if (isAr) "هل تود إنشاء وتفعيل المشترك $userId على الباقة $selectedPkgName؟ $costMsg"
+            else "Generate paid subscription $userId with package $selectedPkgName? $costMsg",
             needsPasswordField = true,
             onCancel = { showConfirmDialog = false },
             onConfirm = { pass ->
@@ -356,7 +363,7 @@ fun CreateUsingDepositScreen(
                         }
 
                         // Cost Estimation
-                        if (costPreview != null && selectedPkgIndex != -1) {
+                        if (costPreview != null && costPreview!! > 0.0 && selectedPkgIndex != -1) {
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = Color(0xFF0A84FF).copy(alpha = 0.08f),

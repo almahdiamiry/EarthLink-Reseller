@@ -37,7 +37,7 @@ class DashboardViewModel(
     private val _isPrepaidLoading = MutableStateFlow(false)
     val isPrepaidLoading = _isPrepaidLoading.asStateFlow()
 
-    private val _testCount = MutableStateFlow(0)
+    private val _testCount = MutableStateFlow<Int?>(null)
     val testCount = _testCount.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
@@ -187,7 +187,7 @@ class DashboardViewModel(
                         _testCount.value = tests
                     } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
                         android.util.Log.w("DashboardViewModel", "TestCount fetch fell back: ${e.message}", e)
-                        _testCount.value = 0
+                        _testCount.value = null
                     }
                 }
 

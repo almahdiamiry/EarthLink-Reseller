@@ -517,7 +517,7 @@ class Step3DurableDispatchTest {
         )
         job.join()
 
-        assertEquals("Failed to determine a valid IQD package cost. Operation aborted.", viewModel.error.value)
+        assertEquals("Failed to determine package cost: Cost lookup failed. Operation aborted.", viewModel.error.value)
         val op = ledgerRepo.getPendingOperationByAccountId("new_user_fail_cost")
         assertNull("No pending operation should be recorded when package cost lookup fails", op)
     }

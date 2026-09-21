@@ -867,7 +867,7 @@ fun FinancialSummaryBottomSheet(
     totalDebt: Double,
     prepaidNeeded: Double,
     forecastAfter: Double,
-    testCount: Int,
+    testCount: Int?,
     days: Int = 7,
     isLoading: Boolean,
     lang: String = "ar",
@@ -1264,7 +1264,7 @@ fun FinancialSummaryBottomSheet(
                             }
 
                             Text(
-                                text = "$testCount مستخدم",
+                                text = if (testCount != null) "$testCount مستخدم" else if (lang == "ar") "غير متوفر" else "Unavailable",
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
