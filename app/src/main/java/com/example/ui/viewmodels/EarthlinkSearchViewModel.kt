@@ -569,6 +569,20 @@ class EarthlinkSearchViewModel(
                 }
                 val exactAmountIqd = cost.toLong()
 
+                val existingPayload = existingOp?.payloadJson?.let {
+                    try { org.json.JSONObject(it) } catch (_: Exception) { null }
+                }
+                val activationLocalAccountId = existingPayload?.optString("localAccountId")?.trim()?.takeIf { it.isNotBlank() }
+                    ?: java.util.UUID.randomUUID().toString()
+
+                val payloadJson = org.json.JSONObject().apply {
+                    put("username", username)
+                    put("phone", phone)
+                    put("fullName", fullName)
+                    put("pkgIndex", pkgIndex)
+                    put("localAccountId", activationLocalAccountId)
+                }.toString()
+
                 localLedgerRepository.recordPendingOperation(
                     PendingExternalOperation(
                         businessTransactionId = businessTxId,
@@ -576,7 +590,7 @@ class EarthlinkSearchViewModel(
                         accountId = username,
                         operationType = "ACTIVATION",
                         amountIqd = exactAmountIqd,
-                        payloadJson = "{\"username\":\"$username\",\"phone\":\"$phone\",\"fullName\":\"$fullName\",\"pkgIndex\":$pkgIndex}",
+                        payloadJson = payloadJson,
                         status = "PENDING",
                         dispatchClaimCount = 0
                     )
@@ -590,21 +604,6 @@ class EarthlinkSearchViewModel(
 
                 val generatedPassword = gateway.createUserUsingDeposit(username, phone, fullName, pkgIndex, depositPass)
                 if (generatedPassword != null) {
-                    val localAcc = localAccountRepository.getAccountByIdOneShot(username)?.takeIf { !it.isHistoryOnlySubscriber }
-                        ?: localAccountRepository.findActiveAccountByUsernameOrIdOneShot(username)
-                    if (localAcc == null) {
-                        // Persists local subscriber target for verified gateway activation to anchor subsequent ledger debt.
-                        val newId = if (localAccountRepository.getAccountByIdOneShot(username) == null) username else java.util.UUID.randomUUID().toString()
-                        val newAcc = LocalAccount(
-                            id = newId,
-                            earthlinkUsername = username,
-                            displayName = fullName.ifBlank { username },
-                            phone1 = phone,
-                            currentPriceIqd = exactAmountIqd.toDouble(),
-                            debtIqd = 0.0
-                        )
-                        localAccountRepository.saveAccount(newAcc)
-                    }
                     localLedgerRepository.resolvePendingOperationVerifiedSuccess(businessTxId, "[VERIFIED ACTIVATION]")
                     _actionSuccess.value = "Paid subscriber $username created successfully.\nPassword: $generatedPassword"
                     audit.logAction("CREATE_PAID_USER", "USER", username, "Created subscriber using reseller deposit")

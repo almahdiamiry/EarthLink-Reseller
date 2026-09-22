@@ -1485,29 +1485,60 @@ class LocalLedgerRepositoryImpl(
 
                     val payloadObj = try { JSONObject(op.payloadJson) } catch (_: Exception) { JSONObject() }
                     val explicitLocalAccountId = payloadObj.optString("localAccountId").trim().takeIf { it.isNotBlank() }
+                    val isActivation = op.operationType.equals("ACTIVATION", ignoreCase = true)
+
                     val localAcc = if (explicitLocalAccountId != null) {
-                        accountDao.getByIdOneShot(explicitLocalAccountId)
-                            ?.takeIf { !it.isHistoryOnlySubscriber }
-                            ?: throw IllegalStateException("EXPLICIT_LOCAL_FINANCIAL_TARGET_INVALID: Account $explicitLocalAccountId not found or history-only")
+                        val existing = accountDao.getByIdOneShot(explicitLocalAccountId)
+                        if (existing != null) {
+                            if (existing.isHistoryOnlySubscriber) {
+                                throw IllegalStateException("EXPLICIT_LOCAL_FINANCIAL_TARGET_INVALID: Account $explicitLocalAccountId is history-only")
+                            }
+                            existing
+                        } else if (isActivation) {
+                            val parsedFullName = payloadObj.optString("fullName").takeIf { it.isNotBlank() }
+                            val parsedPhone = payloadObj.optString("phone").takeIf { it.isNotBlank() }
+                            val shellAcc = LocalAccount(
+                                id = explicitLocalAccountId,
+                                earthlinkUsername = op.accountId,
+                                displayName = parsedFullName ?: op.accountId,
+                                phone1 = parsedPhone,
+                                currentPriceIqd = op.amountIqd.toDouble(),
+                                debtIqd = 0.0
+                            )
+                            accountDao.insert(shellAcc)
+                            OutboxManager.upsertWithOutbox(outboxDao, "local_accounts", shellAcc.id, accountAdapter.toJson(shellAcc))
+                            shellAcc
+                        } else {
+                            throw IllegalStateException("EXPLICIT_LOCAL_FINANCIAL_TARGET_INVALID: Account $explicitLocalAccountId not found")
+                        }
+                    } else if (isActivation) {
+                        val existing = accountDao.getByIdOneShot(op.accountId)
+                        if (existing != null) {
+                            if (existing.isHistoryOnlySubscriber) {
+                                throw IllegalStateException("MISSING_LOCAL_FINANCIAL_TARGET: Account ${op.accountId} is history-only and cannot be resurrected")
+                            }
+                            existing
+                        } else if (payloadObj.has("username") && payloadObj.optString("username").isNotBlank()) {
+                            val parsedFullName = payloadObj.optString("fullName").takeIf { it.isNotBlank() }
+                            val parsedPhone = payloadObj.optString("phone").takeIf { it.isNotBlank() }
+                            val shellAcc = LocalAccount(
+                                id = op.accountId,
+                                earthlinkUsername = op.accountId,
+                                displayName = parsedFullName ?: op.accountId,
+                                phone1 = parsedPhone,
+                                currentPriceIqd = op.amountIqd.toDouble(),
+                                debtIqd = 0.0
+                            )
+                            accountDao.insert(shellAcc)
+                            OutboxManager.upsertWithOutbox(outboxDao, "local_accounts", shellAcc.id, accountAdapter.toJson(shellAcc))
+                            shellAcc
+                        } else {
+                            throw IllegalStateException("MISSING_LOCAL_FINANCIAL_TARGET: Cannot materialize financial position for missing local account ${op.accountId}")
+                        }
                     } else {
                         accountDao.getByIdOneShot(op.accountId)?.takeIf { !it.isHistoryOnlySubscriber }
                             ?: accountDao.findActiveAccountByUsernameOrIdOneShot(op.accountId)
-                            ?: if (op.operationType.equals("ACTIVATION", ignoreCase = true) && payloadObj.has("username") && payloadObj.optString("username").isNotBlank()) {
-                                val parsedFullName = payloadObj.optString("fullName").takeIf { it.isNotBlank() }
-                                val parsedPhone = payloadObj.optString("phone").takeIf { it.isNotBlank() }
-                                val shellId = if (accountDao.getByIdOneShot(op.accountId) == null) op.accountId else java.util.UUID.randomUUID().toString()
-                                val shellAcc = LocalAccount(
-                                    id = shellId,
-                                    earthlinkUsername = op.accountId,
-                                    displayName = parsedFullName ?: op.accountId,
-                                    phone1 = parsedPhone,
-                                    currentPriceIqd = op.amountIqd.toDouble(),
-                                    debtIqd = 0.0
-                                )
-                                saveAccountInternal(shellAcc)
-                            } else {
-                                throw IllegalStateException("MISSING_LOCAL_FINANCIAL_TARGET: Cannot materialize financial position for missing local account ${op.accountId}")
-                            }
+                            ?: throw IllegalStateException("MISSING_LOCAL_FINANCIAL_TARGET: Cannot materialize financial position for missing local account ${op.accountId}")
                     }
 
                     val operationPrice = op.amountIqd.toDouble()
@@ -1537,8 +1568,15 @@ class LocalLedgerRepositoryImpl(
                     val defaultNote = if (op.operationType.equals("ACTIVATION", ignoreCase = true)) "[VERIFIED ACTIVATION]" else null
                     val finalNote = if (!chargeNote.isNullOrBlank()) chargeNote else defaultNote
                     // Records verified ISP charge as local debt and optional payment to preserve financial history.
-                    val accountWithPrice = localAcc.copy(currentPriceIqd = operationPrice)
-                    val savedAcc = saveAccountInternal(accountWithPrice)
+                    val savedAcc = if (isActivation) {
+                        val accountWithPrice = localAcc.copy(currentPriceIqd = operationPrice)
+                        accountDao.update(accountWithPrice)
+                        OutboxManager.upsertWithOutbox(outboxDao, "local_accounts", accountWithPrice.id, accountAdapter.toJson(accountWithPrice))
+                        accountWithPrice
+                    } else {
+                        val accountWithPrice = localAcc.copy(currentPriceIqd = operationPrice)
+                        saveAccountInternal(accountWithPrice)
+                    }
                     val chargeEntry = addDebtInternal(savedAcc.id, operationPrice, finalNote, businessTransactionId)
                     if (isWasil) {
                         val payId = "pay_$businessTransactionId"
