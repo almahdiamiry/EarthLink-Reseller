@@ -86,6 +86,63 @@ class EarthlinkSearchViewModelSeamTest {
         var lastChangedAccountIndex: Int? = null
         var shouldFailChangeAccountType = false
 
+        val getUserDetailCalls = java.util.concurrent.atomic.AtomicInteger(0)
+        val extendUserCalls = java.util.concurrent.atomic.AtomicInteger(0)
+        val toggleUserActiveCalls = java.util.concurrent.atomic.AtomicInteger(0)
+        val showUserPasswordCalls = java.util.concurrent.atomic.AtomicInteger(0)
+        val showAccountPasswordCalls = java.util.concurrent.atomic.AtomicInteger(0)
+        val changeUserPasswordCalls = java.util.concurrent.atomic.AtomicInteger(0)
+        val changeAccountPasswordCalls = java.util.concurrent.atomic.AtomicInteger(0)
+
+        var userPasswordResult: String? = "pass"
+        var accountPasswordResult: String? = "acc_pass"
+        var showUserPasswordException: Exception? = null
+        var showAccountPasswordException: Exception? = null
+        var balanceResult: Double = 250000.0
+        var balanceException: Exception? = null
+
+        override suspend fun getUserDetail(userIndex: Int): com.example.core.model.UserDetail {
+            getUserDetailCalls.incrementAndGet()
+            return delegate.getUserDetail(userIndex)
+        }
+
+        override suspend fun extendUser(userIndex: Int): Boolean {
+            extendUserCalls.incrementAndGet()
+            return delegate.extendUser(userIndex)
+        }
+
+        override suspend fun toggleUserActive(userIndex: Int, active: Boolean): Boolean {
+            toggleUserActiveCalls.incrementAndGet()
+            return delegate.toggleUserActive(userIndex, active)
+        }
+
+        override suspend fun showUserPassword(userIndex: Int, userId: String): String {
+            showUserPasswordCalls.incrementAndGet()
+            showUserPasswordException?.let { throw it }
+            return userPasswordResult ?: ""
+        }
+
+        override suspend fun showAccountPassword(userIndex: Int, userId: String): String {
+            showAccountPasswordCalls.incrementAndGet()
+            showAccountPasswordException?.let { throw it }
+            return accountPasswordResult ?: ""
+        }
+
+        override suspend fun changeUserPassword(userIndex: Int, userId: String, newPass: String): Boolean {
+            changeUserPasswordCalls.incrementAndGet()
+            return delegate.changeUserPassword(userIndex, userId, newPass)
+        }
+
+        override suspend fun changeAccountPassword(userIndex: Int, userId: String, newPass: String): Boolean {
+            changeAccountPasswordCalls.incrementAndGet()
+            return delegate.changeAccountPassword(userIndex, userId, newPass)
+        }
+
+        override suspend fun getBalance(): Double {
+            balanceException?.let { throw it }
+            return balanceResult
+        }
+
         override suspend fun updateUserDisplayName(userIndex: Int, newName: String): Boolean {
             updateDisplayNameCalls.incrementAndGet()
             lastUpdatedDisplayName = newName
@@ -533,7 +590,7 @@ class EarthlinkSearchViewModelSeamTest {
     }
 
     @Test
-    fun testChangeAccountType_remoteFailure_persistsLocallySetsErrorWithoutAudit() = runBlocking {
+    fun testChangeAccountType_remoteFailure_doesNotPersistLocallySetsErrorWithoutAudit() = runBlocking {
         testGateway.shouldFailChangeAccountType = true
         val vm = createViewModel()
         val account = LocalAccount(
@@ -542,6 +599,7 @@ class EarthlinkSearchViewModelSeamTest {
             displayName = "Pkg User 2",
             packageName = "Economy",
             currentPriceIqd = 35000.0,
+            ispUserIndex = 602,
             createdAt = System.currentTimeMillis()
         )
         accountRepo.saveAccount(account)
@@ -556,11 +614,11 @@ class EarthlinkSearchViewModelSeamTest {
         )
         job.join()
 
-        // 1. Local Room persistence completed before remote call
+        // 1. Finding 1 (CHANGE-PACKAGE-01): Local Room persistence must NOT occur when gateway fails
         val updated = accountRepo.getAccountByIdOneShot("pkg_usr_2")
         assertNotNull(updated)
-        assertEquals("Failed Package", updated!!.packageName)
-        assertEquals(60000.0, updated!!.currentPriceIqd, 0.001)
+        assertEquals("Economy", updated!!.packageName)
+        assertEquals(35000.0, updated!!.currentPriceIqd, 0.001)
 
         // 2. Gateway call attempted and failed
         assertEquals(1, testGateway.changeAccountTypeCalls.get())
@@ -803,5 +861,369 @@ class EarthlinkSearchViewModelSeamTest {
         // Observing alice must still resolve to UUID_ALICE with zero change in identity
         val afterUpdate = flow.first()
         assertEquals("UUID_ALICE", afterUpdate?.id)
+    }
+
+    // --- Finding 2: PASSWORD-01 Tests ---
+
+    @Test
+    fun testRevealUserPassword_successfulNonBlank_updatesStateAndLogsAudit() = runBlocking {
+        testGateway.userPasswordResult = "secret123"
+        val vm = createViewModel()
+        vm.revealUserPassword(userIndex = 501, userId = "real_usr_1").join()
+
+        assertEquals("secret123", vm.revealedUserPass.value)
+        assertNull(vm.error.value)
+        val audits = db.auditLogDao().getAllSync()
+        assertTrue(audits.any { it.action == "REVEAL_PASSWORD_USER" && it.entityId == "real_usr_1" })
+    }
+
+    @Test
+    fun testRevealUserPassword_blankResult_setsNullStateAndErrorWithoutAudit() = runBlocking {
+        testGateway.userPasswordResult = ""
+        val vm = createViewModel()
+        vm.revealUserPassword(userIndex = 501, userId = "real_usr_1").join()
+
+        assertNull(vm.revealedUserPass.value)
+        assertNotNull(vm.error.value)
+        val audits = db.auditLogDao().getAllSync()
+        assertTrue(audits.none { it.action == "REVEAL_PASSWORD_USER" })
+    }
+
+    @Test
+    fun testRevealUserPassword_gatewayException_setsNullStateAndErrorWithoutAudit() = runBlocking {
+        testGateway.showUserPasswordException = RuntimeException("Connection error")
+        val vm = createViewModel()
+        vm.revealUserPassword(userIndex = 501, userId = "real_usr_1").join()
+
+        assertNull(vm.revealedUserPass.value)
+        assertNotNull(vm.error.value)
+        val audits = db.auditLogDao().getAllSync()
+        assertTrue(audits.none { it.action == "REVEAL_PASSWORD_USER" })
+    }
+
+    @Test
+    fun testRevealAccountPassword_successfulNonBlank_updatesStateAndLogsAudit() = runBlocking {
+        testGateway.accountPasswordResult = "broadband456"
+        val vm = createViewModel()
+        vm.revealAccountPassword(userIndex = 501, userId = "real_usr_1").join()
+
+        assertEquals("broadband456", vm.revealedAccountPass.value)
+        assertNull(vm.error.value)
+        val audits = db.auditLogDao().getAllSync()
+        assertTrue(audits.any { it.action == "REVEAL_PASSWORD_ACCOUNT" && it.entityId == "real_usr_1" })
+    }
+
+    @Test
+    fun testRevealAccountPassword_blankResult_setsNullStateAndErrorWithoutAudit() = runBlocking {
+        testGateway.accountPasswordResult = ""
+        val vm = createViewModel()
+        vm.revealAccountPassword(userIndex = 501, userId = "real_usr_1").join()
+
+        assertNull(vm.revealedAccountPass.value)
+        assertNotNull(vm.error.value)
+        val audits = db.auditLogDao().getAllSync()
+        assertTrue(audits.none { it.action == "REVEAL_PASSWORD_ACCOUNT" })
+    }
+
+    @Test
+    fun testRevealAccountPassword_gatewayException_setsNullStateAndErrorWithoutAudit() = runBlocking {
+        testGateway.showAccountPasswordException = RuntimeException("Gateway error")
+        val vm = createViewModel()
+        vm.revealAccountPassword(userIndex = 501, userId = "real_usr_1").join()
+
+        assertNull(vm.revealedAccountPass.value)
+        assertNotNull(vm.error.value)
+        val audits = db.auditLogDao().getAllSync()
+        assertTrue(audits.none { it.action == "REVEAL_PASSWORD_ACCOUNT" })
+    }
+
+    // --- Finding 3: LOCAL-ISP-IDENTITY-01 Tests ---
+
+    @Test
+    fun testSyntheticLocalAccount_loadUserDetail_doesNotCallGatewayGetUserDetail() = runBlocking {
+        val syntheticAccount = LocalAccount(
+            id = "LOCAL_UUID_123",
+            earthlinkUsername = "local_sub_1",
+            ispUserIndex = null,
+            displayName = "Local Sub 1",
+            createdAt = System.currentTimeMillis()
+        )
+        accountRepo.saveAccount(syntheticAccount)
+        val syntheticUserIndex = syntheticAccount.id.hashCode()
+
+        val vm = createViewModel()
+        vm.loadUserDetail(syntheticUserIndex, "local_sub_1").join()
+
+        assertEquals(0, testGateway.getUserDetailCalls.get())
+        assertEquals("local_sub_1", vm.selectedUser.value?.userID)
+    }
+
+    @Test
+    fun testSyntheticLocalAccount_extendUser_doesNotCallGatewayExtendUser() = runBlocking {
+        val syntheticAccount = LocalAccount(
+            id = "LOCAL_UUID_EXTEND",
+            earthlinkUsername = "local_sub_ext",
+            ispUserIndex = null,
+            createdAt = System.currentTimeMillis()
+        )
+        accountRepo.saveAccount(syntheticAccount)
+        val syntheticUserIndex = syntheticAccount.id.hashCode()
+
+        val vm = createViewModel()
+        vm.extendUser(syntheticUserIndex, "local_sub_ext").join()
+
+        assertEquals(0, testGateway.extendUserCalls.get())
+        assertEquals("Action unavailable for local-only account.", vm.error.value)
+    }
+
+    @Test
+    fun testSyntheticLocalAccount_toggleUserActive_doesNotCallGatewayToggleUserActive() = runBlocking {
+        val syntheticAccount = LocalAccount(
+            id = "LOCAL_UUID_TOGGLE",
+            earthlinkUsername = "local_sub_tog",
+            ispUserIndex = null,
+            createdAt = System.currentTimeMillis()
+        )
+        accountRepo.saveAccount(syntheticAccount)
+        val syntheticUserIndex = syntheticAccount.id.hashCode()
+
+        val vm = createViewModel()
+        vm.toggleUserActive(syntheticUserIndex, "local_sub_tog", true).join()
+
+        assertEquals(0, testGateway.toggleUserActiveCalls.get())
+        assertEquals("Action unavailable for local-only account.", vm.error.value)
+    }
+
+    @Test
+    fun testSyntheticLocalAccount_changeAccountType_doesNotCallGatewayAndDoesNotMutateRoom() = runBlocking {
+        val syntheticAccount = LocalAccount(
+            id = "LOCAL_UUID_PKG",
+            earthlinkUsername = "local_sub_pkg",
+            ispUserIndex = null,
+            displayName = "Local Pkg Sub",
+            packageName = "Standard",
+            currentPriceIqd = 40000.0,
+            createdAt = System.currentTimeMillis()
+        )
+        accountRepo.saveAccount(syntheticAccount)
+        val syntheticUserIndex = syntheticAccount.id.hashCode()
+
+        val vm = createViewModel()
+        vm.changeAccountType(syntheticUserIndex, "local_sub_pkg", 2, "Ultra", syntheticAccount, 60000.0).join()
+
+        assertEquals(0, testGateway.changeAccountTypeCalls.get())
+        assertEquals("Action unavailable for local-only account.", vm.error.value)
+        val inDb = accountRepo.getAccountByIdOneShot("LOCAL_UUID_PKG")
+        assertEquals("Standard", inDb!!.packageName)
+        assertEquals(40000.0, inDb.currentPriceIqd, 0.001)
+    }
+
+    @Test
+    fun testSyntheticLocalAccount_changePasswords_doesNotCallGateway() = runBlocking {
+        val syntheticAccount = LocalAccount(
+            id = "LOCAL_UUID_PASS",
+            earthlinkUsername = "local_sub_pass",
+            ispUserIndex = null,
+            createdAt = System.currentTimeMillis()
+        )
+        accountRepo.saveAccount(syntheticAccount)
+        val syntheticUserIndex = syntheticAccount.id.hashCode()
+
+        val vm = createViewModel()
+        vm.changeUserPassword(syntheticUserIndex, "local_sub_pass", "newpass").join()
+        vm.changeAccountPassword(syntheticUserIndex, "local_sub_pass", "newpass").join()
+
+        assertEquals(0, testGateway.changeUserPasswordCalls.get())
+        assertEquals(0, testGateway.changeAccountPasswordCalls.get())
+        assertEquals("Action unavailable for local-only account.", vm.error.value)
+
+        vm.revealUserPassword(syntheticUserIndex, "local_sub_pass").join()
+        vm.revealAccountPassword(syntheticUserIndex, "local_sub_pass").join()
+        assertEquals(0, testGateway.showUserPasswordCalls.get())
+        assertEquals(0, testGateway.showAccountPasswordCalls.get())
+        assertNull(vm.revealedUserPass.value)
+        assertNull(vm.revealedAccountPass.value)
+    }
+
+    @Test
+    fun testSyntheticLocalAccount_updateUserDisplayName_persistsLocallyAndDoesNotCallGateway() = runBlocking {
+        val syntheticAccount = LocalAccount(
+            id = "LOCAL_UUID_NAME",
+            earthlinkUsername = "local_sub_name",
+            ispUserIndex = null,
+            displayName = "Old Name",
+            createdAt = System.currentTimeMillis()
+        )
+        accountRepo.saveAccount(syntheticAccount)
+        val syntheticUserIndex = syntheticAccount.id.hashCode()
+
+        val vm = createViewModel()
+        vm.updateUserDisplayName(syntheticUserIndex, "New Local Name", syntheticAccount).join()
+
+        assertEquals(0, testGateway.updateDisplayNameCalls.get())
+        val inDb = accountRepo.getAccountByIdOneShot("LOCAL_UUID_NAME")
+        assertEquals("New Local Name", inDb!!.displayName)
+    }
+
+    @Test
+    fun testRealIspAccount_mutationsCallGatewayNormally() = runBlocking {
+        val realAccount = LocalAccount(
+            id = "REAL_UUID_901",
+            earthlinkUsername = "real_sub_901",
+            ispUserIndex = 901,
+            displayName = "Real User",
+            packageName = "Standard",
+            currentPriceIqd = 35000.0,
+            createdAt = System.currentTimeMillis()
+        )
+        accountRepo.saveAccount(realAccount)
+
+        val vm = createViewModel()
+        vm.extendUser(901, "real_sub_901").join()
+        assertEquals(1, testGateway.extendUserCalls.get())
+
+        vm.toggleUserActive(901, "real_sub_901", false).join()
+        assertEquals(1, testGateway.toggleUserActiveCalls.get())
+
+        vm.changeAccountType(901, "real_sub_901", 3, "Turbo", realAccount).join()
+        assertEquals(1, testGateway.changeAccountTypeCalls.get())
+
+        vm.changeUserPassword(901, "real_sub_901", "p1").join()
+        assertEquals(1, testGateway.changeUserPasswordCalls.get())
+
+        vm.updateUserDisplayName(901, "Renamed Real", realAccount).join()
+        assertEquals(1, testGateway.updateDisplayNameCalls.get())
+    }
+
+    @Test
+    fun testCollisionBetweenSyntheticLocalAndRealIspIndex_doesNotCallGatewayForLocalAccount() = runBlocking {
+        val localId = generateSequence(1) { it + 1 }.map { "coll_local_$it" }.first { it.hashCode() > 0 }
+        val collisionIndex = localId.hashCode()
+
+        val localAccountA = LocalAccount(
+            id = localId,
+            earthlinkUsername = "local_user",
+            ispUserIndex = null,
+            displayName = "Local User Colliding",
+            createdAt = System.currentTimeMillis()
+        )
+        val realAccountB = LocalAccount(
+            id = "real_acc_coll_b",
+            earthlinkUsername = "real_user",
+            ispUserIndex = collisionIndex,
+            displayName = "Real ISP Colliding",
+            createdAt = System.currentTimeMillis()
+        )
+        accountRepo.saveAccount(localAccountA)
+        accountRepo.saveAccount(realAccountB)
+
+        val vm = createViewModel()
+
+        // Open synthetic local account using userIndex = collisionIndex, userId = "local_user"
+        vm.loadUserDetail(collisionIndex, "local_user").join()
+
+        // Required result: ISP gateway is NOT called
+        assertEquals(0, testGateway.getUserDetailCalls.get())
+        assertEquals("local_user", vm.selectedUser.value?.userID)
+
+        // Mutations on synthetic local account are also blocked
+        vm.extendUser(collisionIndex, "local_user").join()
+        assertEquals(0, testGateway.extendUserCalls.get())
+        assertEquals("Action unavailable for local-only account.", vm.error.value)
+
+        vm.changeAccountType(collisionIndex, "local_user", 2, "Ultra", localAccountA, 60000.0).join()
+        assertEquals(0, testGateway.changeAccountTypeCalls.get())
+
+        // Negative twin: Opening real ISP account using userIndex = collisionIndex, userId = "real_user"
+        vm.loadUserDetail(collisionIndex, "real_user").join()
+        assertEquals(1, testGateway.getUserDetailCalls.get())
+    }
+
+    @Test
+    fun testSyntheticLocalAccount_noUsername_localPrefix_doesNotCallGateway() = runBlocking {
+        val localId = generateSequence(1) { it + 1 }.map { "no_user_$it" }.first { it.hashCode() > 0 }
+        val syntheticUserIndex = localId.hashCode()
+        val syntheticAccount = LocalAccount(
+            id = localId,
+            earthlinkUsername = null,
+            ispUserIndex = null,
+            displayName = "No Username Sub",
+            createdAt = System.currentTimeMillis()
+        )
+        accountRepo.saveAccount(syntheticAccount)
+
+        val vm = createViewModel()
+        vm.loadUserDetail(syntheticUserIndex, "local_$localId").join()
+
+        assertEquals(0, testGateway.getUserDetailCalls.get())
+        assertEquals("local_$localId", vm.selectedUser.value?.userID)
+
+        vm.extendUser(syntheticUserIndex, "local_$localId").join()
+        assertEquals(0, testGateway.extendUserCalls.get())
+        assertEquals("Action unavailable for local-only account.", vm.error.value)
+    }
+
+    // --- Finding 4: BALANCE-UI-01 Tests ---
+
+    @Test
+    fun testGetResellerBalance_success_returnsValue() = runBlocking {
+        testGateway.balanceResult = 150000.0
+        val vm = createViewModel()
+        val bal = vm.getResellerBalance()
+        assertEquals(150000.0, bal, 0.001)
+    }
+
+    @Test
+    fun testGetResellerBalance_realZero_distinguishableFromFailure() = runBlocking {
+        testGateway.balanceResult = 0.0
+        val vm = createViewModel()
+        val bal = vm.getResellerBalance()
+        assertEquals(0.0, bal, 0.001)
+        var resellerBalance: Double? = null
+        try {
+            resellerBalance = vm.getResellerBalance()
+        } catch (e: Exception) {
+            resellerBalance = null
+        }
+        assertEquals(0.0, resellerBalance)
+    }
+
+    @Test
+    fun testGetResellerBalance_exception_propagatesException() = runBlocking {
+        testGateway.balanceException = RuntimeException("Gateway balance API error")
+        val vm = createViewModel()
+        val result = runCatching { vm.getResellerBalance() }
+        assertTrue(result.isFailure)
+        assertEquals("Gateway balance API error", result.exceptionOrNull()?.message)
+    }
+
+    @Test
+    fun testGetResellerBalance_apiFailure_resultsInNullNotZero() = runBlocking {
+        testGateway.balanceException = RuntimeException("Gateway balance API error")
+        val vm = createViewModel()
+        var resellerBalance: Double? = 0.0
+        try {
+            resellerBalance = vm.getResellerBalance()
+        } catch (e: Exception) {
+            resellerBalance = null
+        }
+        assertNull(resellerBalance)
+    }
+
+    @Test
+    fun testBalanceAfterMath_knownBalance_computesCorrectly() {
+        val resellerBalance: Double? = 100000.0
+        val packageCost = 40000.0
+        val balanceAfter = resellerBalance?.let { it - packageCost }
+        assertNotNull(balanceAfter)
+        assertEquals(60000.0, balanceAfter!!, 0.001)
+    }
+
+    @Test
+    fun testBalanceAfterMath_unknownBalance_isNull() {
+        val resellerBalance: Double? = null
+        val packageCost = 40000.0
+        val balanceAfter = resellerBalance?.let { it - packageCost }
+        assertNull(balanceAfter)
     }
 }

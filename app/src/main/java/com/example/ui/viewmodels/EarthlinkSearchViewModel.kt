@@ -122,13 +122,27 @@ class EarthlinkSearchViewModel(
         }
     }
 
-    suspend fun getResellerBalance(): Double = withContext(Dispatchers.IO) {
-        try {
-            gateway.getBalance()
-        } catch (e: Exception) {
-            if (e is kotlinx.coroutines.CancellationException) throw e
-            0.0
+    private suspend fun isSyntheticLocalIspIdentity(
+        userIndex: Int,
+        userId: String
+    ): Boolean {
+        if (userId.isBlank()) return false
+        if (userId.startsWith("local_")) {
+            val localId = userId.removePrefix("local_")
+            val candidate = localAccountRepository.getAccountByIdOneShot(localId)
+            if (candidate != null && candidate.ispUserIndex == null && candidate.id.hashCode() == userIndex) {
+                return true
+            }
         }
+        val candidates = localAccountRepository.findActiveAccountsBySubscriberIdentity(
+            null,
+            userId
+        )
+        return candidates.any { it.ispUserIndex == null && it.id.hashCode() == userIndex }
+    }
+
+    suspend fun getResellerBalance(): Double = withContext(Dispatchers.IO) {
+        gateway.getBalance()
     }
 
     suspend fun getAccountCost(accountIndex: Int): Double = withContext(Dispatchers.IO) {
@@ -283,6 +297,10 @@ class EarthlinkSearchViewModel(
         viewModelScope.launch {
             _error.value = null
             
+            if (knownUserId != null && _selectedUser.value?.userID != knownUserId) {
+                _selectedUser.value = null
+            }
+
             // Prepare instant optimistic detail if available
             prepareUserDetail(userIndex)
 
@@ -292,6 +310,18 @@ class EarthlinkSearchViewModel(
                 try {
                     foundLocal = withContext(Dispatchers.IO) {
                         if (!knownUserId.isNullOrBlank()) {
+                            if (knownUserId.startsWith("local_")) {
+                                val localId = knownUserId.removePrefix("local_")
+                                val candidate = localAccountRepository.getAccountByIdOneShot(localId)
+                                if (candidate != null && candidate.ispUserIndex == null && candidate.id.hashCode() == userIndex) {
+                                    return@withContext candidate
+                                }
+                            }
+                            val syntheticCandidate = localAccountRepository.findActiveAccountsBySubscriberIdentity(null, knownUserId)
+                                .firstOrNull { it.ispUserIndex == null && it.id.hashCode() == userIndex }
+                            if (syntheticCandidate != null) {
+                                return@withContext syntheticCandidate
+                            }
                             val matches = if (userIndex > 0) {
                                 localAccountRepository.findActiveAccountsBySubscriberIdentity(userIndex, knownUserId)
                             } else {
@@ -346,12 +376,17 @@ class EarthlinkSearchViewModel(
             }
 
             val currentUserId = _selectedUser.value?.userID ?: knownUserId
+            val isSyntheticLocal = if (!currentUserId.isNullOrBlank()) {
+                isSyntheticLocalIspIdentity(userIndex, currentUserId)
+            } else {
+                false
+            }
             val hasIspLinkage = if (foundLocal != null) {
                 foundLocal.earthlinkUsername?.isNotBlank() == true
             } else {
                 currentUserId != null && !currentUserId.startsWith("local_") && currentUserId.isNotBlank()
             }
-            if (hasIspLinkage) {
+            if (hasIspLinkage && !isSyntheticLocal) {
                 _isRefreshingDetail.value = true
                 try {
                     val detail = gateway.getUserDetail(userIndex)
@@ -953,6 +988,10 @@ class EarthlinkSearchViewModel(
         val lock = getAccountLock("${userId}:EXTEND")
 
         return viewModelScope.launch(Dispatchers.IO) {
+            if (isSyntheticLocalIspIdentity(userIndex, userId)) {
+                _error.value = "Action unavailable for local-only account."
+                return@launch
+            }
             if (!lock.tryLock()) {
                 Log.w("EarthlinkSearchVM", "Duplicate extension suppressed: account $userId has an active inflight operation")
                 _error.value = "Operation already in progress or awaiting verification."
@@ -1063,8 +1102,12 @@ class EarthlinkSearchViewModel(
         }
     }
 
-    fun toggleUserActive(userIndex: Int, userId: String, active: Boolean) {
+    fun toggleUserActive(userIndex: Int, userId: String, active: Boolean): kotlinx.coroutines.Job =
         viewModelScope.launch {
+            if (isSyntheticLocalIspIdentity(userIndex, userId)) {
+                _error.value = "Action unavailable for local-only account."
+                return@launch
+            }
             _isActionLoading.value = true
             _error.value = null
             try {
@@ -1104,7 +1147,6 @@ class EarthlinkSearchViewModel(
                 _isActionLoading.value = false
             }
         }
-    }
 
     fun changeAccountType(
         userIndex: Int,
@@ -1115,21 +1157,25 @@ class EarthlinkSearchViewModel(
         newPriceIqd: Double? = null
     ): kotlinx.coroutines.Job =
         viewModelScope.launch {
+            if (isSyntheticLocalIspIdentity(userIndex, userId)) {
+                _error.value = "Action unavailable for local-only account."
+                return@launch
+            }
             _isActionLoading.value = true
             _error.value = null
             try {
-                if (account != null) {
-                    val updated = account.copy(
-                        packageName = accountName,
-                        currentPriceIqd = newPriceIqd ?: account.currentPriceIqd,
-                        updatedAt = System.currentTimeMillis()
-                    )
-                    withContext(Dispatchers.IO) {
-                        localAccountRepository.saveAccount(updated)
-                    }
-                }
                 val success = gateway.changeAccountType(userIndex, userId, accountIndex)
                 if (success) {
+                    if (account != null) {
+                        val updated = account.copy(
+                            packageName = accountName,
+                            currentPriceIqd = newPriceIqd ?: account.currentPriceIqd,
+                            updatedAt = System.currentTimeMillis()
+                        )
+                        withContext(Dispatchers.IO) {
+                            localAccountRepository.saveAccount(updated)
+                        }
+                    }
                     _actionSuccess.value = "Package changed to $accountName successfully."
                     audit.logAction(
                         "CHANGE_PACKAGE",
@@ -1160,32 +1206,56 @@ class EarthlinkSearchViewModel(
         _revealedAccountPass.value = null
     }
 
-    fun revealUserPassword(userIndex: Int, userId: String) {
+    fun revealUserPassword(userIndex: Int, userId: String): kotlinx.coroutines.Job =
         viewModelScope.launch {
+            if (isSyntheticLocalIspIdentity(userIndex, userId)) {
+                _revealedUserPass.value = null
+                _error.value = "Action unavailable for local-only account."
+                return@launch
+            }
             try {
                 val pass = gateway.showUserPassword(userIndex, userId)
-                _revealedUserPass.value = pass ?: ""
-                audit.logAction("REVEAL_PASSWORD_USER", "USER", userId, "Revealed user portal password")
+                if (pass.isNullOrBlank()) {
+                    _revealedUserPass.value = null
+                    _error.value = "Failed to reveal user password."
+                } else {
+                    _revealedUserPass.value = pass
+                    audit.logAction("REVEAL_PASSWORD_USER", "USER", userId, "Revealed user portal password")
+                }
             } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                _revealedUserPass.value = ""
+                _revealedUserPass.value = null
+                _error.value = e.message ?: "Failed to reveal user password."
             }
         }
-    }
 
-    fun revealAccountPassword(userIndex: Int, userId: String) {
+    fun revealAccountPassword(userIndex: Int, userId: String): kotlinx.coroutines.Job =
         viewModelScope.launch {
+            if (isSyntheticLocalIspIdentity(userIndex, userId)) {
+                _revealedAccountPass.value = null
+                _error.value = "Action unavailable for local-only account."
+                return@launch
+            }
             try {
                 val pass = gateway.showAccountPassword(userIndex, userId)
-                _revealedAccountPass.value = pass ?: ""
-                audit.logAction("REVEAL_PASSWORD_ACCOUNT", "USER", userId, "Revealed broadband account password")
+                if (pass.isNullOrBlank()) {
+                    _revealedAccountPass.value = null
+                    _error.value = "Failed to reveal broadband account password."
+                } else {
+                    _revealedAccountPass.value = pass
+                    audit.logAction("REVEAL_PASSWORD_ACCOUNT", "USER", userId, "Revealed broadband account password")
+                }
             } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                _revealedAccountPass.value = ""
+                _revealedAccountPass.value = null
+                _error.value = e.message ?: "Failed to reveal broadband account password."
             }
         }
-    }
 
-    fun changeUserPassword(userIndex: Int, userId: String, newPass: String) {
+    fun changeUserPassword(userIndex: Int, userId: String, newPass: String): kotlinx.coroutines.Job =
         viewModelScope.launch {
+            if (isSyntheticLocalIspIdentity(userIndex, userId)) {
+                _error.value = "Action unavailable for local-only account."
+                return@launch
+            }
             _isActionLoading.value = true
             _error.value = null
             try {
@@ -1203,10 +1273,13 @@ class EarthlinkSearchViewModel(
                 _isActionLoading.value = false
             }
         }
-    }
 
-    fun changeAccountPassword(userIndex: Int, userId: String, newPass: String) {
+    fun changeAccountPassword(userIndex: Int, userId: String, newPass: String): kotlinx.coroutines.Job =
         viewModelScope.launch {
+            if (isSyntheticLocalIspIdentity(userIndex, userId)) {
+                _error.value = "Action unavailable for local-only account."
+                return@launch
+            }
             _isActionLoading.value = true
             _error.value = null
             try {
@@ -1222,7 +1295,6 @@ class EarthlinkSearchViewModel(
                 _error.value = e.message
             } finally {
                 _isActionLoading.value = false
-            }
         }
     }
 
@@ -1240,6 +1312,17 @@ class EarthlinkSearchViewModel(
                     withContext(Dispatchers.IO) {
                         localAccountRepository.saveAccount(updated)
                     }
+                }
+                val targetUserId = account?.earthlinkUsername ?: _selectedUser.value?.userID ?: ""
+                if (isSyntheticLocalIspIdentity(userIndex, targetUserId)) {
+                    _actionSuccess.value = if (prefs.getLanguage() == "ar") {
+                        "تم تعديل اسم المشترك بنجاح."
+                    } else {
+                        "Subscriber display name updated successfully."
+                    }
+                    audit.logAction("UPDATE_DISPLAY_NAME", "USER", userIndex.toString(), "Updated display name to $newName")
+                    loadUserDetail(userIndex, targetUserId)
+                    return@launch
                 }
                 val success = gateway.updateUserDisplayName(userIndex, newName)
                 if (success) {

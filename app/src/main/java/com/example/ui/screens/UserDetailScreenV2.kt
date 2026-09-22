@@ -370,7 +370,7 @@ fun UserDetailScreenV2(
                 keyboardController?.show()
             }
             
-            var resellerBalance by rememberSaveable { mutableStateOf(0.0) }
+            var resellerBalance by rememberSaveable { mutableStateOf<Double?>(null) }
             var packageCost by rememberSaveable { mutableStateOf(20000.0) }
             var isLoadingApiData by rememberSaveable { mutableStateOf(true) }
             
@@ -379,7 +379,7 @@ fun UserDetailScreenV2(
                 try {
                     resellerBalance = viewModel.getResellerBalance()
                 } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                    resellerBalance = 0.0
+                    resellerBalance = null
                 }
                 try {
                     val name = user.packageName?.trim()?.lowercase() ?: ""
@@ -407,7 +407,7 @@ fun UserDetailScreenV2(
                 isLoadingApiData = false
             }
 
-            val balanceAfter = resellerBalance - packageCost
+            val balanceAfter = resellerBalance?.let { it - packageCost }
 
             val performRefill: () -> Unit = {
                 if (!viewModel.hasDepositPassword()) {
@@ -638,7 +638,7 @@ fun UserDetailScreenV2(
                                             fontSize = 13.sp
                                         )
                                         Text(
-                                            text = if (isLoadingApiData) "..." else "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(resellerBalance.toDouble())} د.ع",
+                                            text = if (isLoadingApiData) "..." else if (resellerBalance != null) "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(resellerBalance!!.toDouble())} د.ع" else "—",
                                             color = Color.White,
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.Bold
@@ -657,9 +657,9 @@ fun UserDetailScreenV2(
                                             color = Color(0xFF9CA3AF),
                                             fontSize = 13.sp
                                         )
-                                        val balanceColor = if (balanceAfter >= 0) Color(0xFF34D399) else Color(0xFFF87171)
+                                        val balanceColor = if (balanceAfter == null) Color.White.copy(alpha = 0.5f) else if (balanceAfter >= 0) Color(0xFF34D399) else Color(0xFFF87171)
                                         Text(
-                                            text = if (isLoadingApiData) "..." else "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(balanceAfter.toDouble())} د.ع",
+                                            text = if (isLoadingApiData) "..." else if (balanceAfter != null) "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(balanceAfter.toDouble())} د.ع" else "—",
                                             color = balanceColor,
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.Bold
