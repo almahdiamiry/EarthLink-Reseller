@@ -75,6 +75,8 @@ class LegacyActivationRecycledUsernameTest {
         val username = "recycled_legacy_user"
         val staleAccountId = username
         val txId = "tx_legacy_recycled_001"
+        val operationCreatedAt = 2_000_000_000_000L
+        val staleAccountCreatedAt = operationCreatedAt - 86_400_000L
 
         accountDao.insert(
             LocalAccount(
@@ -83,7 +85,9 @@ class LegacyActivationRecycledUsernameTest {
                 displayName = "Old Subscriber",
                 currentPriceIqd = 25000.0,
                 debtIqd = 10000.0,
-                isHistoryOnlySubscriber = false
+                isHistoryOnlySubscriber = false,
+                createdAt = staleAccountCreatedAt,
+                updatedAt = staleAccountCreatedAt
             )
         )
 
@@ -94,9 +98,11 @@ class LegacyActivationRecycledUsernameTest {
                 accountId = username,
                 operationType = "ACTIVATION",
                 amountIqd = 35000L,
-                // Legacy shape: no durable localAccountId.
+                // Legacy shape: no durable localAccountId. The stale account predates the intent.
                 payloadJson = """{"username":"$username","phone":"07700000000","fullName":"New Subscriber","pkgIndex":1}""",
                 status = "PENDING",
+                createdAt = operationCreatedAt,
+                updatedAt = operationCreatedAt,
                 dispatchClaimCount = 1
             )
         )
@@ -135,5 +141,51 @@ class LegacyActivationRecycledUsernameTest {
             "No financial outbox should be emitted for a failed-closed legacy Activation",
             outboxDao.getByEntity(staleAccountId, "local_accounts").isEmpty()
         )
+    }
+
+    @Test
+    fun legacyActivation_existingAccountCreatedAfterIntent_remainsRecoverable() = runBlocking {
+        val username = "legacy_target_user"
+        val txId = "tx_legacy_target_002"
+        val operationCreatedAt = 2_000_000_100_000L
+        val accountCreatedAt = operationCreatedAt + 1_000L
+
+        pendingDao.insert(
+            PendingExternalOperation(
+                businessTransactionId = txId,
+                operationIntentId = "intent_legacy_target_002",
+                accountId = username,
+                operationType = "ACTIVATION",
+                amountIqd = 35000L,
+                payloadJson = """{"username":"$username","phone":"07700000001","fullName":"Recovered Subscriber","pkgIndex":1}""",
+                status = "PENDING",
+                createdAt = operationCreatedAt,
+                updatedAt = operationCreatedAt,
+                dispatchClaimCount = 1
+            )
+        )
+
+        accountDao.insert(
+            LocalAccount(
+                id = username,
+                earthlinkUsername = username,
+                displayName = "Recovered Subscriber",
+                currentPriceIqd = 35000.0,
+                debtIqd = 0.0,
+                createdAt = accountCreatedAt,
+                updatedAt = accountCreatedAt
+            )
+        )
+
+        val entry = ledgerRepository.resolvePendingOperationVerifiedSuccess(
+            txId,
+            "[VERIFIED ACTIVATION]"
+        )
+
+        assertEquals(txId, entry?.id)
+        assertEquals(username, entry?.accountId)
+        assertEquals(35000.0, entry?.amountIqd ?: 0.0, 0.001)
+        assertEquals(35000.0, accountDao.getByIdOneShot(username)?.debtIqd ?: 0.0, 0.001)
+        assertEquals("COMPLETED", pendingDao.getByBusinessTransactionId(txId)?.status)
     }
 }
