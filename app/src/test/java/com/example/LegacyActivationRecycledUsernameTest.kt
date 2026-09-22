@@ -107,17 +107,19 @@ class LegacyActivationRecycledUsernameTest {
             )
         )
 
+        var failedClosed = false
         try {
             ledgerRepository.resolvePendingOperationVerifiedSuccess(
                 txId,
                 "[VERIFIED ACTIVATION]"
             )
         } catch (e: IllegalStateException) {
-            assertTrue(
-                "Legacy Activation without durable target must fail closed",
-                e.message?.contains("MISSING_LOCAL_FINANCIAL_TARGET") == true
-            )
+            failedClosed = e.message?.contains("MISSING_LOCAL_FINANCIAL_TARGET") == true
         }
+        assertTrue(
+            "Legacy Activation without durable target must fail closed",
+            failedClosed
+        )
 
         val accountAfter = accountDao.getByIdOneShot(staleAccountId)
         assertEquals(
