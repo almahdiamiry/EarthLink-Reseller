@@ -1517,6 +1517,15 @@ class LocalLedgerRepositoryImpl(
                             if (existing.isHistoryOnlySubscriber) {
                                 throw IllegalStateException("MISSING_LOCAL_FINANCIAL_TARGET: Account ${op.accountId} is history-only and cannot be resurrected")
                             }
+                            // Legacy ACTIVATION records used the mutable username as accountId before
+                            // localAccountId was persisted. If an account with that ID predates the intent,
+                            // it is a username-recycled collision and is not a safe financial target.
+                            if (existing.createdAt < op.createdAt) {
+                                throw IllegalStateException(
+                                    "MISSING_LOCAL_FINANCIAL_TARGET: Legacy Activation accountId ${op.accountId} " +
+                                        "collides with a local account created before the operation intent"
+                                )
+                            }
                             existing
                         } else if (payloadObj.has("username") && payloadObj.optString("username").isNotBlank()) {
                             val parsedFullName = payloadObj.optString("fullName").takeIf { it.isNotBlank() }
