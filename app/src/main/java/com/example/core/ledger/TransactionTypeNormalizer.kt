@@ -18,13 +18,21 @@ object TransactionTypeNormalizer {
      */
     fun normalizeTransactionType(rawType: String?): String {
         if (rawType.isNullOrBlank()) return "note"
-        val trimmedUpper = rawType.trim().uppercase()
-        return when {
-            trimmedUpper in RENEWAL_TYPES -> "renewal"
-            trimmedUpper in TOOK_TYPES -> "took"
-            trimmedUpper in GAVE_TYPES -> "gave"
-            trimmedUpper in NOTE_TYPES -> "note"
-            else -> rawType.trim().lowercase()
+        return when (rawType) {
+            "renewal", "RENEWAL", "ADD", "add", "RENEW", "renew", "SUB_RENEW", "sub_renew", "SUB_RENEWAL", "sub_renewal", "RENEWAL_PAYMENT", "renewal_payment", "DEBT_RENEW", "debt_renew" -> "renewal"
+            "took", "TOOK", "DEBT_ADD", "debt_add", "DEBT", "debt", "DEBT_ADDED", "debt_added" -> "took"
+            "gave", "GAVE", "PAYMENT", "payment", "DEPOSIT", "deposit", "PAY", "pay" -> "gave"
+            "note", "NOTE" -> "note"
+            else -> {
+                val trimmedUpper = rawType.trim().uppercase()
+                when {
+                    trimmedUpper in RENEWAL_TYPES -> "renewal"
+                    trimmedUpper in TOOK_TYPES -> "took"
+                    trimmedUpper in GAVE_TYPES -> "gave"
+                    trimmedUpper in NOTE_TYPES -> "note"
+                    else -> rawType.trim().lowercase()
+                }
+            }
         }
     }
 
