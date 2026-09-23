@@ -687,10 +687,30 @@ object BackupManager {
                         updatedAt = System.currentTimeMillis()
                     )
 
-                    liveDb.localLedgerEntryDao().deleteByAccountId(accId)
                     liveDb.localAccountDao().update(updatedAccount)
-                    if (updatedLedgerList.isNotEmpty()) {
-                        liveDb.localLedgerEntryDao().insertAll(updatedLedgerList)
+
+                    val updatedEligibleById = updatedLedgerList.associateBy { it.id }
+
+                    for (entry in finalLedgerEntries) {
+                        val liveTx = liveLedgerById[entry.id]
+                        if (liveTx == null) {
+                            // New ledger ID -> INSERT
+                            val entryToInsert = updatedEligibleById[entry.id] ?: entry
+                            liveDb.localLedgerEntryDao().insert(entryToInsert)
+                        } else if (!liveTx.isSnapshotHistory) {
+                            // Existing non-snapshot row: update only if divergent payload selected USE_BACKUP, or debtAfter changed
+                            val targetEntry = updatedEligibleById[entry.id] ?: entry
+                            val payloadDiverged = liveTx.typeRaw != targetEntry.typeRaw ||
+                                    kotlin.math.abs(liveTx.amountIqd - targetEntry.amountIqd) >= 0.0001 ||
+                                    liveTx.accountId != targetEntry.accountId
+                            val debtChanged = kotlin.math.abs(liveTx.debtAfterIqd - targetEntry.debtAfterIqd) >= 0.0001
+                            if (payloadDiverged || debtChanged) {
+                                liveDb.localLedgerEntryDao().update(targetEntry)
+                            }
+                            // Existing ID + identical payload & unchanged debt -> retain existing row / NO-OP
+                        }
+                        // Existing snapshot-history rows (liveTx.isSnapshotHistory):
+                        // MUST remain physically present, MUST NOT be overwritten, MUST NOT be deleted -> NO-OP
                     }
                     accountsMergedCount++
                 }
@@ -840,7 +860,12 @@ object BackupManager {
                         updatedAt = System.currentTimeMillis()
                     )
                     mergedAccounts.add(finalAccount)
-                    mergedLedgers.addAll(finalLedgersForAcc)
+                    val debtAfterByTxId = finalLedgersForAcc.associate { it.id to it.debtAfterIqd }
+                    val allEntriesForAcc = accountLedgers.map { entry ->
+                        val updatedDebt = debtAfterByTxId[entry.id]
+                        if (updatedDebt != null) entry.copy(debtAfterIqd = updatedDebt) else entry
+                    }
+                    mergedLedgers.addAll(allEntriesForAcc)
                 }
             }
         }
