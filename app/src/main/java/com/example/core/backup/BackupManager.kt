@@ -51,10 +51,24 @@ object BackupManager {
             val diskDb = AppDatabase.getDatabase(context, ByteArray(0), tempPlainDbName)
             diskDb.openHelper.writableDatabase // Force creation of database file even if no data is written
             
-            val accList = liveDb.localAccountDao().getAllPersistedOneShot(limit = 100000, offset = 0)
-            if (accList.isNotEmpty()) diskDb.localAccountDao().insertAll(accList)
-            val ledgerList = liveDb.localLedgerEntryDao().getAllOneShot(limit = 100000, offset = 0)
-            if (ledgerList.isNotEmpty()) diskDb.localLedgerEntryDao().insertAll(ledgerList)
+            val batchSize = 1000
+            var accOffset = 0
+            while (true) {
+                val accChunk = liveDb.localAccountDao().getAllPersistedOneShot(limit = batchSize, offset = accOffset)
+                if (accChunk.isEmpty()) break
+                diskDb.localAccountDao().insertAll(accChunk)
+                accOffset += accChunk.size
+                if (accChunk.size < batchSize) break
+            }
+
+            var ledgerOffset = 0
+            while (true) {
+                val ledgerChunk = liveDb.localLedgerEntryDao().getAllOneShot(limit = batchSize, offset = ledgerOffset)
+                if (ledgerChunk.isEmpty()) break
+                diskDb.localLedgerEntryDao().insertAll(ledgerChunk)
+                ledgerOffset += ledgerChunk.size
+                if (ledgerChunk.size < batchSize) break
+            }
             for (b in liveDb.importBatchDao().getAllOneShot()) {
                 diskDb.importBatchDao().insert(b)
             }
