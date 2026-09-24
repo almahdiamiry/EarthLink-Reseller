@@ -1447,17 +1447,25 @@ object BackupManager {
 }
 
     suspend fun exportBackupToUri(context: Context, uri: Uri, password: String? = null): Boolean = withContext(Dispatchers.IO) {
+        var zipFile: File? = null
         try {
-            val zipFile = createLocalBackupZip(context, password)
-            context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+            zipFile = createLocalBackupZip(context, password)
+            val outputStream = context.contentResolver.openOutputStream(uri)
+                ?: run {
+                    Log.e(TAG, "Failed to open output stream for URI: $uri")
+                    zipFile.delete()
+                    return@withContext false
+                }
+            outputStream.use { out ->
                 FileInputStream(zipFile).use { inputStream ->
-                    inputStream.copyTo(outputStream)
+                    inputStream.copyTo(out)
                 }
             }
             zipFile.delete() // Cleanup temporary zip file
             Log.i(TAG, "Successfully exported backup to URI: $uri")
             true
         } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+            zipFile?.delete()
             Log.e(TAG, "Failed to export backup to URI: $uri", e)
             false
         }
