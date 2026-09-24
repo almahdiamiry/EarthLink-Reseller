@@ -3,8 +3,9 @@ package com.example.core.ledger
 object NoteCleaner {
 
     // Pre-compiled regex patterns to avoid repeated object allocations on every ledger entry cleanup in UI list renderings.
-    private val SEGMENT_SPLIT_REGEX = Regex("""\s*\|\s*|\s+-\s+|\s*:\s*""")
+    private val SEGMENT_SPLIT_REGEX = Regex("""\s*\|\s*|\s+-\s+|(?<![\d\u0660-\u0669])\s*:\s*|\s*:\s*(?![\d\u0660-\u0669])""")
     private val WHITESPACE_SPLIT_REGEX = Regex("""\s+""")
+    private val TIME_REGEX = Regex("""[\d\u0660-\u0669]{1,2}:[\d\u0660-\u0669]{2}""")
 
     private val PREFIXES = listOf(
         "[RENEW_PAY]",
@@ -132,7 +133,7 @@ object NoteCleaner {
 
         // Extract only letters
         val lettersOnly = extractLettersOnly(trimmed)
-        if (lettersOnly.isEmpty()) {
+        if (lettersOnly.isEmpty() && !TIME_REGEX.containsMatchIn(trimmed)) {
             // Pure numbers or punctuation
             return true
         }
@@ -144,7 +145,7 @@ object NoteCleaner {
         }
 
         val remainingLetters = extractLettersOnly(afterBoilerplate)
-        if (remainingLetters.isEmpty()) {
+        if (remainingLetters.isEmpty() && !TIME_REGEX.containsMatchIn(afterBoilerplate)) {
             return true
         }
 
@@ -152,7 +153,7 @@ object NoteCleaner {
         val words = afterBoilerplate.split(WHITESPACE_SPLIT_REGEX).map { it.trim().lowercase() }.filter { it.isNotEmpty() }
         val nonNoiseWords = words.filterNot { word ->
             val letters = extractLettersOnly(word)
-            letters.isEmpty() || NOISE_WORDS.contains(word) || NOISE_WORDS.contains(letters)
+            (letters.isEmpty() && !TIME_REGEX.containsMatchIn(word)) || NOISE_WORDS.contains(word) || NOISE_WORDS.contains(letters)
         }
 
         return nonNoiseWords.isEmpty()

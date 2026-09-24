@@ -65,19 +65,44 @@ class NoteCleanerTest {
     }
 
     @Test
+    fun `preserves legitimate time expressions in user notes`() {
+        // ASCII digits
+        assertEquals("تجديد 10:30", NoteCleaner.extractGenuineNote("تجديد 10:30"))
+        assertEquals("الزبون طلب التجديد الساعة 10:30", NoteCleaner.extractGenuineNote("الزبون طلب التجديد الساعة 10:30"))
+        assertEquals("تجديد 10:30 بمبلغ 40,000", NoteCleaner.extractGenuineNote("تجديد 10:30 بمبلغ 40,000"))
+        assertEquals("تجديد 10:30 بمبلغ 40,000", NoteCleaner.extractGenuineNote("تجديد 10:30 بمبلغ 40,000", 40000.0))
+
+        // Arabic-Indic digits
+        assertEquals("تجديد ١٠:٣٠", NoteCleaner.extractGenuineNote("تجديد ١٠:٣٠"))
+        assertEquals("الزبون طلب التجديد الساعة ١٠:٣٠", NoteCleaner.extractGenuineNote("الزبون طلب التجديد الساعة ١٠:٣٠"))
+
+        // Edge cases: HH:mm:ss, embedded in sentence, punctuation, suffix text
+        assertEquals("تجديد 10:30:45", NoteCleaner.extractGenuineNote("تجديد 10:30:45"))
+        assertEquals("الزبون طلب التجديد الساعة 10:30 صباحاً", NoteCleaner.extractGenuineNote("الزبون طلب التجديد الساعة 10:30 صباحاً"))
+        assertEquals("تجديد 10:30!", NoteCleaner.extractGenuineNote("تجديد 10:30!"))
+        assertEquals("تجديد 10:30، تم", NoteCleaner.extractGenuineNote("تجديد 10:30، تم"))
+        assertEquals("تجديد 10:30 واصل", NoteCleaner.extractGenuineNote("تجديد 10:30 واصل"))
+    }
+
+    @Test
     fun `regex instances are compiled once as private constants and reused`() {
         val segmentField = NoteCleaner::class.java.getDeclaredField("SEGMENT_SPLIT_REGEX").apply { isAccessible = true }
         val whitespaceField = NoteCleaner::class.java.getDeclaredField("WHITESPACE_SPLIT_REGEX").apply { isAccessible = true }
+        val timeField = NoteCleaner::class.java.getDeclaredField("TIME_REGEX").apply { isAccessible = true }
 
         val segmentRegex1 = segmentField.get(NoteCleaner) as Regex
         val segmentRegex2 = segmentField.get(NoteCleaner) as Regex
         val wsRegex1 = whitespaceField.get(NoteCleaner) as Regex
         val wsRegex2 = whitespaceField.get(NoteCleaner) as Regex
+        val timeRegex1 = timeField.get(NoteCleaner) as Regex
+        val timeRegex2 = timeField.get(NoteCleaner) as Regex
 
         assertSame(segmentRegex1, segmentRegex2)
         assertSame(wsRegex1, wsRegex2)
-        assertEquals("""\s*\|\s*|\s+-\s+|\s*:\s*""", segmentRegex1.pattern)
+        assertSame(timeRegex1, timeRegex2)
+        assertEquals("""\s*\|\s*|\s+-\s+|(?<![\d\u0660-\u0669])\s*:\s*|\s*:\s*(?![\d\u0660-\u0669])""", segmentRegex1.pattern)
         assertEquals("""\s+""", wsRegex1.pattern)
+        assertEquals("""[\d\u0660-\u0669]{1,2}:[\d\u0660-\u0669]{2}""", timeRegex1.pattern)
     }
 }
 
