@@ -527,7 +527,10 @@ class RemoteSyncCoordinator(
                     val preFetchedAccountTombstone = metadataDao.get("tombstone:account:${entry.accountId}")?.toLongOrNull()
                     if (preFetchedAccountTombstone == null || preFetchedAccountTombstone <= 0L) {
                         accountDao.upsert(event.preFetchedParentAccount)
-                        metadataDao.putMonotonicRemoteVersion("remote_version:account:${event.preFetchedParentAccount.id}", event.remoteVersion)
+                        val parentAccountVersion = event.preFetchedParentAccount.updatedAt
+                        if (parentAccountVersion > 0L) {
+                            metadataDao.putMonotonicRemoteVersion("remote_version:account:${event.preFetchedParentAccount.id}", parentAccountVersion)
+                        }
                     }
                 }
                 if (accountDao.getByIdOneShot(entry.accountId) != null) {
