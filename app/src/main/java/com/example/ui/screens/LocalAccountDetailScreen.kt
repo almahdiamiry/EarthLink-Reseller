@@ -75,7 +75,10 @@ fun LocalAccountDetailScreen(
     val ledger by viewModel.ledgerEntries.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val isAr = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val prefs = remember(context) { (context.applicationContext as? EarthlinkApp)?.preferenceManager }
+    val currentLangState = prefs?.languageFlow?.collectAsStateWithLifecycle(initialValue = prefs?.getLanguage() ?: "ar")
+    val currentLang = currentLangState?.value ?: if (LocalLayoutDirection.current == LayoutDirection.Rtl) "ar" else "en"
+    val isAr = currentLang == "ar"
 
     LaunchedEffect(error) {
         val msg = error
@@ -218,13 +221,16 @@ fun LocalAccountDetailScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+    CompositionLocalProvider(
+        LocalLayoutDirection provides (if (isAr) LayoutDirection.Rtl else LayoutDirection.Ltr)
     ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
                 Icon(
@@ -241,10 +247,8 @@ fun LocalAccountDetailScreen(
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
-            return
-        }
-
-        Card(modifier = Modifier.fillMaxWidth()) {
+        } else {
+            Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(text = acc.displayName, fontWeight = FontWeight.Bold, fontSize = 18.sp)
@@ -393,6 +397,8 @@ fun LocalAccountDetailScreen(
                 }
             )
         }
+        }
+    }
     }
 }
 
