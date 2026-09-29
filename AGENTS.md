@@ -314,4 +314,21 @@ When starting any new task, follow this exact loop:
 5. **Proportionally Verify:** Run targeted verification.
 6. **STOP:** When the task is complete and verified, stop. Do not expand scope.
 
+---
+
+## 12.1 GPS Update Obligation
+
+`PROJECT_ROADMAP.md` is the Dynamic State GPS ([§3](#3-canonical-navigation-router-where-truth-lives)). A stale GPS is a **navigation defect, not cosmetic drift** — it forces every future agent to re-derive the current state from scratch.
+
+**When any workstream closes** — a bug-hunt round, a milestone, or a batch of fixes that changed the verified test baseline — you **MUST** update the `CURRENT OPERATING STATE` block in [`PROJECT_ROADMAP.md`](PROJECT_ROADMAP.md) in the same task:
+
+| Field | Set it to |
+|:---|:---|
+| `CURRENT VERIFIED TEST BASELINE` | The **measured** count from the most recent full run — never a remembered or projected number |
+| `CURRENT CHECKPOINT` | A commit **proven to exist**: `git cat-file -e "$c"; if ($LASTEXITCODE -eq 0)` |
+
+> **Verify the verifier.** Use `$LASTEXITCODE` after `git cat-file -e`, **not** `$?` following `2>$null` — that test is invalid and will report existing commits as missing. Do not report a value you did not confirm. (Recorded as a process defect in [`LL-BUG-HUNT-METHODOLOGY`](docs/LESSONS_LEARNED/LL-BUG-HUNT-METHODOLOGY.md) §7.1.)
+
+**Do not** record a baseline you have not just measured, and do not hand-edit the checkpoint to a ref you have not verified. If the work changed no test and moved no milestone, the GPS correctly stays as-is — silence is a valid outcome.
+
 

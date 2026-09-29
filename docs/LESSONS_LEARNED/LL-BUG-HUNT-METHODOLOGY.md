@@ -36,6 +36,42 @@ Both fixes are *correct* and worth keeping as defence in depth. The defect was o
 
 ---
 
+## 2.5 Round Sizing — Full Round vs Targeted Probe
+
+Not every bug investigation deserves the full pipeline. The nine-round ceremony costs real time, and
+running it on a single already-identified candidate is how it gets skipped entirely. Size the work by
+**candidate provenance**, not by candidate count or file count.
+
+| | **FULL ROUND** | **TARGETED PROBE** |
+|---|---|:---|
+| **Trigger** | Candidates **not yet identified**; hunting across subsystems | Candidate **already in hand** — a code-review concern, a named seam, a regression suspicion |
+| **Pipeline (§3)** | Full: Recon → Hunter → Skeptic → Referee → RED | Branching and fan-out **not required** |
+| **Separate Skeptic (§3.1)** | Required | Not required |
+| **Real-data measurement (§4)** | Required before naming a lead | Not required |
+| **Six gates (§3.2)** | All six | Gates 1 (reachability) and 4 (existing guard) still apply |
+| **Execution** | Required | **Required — unchanged** |
+
+A **targeted probe** must still, at minimum:
+
+1. **Name the exact production caller.** A parameter with a `null` default is not evidence about
+   production behaviour — count the real call sites.
+2. **Execute a diagnostic that settles the verdict.** Argument is not a substitute.
+3. **Assert preconditions**, so the probe cannot pass for the wrong reason.
+4. **State triggered vs latent**, per §2.
+5. **Report the verdict**, including retractions and downgrades, per §7.
+
+> **The load-bearing line: the light tier drops the branching, never the execution.** A probe that
+> may *reason* instead of *run* would have shipped both §7.1 claims as confident findings. The first
+> looked mechanical and was killed only by a counting delegate (`productionDuplicateGenReads = 0`);
+> the second reproduced a real intermediate state (`SKIPPED_DUPLICATE`) and was still not a defect
+> because a downstream guard neutralized it — knowable only by running the recovery leg.
+
+**Escalation.** If a probe confirms a genuine production defect, it **becomes a full-round finding**:
+assign a `BUG-*` identifier, write the RED test, fix, run the full suite, and record it in the results
+document. The lighter *discovery* process never licenses a lighter *record*.
+
+---
+
 ## 3. The Pipeline
 
 ```text
