@@ -410,3 +410,19 @@ invariants:
       - "source_sha"
       - "test_results"
       - "pattern_scan"
+
+# Authoritative check-type policy for the forbidden-pattern registry.
+#
+# Certain registry rules exist precisely to assert the PRESENCE AND EXECUTION of a
+# mandatory behavioural fixture. A `regex` rule that legitimately matches nothing is
+# schema-valid and would pass the structural scan with zero violations, silently
+# replacing real behavioural evidence with a tautology. This mapping is the single
+# source of truth for which check_type each such rule MUST declare.
+#
+# It lives in this contract rather than in contract/forbidden_patterns.yaml on purpose:
+# a downgrade edits the registry, so a policy stored inside the registry could be
+# removed by the same edit that removes the rule. Enforced by
+# scripts/scan_forbidden_patterns.py (validate_registry).
+required_forbidden_pattern_check_types:
+  PHASE2-VERSION-AHEAD-OF-STATE: "behavioral_fixture"
+  PHASE2-REPLAY-AFTER-CAPTURE-FAILURE: "behavioral_fixture"

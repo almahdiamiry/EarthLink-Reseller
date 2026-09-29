@@ -36,14 +36,49 @@ if hasattr(sys.stdout, "reconfigure"):
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DEFAULT_REGISTRY_PATH = os.path.join(REPO_ROOT, "contract", "forbidden_patterns.yaml")
+DEFAULT_INVARIANT_CONTRACT_PATH = os.path.join(REPO_ROOT, "contract", "invariant_contract.yaml")
 VALID_INVARIANTS = {f"INV-{i:02d}" for i in range(1, 17)}
 SUPPORTED_CHECK_TYPES = {"regex", "semantic_combo", "file_glob", "cross_file_match", "behavioral_fixture"}
+REQUIRED_CHECK_TYPES_KEY = "required_forbidden_pattern_check_types"
 
 
-def validate_registry(registry_data: dict) -> list[str]:
+def load_required_check_types(contract_path: str = DEFAULT_INVARIANT_CONTRACT_PATH) -> dict:
+    """
+    Loads the authoritative rule-id -> required check_type policy from the canonical
+    invariant contract.
+
+    This is the single source of truth. It is deliberately read from a file separate
+    from the registry so that downgrading a rule in forbidden_patterns.yaml cannot also
+    delete the policy that forbids the downgrade.
+    """
+    if not os.path.exists(contract_path):
+        return {}
+
+    try:
+        with open(contract_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+    except Exception:
+        return {}
+
+    if not isinstance(data, dict):
+        return {}
+
+    policy = data.get(REQUIRED_CHECK_TYPES_KEY)
+    if not isinstance(policy, dict):
+        return {}
+
+    return {str(k): str(v) for k, v in policy.items() if k and v}
+
+
+def validate_registry(registry_data: dict, required_check_types: dict | None = None) -> list[str]:
     """
     Validates the structure and content of the forbidden patterns registry.
     Returns a list of error messages (empty if valid).
+
+    When `required_check_types` is supplied, any rule that is present in the registry
+    but declares a check_type other than its required one is rejected. This closes the
+    schema-valid downgrade path: a rule pinned to `behavioral_fixture` cannot be
+    weakened to a `regex` that never matches.
     """
     errors = []
 
@@ -57,6 +92,7 @@ def validate_registry(registry_data: dict) -> list[str]:
     if len(patterns) == 0:
         return ["'patterns' list cannot be empty."]
 
+    policy = required_check_types or {}
     seen_ids = set()
 
     for idx, pat in enumerate(patterns):
@@ -86,6 +122,18 @@ def validate_registry(registry_data: dict) -> list[str]:
         check_type = pat.get("check_type")
         if not check_type or check_type not in SUPPORTED_CHECK_TYPES:
             errors.append(f"[{p_id}]: 'check_type' must be one of {sorted(list(SUPPORTED_CHECK_TYPES))}, got '{check_type}'.")
+            continue
+
+        # Authoritative check-type policy. Enforced separately from schema validity:
+        # a downgraded rule is usually still schema-valid (a regex that matches
+        # nothing passes every structural check), so it must be rejected explicitly.
+        required_type = policy.get(p_id)
+        if required_type and check_type != required_type:
+            errors.append(
+                f"[{p_id}]: 'check_type' must be '{required_type}' per the authoritative "
+                f"invariant contract policy, got '{check_type}'. Downgrading a mandatory "
+                f"{required_type} rule to a weaker check type is not permitted."
+            )
             continue
 
         # Check-specific validation
@@ -388,7 +436,11 @@ def is_line_in_allowed_functions(line_idx: int, allowed_funcs: list[str], functi
     return False
 
 
-def scan_patterns(root_dir: str = REPO_ROOT, registry_path: str = DEFAULT_REGISTRY_PATH) -> dict:
+def scan_patterns(
+    root_dir: str = REPO_ROOT,
+    registry_path: str = DEFAULT_REGISTRY_PATH,
+    invariant_contract_path: str = DEFAULT_INVARIANT_CONTRACT_PATH,
+) -> dict:
     """
     Executes the forbidden pattern scan across the specified repository root.
     Returns a dictionary containing full scan results and violation details.
@@ -416,7 +468,10 @@ def scan_patterns(root_dir: str = REPO_ROOT, registry_path: str = DEFAULT_REGIST
             "pattern_results": {}
         }
 
-    val_errors = validate_registry(registry_data)
+    val_errors = validate_registry(
+        registry_data,
+        required_check_types=load_required_check_types(invariant_contract_path),
+    )
     if val_errors:
         return {
             "status": "FAIL",
@@ -689,6 +744,8 @@ def scan_patterns(root_dir: str = REPO_ROOT, registry_path: str = DEFAULT_REGIST
 def main():
     parser = argparse.ArgumentParser(description="Scan repository for forbidden architectural patterns.")
     parser.add_argument("--registry", default=DEFAULT_REGISTRY_PATH, help="Path to forbidden_patterns.yaml")
+    parser.add_argument("--invariant-contract", default=DEFAULT_INVARIANT_CONTRACT_PATH,
+                        help="Path to invariant_contract.yaml (authoritative required check-type policy)")
     parser.add_argument("--root", default=REPO_ROOT, help="Repository root directory")
     parser.add_argument("--output", help="Optional JSON output file path")
     parser.add_argument("--validate-only", action="store_true", help="Validate registry syntax only")
@@ -708,7 +765,12 @@ def main():
             except Exception as e:
                 print(f"[FAIL] YAML syntax error: {e}")
                 sys.exit(2)
-        errors = validate_registry(data)
+        errors = validate_registry(
+            data,
+            required_check_types=load_required_check_types(
+                os.path.abspath(args.invariant_contract)
+            ),
+        )
         if errors:
             print(f"[FAIL] Registry validation failed with {len(errors)} error(s):")
             for err in errors:

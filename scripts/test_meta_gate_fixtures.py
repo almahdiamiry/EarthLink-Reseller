@@ -28,8 +28,13 @@ if hasattr(sys.stdout, "reconfigure"):
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scripts.run_verified_command import run_verified_command
-from scripts.scan_forbidden_patterns import scan_patterns
-from scripts.test_forbidden_pattern_registry import validate_registry
+from scripts.scan_forbidden_patterns import (
+    scan_patterns,
+    validate_registry,
+    load_required_check_types,
+    DEFAULT_REGISTRY_PATH,
+    DEFAULT_INVARIANT_CONTRACT_PATH,
+)
 
 def test_gov01_partial_implementation():
     print("\n--- [GOV-01] Testing Partial Implementation Detection ---")
@@ -111,21 +116,84 @@ def test_gov03_similar_but_not_equivalent_test():
 
 def test_gov04_regex_downgrade():
     print("\n--- [GOV-04] Testing Regex Downgrade Rejection ---")
-    # Verify that converting behavioral_fixture to regex fails validation or policy check
-    rule_downgraded = {
-        "id": "PHASE2-VERSION-AHEAD-OF-STATE",
-        "name": "Version Ahead of State",
-        "invariant": "INV-06",
-        "check_type": "regex",  # Downgraded from behavioral_fixture
-        "pattern": "caseD",
-        "description": "Downgraded check"
-    }
-    
-    # Structural policy check: behavioral rules MUST be behavioral_fixture
-    required_behavioral_rule_ids = {"PHASE2-VERSION-AHEAD-OF-STATE", "PHASE2-REPLAY-AFTER-CAPTURE-FAILURE"}
-    assert rule_downgraded["id"] in required_behavioral_rule_ids
-    assert rule_downgraded["check_type"] != "behavioral_fixture"
-    print("✅ GOV-04 PASS: System successfully detects and rejects regex downgrade on behavioral rules.")
+    # Adversarial INTEGRATION test against the real registry and the real scanner.
+    #
+    # Previously this test built a rule dict inline and asserted against a hardcoded ID
+    # set, so it proved only that its own local test data was self-consistent. The
+    # scanner accepted a schema-valid downgrade of a mandatory behavioral_fixture into a
+    # regex that never matches, so nothing actually rejected the downgrade.
+    #
+    # This now copies the REAL canonical registry to a temp dir, downgrades the REAL
+    # pinned rules to a schema-valid non-matching regex, and requires the REAL scanner to
+    # fail with a policy violation (not merely a YAML/schema error).
+    policy = load_required_check_types()
+    assert policy, (
+        "Authoritative required check-type policy is missing or unreadable from "
+        f"{DEFAULT_INVARIANT_CONTRACT_PATH}. The downgrade defense would be vacuous."
+    )
+
+    with open(DEFAULT_REGISTRY_PATH, "r", encoding="utf-8") as f:
+        canonical = yaml.safe_load(f)
+
+    # Prove the fixture itself is valid BEFORE using it as evidence (valid-baseline first).
+    baseline_errors = validate_registry(
+        yaml.safe_load(yaml.dump(canonical)), required_check_types=policy
+    )
+    assert not baseline_errors, f"Canonical registry must be policy-clean: {baseline_errors}"
+
+    for rule_id in policy:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mutated = yaml.safe_load(yaml.dump(canonical))
+
+            target = None
+            for pat in mutated["patterns"]:
+                if pat["id"] == rule_id:
+                    target = pat
+                    break
+            assert target is not None, f"Policy names '{rule_id}' but the registry has no such rule"
+
+            # Schema-valid downgrade: valid YAML, valid regex, guaranteed to match nothing.
+            target.clear()
+            target.update({
+                "id": rule_id,
+                "invariant": "INV-06",
+                "description": f"DOWNGRADED {rule_id} to a schema-valid non-matching regex",
+                "check_type": "regex",
+                "file_glob": "app/src/main/java/**/*.kt",
+                "forbidden_regexes": ["ZZZ_NEVER_MATCHES_ANY_SOURCE_12345"],
+            })
+
+            # Prove the mutation is itself schema-valid, so a rejection cannot be
+            # attributed to a malformed definition.
+            mutated_errors = validate_registry(yaml.safe_load(yaml.dump(mutated)))
+            assert not mutated_errors, (
+                f"Mutation must be schema-valid for this test to be meaningful; got: {mutated_errors}"
+            )
+
+            reg_file = os.path.join(tmpdir, "forbidden_patterns.yaml")
+            with open(reg_file, "w", encoding="utf-8") as f:
+                yaml.dump(mutated, f)
+
+            res = scan_patterns(
+                root_dir=tmpdir,
+                registry_path=reg_file,
+                invariant_contract_path=DEFAULT_INVARIANT_CONTRACT_PATH,
+            )
+
+            assert res["status"] == "FAIL", (
+                f"Scanner must FAIL when '{rule_id}' is downgraded from {policy[rule_id]} "
+                f"to a schema-valid regex. It must never accept a check that cannot fail."
+            )
+
+            # The failure must be the policy violation, not a YAML/schema failure.
+            val_errors = " ".join(res.get("validation_errors") or [])
+            assert policy[rule_id] in val_errors and rule_id in val_errors, (
+                f"Downgrade of '{rule_id}' must be attributed to the authoritative check-type "
+                f"policy, not a generic schema error. Got: {res.get('validation_errors')}"
+            )
+
+    print(f"✅ GOV-04 PASS: Scanner rejected schema-valid downgrades of {sorted(policy)} "
+          f"(verified against the real registry and the real scanner).")
 
 def test_gov05_narrative_false_pass():
     print("\n--- [GOV-05] Testing Narrative False PASS Rejection ---")
