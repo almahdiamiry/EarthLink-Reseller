@@ -304,6 +304,10 @@ class LocalAccountsViewModel(
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             _isLoading.value = true
             _error.value = null
+            // Clear the previous run's result too. This ViewModel is Activity-scoped, and the
+            // screen renders the success card and the error banner as sibling composables, so a
+            // stale green "Import Completed" card would sit next to this attempt's failure.
+            _importResult.value = null
             var tempFile: java.io.File? = null
             try {
                 val contentResolver = appContext.contentResolver
