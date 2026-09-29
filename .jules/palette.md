@@ -5,3 +5,7 @@
 ## 2026-05-03 - RTL Layout Direction & Language Flow Observation in Standalone Compose Screens
 **Learning:** Standalone navigation destination screens in Jetpack Compose that do not observe user language preferences from `PreferenceManager.languageFlow` may fall back to system layout direction, resulting in LTR rendering and English TalkBack accessibility announcements even when the user selected Arabic in app preferences.
 **Action:** Use `(context.applicationContext as? EarthlinkApp)?.preferenceManager` with safe null fallback, observe `languageFlow`, and wrap the screen layout in `CompositionLocalProvider(LocalLayoutDirection provides (if (isAr) LayoutDirection.Rtl else LayoutDirection.Ltr))`.
+
+## 2026-05-04 - Complete Localization Consistency across Top-Level Cards and Action Buttons
+**Learning:** In multi-language Compose screens observing `languageFlow`, partial localization where lower content blocks (e.g. audit logs) are translated while top status cards and action buttons remain in hardcoded English creates a confusing hybrid-language UI for Arabic operators. Additionally, `SimpleDateFormat` used in date labels must be hoisted with `remember` to prevent GC allocation jank on recompositions.
+**Action:** Always check all text nodes, status mappings, and action buttons in a composable for `currentLang == "ar"` checks and hoist `SimpleDateFormat` allocations using `remember`.

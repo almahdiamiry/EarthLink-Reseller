@@ -71,6 +71,8 @@ fun SyncStatusScreen(
     val progress by viewModel.isSyncingProgress.collectAsStateWithLifecycle()
     val logs by viewModel.auditLogs.collectAsStateWithLifecycle()
 
+    val syncDateFormat = remember { java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -78,36 +80,56 @@ fun SyncStatusScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text(text = "Cloud Sync & Audit", fontSize = 21.sp, fontWeight = FontWeight.Bold)
+        Text(
+            text = if (currentLang == "ar") "مزامنة السحابة والسجل" else "Cloud Sync & Audit",
+            fontSize = 21.sp,
+            fontWeight = FontWeight.Bold
+        )
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 val statusTextStr = when (state) {
-                    SyncStatusState.IDLE -> "IDLE (WAITING CYCLE)"
-                    SyncStatusState.SYNCING -> "UPLOADING TO CLOUD..."
-                    SyncStatusState.OFFLINE -> "OFFLINE MODE ENABLED"
-                    SyncStatusState.ERROR -> "SYNC ERROR REACHED"
-                    SyncStatusState.AUTH_REQUIRED -> "AUTHENTICATION NEEDED"
-                    SyncStatusState.COMPLETE -> "LEDGER COMPLETELY SYNCED"
-                    SyncStatusState.COMPLETE_WITH_ERRORS -> "SYNC COMPLETED WITH ERRORS"
+                    SyncStatusState.IDLE -> if (currentLang == "ar") "خامل (انتظار المزامنة)" else "IDLE (WAITING CYCLE)"
+                    SyncStatusState.SYNCING -> if (currentLang == "ar") "جاري الرفع إلى السحابة..." else "UPLOADING TO CLOUD..."
+                    SyncStatusState.OFFLINE -> if (currentLang == "ar") "وضع عدم الاتصال مفعل" else "OFFLINE MODE ENABLED"
+                    SyncStatusState.ERROR -> if (currentLang == "ar") "حدث خطأ في المزامنة" else "SYNC ERROR REACHED"
+                    SyncStatusState.AUTH_REQUIRED -> if (currentLang == "ar") "يتطلب تسجيل الدخول" else "AUTHENTICATION NEEDED"
+                    SyncStatusState.COMPLETE -> if (currentLang == "ar") "تمت المزامنة بالكامل" else "LEDGER COMPLETELY SYNCED"
+                    SyncStatusState.COMPLETE_WITH_ERRORS -> if (currentLang == "ar") "اكتملت المزامنة مع وجود أخطاء" else "SYNC COMPLETED WITH ERRORS"
                 }
-                Text(text = "Sync Status: $statusTextStr", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-
-                Text(text = "Firebase User UID: ${viewModel.getFirebaseUid() ?: "Pending anonymous link"}", fontSize = 12.sp, color = Color.Gray)
-
-                val dateStr = if (lastSyncTime > 0) java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(lastSyncTime)) else "Never"
-                Text(text = "Last Cloud Backup: $dateStr", fontSize = 13.sp)
-
                 Text(
-                    text = "Outbox Queue Size: $pendingCount changes pending synchronization",
+                    text = if (currentLang == "ar") "حالة المزامنة: $statusTextStr" else "Sync Status: $statusTextStr",
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                val pendingUidLabel = if (currentLang == "ar") "بانتظار الربط" else "Pending anonymous link"
+                val firebaseUidText = viewModel.getFirebaseUid() ?: pendingUidLabel
+                Text(
+                    text = if (currentLang == "ar") "معرف حساب Firebase: $firebaseUidText" else "Firebase User UID: $firebaseUidText",
+                    fontSize = 12.sp,
+                    color = Color.Gray
+                )
+
+                val neverStr = if (currentLang == "ar") "أبداً" else "Never"
+                val dateStr = if (lastSyncTime > 0) syncDateFormat.format(java.util.Date(lastSyncTime)) else neverStr
+                Text(
+                    text = if (currentLang == "ar") "آخر نسخة سحابية: $dateStr" else "Last Cloud Backup: $dateStr",
+                    fontSize = 13.sp
+                )
+
+                val outboxText = if (currentLang == "ar") "حجم قائمة الانتظار: $pendingCount تغييرات بانتظار المزامنة" else "Outbox Queue Size: $pendingCount changes pending synchronization"
+                Text(
+                    text = outboxText,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 13.sp,
                     color = if (pendingCount > 0) Color(0xFFE65100) else Color(0xFF2E7D32)
                 )
 
                 if (failedCount > 0) {
+                    val retryWarningText = if (currentLang == "ar") "⚠️ إعادة محاولة العناصر الفاشلة: $failedCount عناصر واجهت أخطاء وهي قيد الانتظار." else "⚠️ Retrying Failed Items: $failedCount items encountered sync errors and remain queued for retry."
                     Text(
-                        text = "⚠️ Retrying Failed Items: $failedCount items encountered sync errors and remain queued for retry.",
+                        text = retryWarningText,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.error
@@ -122,7 +144,7 @@ fun SyncStatusScreen(
                         enabled = viewModel.getFirebaseUid() == null,
                         modifier = Modifier.weight(1f).heightIn(min = 40.dp)
                     ) {
-                        Text("Connect Firebase")
+                        Text(if (currentLang == "ar") "ربط Firebase" else "Connect Firebase")
                     }
 
                     Button(
@@ -134,7 +156,7 @@ fun SyncStatusScreen(
                         if (progress) {
                             CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White)
                         } else {
-                            Text("Sync Ledgers Now")
+                            Text(if (currentLang == "ar") "مزامنة السجلات الآن" else "Sync Ledgers Now")
                         }
                     }
                 }
@@ -145,7 +167,7 @@ fun SyncStatusScreen(
                         enabled = !progress,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp)
                     ) {
-                        Text("🔄 Reset Backoff & Retry $failedCount Failed Items")
+                        Text(if (currentLang == "ar") "🔄 إعادة المحاولة ($failedCount عناصر)" else "🔄 Reset Backoff & Retry $failedCount Failed Items")
                     }
                 }
             }
