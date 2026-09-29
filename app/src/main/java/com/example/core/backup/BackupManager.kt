@@ -25,6 +25,9 @@ object BackupManager {
     private const val TAG = "BackupManager"
     private const val DB_NAME = "earthlink_reseller_db"
 
+    /** Filename prefix for the persistent pre-restore safety snapshot. Never quota-pruned. */
+    const val PRE_RESTORE_BACKUP_PREFIX = "pre_restore_backup_"
+
     suspend fun createLocalBackupZip(context: Context, password: String? = null): File = withContext(Dispatchers.IO) {
         com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.BACKUP) {
             createLocalBackupZipInternal(context, password)
@@ -188,8 +191,14 @@ object BackupManager {
             tempZip.copyTo(finalZipFile, overwrite = true)
             tempZip.delete()
             
-            // Delete old backups if more than 30
-            val files = dailyBackupsDir.listFiles()?.filter { it.name.endsWith(".zip") }?.sortedBy { it.lastModified() }
+            // Delete old backups if more than 30.
+            // The rolling quota applies to ROLLING backups only. A pre_restore_backup_* snapshot
+            // is the operator's only recovery path to the dataset a Replace just overwrote, so
+            // TQ-12 ("easy recovery to the pre-restore backup"; "Replace cannot silently destroy
+            // the pre-restore dataset") requires it to survive this prune.
+            val files = dailyBackupsDir.listFiles()
+                ?.filter { it.name.endsWith(".zip") && !it.name.startsWith(PRE_RESTORE_BACKUP_PREFIX) }
+                ?.sortedBy { it.lastModified() }
             if (files != null && files.size > 30) {
                 val filesToDelete = files.take(files.size - 30)
                 for (f in filesToDelete) {
@@ -1168,7 +1177,7 @@ object BackupManager {
             val dailyBackupsDir = getBackupsDirectory(context)
             val tempZip = createLocalBackupZipInternal(context)
             val timeStamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss_SSS", Locale.US).format(Date())
-            val preRestoreFile = File(dailyBackupsDir, "pre_restore_backup_$timeStamp.zip")
+            val preRestoreFile = File(dailyBackupsDir, "${PRE_RESTORE_BACKUP_PREFIX}$timeStamp.zip")
             tempZip.copyTo(preRestoreFile, overwrite = true)
             tempZip.delete()
             preRestoreSuccess = true
