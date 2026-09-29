@@ -2,8 +2,12 @@
 
 **Identifier:** `LL-BUG-HUNT-METHODOLOGY`
 **Status:** Historical/operational engineering knowledge; non-authoritative practical note.
-**Rounds:** 4, 5, 6, 7 (Rounds 4-7 of the 2026-09-29 session)
-**Outcome:** 7 confirmed bugs, 0 false positives shipped. ~30 candidates rejected on evidence.
+**Rounds:** 4-12 (Rounds 4-7 initial; extended through 12)
+**Outcome:** 12 confirmed bugs, 0 false positives shipped. ~127 candidates rejected on evidence.
+
+> For the twelve defects themselves — what each one was, its RED proof, its fix, and its
+> commit — see [`LL-ROUND-4-12-RESULTS`](LL-ROUND-4-12-RESULTS.md). This document covers the
+> *method* only.
 
 ---
 
@@ -197,5 +201,12 @@ Note the distribution: **the two HIGH-severity bugs both destroy or mis-route mo
 | 5 | `ui/` ViewModels, `safeApiCall` | 2 | `safeApiCall` executed and then correctly dismissed |
 | 6 | outbox/workers, money/PDF | 2 | real-data distributions killed ~30 candidates |
 | 7 | `ui/screens/`, Settings, Import | 1 | 5 candidates → 1 after Skeptic |
+| 8 | `Repositories`, auth/network | 1 | cross-account credential leak |
+| 9 | `RemoteSyncCoordinator`, `SyncRepositoryImpl` | 2 | dedup cache outlived a wipe; audit sink unwired |
+| 10 | `AppDatabase`, `BackupManager` | 1 | safety snapshot quota-pruned |
+| 11 | `OutboxManager`, `Models`, `Interfaces` | 0 | backoff math recomputed and proven sound |
+| 12 | remaining 19 files | 0 | mutual exclusion proven by execution |
+| — | GATE-INTEGRITY-01 | 1 | the meta-gate tested a copy of the rule, not the rule |
 
-**7 confirmed bugs, all proven by execution, all fixed, 793 tests green, zero false positives shipped.**
+**12 confirmed bugs, all proven by execution, all fixed, zero false positives shipped.**
+Rounds 5, 11 and 12 returned **zero**, and that was the correct result each time.
