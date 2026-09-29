@@ -1,0 +1,62 @@
+status	file	lines	rounds	notes
+SCANNED	ui\viewmodels\EarthlinkSearchViewModel.kt	1360	4,5	2 bugs (SRCH-1 cross-subscriber identity, SRCH-2 stale selection)
+SCANNED	ui\viewmodels\LocalAccountsViewModel.kt	342	6,7	1 bug (IMP-3 stale result card)
+SCANNED	ui\viewmodels\AuthViewModel.kt	150	8	1 bug (NET-1 cross-account credential leak)
+SCANNED	ui\viewmodels\DashboardViewModel.kt	246	5	0 findings, 12 candidates dropped on gates
+SCANNED	ui\viewmodels\SyncStatusViewModel.kt	110	5	0 findings
+SCANNED	ui\viewmodels\AppViewModelProvider.kt	70	5	0 findings
+SCANNED	ui\screens\CreateUsingDepositScreen.kt	447	5,7	1 bug (ACT-1 stale success banner w/ password)
+SCANNED	ui\screens\CreateTestUserScreen.kt	408	5,7	same class as ACT-1
+SCANNED	ui\screens\PasswordToolsScreen.kt	346	5,7	0 findings
+SCANNED	ui\screens\LocalAccountDetailScreen.kt	405	5,7	0 findings
+SCANNED	ui\screens\LocalAccountsScreen.kt	240	5,7	0 findings
+SCANNED	ui\screens\UserDetailScreenV2.kt	3129	4,5,6,7	touched by BUG-SRCH fixes; not deep-scanned end to end
+SCANNED	ui\screens\DashboardScreen.kt	1700	6	0 findings, 9 candidates dropped
+SCANNED	ui\screens\DashboardStatusClassifier.kt	194	6	0 findings
+SCANNED	ui\screens\SharedComponents.kt	1362	6	0 findings
+SCANNED	ui\screens\StatusSubscribersScreen.kt	357	6	0 findings
+SCANNED	ui\screens\StatementScreen.kt	145	6	0 findings - DEAD ROUTE (no navigate() caller)
+SCANNED	ui\screens\SearchScreen.kt	164	6	0 findings - DEAD ROUTE (no navigate() caller)
+SCANNED	ui\screens\SettingsScreen.kt	2217	7	1 refuted, 2 downgraded (SET-1 dead config, SET-2 harm chain broken)
+SCANNED	ui\screens\ImportUtowerScreen.kt	803	7	2 bugs (IMP-1 false success on empty replace, IMP-3)
+SCANNED	ui\screens\SyncStatusScreen.kt	222	6,12	a11y localization + SimpleDateFormat hoist (PR #74)
+SCANNED	ui\screens\LoginScreen.kt	556	8	read for BUG-NET-2 (downgraded to LOW, not fixed)
+SCANNED	ui\screens\DashboardStatusScreen.kt	251	12	0 findings
+SCANNED	ui\viewmodels\StatementViewModel.kt	63	12	0 findings
+SCANNED	ui\theme\Theme.kt	80	12	presentation only
+SCANNED	ui\theme\Type.kt	36	12	presentation only
+SCANNED	ui\theme\Color.kt	11	12	presentation only
+SCANNED	data\repository\Repositories.kt	3643	8	0 findings, 14 candidates dropped; dead-code census built
+SCANNED	core\network\EarthlinkNetwork.kt	406	8,12	0 findings; PR #75 added redirect guards to the auxiliary client
+SCANNED	core\network\ApiResult.kt	77	8	0 findings
+SCANNED	core\security\PreferenceManager.kt	918	8	1 bug (NET-1 fix location)
+SCANNED	core\security\CloudSecretEncryptor.kt	97	8	0 findings
+SCANNED	core\sync\UtowerImporter.kt	1721	3,4	1 bug (IMP-1); the sourceKey empty-string theory was refuted by execution
+SCANNED	core\sync\RemoteSyncCoordinator.kt	785	9	1 bug HIGH (RSC-1 dedup LRU survived dataset clear)
+SCANNED	core\sync\PdfStatementGenerator.kt	700	6	1 bug (MONEY-1 hid 995k IQD credit from 20 customers)
+SCANNED	core\sync\ExpiryNotificationManager.kt	230	6	1 bug (OB-1 alerts dead on Android 13+, fake delivery log)
+SCANNED	core\sync\OutboxManager.kt	363	11	0 findings (13 refuted); backoff math recomputed from primitives
+SCANNED	core\sync\SyncWorker.kt	150	12	0 findings; retry count recomputed (4 runs, 3 retries, bounded)
+SCANNED	core\sync\RemoteSyncCursor.kt	74	12	0 findings; all 6 advance branches verified by execution
+SCANNED	core\sync\SyncConflictResolver.kt	50	12	0 findings; all branches recomputed from primitives
+SCANNED	core\sync\EventSyncResult.kt	50	12	0 findings; canAdvanceCursor exhaustively classified
+SCANNED	core\sync\DataOperationCoordinator.kt	129	12	0 findings; mutual exclusion proven by execution, R5 fix holds
+SCANNED	core\sync\IspDisappearanceReconciler.kt	150	12	0 findings
+SCANNED	core\sync\UtowerDebtResolver.kt	150	12	1 candidate UNRESOLVED (see RESULTS doc); Priority-1 branch is dead
+SCANNED	core\sync\RemoteEntityValidator.kt	120	12	0 findings
+SCANNED	core\sync\SubscriberMatcher.kt	120	12	0 findings; N2/R6 peer containers are intentional
+SCANNED	core\sync\SyncRepositoryImpl.kt	1771	9	1 bug (SRI-1 auditDao never wired to the coordinator)
+SCANNED	core\sync\AppBuildConfig.kt	43	12	0 findings; DEBUG gating verified
+SCANNED	core\ledger\MoneyParser.kt	120	6	0 findings
+SCANNED	core\ledger\BalanceCalculator.kt	400	6	0 findings; replay reproduces all 2761 debtAfter values
+SCANNED	core\ledger\NoteCleaner.kt	172	3	BUG-38 fixed earlier (latent hardening)
+SCANNED	core\ledger\TransactionTypeNormalizer.kt	80	5	perf fast-path (commit 93c1b8c) verified behaviorally identical to the fallback
+SCANNED	core\ledger\TransactionDeduplicator.kt	51	12	0 findings; R2 stays closed
+SCANNED	core\model\Models.kt	739	11	0 findings; Room schema parity verified 34/34 cols, 13/13 indices
+SCANNED	core\model\StateOwnershipContract.kt	63	12	0 findings
+SCANNED	core\database\AppDatabase.kt	1054	10	0 findings (20 refuted, several by execution)
+SCANNED	core\backup\BackupManager.kt	1541	10	1 bug (BK-2 pre-restore snapshot quota-pruned); 8 dropped
+SCANNED	core\backup\LocalAutoBackupWorker.kt	120	12	0 findings
+SCANNED	domain\repository\Interfaces.kt	280	11	0 findings; all interface defaults overridden in production
+SCANNED	MainActivity.kt	651	6,7	OB-1 permission request added and tested before login
+SCANNED	EarthlinkApp.kt	127	12	0 findings
