@@ -193,6 +193,26 @@ class RemoteSyncCoordinator(
         }
     }
 
+    // Generation the cache was populated under. The cache is in-memory, so it outlives any
+    // dataset wipe (logout, restore, replace-import). All such wipes call incrementGeneration(),
+    // so a generation change means every cached key refers to a dataset that no longer exists.
+    private var cacheGeneration: Long? = null
+
+    /**
+     * Drops cached dedup keys that belong to a superseded dataset.
+     *
+     * Without this, an event applied before a wipe is skipped when re-delivered, and
+     * SKIPPED_DUPLICATE reports canAdvanceCursor() == true - so the caller advances the sync
+     * cursor past it and the state never reaches the device again.
+     */
+    private suspend fun evictCacheIfStale(currentGen: Long) {
+        val cached = cacheGeneration
+        if (cached != null && cached != currentGen) {
+            processedKeys.clear()
+        }
+        cacheGeneration = currentGen
+    }
+
     /**
      * Serialized processing of remote events.
      * Returns an explicit [EventSyncResult] dictating the outcome and cursor advancement behavior.
@@ -201,14 +221,18 @@ class RemoteSyncCoordinator(
         return coordinatorMutex.withLock {
             val key = event.deduplicationKey
 
+            // Capture local generation at remote operation start (P3-G4-REQ-02, INV-05, INV-11)
+            val capturedGen = passedCapturedGen ?: metadataDao.getGeneration()
+
+            // Discard dedup keys from a superseded dataset before they can suppress a
+            // legitimate first delivery after a wipe.
+            evictCacheIfStale(capturedGen)
+
             // 1. In-memory LRU deduplication check
             if (processedKeys.containsKey(key)) {
                 Log.d("RemoteSyncCoordinator", "TESTDEBUG: Skipping duplicate event key=$key from source=${event.source}")
                 return EventSyncResult.SKIPPED_DUPLICATE
             }
-
-            // Capture local generation at remote operation start (P3-G4-REQ-02, INV-05, INV-11)
-            val capturedGen = passedCapturedGen ?: metadataDao.getGeneration()
 
             var result = EventSyncResult.FAILED_RETRYABLE
             appDatabase.withTransaction {
@@ -755,6 +779,7 @@ class RemoteSyncCoordinator(
     suspend fun clearCache() {
         coordinatorMutex.withLock {
             processedKeys.clear()
+            cacheGeneration = null
         }
     }
 }

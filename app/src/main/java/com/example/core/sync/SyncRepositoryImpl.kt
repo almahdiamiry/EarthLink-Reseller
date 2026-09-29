@@ -83,7 +83,11 @@ class SyncRepositoryImpl(
         ledgerDao = ledgerDao,
         batchDao = batchDao,
         outboxDao = outboxDao,
-        metadataDao = metadataDao
+        metadataDao = metadataDao,
+        // Required: without it every quarantine / collision / unknown-type record the
+        // coordinator emits is silently discarded in the shipping app, while tests that pass
+        // it explicitly still assert those records exist.
+        auditDao = auditDao
     )
     private val snapshotMutex = Mutex()
     private val singleFlightMutex = Mutex()
