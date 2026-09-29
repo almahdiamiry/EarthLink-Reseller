@@ -469,6 +469,8 @@ class EarthlinkSearchViewModel(
             try {
                 _isActionLoading.value = true
                 _error.value = null
+                // Clear the previous attempt's success too - see createUserUsingDeposit.
+                _actionSuccess.value = null
 
                 val existingOp = localLedgerRepository.getPendingOperationByIntentId(opIntentId)
                 if (existingOp != null && existingOp.status == "COMPLETED") {
@@ -545,6 +547,10 @@ class EarthlinkSearchViewModel(
             try {
                 _isActionLoading.value = true
                 _error.value = null
+                // Clear the previous attempt's success too. This ViewModel is Activity-scoped and
+                // shared by every destination, so a stale success banner (which carries the live
+                // subscriber password) would otherwise sit next to this attempt's error banner.
+                _actionSuccess.value = null
 
                 val existingOp = localLedgerRepository.getPendingOperationByIntentId(opIntentId)
                 if (existingOp != null && existingOp.status == "COMPLETED") {
