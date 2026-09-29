@@ -245,6 +245,8 @@ class NetworkClient(private val context: Context) {
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
+            .followRedirects(false)
+            .followSslRedirects(false)
             .addInterceptor(loggingInterceptor)
             .build()
 
