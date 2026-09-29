@@ -769,9 +769,14 @@ class UtowerImporter(
                     ((context.applicationContext as? com.example.EarthlinkApp)?.syncRepository as? SyncRepositoryImpl)?.remoteSyncCoordinator?.clearCache()
                 } catch (_: Throwable) {}
 
+                // A replace-import commits an irreversible wipe. If the container yielded nothing
+                // to write back, reporting success would present unrecoverable data loss as a
+                // completed import, so the outcome is reported as a failure instead.
+                val producedNothing = session.subsFound == 0 && session.transactionsRead == 0
+
                 ImportResult(
                     batchId = batchId,
-                    success = true,
+                    success = !producedNothing,
                     subscribersFound = session.subsFound,
                     subscribersImported = session.subsImported,
                     subscribersMerged = session.subscribersMerged,
@@ -789,7 +794,11 @@ class UtowerImporter(
                     transactionsInserted = session.transactionsInserted,
                     transactionsMerged = session.transactionsMerged,
                     transactionsSkipped = session.transactionsSkipped,
-                    transactionsFailed = session.transactionsFailed
+                    transactionsFailed = session.transactionsFailed,
+                    errorMessage = if (producedNothing) {
+                        "Import produced no subscribers or transactions. Any data removed by a " +
+                            "replace-import cannot be recovered from this file."
+                    } else null
                 )
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) {
