@@ -609,6 +609,7 @@ open class PreferenceManager(private val context: Context) {
         private const val KEY_LAST_SYNC = "last_sync_timestamp"
         private const val KEY_DEMO_MODE = "demo_mode_enabled"
         private const val KEY_SHOW_ACTIVE = "show_active_users_dashboard"
+        private const val KEY_NOTIFICATION_PERMISSION_ASKED = "notification_permission_asked"
         private const val KEY_SHOW_EXPIRED = "show_expired_users_dashboard"
         private const val KEY_MAX_DASHBOARD_ITEMS = "max_dashboard_subscribers"
         private const val KEY_LANGUAGE = "app_language"
@@ -660,6 +661,14 @@ open class PreferenceManager(private val context: Context) {
 
     fun getShowActive(): Boolean {
         return prefs.getBoolean(KEY_SHOW_ACTIVE, true)
+    }
+
+    fun getNotificationPermissionAsked(): Boolean {
+        return prefs.getBoolean(KEY_NOTIFICATION_PERMISSION_ASKED, false)
+    }
+
+    fun saveNotificationPermissionAsked(asked: Boolean) {
+        prefs.edit().putBoolean(KEY_NOTIFICATION_PERMISSION_ASKED, asked).apply()
     }
 
     fun setShowActive(enabled: Boolean) {

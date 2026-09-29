@@ -2,11 +2,16 @@ package com.example
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import com.example.core.util.AppBuildConfig
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.screens.*
@@ -73,11 +78,47 @@ fun MainLayout() {
     val prefs = remember(context) { (context.applicationContext as com.example.EarthlinkApp).preferenceManager }
     val currentLang by prefs.languageFlow.collectAsStateWithLifecycle()
 
+    RequestNotificationPermissionOnce()
+
     CompositionLocalProvider(LocalLayoutDirection provides if (currentLang == "ar") LayoutDirection.Rtl else LayoutDirection.Ltr) {
         if (!isLoggedIn) {
             LoginScreen(viewModel = authViewModel)
         } else {
             OperatorMainScreen(authViewModel)
+        }
+    }
+}
+
+/**
+ * Asks for POST_NOTIFICATIONS once per app data lifetime.
+ *
+ * The manifest declares it and targetSdk is 36, so on Android 13+ it is a runtime grant and
+ * every expiry alert would be silently dropped without this request. The prompt is shown only
+ * once so a reseller who declines is not nagged on every launch; after that the OS dialog
+ * would return "denied" immediately anyway.
+ */
+@Composable
+private fun RequestNotificationPermissionOnce() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+
+    val context = LocalContext.current
+    val prefs = remember(context) { (context.applicationContext as com.example.EarthlinkApp).preferenceManager }
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        prefs.saveNotificationPermissionAsked(true)
+        if (!granted) {
+            Log.i("MainActivity", "POST_NOTIFICATIONS declined; expiry alerts stay disabled.")
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        val alreadyAsked = prefs.getNotificationPermissionAsked()
+        val granted = ContextCompat.checkSelfPermission(
+            context, android.Manifest.permission.POST_NOTIFICATIONS
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!granted && !alreadyAsked) {
+            launcher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 }

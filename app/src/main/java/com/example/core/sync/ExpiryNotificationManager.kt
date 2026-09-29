@@ -1,11 +1,14 @@
 package com.example.core.sync
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.example.core.database.AppDatabase
 import com.example.core.model.LocalAccount
 import java.text.SimpleDateFormat
@@ -89,10 +92,15 @@ object ExpiryNotificationManager {
                             "Subscriber \"${account.displayName}\" (${account.earthlinkUsername ?: "N/A"}) is expiring on: $exactBaghdadTime ($daysLeft d, ${hoursLeft % 24} h remaining)."
                         }
 
-                        postNotification(context, account.id.hashCode(), title, body)
-                        sharedPrefs.edit().putLong("notified_${account.id}", currentMs).apply()
-                        notificationCount++
-                        Log.i("ExpiryNotificationMgr", "Notified expiry for account ID: ${account.id} (username: ${account.earthlinkUsername})")
+                        val delivered = postNotification(context, account.id.hashCode(), title, body)
+                        if (delivered) {
+                            // Only throttle once the alert is genuinely on screen. Recording it
+                            // otherwise would suppress this account for the whole throttle window
+                            // even though the reseller was never told.
+                            sharedPrefs.edit().putLong("notified_${account.id}", currentMs).apply()
+                            notificationCount++
+                            Log.i("ExpiryNotificationMgr", "Notified expiry for account ID: ${account.id} (username: ${account.earthlinkUsername})")
+                        }
                     }
                 }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
@@ -102,9 +110,25 @@ object ExpiryNotificationManager {
         Log.d("ExpiryNotificationMgr", "Expiry monitoring complete. Posted $notificationCount notifications.")
     }
 
-    private fun postNotification(context: Context, id: Int, title: String, content: String) {
+    /**
+     * Posts the alert and reports whether it was actually handed to the platform.
+     *
+     * On Android 13+ a missing POST_NOTIFICATIONS grant makes [NotificationManager.notify] a
+     * silent no-op that throws nothing, so the caller must not treat a non-throwing call as
+     * proof of delivery.
+     *
+     * @return true when the notification was posted, false when it was suppressed.
+     */
+    private fun postNotification(context: Context, id: Int, title: String, content: String): Boolean {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            Log.w("ExpiryNotificationMgr", "POST_NOTIFICATIONS not granted; expiry alert for id $id was not delivered")
+            return false
+        }
+
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_alert) // fallback drawable built-in
             .setContentTitle(title)
@@ -114,10 +138,15 @@ object ExpiryNotificationManager {
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
 
-        try {
+        return try {
             notificationManager.notify(id, builder.build())
+            true
         } catch (e: SecurityException) {
             Log.e("ExpiryNotificationMgr", "SecurityException: permission missing for notification posting", e)
+            false
+        } catch (e: Exception) {
+            Log.e("ExpiryNotificationMgr", "Failed to post expiry notification for id $id", e)
+            false
         }
     }
 }
