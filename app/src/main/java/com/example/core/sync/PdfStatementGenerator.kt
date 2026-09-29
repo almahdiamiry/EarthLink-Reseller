@@ -27,6 +27,22 @@ object PdfStatementGenerator {
     private const val PAGE_WIDTH = 595 // A4 standard width in points
     private const val PAGE_HEIGHT = 842 // A4 standard height in points
 
+    /**
+     * Renders the running balance shown on a PDF statement row.
+     *
+     * A NEGATIVE [debtAfterIqd] is this app's stored convention for an overpayment /
+     * advance (see UserDetailScreenV2.storedFallbackBalance, which maps a negative value to
+     * debt 0 + advance = -value). It is a real credit the subscriber holds, so it must be
+     * shown as one rather than folded into "settled".
+     */
+    internal fun balanceTextFor(debtAfterIqd: Double): String = when {
+        // Negative is this app's stored convention for an advance/overpayment. It is a real
+        // credit the subscriber holds and must be shown as one, not folded into "settled".
+        debtAfterIqd < 0.0 -> String.format(Locale.US, "-%,.0f د.ع (دفعة زائدة)", -debtAfterIqd)
+        debtAfterIqd == 0.0 -> "0 د.ع (خالص)"
+        else -> String.format(Locale.US, "%,.0f د.ع", debtAfterIqd)
+    }
+
     private fun drawBidiText(
         canvas: Canvas,
         text: String,
@@ -345,14 +361,12 @@ object PdfStatementGenerator {
             drawBidiText(canvas, "$amountFormatted د.ع", 300f, y, amountPaint, width = 85, align = android.text.Layout.Alignment.ALIGN_CENTER)
 
             // Debt after transaction
-            val balanceFormatted = String.format(Locale.US, "%,.0f", tx.debtAfterIqd.toDouble())
             val (debtText, debtPaint) = if (tx.debtAfterIqd <= 0.0) {
-                "0 د.ع (خالص)" to paidGreenTextPaint
+                balanceTextFor(tx.debtAfterIqd) to paidGreenTextPaint
             } else {
-                "$balanceFormatted د.ع" to chargeRedTextPaint
+                balanceTextFor(tx.debtAfterIqd) to chargeRedTextPaint
             }
             drawBidiText(canvas, debtText, 210f, y, debtPaint, width = 90, align = android.text.Layout.Alignment.ALIGN_CENTER)
-
             // Genuine Note
             val genuineNote = NoteCleaner.extractGenuineNote(tx.note, tx.amountIqd.toDouble())
             val noteToDraw = if (genuineNote.isNotBlank()) {
