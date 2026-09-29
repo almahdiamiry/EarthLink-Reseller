@@ -804,20 +804,20 @@ open class PreferenceManager(private val context: Context) {
         recordSettingsLocalMutation()
     }
 
-fun saveIspAdminUsername(username: String, fromRemote: Boolean = false) {
-    prefs.edit().putString(KEY_ISP_ADMIN_USERNAME, username).apply()
-    markIspCredentialOwner()
-    if (!fromRemote) recordSettingsLocalMutation()
+    fun saveIspAdminUsername(username: String, fromRemote: Boolean = false) {
+        prefs.edit().putString(KEY_ISP_ADMIN_USERNAME, username).apply()
+        markIspCredentialOwner()
+        if (!fromRemote) recordSettingsLocalMutation()
     }
 
     fun getIspAdminUsername(): String? {
         return prefs.getString(KEY_ISP_ADMIN_USERNAME, null)
     }
 
-fun saveIspAdminPassword(password: String, fromRemote: Boolean = false) {
-    prefs.edit().putString(KEY_ISP_ADMIN_PASSWORD, password).apply()
-    markIspCredentialOwner()
-    if (!fromRemote) recordSettingsLocalMutation()
+    fun saveIspAdminPassword(password: String, fromRemote: Boolean = false) {
+        prefs.edit().putString(KEY_ISP_ADMIN_PASSWORD, password).apply()
+        markIspCredentialOwner()
+        if (!fromRemote) recordSettingsLocalMutation()
     }
 
     fun getIspAdminPassword(): String? {

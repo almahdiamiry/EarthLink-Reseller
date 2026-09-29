@@ -36,8 +36,6 @@ object PdfStatementGenerator {
      * shown as one rather than folded into "settled".
      */
     internal fun balanceTextFor(debtAfterIqd: Double): String = when {
-        // Negative is this app's stored convention for an advance/overpayment. It is a real
-        // credit the subscriber holds and must be shown as one, not folded into "settled".
         debtAfterIqd < 0.0 -> String.format(Locale.US, "-%,.0f د.ع (دفعة زائدة)", -debtAfterIqd)
         debtAfterIqd == 0.0 -> "0 د.ع (خالص)"
         else -> String.format(Locale.US, "%,.0f د.ع", debtAfterIqd)

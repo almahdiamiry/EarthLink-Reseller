@@ -123,7 +123,6 @@ private fun RequestNotificationPermissionOnce() {
     }
 }
 
-
 @Composable
 fun BottomNavPadded(content: @Composable () -> Unit) {
     content()

@@ -26,7 +26,7 @@ object BackupManager {
     private const val DB_NAME = "earthlink_reseller_db"
 
     /** Filename prefix for the persistent pre-restore safety snapshot. Never quota-pruned. */
-    const val PRE_RESTORE_BACKUP_PREFIX = "pre_restore_backup_"
+    private const val PRE_RESTORE_BACKUP_PREFIX = "pre_restore_backup_"
 
     suspend fun createLocalBackupZip(context: Context, password: String? = null): File = withContext(Dispatchers.IO) {
         com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.BACKUP) {
