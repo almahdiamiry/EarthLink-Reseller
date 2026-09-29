@@ -18,8 +18,8 @@
 ├────────────────────────────────────────────────────────────────────────────────────────┤
 │ OPERATING MODE:                 POST-V1 / STABLE MAINTENANCE                           │
 │ ACTIVE WORKSTREAM:              NONE — SYSTEM IDLE                                     │
-│ CURRENT VERIFIED TEST BASELINE: 607 / 607 TESTS PASSING (100% GREEN)                   │
-│ CURRENT CHECKPOINT:             ff574cc                                                │
+│ CURRENT VERIFIED TEST BASELINE: 798 / 798 TESTS PASSING (100% GREEN)                   │
+│ CURRENT CHECKPOINT:             28efba9                                                │
 │ GOVERNING PLAYBOOK:             OPERATIONAL TESTING PLAYBOOK (AGENTS.md §9)            │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -39,6 +39,7 @@ All foundational remediation, verification, and maintainability phases are **for
 | **PHASE-04** | V1 Closure and Governance Consolidation | **CLOSED** | [`AGENTS.md`](AGENTS.md) (V1 Operating Government) |
 | **MNT-PASS** | V1 Maintainability and Seam Cleanup | **CLOSED** | Dead code removal, boundary cleanup, string normalization |
 | **SAFETY-RECON** | V1 Safety Fixes & Concurrency Hardening | **CLOSED** | WS1–WS9 verified (25 new tests, 607/607 green), commits `b68916f`, `ff574cc` |
+| **BUG-HUNT-R4-12** | Adversarial Bug Hunt, Rounds 4–12 | **CLOSED** | 12 confirmed defects fixed, 0 false positives shipped. See [`LL-ROUND-4-12-RESULTS`](docs/LESSONS_LEARNED/LL-ROUND-4-12-RESULTS.md) and the method in [`LL-BUG-HUNT-METHODOLOGY`](docs/LESSONS_LEARNED/LL-BUG-HUNT-METHODOLOGY.md). Baseline grew 607 → 798. Per-file audit coverage 61/61 in [`coverage-tracker.tsv`](docs/LESSONS_LEARNED/coverage-tracker.tsv). |
 
 ---
 

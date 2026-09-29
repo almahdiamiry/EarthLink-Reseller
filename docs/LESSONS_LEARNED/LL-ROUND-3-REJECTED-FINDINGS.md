@@ -139,5 +139,5 @@ Per the Round-3 calibration: *a subsystem may legitimately produce zero confirme
 
 **Unaudited seams remaining** (candidates for a future round, not findings):
 - `SyncRepositoryImpl` (90 KB) — sync lineage, remote-version authority, outbox convergence.
-- `RemoteSyncCoordinator` (36 KB) — generation-counter and stale-write rejection (`g4_local_generation`).
+- `RemoteSyncCoordinator` (36 KB) — generation-counter and stale-write rejection (`g4_local_generation`). **Since closed:** audited in Round 9 (BUG-RSC-1, dedup cache outliving a dataset wipe), and the fix's own review produced one retraction and one downgrade recorded in [`LL-BUG-HUNT-METHODOLOGY`](LL-BUG-HUNT-METHODOLOGY.md) §7.1.
 - Uncapped read seams beyond the ledger query in Candidate A (e.g. `BackupManager` restore-side reads).

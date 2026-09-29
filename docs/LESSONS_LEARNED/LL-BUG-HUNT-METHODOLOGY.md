@@ -157,6 +157,42 @@ Also report, plainly:
 - what was **not** executed;
 - findings that were **downgraded** and why.
 
+### 7.1 Third recorded retraction and downgrade — the RSC-1 review (2026-09-29)
+
+While reviewing the BUG-RSC-1 diff (`evictCacheIfStale` in `RemoteSyncCoordinator`), two concerns
+were raised in prose and then **adjudicated by execution**. Both failed. They are recorded because
+both were asserted confidently before the caller set was traced, which is the exact failure this
+methodology exists to catch.
+
+**Claim 1 — "the moved `getGeneration()` read now costs an extra SQL query per duplicate event."**
+**RETRACTED — false positive.** `processEvent`'s parameter is `passedCapturedGen: Long? = null`, and
+the read is `passedCapturedGen ?: metadataDao.getGeneration()` — the elvis short-circuits. Both
+production callers (`SyncRepositoryImpl.kt:1267` `snapshotGen`, `:1432` `capturedPassGen`) pass a
+non-null generation, and `processEvents()` has **zero production callers**. A counting delegate over
+the real `SyncMetadataDao` measured **`productionDuplicateGenReads = 0`** on the duplicate path
+(versus `1` on the null shape, which is test-only). Cost of the reordering in production: **zero**.
+
+**Claim 2 — "a wipe landing mid-batch skips the dedup eviction, so a re-delivered event is lost."**
+**DOWNGRADED — latent, non-harmful.** The premise is **true and was reproduced**:
+`capturedPassGen=1 → genAfterWipe=2 → SKIPPED_DUPLICATE, accounts=0`. The consequence is not. The
+skip happens, but `SyncRepositoryImpl.kt:1316` saves the chunk cursor only when
+`getGeneration() == snapshotGen`, so a mid-batch generation advance **discards the chunk's progress**.
+The next pass reads a fresh generation, `evictCacheIfStale` clears the cache, and the event applies:
+`recoveredPass=APPLIED, accounts=1`. Three independent layers — cache eviction, the in-transaction
+re-read at `:241` (`FAILED_RETRYABLE`, no cursor advance), and the cursor-save guard at `:1316`.
+
+**Process lessons:**
+
+1. **A parameter with a `null` default is not evidence about production behaviour.** Count the
+   production callers before costing anything. One `grep` of `processEvent(` would have killed
+   Claim 1 outright; it was instead asserted and hedged.
+2. **A reproduced intermediate state is not a defect.** Claim 2's `SKIPPED_DUPLICATE` is real, and
+   the finding would have been wrong anyway, because the guard downstream neutralizes it. This is
+   the `BUG-38`/`BUG-39` triggered-vs-latent distinction applied to concurrency.
+3. **A broken check is not evidence.** In the same session, `git cat-file -e` was used to declare
+   commit `ff574cc` nonexistent; the PowerShell `$?` test was invalid and the commit exists. The
+   stale-value conclusion survived, the stated reason did not. Verify the verifier.
+
 ---
 
 ## 8. Severities Assigned, With the Harm Named
