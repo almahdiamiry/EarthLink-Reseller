@@ -24,6 +24,8 @@
   ```
 
 > **Lessons Learned:** [`docs/LESSONS_LEARNED/`](docs/LESSONS_LEARNED/) — practical historical engineering knowledge; consult only when relevant to the current task.
+>
+> **Before starting any bug hunt or forensic round, read [`LL-BUG-HUNT-METHODOLOGY`](docs/LESSONS_LEARNED/LL-BUG-HUNT-METHODOLOGY.md) in full.** It records the pipeline (Recon → Hunter → Skeptic → Referee → RED test) and the six gates that separated 7 confirmed bugs from ~30 false positives across Rounds 4-7. The load-bearing rule: a candidate must be shown constructible against real data (`.forensic-bug02/real_data.json`) **before** it is called a lead, and proven by execution **before** it is reported. Also read the closed-findings registries first: [`LL-ROUND-2-CLOSED-FINDINGS`](docs/LESSONS_LEARNED/LL-ROUND-2-CLOSED-FINDINGS.md), [`LL-ROUND-3-REJECTED-FINDINGS`](docs/LESSONS_LEARNED/LL-ROUND-3-REJECTED-FINDINGS.md), [`LL-ROUND-2-ERROR-SEMANTICS`](docs/LESSONS_LEARNED/LL-ROUND-2-ERROR-SEMANTICS.md).
 
 ---
 
