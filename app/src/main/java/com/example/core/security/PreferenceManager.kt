@@ -610,6 +610,7 @@ open class PreferenceManager(private val context: Context) {
         private const val KEY_DEMO_MODE = "demo_mode_enabled"
         private const val KEY_SHOW_ACTIVE = "show_active_users_dashboard"
         private const val KEY_NOTIFICATION_PERMISSION_ASKED = "notification_permission_asked"
+        private const val KEY_ISP_CREDENTIAL_OWNER = "isp_credential_owner"
         private const val KEY_SHOW_EXPIRED = "show_expired_users_dashboard"
         private const val KEY_MAX_DASHBOARD_ITEMS = "max_dashboard_subscribers"
         private const val KEY_LANGUAGE = "app_language"
@@ -732,6 +733,39 @@ open class PreferenceManager(private val context: Context) {
         _isLoggedInFlow.value = false
     }
 
+    /**
+     * Drops the ISP admin credential pair without touching the session token.
+     *
+     * Used when the Firebase identity changes, so a new account never inherits the previous
+     * account's ISP credentials. Target Product Contract TQ-18 item 9: a stale session cannot
+     * overwrite another user's operational credentials.
+     */
+    fun clearIspAdminCredentials() {
+        prefs.edit()
+            .remove(KEY_ISP_ADMIN_USERNAME)
+            .remove(KEY_ISP_ADMIN_PASSWORD)
+            .remove(KEY_ISP_CREDENTIAL_OWNER)
+            .apply()
+    }
+
+    /**
+     * The session token under which the resident ISP admin credentials were established.
+     *
+     * Binding the credentials to an owner is what makes them safe across an identity switch:
+     * a re-authenticated session has no owner match, so the previous account's pair is dropped
+     * instead of being uploaded into the new account's settings document.
+     */
+    fun getIspCredentialOwner(): String? {
+        return prefs.getString(KEY_ISP_CREDENTIAL_OWNER, null)
+    }
+
+    private fun markIspCredentialOwner() {
+        val owner = getAuthToken()
+        if (owner != null) {
+            prefs.edit().putString(KEY_ISP_CREDENTIAL_OWNER, owner).apply()
+        }
+    }
+
     fun saveUsername(username: String) {
         prefs.edit().putString(KEY_USERNAME, username).apply()
     }
@@ -770,18 +804,20 @@ open class PreferenceManager(private val context: Context) {
         recordSettingsLocalMutation()
     }
 
-    fun saveIspAdminUsername(username: String, fromRemote: Boolean = false) {
-        prefs.edit().putString(KEY_ISP_ADMIN_USERNAME, username).apply()
-        if (!fromRemote) recordSettingsLocalMutation()
+fun saveIspAdminUsername(username: String, fromRemote: Boolean = false) {
+    prefs.edit().putString(KEY_ISP_ADMIN_USERNAME, username).apply()
+    markIspCredentialOwner()
+    if (!fromRemote) recordSettingsLocalMutation()
     }
 
     fun getIspAdminUsername(): String? {
         return prefs.getString(KEY_ISP_ADMIN_USERNAME, null)
     }
 
-    fun saveIspAdminPassword(password: String, fromRemote: Boolean = false) {
-        prefs.edit().putString(KEY_ISP_ADMIN_PASSWORD, password).apply()
-        if (!fromRemote) recordSettingsLocalMutation()
+fun saveIspAdminPassword(password: String, fromRemote: Boolean = false) {
+    prefs.edit().putString(KEY_ISP_ADMIN_PASSWORD, password).apply()
+    markIspCredentialOwner()
+    if (!fromRemote) recordSettingsLocalMutation()
     }
 
     fun getIspAdminPassword(): String? {

@@ -119,7 +119,15 @@ class AuthViewModel(
             try {
                 val uid = syncRepo.googleSignIn(idToken)
                 if (uid != null) {
-                    prefs.saveAuthToken("google_oauth_session_$uid")
+                    val newToken = "google_oauth_session_$uid"
+                    // A Google sign-in establishes a credential scope. Resident ISP admin
+                    // credentials are only kept if they are already bound to THIS account; the
+                    // 401 path clears the session token before the user re-signs, so comparing
+                    // against the previous token would miss the switch entirely. TQ-18 item 9.
+                    if (prefs.getIspCredentialOwner() != newToken) {
+                        prefs.clearIspAdminCredentials()
+                    }
+                    prefs.saveAuthToken(newToken)
                     prefs.saveUsername(email ?: "google_user")
                     audit.logAction(
                         action = "GOOGLE_LOGIN",
