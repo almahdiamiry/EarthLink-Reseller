@@ -39,3 +39,5 @@ mega-archify/
 tools/
 earthlink_backup_1789281798680.zip
 .forensic-bug02/
+# Bug Hunter pipeline artifacts
+.bug-hunter/

@@ -390,7 +390,13 @@ class EarthlinkSearchViewModel(
                 _isRefreshingDetail.value = true
                 try {
                     val detail = gateway.getUserDetail(userIndex)
-                    _selectedUser.value = detail
+                    // A slower earlier request must not clobber a newer operator selection.
+                    // The activity-scoped _selectedUser is shared across navigation, so a late
+                    // response for an abandoned subscriber would otherwise resurrect it.
+                    val stillSelected = _selectedUser.value
+                    if (stillSelected == null || stillSelected.userIndex == userIndex) {
+                        _selectedUser.value = detail
+                    }
                     if (foundLocal != null && detail.userIndex > 0) {
                         try {
                             localAccountRepository.bindIspIdentity(foundLocal.id, detail.userIndex)
@@ -885,7 +891,11 @@ class EarthlinkSearchViewModel(
                                 payNote = payNoteToUse,
                                 idempotencyKey = businessTxId
                             )
-                            val confirmedUserIndex = _selectedUser.value?.userIndex?.takeIf { it > 0 }
+                            // Reuse the identity captured BEFORE the gateway suspend. Re-reading
+                            // _selectedUser here would pick up whichever subscriber the operator
+                            // navigated to while the HTTP call was in flight and would bind this
+                            // account to a foreign ISP identity.
+                            val confirmedUserIndex = selectedIndex
                             if (confirmedUserIndex != null) {
                                 try {
                                     localAccountRepository.bindIspIdentity(effectiveAcc.id, confirmedUserIndex)
