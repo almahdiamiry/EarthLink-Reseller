@@ -36,7 +36,7 @@ Rules
                        with no read of that variable in between, so nothing on the exercised
                        path ever observes the asserted value.
 
-Scoping rule (deliberate, load-bearing)
+  Scoping rule (deliberate, load-bearing)
   A test body runs from its `@Test` to the end of that test's own function body, located by
   matching the braces of its `fun`. It does NOT stop at the `fun` signature line, because an
   annotation (`@Suppress`, `@DisplayName`, ...) may sit between them and stopping there hides
@@ -44,17 +44,28 @@ Scoping rule (deliberate, load-bearing)
   next `@Test`, because a test that delegates its only assertion to a helper declared after
   the next `@Test` is still verified, and bounding there reported it as vacuous.
 
-  What the brace match guarantees, precisely: the block never stops early, so it cannot hide
+  Two body shapes are resolved, and they cover every test in this suite:
+    * Brace-bodied, `fun x() { ... }` - matched to the closing `}`.
+    * Expression-bodied, `fun x() = runBlocking { ... }` - 577 of the 798 tests. The body is
+      the WHOLE expression, so a trailing `.also { ... }` / `.let { ... }` stays inside it.
+      The expression ends at a newline that begins a new declaration, and only at brace depth
+      zero relative to the `=`, so a `val` line inside the block is not mistaken for the end.
+
+  What the resolution guarantees, precisely: the block never stops early, so it cannot hide
   an assertion and invent a vacuity finding. It does NOT bound the block from running past
   the test's own end: a private helper declared between two `@Test`s, or after the last one,
   is inside the preceding test's range. That can inflate the preceding test's assertion count
   and can move a finding's line number. It cannot create a vacuity finding, because F1 counts
   only calls and a helper's assertion is a call the delegating test would reach anyway.
 
-  A brace match that cannot be resolved — an expression-bodied `fun x() = ...`, or a file
-  that does not balance — falls back to the next `@Test`, or to end of file. That fallback
-  is the weaker of the two bounds and is the one place where a vacuity finding could be
-  invented; the self-test pins the resolvable case.
+  The fallback, stated accurately: when no `fun` can be located at all, the block falls back
+  to the next `@Test` or end of file. In this suite that fallback is reached by 7 of 798
+  tests, all in `core/ledger/NoteCleanerTest.kt`, whose test names are Kotlin backtick-quoted
+  strings (for example: a fun declaration whose name is wrapped in backticks) that the
+  identifier pattern does not match. Expression bodies are NOT a fallback case; they are
+  resolved. The self-test pins both resolved shapes, including the expression-body tail, and
+  pins nothing about the fallback: a file that does not balance is not currently
+  representable as a fixture, so the fallback is the one path with no direct pin.
 
 Body text handling
   Comments and string literals are blanked before the structural scan, so an `assertEquals`
@@ -445,27 +456,28 @@ def _function_body_end(code, mask, fun_start):
                 j += 1
             return None
         elif ch == "=" and depth == 0:
-            # Expression body: `fun x() = runBlocking { ... }` is the dominant shape in this
-            # suite (578 of 798 tests). The body is the first `{` after the `=`, which may sit
-            # on the next line when the declaration is wrapped. Returning end-of-line instead
-            # truncates the body and manufactures F1 findings.
+            # Expression body. `fun x() = runBlocking { ... }` is the dominant shape in this
+            # suite (577 of 798 tests), so this branch carries most of the scan.
+            #
+            # The body is the WHOLE expression, not just the first `{ ... }`. A body may carry
+            # a tail - `.also { assertEquals(1, it) }`, `.let { ... }`, `.map { ... }` - and
+            # stopping at the first brace block truncates it, hiding the tail's assertions and
+            # manufacturing an F1.
+            #
+            # The expression ends at a newline that begins a new declaration, but ONLY at
+            # brace depth zero relative to the `=`. Depth matters: a `val` line inside the
+            # `runBlocking {` block is part of the body, not the start of something else, and
+            # terminating there would truncate almost every test in this suite.
             j = i
+            expr_depth = 0
             while j < n:
-                if code[j] == "{" and not mask[j]:
-                    brace = 0
-                    k = j
-                    while k < n:
-                        if not mask[k]:
-                            if code[k] == "{":
-                                brace += 1
-                            elif code[k] == "}":
-                                brace -= 1
-                                if brace == 0:
-                                    return k + 1
-                        k += 1
-                    return None
-                if code[j] == "\n" and _starts_new_declaration(code, j + 1):
-                    return j
+                if not mask[j]:
+                    if code[j] in "([{":
+                        expr_depth += 1
+                    elif code[j] in ")]}":
+                        expr_depth -= 1
+                    elif code[j] == "\n" and expr_depth <= 0 and _starts_new_declaration(code, j + 1):
+                        return j
                 j += 1
             return n
         i += 1

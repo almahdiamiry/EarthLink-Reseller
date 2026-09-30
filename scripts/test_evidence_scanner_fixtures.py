@@ -504,6 +504,69 @@ class F4GuardTest {
 }
 """
 
+# The expression-body path. 577 of the 798 real tests are written `fun x() = runBlocking { ... }`,
+# so this is the highest-volume branch in the scanner. It previously had no fixture at all, and
+# the bug it shipped (78 spurious F1) was invisible to the suite.
+EXPRESSION_BODY_FIXTURE = '''
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Test
+
+class ExpressionBodyTest {
+
+    @Test
+    fun eb_plain_expression_body_has_an_inline_assertion() = runBlocking {
+        val total = 1 + 1
+        assertEquals(2, total)
+    }
+
+    @Test
+    fun eb_wrapped_declaration_puts_the_brace_on_the_next_line() =
+        runBlocking {
+            val marker = computeMarker()
+            assertNotNull(marker)
+        }
+
+    @Test
+    fun eb_sibling_is_still_separate() = runBlocking {
+        assertEquals(4, computeMarker())
+    }
+
+    // A `val` line inside the `runBlocking {` block is part of the body, not the start of a
+    // new declaration. Terminating the expression at the first `val` truncates this test.
+    @Test
+    fun eb_local_val_inside_the_block_does_not_end_the_body() = runBlocking {
+        val first = computeMarker()
+        val second = computeMarker()
+        val third = computeMarker()
+        assertEquals(first, second)
+        assertEquals(second, third)
+    }
+}
+'''
+
+# The tail shape. `= runBlocking { ... }.also { assertEquals(1, it) }` continues past the first
+# `{` block, so stopping there truncates the body and invents an F1.
+EXPRESSION_BODY_TAIL_FIXTURE = '''
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class ExpressionBodyTailTest {
+
+    @Test
+    fun tail_on_one_line_is_not_truncated() =
+        runBlocking { val computed = computeValue() }.also { assertEquals(1, it) }
+
+    @Test
+    fun tail_wrapped_onto_its_own_line_is_not_truncated() = runBlocking { val computed = computeValue() }
+        .also { assertEquals(1, it) }
+
+    @Test
+    fun tail_is_the_last_test_in_the_file() = runBlocking { val computed = computeValue() }
+        .also { assertEquals(1, it) }
+}
+'''
+
 # --------------------------------------------------------------------------------------------
 # F1 - Vacuous: a @Test body with no assert*, no fail(, no verify*
 # --------------------------------------------------------------------------------------------
@@ -844,6 +907,64 @@ def test_i3_f2_does_not_compare_the_message_overload():
 
 
 # --------------------------------------------------------------------------------------------
+# The expression-body path: 577 of 798 real tests, previously pinned by nothing
+# --------------------------------------------------------------------------------------------
+
+def test_eb_expression_bodies_are_scanned():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        findings, tests = scan_fixture(
+            tmpdir, "ExpressionBodyTest.kt", EXPRESSION_BODY_FIXTURE
+        )
+
+        names = (
+            "eb_plain_expression_body_has_an_inline_assertion",
+            "eb_wrapped_declaration_puts_the_brace_on_the_next_line",
+            "eb_sibling_is_still_separate",
+            "eb_local_val_inside_the_block_does_not_end_the_body",
+        )
+        counts = {t["name"]: t["assertion_count"] for t in tests}
+        for name in names:
+            assert_resolved(tests, name)
+            assert_classified(findings, name, set())
+        # One assertion each, except the multi-`val` test, which has two.
+        expected_counts = {name: 1 for name in names}
+        expected_counts["eb_local_val_inside_the_block_does_not_end_the_body"] = 2
+        for name, expected in expected_counts.items():
+            assert counts[name] == expected, (
+                f"An expression body `fun x() = runBlocking {{ ... }}` must be scanned to its "
+                f"real end, and a `val` inside the block must not terminate it. '{name}' "
+                f"reported {counts.get(name)} assertions, expected {expected}. Counts: {counts}"
+            )
+
+        print("PASS EB: an expression-bodied test is scanned, including a wrapped declaration "
+              "and a block containing local `val` lines.")
+
+
+def test_eb_expression_body_tail_is_not_truncated():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        findings, tests = scan_fixture(
+            tmpdir, "ExpressionBodyTailTest.kt", EXPRESSION_BODY_TAIL_FIXTURE
+        )
+
+        names = (
+            "tail_on_one_line_is_not_truncated",
+            "tail_wrapped_onto_its_own_line_is_not_truncated",
+            "tail_is_the_last_test_in_the_file",
+        )
+        counts = {t["name"]: t["assertion_count"] for t in tests}
+        for name in names:
+            assert_resolved(tests, name)
+            assert_classified(findings, name, set())
+            assert counts[name] == 1, (
+                "An expression body with a tail (`= runBlocking { ... }.also { assert... }`) "
+                f"runs past the first brace block. '{name}' reported {counts.get(name)} "
+                f"assertions, expected 1. Counts: {counts}"
+            )
+
+        print("PASS EB (tail): an expression body with a trailing call is not truncated.")
+
+
+# --------------------------------------------------------------------------------------------
 # CLI contract: --rule, --single-assertion, and always-exit-0
 # --------------------------------------------------------------------------------------------
 
@@ -968,6 +1089,8 @@ TESTS = [
     test_i2_f3_sut_gate_rejects_a_non_sut_collaborator,
     test_i3_f4_guards,
     test_i3_f2_does_not_compare_the_message_overload,
+    test_eb_expression_bodies_are_scanned,
+    test_eb_expression_body_tail_is_not_truncated,
     test_cli_rule_filter_and_exit_zero,
     test_cli_single_assertion_selector,
     test_cli_real_process_exit_code_is_zero_even_with_findings,
@@ -976,11 +1099,17 @@ TESTS = [
 
 def count_assertion_calls():
     """
-    The number of assertions this self-test actually executed, measured rather than guessed.
+    Count of `assert` statements written literally in the functions named in TESTS.
 
-    Every `assert` statement in the TESTS list above executes exactly once per run, so the
-    count is the number of Assert nodes in those functions' ASTs. It is counted from the
-    source, not derived from a multiplication that has no relationship to anything measured.
+    This is a count of assert STATEMENTS IN SOURCE, not of assertions executed against the
+    scanner, and the printed label says so. Two things it deliberately does not claim:
+      * the assertions inside the `assert_classified` / `assert_resolved` helpers, which do
+        the classification work, are not counted here;
+      * a statement inside a loop executes once per iteration, so this is not an execution
+        count. `test_i3_f4_guards`, for example, writes two helper calls that run three times.
+
+    It is measured from this module's own AST rather than derived from a multiplication that
+    has no relationship to anything in the source.
     """
     import ast
     import textwrap
@@ -1004,7 +1133,8 @@ def main():
         test_fn()
     print("-" * 74)
     print(f"ALL {len(TESTS)} SCANNER FIXTURE GROUPS PASSED "
-          f"({count_assertion_calls()} assertions executed against the real scanner).")
+          f"({count_assertion_calls()} assert statements written in those groups, not counting "
+          f"the assertions inside the classification helpers or loop re-executions).")
     print("=" * 74)
     return 0
 
