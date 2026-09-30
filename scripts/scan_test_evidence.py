@@ -6,16 +6,24 @@ Static evidence scanner for the Earthlink Reseller App Kotlin test suite.
 
 Purpose
   Task 1 of the Round 13 test-suite evidence audit. This is the triage instrument the
-  rest of the audit depends on, so it is deliberately conservative: it may under-report a
-  rule, but it must never invent one. Every finding it prints is a CANDIDATE that a human
-  or a later task must adjudicate. It is not a gate and it does not certify anything.
+  rest of the audit depends on, so it is deliberately conservative: every rule is written to
+  under-report rather than over-report. That is a design bias, not a guarantee, and it is not
+  unconditional. Every finding it prints is a CANDIDATE that a human or a later task must
+  adjudicate. It is not a gate and it does not certify anything.
 
 Rules
-  F1  Vacuous          A `@Test` body with no `assert*`, no `fail(`, no `verify*` call.
+  F1  Vacuous          A `@Test` body with no `assert*`, no `fail(`, no `verify*` call, and
+                       no call to a helper in the same file that asserts or throws
+                       AssertionError.
   F2  Tautological     An assertion that cannot fail: a single-argument boolean assertion
-                       on a literal (`assertTrue(true)`), or `assertEquals(a, a)`.
+                       on a literal (`assertTrue(true)`), or `assertEquals(a, a)` in its
+                       two-argument form. The three-argument
+                       `assertEquals(message, expected, actual)` overload is deliberately NOT
+                       compared, because the message occupies an ambiguous argument position.
   F3  Circular         The expected value of an `assertEquals` is a local bound to a member
-                       call on the class under test rather than a literal.
+                       call on the class under test rather than a literal. A local whose
+                       declared or constructed type is a test double (stub/fake/mock/spy) is
+                       not the class under test, however similar its name.
   F4  No precondition  A test that polls (`while (attempts < N ...)`) and then asserts
                        without ever asserting that the awaited state was reached.
   F5  No RED proof     NOT statically detectable. This is an execution-only rule: it is
@@ -29,17 +37,32 @@ Rules
                        path ever observes the asserted value.
 
 Scoping rule (deliberate, load-bearing)
-  A test body is the line range from its `@Test` to the NEXT `@Test` in the file, or to end
-  of file. The scan does NOT stop at the `fun` signature line, because an annotation
-  (`@Suppress`, `@DisplayName`, ...) may sit between them and stopping there hides the body
-  and wrongly reports a live assertion as missing. The price of this choice is that helper
-  functions declared after the last `@Test` of a class are inside that test's range; that
-  can only make the scanner under-report a rule, never over-report one.
+  A test body runs from its `@Test` to the end of that test's own function body, located by
+  matching the braces of its `fun`. It does NOT stop at the `fun` signature line, because an
+  annotation (`@Suppress`, `@DisplayName`, ...) may sit between them and stopping there hides
+  the body and wrongly reports a live assertion as missing. It is also NOT bounded at the
+  next `@Test`, because a test that delegates its only assertion to a helper declared after
+  the next `@Test` is still verified, and bounding there reported it as vacuous.
+
+  What the brace match guarantees, precisely: the block never stops early, so it cannot hide
+  an assertion and invent a vacuity finding. It does NOT bound the block from running past
+  the test's own end: a private helper declared between two `@Test`s, or after the last one,
+  is inside the preceding test's range. That can inflate the preceding test's assertion count
+  and can move a finding's line number. It cannot create a vacuity finding, because F1 counts
+  only calls and a helper's assertion is a call the delegating test would reach anyway.
+
+  A brace match that cannot be resolved — an expression-bodied `fun x() = ...`, or a file
+  that does not balance — falls back to the next `@Test`, or to end of file. That fallback
+  is the weaker of the two bounds and is the one place where a vacuity finding could be
+  invented; the self-test pins the resolvable case.
 
 Body text handling
   Comments and string literals are blanked before the structural scan, so an `assertEquals`
-  mentioned in a comment or inside a message string is never counted. Argument *content*
-  is read from the comment-scrubbed text so that string literals remain visible to F2.
+  mentioned in a comment, or inside a message string, is never counted and never becomes a
+  finding. This holds for triple-quoted raw strings too: a raw string is a literal, and text
+  inside one is text, not an assertion. Argument *content* for F2 is read from the
+  comment-scrubbed text, which keeps string literals visible to the literal test but still
+  excludes raw-string interiors from the call scan.
 
 CLI
   python scripts/scan_test_evidence.py <root>
@@ -122,6 +145,9 @@ _SUT_INDICATOR_NAMES = (
     "sut", "sutInstance", "systemUnderTest", "underTest", "componentUnderTest",
 )
 _SUT_NAME_SUFFIXES = ("Tests", "Test", "Fixtures", "Fixture", "Spec", "Case")
+# A local whose declared type is a test double is not the class under test, however similar its
+# name is. Without this, a stub that hard-codes its return value would be read as circular.
+_TEST_DOUBLE_MARKERS = ("stub", "fake", "mock", "spy", "double", "dummy")
 _BOOLEAN_SINGLE_ARG_ASSERTS = ("assertTrue", "assertFalse", "assertNotNull", "assertNull")
 
 
@@ -145,10 +171,11 @@ class _TestBlock:
     class_name: str
     name: str
     start_line: int          # 1-indexed line of the @Test annotation
-    end_line: int            # 1-indexed, inclusive; the line before the next @Test
+    end_line: int            # 1-indexed, inclusive; the test's own closing brace
     code: str                # comments and string contents blanked
     args_text: str           # comments blanked, string literals intact
     string_mask: list        # per-character: True when inside a string or char literal
+    helpers: dict            # function name -> scrubbed body, for the whole file
 
 
 # ------------------------------------------------------------------------------------------------
@@ -187,8 +214,11 @@ def _scrub(text, blank_string_contents=False):
             j = n if j == -1 else j + 3
             segment = text[i:j]
             no_comments.append(segment)
+            # Every character of a raw string is literal content, not only its newlines. A raw
+            # string is still a string: an `assertEquals` inside one is text, and counting it
+            # as a call both invents an F2 and suppresses a real F1.
             for k in range(i, j):
-                mask[k] = text[k] == "\n"
+                mask[k] = text[k] != "\n"
             i = j
             continue
         if text[i] == '"':
@@ -377,6 +407,139 @@ def _test_name_for(code, start_line):
     return f"<unnamed@test@{start_line}>"
 
 
+def _function_body_end(code, mask, fun_start):
+    """
+    The character index one past the `}` that closes the function whose `fun` keyword starts at
+    `fun_start`, or None when the body cannot be located (an expression-bodied function, or a
+    file that does not balance).
+
+    The block bound is what stops F1 from inventing findings, so it has to be the function's own
+    closing brace and not merely the next `@Test`: a test that delegates its only assertion to a
+    helper declared after the next `@Test` is still verified, and bounding at the next `@Test`
+    reports it as vacuous.
+    """
+    depth = 0
+    i = fun_start
+    n = len(code)
+    while i < n:
+        if mask[i]:
+            i += 1
+            continue
+        ch = code[i]
+        if ch in "([":
+            depth += 1
+        elif ch in ")]":
+            depth -= 1
+        elif ch == "{" and depth == 0:
+            # Walk the function's own braces to their match.
+            brace = 0
+            j = i
+            while j < n:
+                if not mask[j]:
+                    if code[j] == "{":
+                        brace += 1
+                    elif code[j] == "}":
+                        brace -= 1
+                        if brace == 0:
+                            return j + 1
+                j += 1
+            return None
+        elif ch == "=" and depth == 0:
+            # Expression body: `fun x() = runBlocking { ... }` is the dominant shape in this
+            # suite (578 of 798 tests). The body is the first `{` after the `=`, which may sit
+            # on the next line when the declaration is wrapped. Returning end-of-line instead
+            # truncates the body and manufactures F1 findings.
+            j = i
+            while j < n:
+                if code[j] == "{" and not mask[j]:
+                    brace = 0
+                    k = j
+                    while k < n:
+                        if not mask[k]:
+                            if code[k] == "{":
+                                brace += 1
+                            elif code[k] == "}":
+                                brace -= 1
+                                if brace == 0:
+                                    return k + 1
+                        k += 1
+                    return None
+                if code[j] == "\n" and _starts_new_declaration(code, j + 1):
+                    return j
+                j += 1
+            return n
+        i += 1
+    return None
+
+
+_DECLARATION_STARTS = (
+    "fun ", "private fun ", "internal fun ", "public fun ", "override fun ",
+    "@", "}", "class ", "private class ", "object ", "companion object", "val ", "var ",
+)
+
+
+def _starts_new_declaration(code, index):
+    """True when the next line begins a new declaration, ending an expression body."""
+    k = index
+    while k < len(code) and code[k] in " \t":
+        k += 1
+    rest = code[k:k + 24].lstrip()
+    return any(rest.startswith(prefix) for prefix in _DECLARATION_STARTS)
+
+
+def _index_helper_functions(code, mask):
+    """
+    Map every `fun name(...)` in the file to its scrubbed body, so a test that delegates its
+    verification to a helper can be recognised as non-vacuous.
+
+    A helper counts as verifying when its body contains an assertion call or throws
+    AssertionError, which is the same contract JUnit gives it. A test whose only call is such a
+    helper is verified; reporting it F1 would be inventing a finding.
+    """
+    helpers = {}
+    for match in re.finditer(r"\bfun\s+([A-Za-z_]\w*)\s*\(", code):
+        name = match.group(1)
+        end = _function_body_end(code, mask, match.start())
+        if end is None:
+            continue
+        helpers.setdefault(name, code[match.start():end])
+    return helpers
+
+
+def _assertion_calls_in(text):
+    return [m.group(1) for m in _ASSERT_CALL_RE.finditer(text)]
+
+
+def _verifies_via_helper(block, depth=0):
+    """
+    True when the test body calls a helper in this file that itself asserts or throws
+    AssertionError. Depth-limited to keep the walk bounded; a helper chain deeper than this is
+    reported as delegating anyway, which can only suppress an F1, never invent one.
+    """
+    if depth > 2:
+        return False
+    called = set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", block.code))
+    for name in called:
+        body = block.helpers.get(name)
+        if not body or name == block.name:
+            continue
+        if _assertion_calls_in(body) or "AssertionError" in body:
+            return True
+        nested = _TestBlock(
+            class_name=block.class_name,
+            name=block.name,
+            start_line=block.start_line,
+            end_line=block.end_line,
+            code=body,
+            args_text=body,
+            string_mask=[False] * len(body),
+            helpers=block.helpers,
+        )
+        if _verifies_via_helper(nested, depth + 1):
+            return True
+    return False
+
+
 def _build_blocks(path):
     lines = _read_lines(path)
     text = "\n".join(lines)
@@ -385,17 +548,40 @@ def _build_blocks(path):
     no_comments_lines = no_comments.split("\n")
 
     starts = [idx for idx, line in enumerate(no_comments_lines) if _TEST_ANNOTATION_RE.match(line)]
+    helpers = _index_helper_functions(no_strings, mask)
     blocks = []
     for position, start_idx in enumerate(starts):
-        end_idx = starts[position + 1] if position + 1 < len(starts) else len(lines)
+        char_start = sum(len(line) + 1 for line in lines[:start_idx])
+        next_test_idx = starts[position + 1] if position + 1 < len(starts) else None
+
+        # Locate this test's own `fun` and the end of its body.
+        fun_match = None
+        for pattern in _FUN_NAME_RES:
+            candidate = pattern.search(no_strings, char_start)
+            if candidate and (fun_match is None or candidate.start() < fun_match.start()):
+                fun_match = candidate
+        body_end = None
+        if fun_match is not None:
+            body_end = _function_body_end(no_strings, mask, fun_match.start())
+
+        if body_end is not None:
+            end_char = body_end
+        elif next_test_idx is not None:
+            end_char = sum(len(line) + 1 for line in lines[:next_test_idx])
+        else:
+            end_char = len(text)
+        # Never let the block end before the next @Test: trailing helpers between two tests
+        # belong to neither, and shrinking the range can only hide assertions.
+        if next_test_idx is not None:
+            end_char = max(end_char, sum(len(line) + 1 for line in lines[:next_test_idx]))
+        end_char = min(end_char, len(text))
+        end_idx = no_strings.count("\n", 0, end_char) + 1
         if end_idx <= start_idx:
             end_idx = start_idx + 1
-        # Character range of [start_idx, end_idx) inside the joined text.
-        char_start = sum(len(line) + 1 for line in lines[:start_idx])
-        char_end = sum(len(line) + 1 for line in lines[:end_idx])
-        code = no_strings[char_start:char_end]
-        block_args = args_text[char_start:char_end]
-        block_mask = mask[char_start:char_end]
+
+        code = no_strings[char_start:end_char]
+        block_args = args_text[char_start:end_char]
+        block_mask = mask[char_start:end_char]
         name = _test_name_for(code, start_idx + 1)
         blocks.append(_TestBlock(
             class_name=_class_name_for(no_comments_lines, start_idx),
@@ -405,6 +591,7 @@ def _build_blocks(path):
             code=code,
             args_text=block_args,
             string_mask=block_mask,
+            helpers=helpers,
         ))
     return lines, blocks
 
@@ -439,6 +626,25 @@ def _sut_names(class_name):
     return names
 
 
+def _is_test_double(local_name, decls):
+    """
+    True when `local_name` is bound to something whose type is a test double, either from an
+    explicit `val x: FooStub = ...` or from a constructor call `val x = FooStub()`.
+    """
+    init = (decls.get(local_name) or "").strip()
+    if not init:
+        return False
+    typed = re.match(r"^[A-Za-z_][\w.<>?]*\s*:\s*([A-Za-z_][\w.]*)", init)
+    if typed:
+        type_name = typed.group(1).rsplit(".", 1)[-1].lower()
+        return any(marker in type_name for marker in _TEST_DOUBLE_MARKERS)
+    constructed = re.match(r"^([A-Z][\w.]*)\s*[({]", init)
+    if constructed:
+        type_name = constructed.group(1).rsplit(".", 1)[-1].lower()
+        return any(marker in type_name for marker in _TEST_DOUBLE_MARKERS)
+    return False
+
+
 def _is_sut_call(expr, decls, sut_names, depth=0):
     """True when `expr` is a member call rooted at the class under test."""
     if depth > 2:
@@ -448,7 +654,9 @@ def _is_sut_call(expr, decls, sut_names, depth=0):
         return False
     root = match.group(1).split(".")[0]
     if root in sut_names:
-        return True
+        # A name match alone is not enough: a stub or fake named after the SUT is a test double,
+        # and reading a hard-coded value out of one is not circularity.
+        return not _is_test_double(root, decls)
     if root in decls:
         return _is_sut_call(decls[root], decls, sut_names, depth + 1)
     return False
@@ -461,11 +669,17 @@ def _is_sut_call(expr, decls, sut_names, depth=0):
 def _check_f1(block, calls, path):
     if calls:
         return []
+    # A test that delegates its verification to a helper in this file is not vacuous. The
+    # helper may assert directly or throw AssertionError; both are real verification. Without
+    # this, any test whose only assertion lives in a helper is reported F1, which is the one
+    # finding this scanner must never invent.
+    if _verifies_via_helper(block):
+        return []
     return [Finding(
         rule="F1",
         line=block.start_line,
         test_name=block.name,
-        detail="no assert*, fail( or verify* call in the test body",
+        detail="no assert*, fail( or verify* call in the test body, directly or via a helper",
         path=path,
     )]
 

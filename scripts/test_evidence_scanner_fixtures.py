@@ -31,10 +31,13 @@ ANTI-REGRESSION FIXTURES
     Mockito assertion, so the test is not `F1`. It is `F6`.
 """
 
+import ast
+import inspect
 import os
 import subprocess
 import sys
 import tempfile
+import textwrap
 
 if hasattr(sys.stdout, "reconfigure"):
     try:
@@ -352,6 +355,155 @@ class SingleAssertionCohortTest {
 """
 
 
+# The reviewer's C1 fixture: the helper is declared AFTER the next @Test, so a block bounded
+# at the next @Test cannot see its assertion and reports the delegating test as F1.
+C1_DELEGATION_FIXTURE = """
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class LedgerTest {
+
+    @Test
+    fun c1_delegates_its_only_assertion_to_a_helper() {
+        checkDebtIs(250)
+    }
+
+    @Test
+    fun c1_neighbouring_test() {
+        assertEquals(1, 1)
+    }
+
+    private fun checkDebtIs(amount: Int) {
+        assertEquals(250, amount)
+    }
+}
+"""
+
+# I1c: the helper-throws-AssertionError idiom. The test verifies; it just does not do it inline.
+I1C_HELPER_THROWS_FIXTURE = """
+import org.junit.Test
+
+class HelperThrowsTest {
+
+    @Test
+    fun i1c_delegates_to_a_helper_that_throws_assertion_error() {
+        expectDebtIs(250)
+    }
+
+    private fun expectDebtIs(amount: Int) {
+        if (amount != 250) {
+            throw AssertionError("expected 250 but was " + amount)
+        }
+    }
+}
+"""
+
+# I1b: the only `assertEquals` in the file is inside a `"""` raw string. A raw string is a
+# literal, not an assertion, so the test is genuinely F1 and must never be called tautological.
+I1B_RAW_STRING_FIXTURE = '''
+import org.junit.Assert.assertNotNull
+import org.junit.Test
+
+class RawStringAssertionTest {
+
+    @Test
+    fun i1b_only_a_raw_string_mentions_an_assertion() {
+        val expectedSql = """
+            SELECT assertEquals(1, 1)
+        """
+        println(expectedSql)
+    }
+
+    @Test
+    fun i1b_raw_string_mention_does_not_inflate_the_assertion_count() {
+        val documentation = """
+            call assertEquals(250, amount) to check the debt
+        """
+        assertNotNull(documentation)
+    }
+}
+'''
+
+# I1a: a test double whose name is derived from the class under test is NOT the class under
+# test, so a value read from it is not circular.
+I1A_STUB_FIXTURE = """
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class BalanceSheetTest {
+
+    @Test
+    fun i1a_stub_named_like_the_sut_is_not_the_class_under_test() {
+        val balanceSheet = BalanceSheetStub()
+        val expected = balanceSheet.total()
+        assertEquals(expected, 500)
+    }
+}
+"""
+
+# I2: the SUT gate. A value bound to a member call on some other collaborator is not circular,
+# and removing the gate makes this fixture fail.
+I2_NON_SUT_FIXTURE = """
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class LedgerCalculatorTest {
+
+    @Test
+    fun i2_value_from_a_non_sut_collaborator_is_not_circular() {
+        val factory = LedgerFixtureFactory()
+        val expected = factory.expectedBalance()
+        assertEquals(expected, 20)
+    }
+}
+"""
+
+# I3: the four F4 guards, each currently unexercised.
+I3_F4_GUARDS_FIXTURE = """
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Test
+
+class F4GuardTest {
+
+    @Test
+    fun i3a_while_loop_without_a_counter_conjunct_is_not_a_poll() {
+        var attempts = 0
+        while (queue.hasNext()) {
+            attempts += 1
+            queue.remove()
+        }
+        assertEquals(0, queue.size())
+    }
+
+    @Test
+    fun i3b_first_assertion_precedes_the_loop() {
+        var attempts = 0
+        assertNotNull(viewModel)
+        while (attempts < 50 && viewModel.state.value == null) {
+            attempts += 1
+            Thread.sleep(10)
+        }
+    }
+
+    @Test
+    fun i3c_counter_only_loop_awaits_nothing() {
+        var attempts = 0
+        while (attempts < 50) {
+            attempts += 1
+            retryLater()
+        }
+        assertNotNull(syncRepository)
+    }
+
+    @Test
+    fun i3d_message_overload_is_deliberately_not_compared() {
+        val openingDebt = 250
+        assertEquals("debt must match", openingDebt, openingDebt)
+    }
+}
+"""
+
 # --------------------------------------------------------------------------------------------
 # F1 - Vacuous: a @Test body with no assert*, no fail(, no verify*
 # --------------------------------------------------------------------------------------------
@@ -559,6 +711,139 @@ def test_regression_verify_no_interactions_is_an_assertion():
 
 
 # --------------------------------------------------------------------------------------------
+# C1 - a test that delegates its only assertion to a helper is not vacuous
+# --------------------------------------------------------------------------------------------
+
+def test_c1_delegated_assertion_is_not_vacuous():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        findings, tests = scan_fixture(tmpdir, "LedgerTest.kt", C1_DELEGATION_FIXTURE)
+
+        assert_resolved(tests, "c1_delegates_its_only_assertion_to_a_helper")
+        assert_resolved(tests, "c1_neighbouring_test")
+
+        assert_classified(
+            findings, "c1_delegates_its_only_assertion_to_a_helper", set()
+        )
+        assert_classified(findings, "c1_neighbouring_test", {"F2"})
+
+        # The block must also STOP at the test's own closing brace. If it ran on to the next
+        # @Test it would swallow the helper's assertion as well, so the neighbour would report
+        # 2 assertions instead of 1 and Task 3's single-assertion cohort would be wrong.
+        counts = {t["name"]: t["assertion_count"] for t in tests}
+        assert counts["c1_neighbouring_test"] == 1, (
+            "A test's block must end at its own closing brace, not at the next @Test. "
+            f"assertion_count seen: {counts}"
+        )
+        assert counts["c1_delegates_its_only_assertion_to_a_helper"] == 0, (
+            "The delegating test has no inline assertion; that is why the helper walk, not "
+            f"the count, is what clears it. assertion_count seen: {counts}"
+        )
+
+        print("PASS C1: a test whose only assertion lives in a helper it calls is not F1.")
+
+
+def test_i1c_helper_throwing_assertion_error_is_not_vacuous():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        findings, tests = scan_fixture(
+            tmpdir, "HelperThrowsTest.kt", I1C_HELPER_THROWS_FIXTURE
+        )
+
+        name = "i1c_delegates_to_a_helper_that_throws_assertion_error"
+        assert_resolved(tests, name)
+        assert_classified(findings, name, set())
+
+        print("PASS I1c: a test delegating to a helper that throws AssertionError is not F1.")
+
+
+# --------------------------------------------------------------------------------------------
+# I1b - a raw string is a literal, not an assertion
+# --------------------------------------------------------------------------------------------
+
+def test_i1b_assertion_inside_a_raw_string_is_not_an_assertion():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        findings, tests = scan_fixture(
+            tmpdir, "RawStringAssertionTest.kt", I1B_RAW_STRING_FIXTURE
+        )
+
+        only_raw = "i1b_only_a_raw_string_mentions_an_assertion"
+        assert_resolved(tests, only_raw)
+        assert_classified(findings, only_raw, {"F1"})
+
+        counts = {t["name"]: t["assertion_count"] for t in tests}
+        assert counts[only_raw] == 0, (
+            "An assertEquals inside a \"\"\" raw string is a string literal, not a call. "
+            f"assertion_count seen: {counts}"
+        )
+
+        with_real = "i1b_raw_string_mention_does_not_inflate_the_assertion_count"
+        assert_resolved(tests, with_real)
+        assert_classified(findings, with_real, set())
+        assert counts[with_real] == 1, (
+            "The raw string must not be counted as a second assertion. "
+            f"assertion_count seen: {counts}"
+        )
+
+        print("PASS I1b: an assertEquals inside a raw string is neither F2 nor an assertion count.")
+
+
+# --------------------------------------------------------------------------------------------
+# I1a / I2 - F3's SUT gate
+# --------------------------------------------------------------------------------------------
+
+def test_i1a_stub_named_like_the_sut_is_not_the_sut():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        findings, tests = scan_fixture(tmpdir, "BalanceSheetTest.kt", I1A_STUB_FIXTURE)
+
+        name = "i1a_stub_named_like_the_sut_is_not_the_class_under_test"
+        assert_resolved(tests, name)
+        assert_classified(findings, name, set())
+
+        print("PASS I1a: a test double whose name matches the SUT is not the class under test.")
+
+
+def test_i2_f3_sut_gate_rejects_a_non_sut_collaborator():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        findings, tests = scan_fixture(tmpdir, "LedgerCalculatorTest.kt", I2_NON_SUT_FIXTURE)
+
+        name = "i2_value_from_a_non_sut_collaborator_is_not_circular"
+        assert_resolved(tests, name)
+        assert_classified(findings, name, set())
+
+        print("PASS I2: a value bound to a member call on a non-SUT collaborator is not F3.")
+
+
+# --------------------------------------------------------------------------------------------
+# I3 - the F4 and F2 guards that are load-bearing but were unexercised
+# --------------------------------------------------------------------------------------------
+
+def test_i3_f4_guards():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        findings, tests = scan_fixture(tmpdir, "F4GuardTest.kt", I3_F4_GUARDS_FIXTURE)
+
+        for name in (
+            "i3a_while_loop_without_a_counter_conjunct_is_not_a_poll",
+            "i3b_first_assertion_precedes_the_loop",
+            "i3c_counter_only_loop_awaits_nothing",
+        ):
+            assert_resolved(tests, name)
+            assert_classified(findings, name, set())
+
+        print("PASS I3: a non-poll while, an assertion preceding the loop, and a counter-only "
+              "loop are all excluded from F4.")
+
+
+def test_i3_f2_does_not_compare_the_message_overload():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        findings, tests = scan_fixture(tmpdir, "F4GuardTest.kt", I3_F4_GUARDS_FIXTURE)
+
+        name = "i3d_message_overload_is_deliberately_not_compared"
+        assert_resolved(tests, name)
+        assert_classified(findings, name, set())
+
+        print("PASS I3: the three-argument assertEquals(message, expected, actual) is not F2.")
+
+
+# --------------------------------------------------------------------------------------------
 # CLI contract: --rule, --single-assertion, and always-exit-0
 # --------------------------------------------------------------------------------------------
 
@@ -676,10 +961,39 @@ TESTS = [
     test_f7_vacuous_path,
     test_regression_suppress_annotation_between_test_and_fun,
     test_regression_verify_no_interactions_is_an_assertion,
+    test_c1_delegated_assertion_is_not_vacuous,
+    test_i1c_helper_throwing_assertion_error_is_not_vacuous,
+    test_i1b_assertion_inside_a_raw_string_is_not_an_assertion,
+    test_i1a_stub_named_like_the_sut_is_not_the_sut,
+    test_i2_f3_sut_gate_rejects_a_non_sut_collaborator,
+    test_i3_f4_guards,
+    test_i3_f2_does_not_compare_the_message_overload,
     test_cli_rule_filter_and_exit_zero,
     test_cli_single_assertion_selector,
     test_cli_real_process_exit_code_is_zero_even_with_findings,
 ]
+
+
+def count_assertion_calls():
+    """
+    The number of assertions this self-test actually executed, measured rather than guessed.
+
+    Every `assert` statement in the TESTS list above executes exactly once per run, so the
+    count is the number of Assert nodes in those functions' ASTs. It is counted from the
+    source, not derived from a multiplication that has no relationship to anything measured.
+    """
+    import ast
+    import textwrap
+
+    source = textwrap.dedent(inspect.getsource(sys.modules[__name__]))
+    tree = ast.parse(source)
+    by_name = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    total = 0
+    for test_fn in TESTS:
+        node = by_name.get(test_fn.__name__)
+        assert node is not None, f"Test {test_fn.__name__} is not defined in this module"
+        total += sum(1 for child in ast.walk(node) if isinstance(child, ast.Assert))
+    return total
 
 
 def main():
@@ -690,7 +1004,7 @@ def main():
         test_fn()
     print("-" * 74)
     print(f"ALL {len(TESTS)} SCANNER FIXTURE GROUPS PASSED "
-          f"({len(TESTS) * 2} rule classifications checked against the real scan_file).")
+          f"({count_assertion_calls()} assertions executed against the real scanner).")
     print("=" * 74)
     return 0
 
