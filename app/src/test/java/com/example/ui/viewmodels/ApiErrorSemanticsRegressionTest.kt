@@ -366,6 +366,14 @@ class ApiErrorSemanticsRegressionTest {
         vm.loadDashboardData()
         advanceUntilIdle()
 
+        // PRECONDITION: the awaited state is that the testCount fetch was actually ATTEMPTED.
+        // testCount starts at null (DashboardViewModel.kt:40), so without this the assertNull below
+        // is satisfied by the untouched initial value and no network failure is ever observed.
+        // atLeastOnce() rather than times(1): DashboardViewModel.kt:63-65 calls loadDashboardData()
+        // from init, so construction plus the explicit call above legitimately fetches more than once.
+        // Evidence: DashboardViewModel.kt:184 (job launch) / :186 (gateway fetch).
+        verify(mockGateway, atLeastOnce()).getTestUsersCount()
+
         // Failure -> state MUST be null (unavailable), distinguishable from 0
         assertNull("Network failure must set testCount to null (unavailable)", vm.testCount.value)
     }

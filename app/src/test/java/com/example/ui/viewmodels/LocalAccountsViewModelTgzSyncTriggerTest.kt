@@ -209,6 +209,17 @@ class LocalAccountsViewModelTgzSyncTriggerTest {
                 attempts++
             }
 
+            // PRECONDITION: the awaited state is that the corrupt .tgz was reported as a FAILED import.
+            // Without it, "failed import does not trigger sync" is satisfied by the poll loop simply
+            // exhausting 50 attempts and the import never having reported anything.
+            // Evidence: LocalAccountsViewModel.kt:330 (failure message) / :335 (catch).
+            assertNotNull(
+                "PRECONDITION | The corrupt .tgz must be reported as a failed import, otherwise " +
+                    "'failed import does not trigger sync' is satisfied by nothing having happened. " +
+                    "error=${viewModel.error.value}, importResult=${viewModel.importResult.value}",
+                viewModel.error.value
+            )
+
             // B. Verify sync was NEVER requested
             verifyNoInteractions(mockSyncRepo)
 

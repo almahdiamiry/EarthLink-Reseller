@@ -799,7 +799,15 @@ class DataIntegrityReleaseGateTest {
             remoteVersion = 1000L, source = RemoteEventSource.MANUAL
         )
 
-        coordinator.processEvent(event)
+        val result = coordinator.processEvent(event)
+        // PRECONDITION: the awaited state is that the remote AccountUpsert was actually APPLIED.
+        // Without it, "no outbox records on remote apply" is satisfied by nothing having been applied.
+        assertEquals(
+            "PRECONDITION | The remote AccountUpsert must be APPLIED for this invariant to be meaningful. " +
+                "Got $result instead.",
+            EventSyncResult.APPLIED,
+            result
+        )
 
         val outboxAfter = outboxDao.getAllOneShot().size
         assertEquals(
@@ -850,8 +858,17 @@ class DataIntegrityReleaseGateTest {
         )
 
         // Apply once
+        val countBeforeFirst = db.localLedgerEntryDao().getByAccountIdOneShot(parentAccount.id).size
         coordinator.processEvent(ledgerEvent)
         val countAfterFirst = db.localLedgerEntryDao().getByAccountIdOneShot(parentAccount.id).size
+        // PRECONDITION: the awaited state is that the first apply actually created a ledger entry.
+        // Without it, "no duplicate entries" is satisfied by neither apply having inserted anything.
+        assertEquals(
+            "PRECONDITION | The first apply must create exactly one ledger entry, otherwise " +
+                "'no duplicates' is satisfied by nothing happening. Count after first: $countAfterFirst",
+            countBeforeFirst + 1,
+            countAfterFirst
+        )
 
         // Apply again (duplicate)
         coordinator.processEvent(ledgerEvent)
