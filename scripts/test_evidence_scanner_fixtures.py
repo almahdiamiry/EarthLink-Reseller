@@ -567,6 +567,50 @@ class ExpressionBodyTailTest {
 }
 '''
 
+# The expression-body upper bound must not run past the test into a following declaration.
+# `_DECLARATION_STARTS` omitted `suspend` and `inline` modifiers, so `private suspend fun` was
+# not recognised as a new declaration and the helper's assertions were attributed to the test,
+# inventing an F2 and an F7 on a test that is neither tautological nor vacuous.
+EXPRESSION_BODY_UNLISTED_DECL_FIXTURE = '''
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class UnlistedDeclarationTest {
+
+    @Test
+    fun test_before_suspend_helper_is_not_tautological() = runBlocking {
+        val total = 1 + 1
+        assertEquals(2, total)
+    }
+
+    private suspend fun suspendHelperContainsTautology() {
+        assertEquals(2, 2)
+    }
+
+    @Test
+    fun test_before_suspend_helper_reassigning_is_not_vacuous_path() = runBlocking {
+        var status = "pending"
+        assertEquals("pending", status)
+    }
+
+    private suspend fun suspendHelperReassignsAfterAsserting() {
+        var other = "x"
+        assertEquals("x", other)
+        other = compute()
+    }
+
+    @Test
+    fun test_before_inline_helper_is_not_affected() = runBlocking {
+        val left = compute()
+        assertEquals(3, left)
+    }
+
+    private inline fun inlineHelperContainsTautology() {
+        assertEquals(3, 3)
+    }
+}
+'''
+
 # --------------------------------------------------------------------------------------------
 # F1 - Vacuous: a @Test body with no assert*, no fail(, no verify*
 # --------------------------------------------------------------------------------------------
@@ -964,6 +1008,40 @@ def test_eb_expression_body_tail_is_not_truncated():
         print("PASS EB (tail): an expression body with a trailing call is not truncated.")
 
 
+def test_eb_expression_body_stops_at_an_unlisted_declaration():
+    """
+    The expression-body upper bound must be structural, not a list of declaration keywords.
+
+    `_DECLARATION_STARTS` omitted `suspend` and `inline`, so a following `private suspend fun`
+    helper was not seen as a new declaration, its assertions were attributed to the test, and
+    the scanner invented an F2 and an F7 on a test that is neither tautological nor vacuous.
+    This is the direction the brief forbids: it may under-report a rule, never invent one.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        findings, tests = scan_fixture(
+            tmpdir, "UnlistedDeclarationTest.kt", EXPRESSION_BODY_UNLISTED_DECL_FIXTURE
+        )
+
+        expected = {
+            "test_before_suspend_helper_is_not_tautological": 1,
+            "test_before_suspend_helper_reassigning_is_not_vacuous_path": 1,
+            "test_before_inline_helper_is_not_affected": 1,
+        }
+        counts = {t["name"]: t["assertion_count"] for t in tests}
+        for name, count in expected.items():
+            assert_resolved(tests, name)
+            assert_classified(findings, name, set())
+            assert counts[name] == count, (
+                f"An expression body must stop at the next declaration whatever its modifiers. "
+                f"'{name}' reported {counts.get(name)} assertions, expected {count}; a larger "
+                f"count means a following helper's assertions were attributed to this test. "
+                f"Counts: {counts}"
+            )
+
+        print("PASS EB (unlisted declaration): an expression body stops at `private suspend fun` "
+              "and `private inline fun`, so a helper's assertions are never attributed to a test.")
+
+
 # --------------------------------------------------------------------------------------------
 # CLI contract: --rule, --single-assertion, and always-exit-0
 # --------------------------------------------------------------------------------------------
@@ -1091,6 +1169,7 @@ TESTS = [
     test_i3_f2_does_not_compare_the_message_overload,
     test_eb_expression_bodies_are_scanned,
     test_eb_expression_body_tail_is_not_truncated,
+    test_eb_expression_body_stops_at_an_unlisted_declaration,
     test_cli_rule_filter_and_exit_zero,
     test_cli_single_assertion_selector,
     test_cli_real_process_exit_code_is_zero_even_with_findings,

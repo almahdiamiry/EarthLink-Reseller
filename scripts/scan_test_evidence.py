@@ -52,20 +52,31 @@ Rules
       zero relative to the `=`, so a `val` line inside the block is not mistaken for the end.
 
   What the resolution guarantees, precisely: the block never stops early, so it cannot hide
-  an assertion and invent a vacuity finding. It does NOT bound the block from running past
-  the test's own end: a private helper declared between two `@Test`s, or after the last one,
-  is inside the preceding test's range. That can inflate the preceding test's assertion count
-  and can move a finding's line number. It cannot create a vacuity finding, because F1 counts
-  only calls and a helper's assertion is a call the delegating test would reach anyway.
+  an assertion and invent a vacuity finding. It also never over-runs into the following
+  declaration, so it cannot borrow another function's assertion pattern and invent an F2, F3
+  or F7: a private helper declared between two `@Test`s, or after the last one, belongs to
+  NEITHER test and is outside both ranges. What it does NOT do is bound itself from running
+  past the test's own end in the other direction — a helper that is genuinely part of the
+  test's verification is inside the test's own closing brace and so is inside the range, and
+  a test that delegates to a helper declared elsewhere in the file is resolved by the
+  file-wide, name-resolved helper walk rather than by the range.
+
+  The direction of error is deliberate and applies to every rule: the scanner may
+  under-report, and must never invent a finding. Two guards enforce it, and each was added
+  after the corresponding class was demonstrated to be violated on real input — the
+  expression-body bound stopping at a `private suspend fun` (which produced an invented F2
+  and F7), and the tail truncation that produced an invented F1.
 
   The fallback, stated accurately: when no `fun` can be located at all, the block falls back
   to the next `@Test` or end of file. In this suite that fallback is reached by 7 of 798
   tests, all in `core/ledger/NoteCleanerTest.kt`, whose test names are Kotlin backtick-quoted
   strings (for example: a fun declaration whose name is wrapped in backticks) that the
   identifier pattern does not match. Expression bodies are NOT a fallback case; they are
-  resolved. The self-test pins both resolved shapes, including the expression-body tail, and
-  pins nothing about the fallback: a file that does not balance is not currently
-  representable as a fixture, so the fallback is the one path with no direct pin.
+  resolved. The self-test pins both resolved shapes, including the expression-body tail and
+  the unlisted-declaration stop. It does NOT pin the fallback: no fixture exercises it,
+  because doing so needs a file whose braces do not balance, and a fixture that deliberately
+  does not compile would test the scrubber rather than the block bound. The fallback is
+  therefore the one path with no direct pin, and that limit is stated rather than implied.
 
 Body text handling
   Comments and string literals are blanked before the structural scan, so an `assertEquals`
@@ -464,10 +475,13 @@ def _function_body_end(code, mask, fun_start):
             # stopping at the first brace block truncates it, hiding the tail's assertions and
             # manufacturing an F1.
             #
-            # The expression ends at a newline that begins a new declaration, but ONLY at
-            # brace depth zero relative to the `=`. Depth matters: a `val` line inside the
-            # `runBlocking {` block is part of the body, not the start of something else, and
-            # terminating there would truncate almost every test in this suite.
+            # The expression ends at the first top-level DECLARATION that follows it, decided
+            # structurally by `_declaration_offset` rather than by a list of keywords. A keyword
+            # list was the previous approach and it was wrong: it omitted `suspend` and
+            # `inline`, so a following `private suspend fun helper()` was not recognised, its
+            # assertions were attributed to the test, and the scanner invented an F2 and an F7
+            # on a test that was neither tautological nor vacuous. Any list can be incomplete;
+            # this cannot be, because a declaration is recognised by its keywords, not its text.
             j = i
             expr_depth = 0
             while j < n:
@@ -484,19 +498,66 @@ def _function_body_end(code, mask, fun_start):
     return None
 
 
-_DECLARATION_STARTS = (
-    "fun ", "private fun ", "internal fun ", "public fun ", "override fun ",
-    "@", "}", "class ", "private class ", "object ", "companion object", "val ", "var ",
-)
+# Kotlin declaration keywords. A line beginning with any of these (after modifiers) starts a new
+# declaration, so an expression body ends there. This is a keyword set, not a prefix list: a
+# declaration is recognised by the words it is made of, in any modifier order, so it cannot be
+# defeated by a modifier nobody thought to enumerate.
+_DECLARATION_KEYWORDS = frozenset({
+    "fun", "class", "object", "interface", "val", "var", "typealias", "init",
+    "constructor", "companion", "enum", "annotation", "data", "sealed", "open",
+    "abstract", "override", "private", "public", "internal", "protected", "lateinit",
+    "const", "inline", "suspend", "operator", "infix", "tailrec", "external", "final",
+    "expect", "actual", "crossinline", "noinline", "reified", "vararg", "companion",
+})
 
 
 def _starts_new_declaration(code, index):
-    """True when the next line begins a new declaration, ending an expression body."""
+    """
+    True when the next non-blank line begins a top-level declaration.
+
+    A line is a declaration when, after its indentation and any leading annotations, its first
+    one or two words are declaration keywords. Two words are enough to see through every
+    modifier combination (`private suspend fun`, `internal inline val`, `override suspend fun`)
+    without depending on a list of literal prefixes, and it cannot be defeated by adding a
+    modifier: a body line is `val x = ...` inside a block, which is already excluded by the
+    depth check, and a continuation line never starts with a keyword.
+    """
     k = index
-    while k < len(code) and code[k] in " \t":
+    n = len(code)
+    while k < n and code[k] in " \t":
         k += 1
-    rest = code[k:k + 24].lstrip()
-    return any(rest.startswith(prefix) for prefix in _DECLARATION_STARTS)
+    if k >= n:
+        return False
+    # Skip annotations such as `@Test` or `@Suppress("...")`.
+    while k < n and code[k] == "@":
+        while k < n and code[k] != "\n":
+            if code[k] in "([":
+                depth = 1
+                k += 1
+                while k < n and depth and code[k] != "\n":
+                    if code[k] in "([":
+                        depth += 1
+                    elif code[k] in ")]":
+                        depth -= 1
+                    k += 1
+                continue
+            k += 1
+        while k < n and code[k] in " \t":
+            k += 1
+    # The first one or two words must be declaration keywords.
+    words = []
+    for _ in range(2):
+        start = k
+        while k < n and (code[k].isalnum() or code[k] == "_"):
+            k += 1
+        if k == start:
+            break
+        words.append(code[start:k].lower())
+    if not words:
+        return False
+    return words[0] in _DECLARATION_KEYWORDS or (
+        len(words) > 1 and words[1] in _DECLARATION_KEYWORDS
+    )
 
 
 def _index_helper_functions(code, mask):
@@ -582,10 +643,12 @@ def _build_blocks(path):
             end_char = sum(len(line) + 1 for line in lines[:next_test_idx])
         else:
             end_char = len(text)
-        # Never let the block end before the next @Test: trailing helpers between two tests
-        # belong to neither, and shrinking the range can only hide assertions.
-        if next_test_idx is not None:
-            end_char = max(end_char, sum(len(line) + 1 for line in lines[:next_test_idx]))
+        # The block ends at the test's own closing brace and nowhere else. A private helper
+        # declared between two `@Test`s belongs to NEITHER test, so extending the block to the
+        # next `@Test` would attribute that helper's assertions — and its F2/F7 shapes — to the
+        # preceding test. The bound is deliberately not widened: over-inclusion invents
+        # findings, while a delegation to a following helper is already resolved by the
+        # file-wide, name-resolved helper walk in `_verifies_via_helper`.
         end_char = min(end_char, len(text))
         end_idx = no_strings.count("\n", 0, end_char) + 1
         if end_idx <= start_idx:
