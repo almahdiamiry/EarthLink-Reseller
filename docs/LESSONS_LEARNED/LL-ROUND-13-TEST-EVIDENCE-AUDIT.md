@@ -1735,15 +1735,20 @@ mutations, M5 applied in two stages — across 8 production files, in 19 Gradle 
 reported as evidence.** No `.kt` file is modified by this commit:
 `git diff --stat 50c094b -- "*.kt"` is empty (§4.6).
 
-**Verdict count: 7 CONFIRMED, 10 REFUTED, 1 LEAD, 0 OPEN — across 17 adjudicated tests.**
+**Verdict count: 7 CONFIRMED, 9 REFUTED, 1 LEAD, 0 OPEN — across 17 adjudicated tests.**
 
-**Correction, recorded before it could be published rather than after.** An earlier draft of this
-section's summary line read *"6 CONFIRMED, 10 REFUTED, 1 LEAD"*. That was wrong: the verdict table
-below has **17 rows**, of which **7** are `CONFIRMED` (1, 2, 3, 6, 7, 13, 14) and **9** are
-`REFUTED` (4, 5, 8, 9, 10, 11, 15, 16, 17). The error came from carrying a part-sum
-(*"Part 2 cohort: 4 CONFIRMED"*) forward without re-adding the two `CONFIRMED` results from the
-`EarthlinkSearchViewModelSeamTest` sample. It is corrected here and the arithmetic is now
-checkable against the table rather than asserted, which is the rule this document exists to enforce.
+**Correction, recorded before it could be published rather than after — and it took two rounds of
+it.** An earlier draft of this section's summary line read *"6 CONFIRMED, 10 REFUTED, 1 LEAD"*, and
+the line as first published read *"7 CONFIRMED, 10 REFUTED, 1 LEAD, 0 OPEN — across 17"*. **Both
+were wrong, in different places, and it was the sum that exposed the second one: 7 + 10 + 1 = 18 ≠
+17.** The verdict table below has **17 rows**, of which **7** are `CONFIRMED` (1, 2, 3, 6, 7, 13,
+14), **9** are `REFUTED` (4, 5, 8, 9, 10, 11, 15, 16, 17) and **1** is a `LEAD` (12). The
+`CONFIRMED` error came from carrying a part-sum (*"Part 2 cohort: 4 CONFIRMED"*) forward without
+re-adding the two `CONFIRMED` results from the `EarthlinkSearchViewModelSeamTest` sample. The
+`REFUTED` error survived that first correction because the correction checked its own figure against
+the `CONFIRMED` rows only and never re-added the remaining rows. Both are corrected here, and the
+arithmetic is now checkable against the table rather than asserted, which is the rule this document
+exists to enforce.
 
 ### 4.1 Why this section is a static screen followed by execution
 
@@ -1763,15 +1768,21 @@ worth applying across a wide surface before spending execution budget:
 
 **A pattern match is a lead, not a finding.** §3.11 recorded that this round's own narrow risk
 grade was necessary, because *"a narrow grade would have lost #2"*. This section applies the rule
-in the other direction, and the arithmetic is worth stating up front: **of the 10 tests that matched
-a pattern, execution refuted 2, confirmed 7, and left 1 a `LEAD`.** A pattern match predicted the
-wrong verdict **20% of the time**, in both directions — two accusations that execution refuted, and
-two test families that a shape-based review would have condemned and that caught every mutation
-thrown at them. The screen narrows the field; only the run decides.
+in the other direction, and the arithmetic is worth stating up front. **Over the ranked 10 — §4.2's
+match column read against its own outcome column and §4.10's verdict rows, which agree —
+execution split them 5 `CONFIRMED` / 5 `REFUTED` / 0 `LEAD`: a pattern match predicted the wrong
+verdict on 5 of 10 = 50%.** Counted through those tables two independent ways, which agree:
+`CONFIRMED` = #1, #2, #3, #6, #7; `REFUTED` = #4, #5, #8, #9, #10. `ApiErrorSemanticsRegressionTest.kt:304` is **not** in that denominator — §4.2's table gives
+that file one match (`:343`), and `:304` is held as a `LEAD` (#12) with no verdict at all. All five
+errors run the same way: the pattern said *fake*, execution said *sound*. A shape-based screen of
+the 54 would therefore have filed **five** false accusations — two textbook P2 shapes and three
+`assertNull` P2-family shapes — and every one of the five caught its mutation. The reverse error, a
+test that reads as sound and proves nothing, was **not** measured here and is not claimed. The
+screen narrows the field; only the run decides.
 
 ### 4.2 The 54, re-derived by counting, not by subtraction from memory
 
-The residual was computed mechanically from the scanner's cohort list minus Task 3's fifteen
+The residual was computed from the scanner's cohort list by subtracting Task 3's fifteen
 adjudicated `file:line` pairs, and the arithmetic was checked:
 
 ```console
@@ -1780,6 +1791,17 @@ adjudicated by Task 3:        15
 residual (this task):         54
 sum of the per-file counts:   54      <- printed by the script, not asserted
 ```
+
+**One step of that derivation is not mechanical, and an earlier version of this paragraph did not
+say so.** Literal subtraction of the fifteen cited pairs removes only **fourteen** of them, because
+Task 3 cites `DataIntegrityReleaseGateTest.kt:606` where the scanner records `:605` — the scanner
+keys each cohort member on its `@Test` annotation line (`scripts/scan_test_evidence.py`,
+`start_line`), and in that file `@Test` is `:605` with the `fun` at `:606`. Taken as exact
+`(file, line)` matches the arithmetic therefore yields **69 − 14 = 55**, and reaching **54** requires
+recognising that `:605` and `:606` are the same test. That recognition is sound and the residual
+below is right, but it is a judgement rather than arithmetic, so it is stated here: the 54 depends
+on mapping Task 3's `:606` onto the scanner's `:605`. **Task 3's citation is itself off by one
+against the scanner and belongs in §3, which this section does not own and has not touched.**
 
 23 files: one with 14 members, one with 6, five with 3, three with 2, and thirteen with 1
 (14 + 6 + 15 + 6 + 13 = 54).
@@ -2221,12 +2243,14 @@ compiled would have been the Task-2 false green; that possibility was checked an
 **The first assertion is satisfied by an unrelated exception path.** It expects `INCONCLUSIVE` for a
 statement belonging to a *different* user. With the userID element removed, the wrong user's
 statement now matches the tuple, so production proceeds to
-`resolvePendingOperationVerifiedSuccess(businessTransactionId, "[VERIFIED RENEW]")` (`:1976`),
+`resolvePendingOperationVerifiedSuccess(businessTransactionId, "[VERIFIED RENEW]")` (`:1974`),
 which throws `IllegalStateException("MISSING_LOCAL_FINANCIAL_TARGET…")` at `Repositories.kt:1541` —
 the local account is inserted at `Step3DurableDispatchTest.kt:653`, *after* this assertion — and the
-`catch` at `:2044` converts it to `INCONCLUSIVE`. **That mechanism is `reading`; the verdict rests
-on the run.** A statement correlation that accepts the wrong subscriber is masked by a
-materialization failure downstream.
+`catch` at `:2042` converts it to `INCONCLUSIVE`. **Both `Repositories.kt` line numbers in this
+paragraph were off by two before this revision (`:1976`, `:2044`) and were re-derived by reading the
+file; no verdict depends on them.** **That mechanism is `reading`; the verdict rests on the run.** A
+statement correlation that accepts the wrong subscriber is masked by a materialization failure
+downstream.
 
 **F5 CONFIRMED for the first assertion. The second half of the test is sound** — it materializes a
 real ledger entry through `resolvePendingOperationVerifiedSuccess`, so it is bound to production.
@@ -2237,9 +2261,11 @@ show three of its tests catching mutations outright.
 
 #### 15, 16 & 17. `Step3DurableDispatchTest.kt` — `test01`, `test02`, `test21` — **REFUTED** (adversarial control probes, no pattern match)
 
-`Step3DurableDispatchTest.kt` had **never been audited**. A per-test census (§4.7) found **zero**
-P1/P2/P3 matches. Rather than substitute weaker pattern probes, the highest-RED-invariant-risk tests
-in it were probed directly. All three REFUTED.
+`Step3DurableDispatchTest.kt` had **never been audited**. A per-test census (§4.7) found **zero
+strict** P1/P2/P3 matches in its 23 tests. Its one pattern-*shaped* item, `:593`, was graded
+P2-family on re-reading rather than by that screen — it is finding **#14**, in this same file, and
+it CONFIRMED. Rather than substitute weaker pattern probes, the highest-RED-invariant-risk tests in
+it were probed directly. All three REFUTED.
 
 **The mutation (M10)** — `Repositories.kt:1377-1380`, the single-writer hardware claim of RED
 Invariant 3, replaced by an unconditional grant — the exact mutation that would produce **duplicate
@@ -2260,8 +2286,10 @@ override suspend fun claimDispatchAuthorization(businessTransactionId: String): 
 XML: before `tests=2 failures=0 errors=0`; after `tests=2 failures=2 errors=0`.
 Log: `r13-t4-m10-dispatch-claim-always-granted.log`. `BUILD FAILED`.
 
-**The mutation (M11)** — `Repositories.kt:1965`, the `dispatchClaimCount == 0` rejection in the
-4-tuple fallback path, removed. This is the exact violation of `AGENTS.md` §9.7 lesson 1
+**The mutation (M11)** — `Repositories.kt:1963`, the `dispatchClaimCount == 0` rejection in the
+4-tuple fallback path, removed (this citation also read `:1965` before this revision, which is the
+`resolvePendingOperationVerifiedFailure` call inside that branch). This is the exact violation of
+`AGENTS.md` §9.7 lesson 1
 (*"`dispatchClaimCount = 0` signifies the local operation was **not authorized** for external
 dispatch"*), and `test21` exists to forbid it:
 
@@ -2272,7 +2300,12 @@ dispatch"*), and `test21` exists to forbid it:
 XML: before `tests=1 failures=0 errors=0`; after `tests=1 failures=1 errors=0`.
 Log: `r13-t4-m11-unclaimed-operation-can-materialize.log`. `BUILD FAILED`.
 
-**REFUTED, three times over.** This file is the strongest evidence this task found.
+**REFUTED, three times over — and this file is not uniformly strong.** Three of the four tests
+probed in `Step3DurableDispatchTest.kt` caught their mutation; the fourth, `:593`, is in this same
+file and did **not** catch M12. Four mutations aimed at RED Invariants 3 and 5 produced three reds,
+which makes this the best-covered file in the task — and it is also the file that holds this
+section's seventh confirmation. **"It caught every mutation thrown at it" was false, and is not
+carried forward.**
 
 ### 4.5 What was excluded, and why
 
@@ -2400,14 +2433,34 @@ The census recorded, per test, the number of assertion call sites and the set of
 invoked. Both files are structurally unlike the 54: **61 of the 63 tests reach production**, and only
 **two tests in the entire pair reach none at all** — `EarthlinkSearchViewModelSeamTest.kt:1214` (#13,
 **CONFIRMED**) and `:1222` (§3.4 **#4**, already CONFIRMED).
-`Step3DurableDispatchTest.kt` carries **144 assertion call sites across its 23 tests**, a **minimum of
+`Step3DurableDispatchTest.kt` carries **146 assertion call sites across its 23 tests**, a **minimum of
 2 and a maximum of 12 per test, and not one test with a single assertion**. The P2 shape that produced
 §3.4's `#5` and `#6` is **absent from both files**.
 
+**146, counted rather than carried forward, because this figure had been wrong twice.** Counting
+assertion call sites inside each `@Test` body, brace-scoped, gives `assertEquals` 84, `assertNotNull`
+31, `assertTrue` 12, `assertNull` 8, `assertFalse` 7, `assertNotEquals` 3, `fail` 1 — **146** — with
+**zero** call sites outside a test body and **zero** `verify*` calls in the file (its ten `verify`
+matches are two `verifyAndResolvePendingOperation` call sites and eight comments). The per-test split
+over those same 23 bodies is again min 2 / max 12. An earlier draft of this section said 142; a first
+correction said 144.
+
+**Pattern-shaped items across the pair — two adjudicated here, and "one match" was wrong.**
+`EarthlinkSearchViewModelSeamTest.kt` has two strict P3 matches, `:1214` and `:1222`, which are
+exactly the two tests in the pair that reach no production at all. `Step3DurableDispatchTest.kt` has
+**zero strict matches** and one item graded P2-family on re-reading, `:593`, which is finding **#14**.
+So **two pattern-shaped items were adjudicated in this section — one strict P3 at
+`EarthlinkSearchViewModelSeamTest.kt:1214`, one P2-family at `Step3DurableDispatchTest.kt:593` — and a
+third, `:1222`, was already CONFIRMED as §3.4 #4.** The "P2-family" grade on `:593` is a stretch and
+is labelled as one: its two assertions (`:634`, `:656`) are enum equalities against
+`UnknownOutcomeResolutionResult`, **neither an `assertNull` nor a count-compare**, so it does not
+match the P2 shape §4.1 defines. What it shares with P2-family is the defect family — the asserted
+outcome is not attributable to the rule the test names — and that is the whole of the claim.
+
 | File | Tests | Assertion sites | Tests reaching production | P1/P2/P3 matches | Probed |
 |:---|:---|:---|:---|:---|:---|
-| `Step3DurableDispatchTest.kt` | 23 | 144 (min 2, max 12) | **23 / 23** | 0 | test01, test02, test17, test21 |
-| `EarthlinkSearchViewModelSeamTest.kt` | 40 | — | **38 / 40** | 2 (`:1214`, `:1222`) | `:1214` (`:1222` already §3.4 #4) |
+| `Step3DurableDispatchTest.kt` | 23 | 146 (min 2, max 12) | **23 / 23** | 0 strict; 1 P2-family on re-reading (`:593`, #14) | test01, test02, test17, test21 |
+| `EarthlinkSearchViewModelSeamTest.kt` | 40 | — | **38 / 40** | 2 strict P3 (`:1214`, `:1222`) | `:1214` (`:1222` already §3.4 #4) |
 
 **Not covered, explicitly:**
 
@@ -2416,7 +2469,10 @@ invoked. Both files are structurally unlike the 54: **61 of the 63 tests reach p
   success-path materializers behind RED Invariant 4, and `testADV_C16_exactBoundaryTests`, which pins
   the ±90s window edges of RED Invariant 5. **The ±90s boundary was not mutation-proven** — M12
   removed the userID element of the tuple, not the time window.
-- **39 of the 40 `EarthlinkSearchViewModelSeamTest` tests were not executed**, only screened.
+- **38 of the 40 `EarthlinkSearchViewModelSeamTest` tests were not executed**, only screened. The M9
+  selection was `testBalanceAfterMath*`, which ran **2** — `:1214` and `:1222`, both P3 — and the
+  post-revert run used the same selection. The figure this bullet used to carry, 39, contradicted the
+  table directly above it.
 - **43 of the 54 cohort members were never mutation-proven** (§4.8).
 - **The other ~90 files in the suite were not touched at all.** This task's surface is the 54 plus
   two files; it says nothing about the remaining ~90.
@@ -2527,10 +2583,16 @@ and a downstream exception standing in for a correlation that no longer rejects.
 
 **Two things this section adds that §3 could not.**
 
-1. **The pattern predicts almost nothing on its own.** Two of the ten P2 matches (#4, #5) were
-   refuted by execution. A static review of the 54 would have produced two false accusations, one of
-   them against a file adjacent to the release gate, and would have said nothing about the nine
-   mutations that did land. **The screen narrows the field; only the run decides.**
+1. **The pattern is wrong about half the time, and every time in the same direction: accusing.** Over
+   the ranked 10, **5 of 10 = 50%** — `CONFIRMED` = #1, #2, #3, #6, #7; `REFUTED` = #4, #5, #8, #9,
+   #10 — with `ApiErrorSemanticsRegressionTest.kt:304` outside that denominator (§4.1). A static
+   review of the 54 would have filed **five** false accusations: two P2 shapes whose expected value is
+   a default (`#4`, `#5`), and three `assertNull` P2-family shapes (`#8`, `#9`, `#10`), every one of
+   which caught its mutation. Over the wider pool of **12** pattern-shaped items adjudicated in this
+   section — the ranked 10 plus #13 (strict P3) and #14 (P2-family), both from the two sampled files —
+   it is 5 of 12 = 42%: 7 `CONFIRMED` / 5 `REFUTED`, and the five are the same five. Either way it
+   would have said nothing about the 43 cohort members it screened without a match (§4.8). **The
+   screen narrows the field; only the run decides.**
 2. **The refuted half carries the round.** #8 and #9 are the positive control for #6 and #7: four
    tests, one production file, the same `assertNull` shape, the same family of mutant — and two went
    red where two stayed green. That contrast is the only reason #6/#7 can be trusted, and it is
@@ -2554,9 +2616,13 @@ and a downstream exception standing in for a correlation that no longer rejects.
 
 **The lesson worth carrying forward, and it is the inverse of §3.11's.** §3.4 proved that a single
 assertion can hide a missing production call. This section proves the complementary and more
-expensive error: **a reviewer's static judgement is not evidence either.** Six tests read as sound
-pattern matches produced six verdicts, and **four of the six pattern-based predictions were wrong** —
-two accusations execution refuted, and two test families (`Step3DurableDispatchTest`,
-`Workstream7ImportMatchingCollisionTest`) that a shape-based review would have condemned and that
-caught every mutation thrown at them. **Breaking the code and watching the test fail, or pass, is
-the only measurement that has not yet been wrong in this audit.**
+expensive error: **a reviewer's static judgement is not evidence either.** Read against §4.2's match
+column and §4.10's verdict rows, the pattern-shaped items here were **wrong about half of them** —
+5 of the ranked 10, and the same 5 of the 12 adjudicated overall. Nor were the five near-misses in
+quality: `BugOb01ExpiryAlertThrottleTest.kt:64` is the textbook P2 on paper, since its expected value
+*is* the SharedPreferences default, and `DashboardViewModelForecastTest.kt:72` asserts an initialiser
+without calling the loader; the other three are the same `assertNull` P2-family shape as #6/#7. **All
+five caught their mutation.** **Breaking the code and watching the test fail, or pass, is the
+measurement this section is built on — and it is not claimed to be infallible either: several of this
+section's own recorded figures were wrong and are corrected above, each time by counting against a
+table rather than by substituting a plausible figure.**
