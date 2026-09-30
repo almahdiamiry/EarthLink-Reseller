@@ -815,21 +815,5 @@ class Phase1FirestoreDocumentIdentityTest {
         assertEquals(60000.0, (map2["debtAfterIqd"] as Number).toDouble(), 0.001)
         assertEquals("e1", map2["correctsEntryId"])
     }
-
-    // Scenario J — Counterfactual
-    @Test
-    fun testScenarioJ_counterfactualRawPayloadContainsRawJson() {
-        val rawUtowerJson = """{"utower_id":12345}"""
-        val rawUnstrippedMap = mapOf<String, Any>(
-            "id" to "tx_cf",
-            "accountId" to "acc_cf",
-            "typeRaw" to "gave",
-            "amountIqd" to 10000.0,
-            "rawJson" to rawUtowerJson
-        )
-
-        // Verifies that unstripped raw payload map DOES contain rawJson key
-        assertTrue("Unstripped map contains rawJson", rawUnstrippedMap.containsKey("rawJson"))
-    }
 }
 
