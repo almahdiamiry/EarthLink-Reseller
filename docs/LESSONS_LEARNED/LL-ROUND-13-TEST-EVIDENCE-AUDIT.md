@@ -568,10 +568,11 @@ by execution rather than acting on the scan.
 
 ## Task 3 — Adjudicating the single-assertion cohort by mutation
 
-**Scope: 1 review priority (`F5`), 69 candidates, 15 adjudicated, 10 mutations across 7
-production files, 15 executed Gradle runs.** No `.kt` file is modified by this commit. Ten
+**Scope: 1 review priority (`F5`), 69 candidates, 15 adjudicated, 10 mutations across 9
+production files, 16 executed Gradle runs.** No `.kt` file is modified by this commit. Nine
 production files were mutated transiently under the Ruling 1 gate and every one was reverted
-and byte-verified (§3.6).
+and byte-verified (§3.7). `PdfStatementGenerator.kt` carries two of the ten mutations (M6 and
+M10), which is why the file count is one lower than the mutation count.
 
 **Verdict count: 6 CONFIRMED, 9 REFUTED, 0 OPEN.**
 
@@ -618,6 +619,7 @@ The 69 distribute unevenly, and that distribution drove the ranking:
 | File | Cohort members |
 |:---|:---|
 | `DataIntegrityReleaseGateTest.kt` | **22** |
+| `GetRemainingTimeTest.kt` | 6 |
 | `DefectRemediationSeamTest.kt` | 3 |
 | `Phase2RemoteVersionAdversarialTest.kt` | 3 |
 | `SurgicalFixAdvanceAndRenewalTest.kt` | 3 |
@@ -629,8 +631,10 @@ The 69 distribute unevenly, and that distribution drove the ranking:
 | `BugMoney01PdfHidesSubscriberCreditTest.kt` | 2 |
 | `BugSri01CoordinatorAuditDaoWiringTest.kt` | 2 |
 | `UtowerDateParserTest.kt` | 2 |
-| `GetRemainingTimeTest.kt` | 6 |
 | 13 further files | 1 each |
+
+The 13 named multi-member files account for 56 of the 69; the 13 single-member files account
+for the other 13.
 
 **A third of the cohort (22 of 69) sits in one file** — and that file is the one
 `AGENTS.md` §9.1 names as a `RELEASE-REQUIRED` suite directly protecting `INV-01`..`INV-16`
@@ -748,11 +752,42 @@ Log: `r13-t3-m1-inv02-physical-delete.log`. `BUILD SUCCESSFUL in 1m 16s`, 35 tas
 *"No physical row deletion on `local_ledger_entries`"*, and
 `AppDatabase.kt:152` states the same rule in production. This test is named for that
 invariant, sits in the file `AGENTS.md` names as the barrier, and is blind to the violation
-by construction — because the behaviour it names is never invoked. The test cannot detect
-physical deletion, no matter how the code changes.
+**by construction**: it holds no reference to `deleteTransaction` or `correctTransaction` at
+all. No mutation of `Repositories.kt` can change its outcome, because the mutated object is
+not in its input set. That is the strongest form of `F5` — not *tolerating* a stub, but being
+*incapable* of observing the change.
 
-**F5 CONFIRMED.** Task 5 owns the repair (call the real `deleteTransaction`, assert the
-original row survives and a `correctsEntryId` contra-entry appears).
+#### The invariant is not undefended — this is a finding about *this test*, not about Invariant 2
+
+**Correction, added after review.** Everything above is true, and a reader would still finish
+this section with a false impression: that RED Invariant 2 has no working guard. **It has
+one.** `Workstream9AFinancialCorrectionTest.kt:262`,
+`testFullReversal_viaDeleteTransaction_createsZeroIntendedCorrectionWithoutPhysicalDeletion`,
+is a genuine and effective guard:
+
+- `:285` calls `ledgerRepository.deleteTransaction("tx_reversal_target")` — the real seam.
+- `:289` `assertNotNull("Original transaction must NOT be physically deleted", origInDb)` —
+  the exact RED-Invariant-2 assertion, on the row the deletion targeted.
+- `:298` `assertEquals(2, allEntries.size)` — the original *plus* the contra-entry, so a
+  silent no-op cannot pass.
+- `:299-302` locates the `correctsEntryId == "tx_reversal_target"` row and asserts its type
+  and amount.
+
+**Verified by execution, by the reviewer, not by me.** M1 was re-applied and this test was run
+alongside the gate test: **`2 tests completed, 1 failed`**, the single failure being this one.
+So the identical mutation that the gate test cannot see is caught immediately by a test
+elsewhere in the suite.
+
+**The finding is therefore precisely scoped: `DataIntegrityReleaseGateTest.kt:606` is
+structurally blind; RED Invariant 2 is defended.** The consequence for Task 5 is a repair,
+not an addition — see the carry-forward in §3.10. I did not adjudicate
+`Workstream9AFinancialCorrectionTest.kt:262` in this task; it is **not** in the
+single-assertion cohort (it carries four assertions), so no verdict is claimed for it beyond
+the one measured fact above.
+
+**F5 CONFIRMED**, scoped to the gate test. Task 5 owns the repair (call the real
+`deleteTransaction`, assert the original row survives and a `correctsEntryId` contra-entry
+appears — which is what `Workstream9AFinancialCorrectionTest.kt:262` already does).
 
 ---
 
@@ -1246,22 +1281,35 @@ not consulted. The current-state finding stands on its own: the behaviour is not
 
 Ruling 1 required `git status --porcelain` to be empty before each new mutation, and the
 production files byte-identical to `c09918d` at the end. Both were **checked, not assumed**,
-after every one of the ten mutations:
+after every one of the ten mutations.
+
+> **Correction, added after review — read this before the transcript below.** An earlier
+> version of this section presented a single unqualified transcript as end-state proof, and
+> **two of its lines were false at `HEAD`**: `git diff --stat c09918d` and
+> `git diff c09918d --name-only` were shown as empty / `Count: 0`. They are not empty at
+> `HEAD` and never were after the commit step — the worktree at that moment still held the
+> uncommitted 900-line addition to *this* document, so those two commands were reporting a
+> *pre-commit* tree state while being read as a final one. Only the `*.kt`-scoped lines were
+> and are true. For a section whose thesis is *"a green barrier is not evidence that the
+> barrier works"*, a transcript that is green for the wrong reason is the single least
+> tolerable error available, and this was one. The commands are now split by the tree state
+> they were actually run against, and the end-state figures are re-derived as they are at
+> `HEAD`.
+
+**The gate, during the mutation phase — every one of these was run after each of the ten
+reverts, before the next mutation began, with the worktree clean and nothing staged:**
 
 ```console
-$ git status --porcelain
-                              <-- empty, after each of the 10 reverts
+PS> git status --porcelain
+PS> [empty -- this empty output IS the evidence]
 
-$ git diff --stat c09918d
-                              <-- empty
+PS> git diff --stat
+PS> [empty]
 
-$ git diff c09918d --name-only | Measure-Object
+PS> git diff c09918d --name-only -- "*.kt" | Measure-Object
 Count: 0
 
-$ git diff c09918d --name-only -- "*.kt" | Measure-Object
-Count: 0
-
-$ Get-ChildItem app\src -Recurse -Include *.kt |
+PS> Get-ChildItem app\src -Recurse -Include *.kt |
       Select-String -Pattern "R13-T3 TRANSIENT MUTATION"
 Count: 0
 ```
@@ -1269,16 +1317,61 @@ Count: 0
 Every mutation carried an `R13-T3 TRANSIENT MUTATION` marker comment so a missed revert would
 be greppable rather than invisible. The marker count is `0` repo-wide.
 
-**Post-revert re-execution, to prove the reverts landed rather than asserting it:**
+**The end state, re-derived at `HEAD` = `8832454`, with the worktree clean.** These are the
+figures as they actually are, and they differ from the pre-commit figures above in exactly
+the way the commit step explains:
 
-| Class | Baseline | Post-revert | Log |
-|:---|:---|:---|:---|
-| `DataIntegrityReleaseGateTest` (full) | 36 / 0 / 0 | **36 / 0 / 0** | `r13-t3-postrevert-dataintegrity-full.log` |
-| `BugMoney01PdfHidesSubscriberCreditTest` | 3 / 0 / 0 | **3 / 0 / 0** | `r13-t3-postrevert-bugmoney01.log` |
-| `Workstream7And8SafetyNetTest.testUtowerDebtResolver…` | 1 / 0 / 0 † | **1 / 0 / 0** | `r13-t3-postrevert-workstream78.log` |
+```console
+PS> git status --porcelain
+PS> [empty]
+
+PS> git diff --stat c09918d
+ .../LL-ROUND-13-TEST-EVIDENCE-AUDIT.md             | 900 +++++++++++++++++++++
+ 1 file changed, 900 insertions(+)
+
+PS> git diff c09918d --name-only | Measure-Object
+Count: 1                       <-- the document itself; expected, not leakage
+
+PS> git diff c09918d --name-only -- "*.kt" | Measure-Object
+Count: 0                       <-- the claim that matters: no production file differs
+```
+
+**The one figure that carries the Ruling 1 guarantee is the last one: `Count: 0` for
+`*.kt`.** Every `.kt` file in the repository is byte-identical to `c09918d`. The single
+differing file is this document, which is the intended output of the task and contains no
+code.
+
+**Post-revert re-execution.** Re-run *from a clean tree* after the mutation phase, to show
+the reverts landed rather than asserting it. The true chronological order, taken from the
+log files' own timestamps, is below — **it is not the order an earlier version of this
+document implied**, and the correction matters (see the disclosure immediately after the
+table):
+
+| Order | Run | Class | Baseline | Post-revert | Log mtime |
+|:---|:---|:---|:---|:---|:---|
+| 1 | PA | `Workstream7And8SafetyNetTest.testUtowerDebtResolver…` | 1 / 0 / 0 † | **1 / 0 / 0** | 13:41:46 |
+| 2 | PC | `DataIntegrityReleaseGateTest` (full) | 36 / 0 / 0 | **36 / 0 / 0** | 13:43:45 |
+| 3 | PB | `BugMoney01PdfHidesSubscriberCreditTest` | 3 / 0 / 0 | **3 / 0 / 0** | 13:50:22 |
 
 † this single method had no pre-mutation baseline run of its own; its "before" number is the
 post-revert run, recorded as such in §3.8 rather than back-filled.
+
+> **Correction, added after review — M9's revert is evidenced by the `git status` gate only,
+> not by a post-revert execution.** The timestamps show the true order was
+> `M8 (13:39:44) → PA (13:41:46) → PC (13:43:45) → M9 (13:46:11) → M10 (13:48:27) → PB
+> (13:50:22)`. **The full-class `DataIntegrityReleaseGateTest` re-execution (PC, 13:43:45)
+> therefore completed *before* M9 was ever applied** — and M9 mutated
+> `RemoteSyncCoordinator.kt`, and `#5`/`:776` and `#6`/`:819` both live in the very class PC
+> ran. An earlier version of this section presented the order as `M8 → M9 → M10 → PA → PB →
+> PC`, which placed PC last and made it look as though every revert had been re-executed.
+>
+> Consequence, stated plainly: **M9's revert rests on the `git status --porcelain` gate, on
+> the `*.kt` byte-identity check against `c09918d`, and on the zero-marker count — not on a
+> post-revert test run.** M1–M8 and M10 *are* covered by re-execution: M1/M3/M4/M5/M7 mutate
+> files exercised by PC, M6/M10 by PB, and M8 by PA. The reviewer independently confirmed no
+> leakage resulted. The lesson is procedural and is recorded in the fix round of the task
+> report: **a post-revert re-execution only covers mutations applied before it ran, and an
+> ordering claim needs a timestamp to back it.**
 
 ---
 
@@ -1286,24 +1379,42 @@ post-revert run, recorded as such in §3.8 rather than back-filled.
 
 All 16 runs, all with `--rerun-tasks`, all reporting `35 actionable tasks: 35 executed`.
 
-| # | Purpose | Selection | `tests`/`failures`/`errors` | Log |
-|:---|:---|:---|:---|:---|
-| R1 | baseline | `*DataIntegrityReleaseGateTest*` | 36/0/0 | `r13-t3-baseline-dataintegrity.log` |
-| M1 | `deleteTransaction` → physical `DELETE` | INV-02 | 1/**0**/0 | `r13-t3-m1-inv02-physical-delete.log` |
-| B1 | baseline | 2 seam-balance methods | 2/0/0 | `r13-t3-baseline-seambalance.log` |
-| B2 | baseline | `*BugMoney01*` | 3/0/0 | `r13-t3-baseline-bugmoney01.log` |
-| M2 | `getResellerBalance` ignores gateway | 2 seam-balance methods | 2/**1**/0 | `r13-t3-m2-resellerbalance-ignores-gateway.log` |
-| M3 | `MIGRATION_8_9` defaults unsafe | migrationDefaults | 1/**0**/0 | `r13-t3-m3-migration-defaults-unsafe.log` |
-| M4 | BalanceCalculator filter removed | INV-04 | 1/**1**/0 | `r13-t3-m4-balancecalculator-no-history-filter.log` |
-| M5 | ledger `rawJson` strip removed | rawJson ledgerPath | 1/**1**/0 | `r13-t3-m5-rawjson-ledger-strip-removed.log` |
-| M6 | `BUG-MONEY-1` re-introduced | `*BugMoney01*` | 3/**1**/0 | `r13-t3-m6-bugmoney01-reintroduced.log` |
-| M7 | `"note"` → `"took"` | oracle_noteTransaction | 1/**0**/0 | `r13-t3-m7-note-reclassified-as-took.log` |
-| M8 | resolver ignores `explicitSourceDebt` | debt resolver | 1/**1**/0 | `r13-t3-m8-debtresolver-ignores-explicit.log` |
-| M9 | all remote events suppressed | INV-12 + idempotency | 2/**0**/0 | `r13-t3-m9-all-events-suppressed.log` |
-| M10 | the two pinned PDF strings changed | `*BugMoney01*` | 3/**2**/0 | `r13-t3-m10-pdf-strings-changed.log` |
-| PA | post-revert | debt resolver | 1/0/0 | `r13-t3-postrevert-workstream78.log` |
-| PB | post-revert | `*BugMoney01*` | 3/0/0 | `r13-t3-postrevert-bugmoney01.log` |
-| PC | post-revert | `*DataIntegrityReleaseGateTest*` | 36/0/0 | `r13-t3-postrevert-dataintegrity-full.log` |
+**The order below is chronological, taken from the log files' own `LastWriteTime`, not from
+my narrative of what I did.** An earlier version of this table was grouped mutations together
+and post-revert runs together, which silently implied an execution order that was wrong —
+see the M9 disclosure in §3.7.
+
+| # | Purpose | Selection | `tests`/`failures`/`errors` | Log | mtime |
+|:---|:---|:---|:---|:---|:---|
+| R1 | baseline | `*DataIntegrityReleaseGateTest*` | 36/0/0 | `r13-t3-baseline-dataintegrity.log` | 13:15:52 |
+| M1 | `deleteTransaction` → physical `DELETE` | INV-02 | 1/**0**/0 | `r13-t3-m1-inv02-physical-delete.log` | 13:17:31 |
+| B1 | baseline | 2 seam-balance methods | 2/0/0 | `r13-t3-baseline-seambalance.log` | 13:19:37 |
+| B2 | baseline | `*BugMoney01*` | 3/0/0 | `r13-t3-baseline-bugmoney01.log` | 13:22:35 |
+| M2 | `getResellerBalance` ignores gateway | 2 seam-balance methods | 2/**1**/0 | `r13-t3-m2-resellerbalance-ignores-gateway.log` | 13:25:18 |
+| M3 | `MIGRATION_8_9` defaults unsafe | migrationDefaults | 1/**0**/0 | `r13-t3-m3-migration-defaults-unsafe.log` | 13:28:22 |
+| M4 | BalanceCalculator filter removed | INV-04 | 1/**1**/0 | `r13-t3-m4-balancecalculator-no-history-filter.log` | 13:30:35 |
+| M5 | ledger `rawJson` strip removed | rawJson ledgerPath | 1/**1**/0 | `r13-t3-m5-rawjson-ledger-strip-removed.log` | 13:32:53 |
+| M6 | `BUG-MONEY-1` re-introduced | `*BugMoney01*` | 3/**1**/0 | `r13-t3-m6-bugmoney01-reintroduced.log` | 13:34:55 |
+| M7 | `"note"` → `"took"` | oracle_noteTransaction | 1/**0**/0 | `r13-t3-m7-note-reclassified-as-took.log` | 13:37:29 |
+| M8 | resolver ignores `explicitSourceDebt` | debt resolver | 1/**1**/0 | `r13-t3-m8-debtresolver-ignores-explicit.log` | 13:39:44 |
+| PA | post-revert | debt resolver | 1/0/0 | `r13-t3-postrevert-workstream78.log` | 13:41:46 |
+| PC | post-revert | `*DataIntegrityReleaseGateTest*` | 36/0/0 | `r13-t3-postrevert-dataintegrity-full.log` | 13:43:45 |
+| M9 | all remote events suppressed | INV-12 + idempotency | 2/**0**/0 | `r13-t3-m9-all-events-suppressed.log` | 13:46:11 |
+| M10 | the two pinned PDF strings changed | `*BugMoney01*` | 3/**2**/0 | `r13-t3-m10-pdf-strings-changed.log` | 13:48:27 |
+| PB | post-revert | `*BugMoney01*` | 3/0/0 | `r13-t3-postrevert-bugmoney01.log` | 13:50:22 |
+
+**PA and PC fall between M8 and M9.** That is not a formatting quirk: it means the
+full-class re-execution happened before M9 existed, which is why M9's revert is evidenced by
+the `git status` gate rather than by a re-run (§3.7). The ordering is stated here so the next
+task does not have to rediscover it.
+
+**These 16 logs are all still on disk** in
+`C:\Users\ALMAHD~1\AppData\Local\Temp\opencode\`, and the reviewer re-verified this entire
+table from them. They are outside the repository for a reason specific to this task: an
+untracked file inside the worktree would appear in `git status --porcelain` and **destroy the
+Ruling 1 revert gate**. They remain untracked and would not survive a temp-directory clean,
+so the mutation text, commands, XML numbers and log names are all transcribed into §3 to
+make re-derivation possible without them.
 
 **Runs discarded — one, and it is mine:**
 
@@ -1330,18 +1441,42 @@ Stated as plainly as what it did, per `LL-BUG-HUNT-METHODOLOGY` §7.
 
 - **54 of the 69 cohort members were not adjudicated.** They fall below the cut on the §3.2
   rule, and the rule weighted toward financial/ledger files, `DataIntegrityReleaseGateTest`,
-  and the `F5` mechanism. The 54 are dominated by: the remaining 17
-  `DataIntegrityReleaseGateTest` members (the *other* round-trip fields, the account-path
-  `rawJson` twin at `:521`, the oracle and backup/restore cases); `GetRemainingTimeTest` (6,
-  pure UI string formatting); the identity/provenance matchers in
-  `DefectRemediationSeamTest`, `Workstream7ImportMatchingCollisionTest` and
-  `HistoricalSubscriberMatchingSafetyTest` (9, `assertFalse(matches…)` on a single input);
-  `UtowerDateParserTest` (2, date parsing); `ApiErrorSemanticsRegressionTest` (3, legitimate
-  zero vs unavailable — financially material and a plausible future candidate);
-  `Phase2RemoteVersionAdversarialTest` / `Phase2ServerConfirmedLifecycleTest` (4);
-  `BugSri01CoordinatorAuditDaoWiringTest` (2, wiring assertions); and 11 singletons.
+  and the `F5` mechanism. **The total of 54 is correct and was correct before this
+  correction; the breakdown that produced it was not.** Re-derived by matching the 15
+  adjudicated test names against the scanner's cohort list, the 54 break down as:
+
+  | Remaining | Count | Note |
+  |:---|:---|:---|
+  | `DataIntegrityReleaseGateTest.kt` | **14** | 8 of its 22 were adjudicated (`:606 :923 :1275 :776 :819 :627 :534 :324`); the rest are the *other* round-trip fields, the account-path `rawJson` twin at `:521`, and the oracle / backup-restore cases |
+  | `GetRemainingTimeTest.kt` | 6 | pure UI string formatting |
+  | matcher group — `DefectRemediationSeamTest` (3) + `Workstream7ImportMatchingCollisionTest` (2) + `HistoricalSubscriberMatchingSafetyTest` (3) | **8** | `assertFalse(matches…)` on a single input |
+  | `ApiErrorSemanticsRegressionTest.kt` | 3 | see the escalation below — **not** a uniform group |
+  | `Phase2RemoteVersionAdversarialTest.kt` | 3 | |
+  | `SurgicalFixAdvanceAndRenewalTest.kt` | 3 | financial operation classification; omitted from the earlier breakdown entirely |
+  | `UtowerDateParserTest.kt` | 2 | date parsing |
+  | `BugSri01CoordinatorAuditDaoWiringTest.kt` | 2 | wiring assertions |
+  | `Phase5DestructiveActionReleaseGateTest.kt` | 1 | `:115`, the `BuildConfig` twin of `#15` |
+  | single-member files | **12** | 13 in the cohort, less the one adjudicated (`Workstream7And8SafetyNetTest.kt:65` = `#11`) |
+  | `EarthlinkSearchViewModelSeamTest.kt` | **0** | all 3 adjudicated (`#4`, `#9`, `#10`) |
+  | `BugMoney01PdfHidesSubscriberCreditTest.kt` | **0** | both adjudicated (`#12`, `#13`) |
+  | **Total** | **54** | |
+
   **No claim is made about any of them.** "Below the cut" is a ranking statement, not a
   clearance.
+
+- **The escalation, corrected and reordered.** An earlier version flagged all three
+  `ApiErrorSemanticsRegressionTest` members as *"structurally close to what `#5` and `#6`
+  turned out to be."* **That was wrong for two of the three, and the order matters.** Re-derived
+  by reading each test against the initial state of the value it asserts:
+
+  | Test | Shape | Verdict on exposure |
+  |:---|:---|:---|
+  | **`:343`** `testApi03_dashboard_networkFailureYieldsNullUnavailable` | mocks `getTestUsersCount` to throw, then asserts `assertNull(vm.testCount.value)`. **`_testCount` initialises to `null`** (`DashboardViewModel.kt:40`), so a `loadDashboardData` that did nothing would leave it `null` and the assertion would **pass** | **The sharpest — exactly the `#5`/`#6` shape.** Absence satisfies it. Escalate first |
+  | **`:304`** `testApi03_repository_legitimateZeroReturned` | mocks `{"value":0}`, asserts `count == 0` off `gatewayImpl.getTestUsersCount()`. A gateway returning a constant `0` would pass | A **different** shape — closer to `#4` (asserts something real that a stub satisfies) than to `#5`/`#6`. Escalate second |
+  | **`:315`** `testApi03_dashboard_legitimateZeroPreserved` | asserts `assertEquals(Integer.valueOf(0), vm.testCount.value)` off an initial value of `null`, so it *demands* `0` and **rejects** `null` | **Not exposed at all.** Absence cannot satisfy it. **Dropped from the escalation** |
+
+  These are reading-based classifications of tests I did **not** adjudicate. They rank the
+  escalation; they are not verdicts, and none of the three was executed in this task.
 - **`corruptionInjection_rawJson_strippedFromCloudPayload_accountPath` (`:521`) was not run.**
   It is the account-path twin of #8 and would be expected to behave identically against a
   mutation at `SyncRepositoryImpl.kt:716`. Expected is not measured; it is unadjudicated.
@@ -1349,9 +1484,13 @@ Stated as plainly as what it did, per `LL-BUG-HUNT-METHODOLOGY` §7.
   is outside the cohort (2 assertions) but appears to share #4's defect. Flagged, unproven.
 - **The full 798-test suite was not run**, per Ruling 3. **The claim "the other 783 tests are
   unaffected" rests on the absence of committed changes, not on an observed green run.**
-- **The remaining 5 production files were not examined for this cohort:** `Repositories.kt`
-  was mutated once and read; `SyncRepositoryImpl.kt` was mutated once; nothing here says
-  anything about their other behaviour.
+- **The 9 mutated production files were each touched at exactly one point**, and most were
+  read only around that point: `Repositories.kt` (M1), `EarthlinkSearchViewModel.kt` (M2),
+  `AppDatabase.kt` (M3), `BalanceCalculator.kt` (M4), `SyncRepositoryImpl.kt` (M5),
+  `PdfStatementGenerator.kt` (M6, M10), `TransactionTypeNormalizer.kt` (M7),
+  `UtowerDebtResolver.kt` (M8), `RemoteSyncCoordinator.kt` (M9). **Nothing in this section
+  says anything about the rest of their behaviour**, and the counts elsewhere in this section
+  should not be read as a claim that these files were audited.
 - **No product defect is asserted.** Every mutation was reverted. Where a mutation would have
   caused real damage (M1, M3, M4), that is a statement about the *test's blindness*, not
   about the shipped code, which is correct as committed.
@@ -1398,6 +1537,9 @@ out to answer it.
    same file, the same RED-invariant family. One names the H-3 filter and *fails* when it is
    removed. The other names the no-physical-deletion rule and *passes* when physical deletion
    is introduced. A single-assertion count cannot tell them apart. Only the mutation did.
+   **Scope note, added after review:** `#1`'s blindness is a fact about `#1`, not about
+   Invariant 2 — `Workstream9AFinancialCorrectionTest.kt:262` guards the same invariant
+   correctly and was confirmed red under the same mutation (§3.4 #1).
 2. **#4 vs #9 is the same result in miniature**, from one mutation and one run: two tests in
    one file, opposite verdicts, the difference being whether the test actually calls
    production. Had #4 been cleared on reading ("it asserts something real"), the defect would
@@ -1405,18 +1547,26 @@ out to answer it.
    been destroyed. Both errors were available on the evidence available *before* the runs.
    Neither survived them.
 
-**What the six confirmations share.** Four of the six (`#1`, `#2`, `#3`, `#4`) are satisfied
-by setup or by the *absence* of the behaviour: an assertion on a row the test just inserted,
-a hardcoded copy of a migration's defaults, a zero amount that makes a type claim
-arithmetically irrelevant, and a test that never leaves the test file. The other two (`#5`,
-`#6`) are satisfied by `0 == 0`. **In all six, the assertion passes in a world where the
-production behaviour is absent, wrong, or never invoked** — which is precisely and only what
-`F5` asks.
+**What the six confirmations share.** This is a *different partition* from the "five of the six
+in the barrier file" count in the closing lesson — that one groups by **where** the test lives,
+this one groups by **how the assertion is satisfied**. By mechanism: four of the six (`#1`,
+`#2`, `#3`, `#4`) are satisfied by setup or by the *absence* of the behaviour: an assertion on
+a row the test just inserted, a hardcoded copy of a migration's defaults, a zero amount that
+makes a type claim arithmetically irrelevant, and a test that never leaves the test file. The
+other two (`#5`, `#6`) are satisfied by `0 == 0`. **In all six, the assertion passes in a
+world where the production behaviour is absent, wrong, or never invoked** — which is
+precisely and only what `F5` asks.
 
 **Carry-forward for Task 5 (repairs), in the order the evidence supports:**
 
-- `#1` is the priority: a `RELEASE-REQUIRED` barrier for RED Invariant 2 that cannot see
-  physical deletion.
+- **`#1` is the priority, and it is a REPAIR, not a new test.** RED Invariant 2 already has a
+  working guard — `Workstream9AFinancialCorrectionTest.kt:262` calls the real
+  `deleteTransaction` at `:285` and asserts the original row survives (`:289`), that there are
+  exactly two entries (`:298`), and that a `correctsEntryId` contra-entry exists (`:299-302`);
+  the reviewer confirmed it goes red under M1. **`DataIntegrityReleaseGateTest.kt:606` should be
+  made to do the same thing, or deleted in favour of it. Do not author a new INV-02 test** —
+  one already exists and works, and the defect is that the *gate* test cannot see what the
+  other test sees.
 - `#2` and `#3` need *input* changes, not assertion changes — a real migration, a non-zero
   note amount. Adding assertions alone will not fix either.
 - `#5` and `#6` need one precondition each (`assertNotNull(EventSyncResult.APPLIED)`,
@@ -1436,9 +1586,16 @@ The gates that mattered, and how each fared.
   run that shows the test green with the behaviour removed or absent. The 3 reading-only
   verdicts (`#10`, `#14`, `#15`) are refutations, are labelled `reading` at each entry, and
   are named in §3.9 as the weakest claims in the section.
-- **The revert gate — held and verified ten times.** §3.7. `git diff c09918d` is empty; zero
-  mutation markers remain; three classes were re-executed post-revert and returned to their
-  baseline numbers.
+- **The revert gate — held, with one coverage limit now disclosed.** §3.7. `git status
+  --porcelain` was empty after each of the ten reverts and was re-checked, not assumed; zero
+  mutation markers remain; `git diff c09918d --name-only -- "*.kt"` is `Count: 0`, so every
+  production file is byte-identical to the base. **Nine of the ten reverts are additionally
+  covered by post-revert re-execution; M9's is not** — the full-class re-execution ran before
+  M9 was applied (§3.7, ordering taken from log timestamps). M9's revert rests on the
+  `git status` gate, the `*.kt` byte-identity check and the zero-marker count. An earlier
+  version of this bullet claimed all three classes were re-executed post-revert under a
+  heading saying the reverts were *"proven by execution"*; that overstated M9's coverage and
+  is corrected here.
 - **Ruling 2 (Gradle will lie) — held.** 16 runs, `--rerun-tasks` on every one, XML read
   after every one, `testDebugUnitTest UP-TO-DATE` observed zero times. The one discarded run
   is disclosed in §3.8 with its cause.
@@ -1458,8 +1615,20 @@ The gates that mattered, and how each fared.
   section speaks for them.
 
 **The lesson worth carrying forward.** The suite's 798/798 green is compatible with *all six*
-of these confirmations, because a test that is green for the wrong reason is green. Three of
-the six are in the one file this project names as its silent-corruption barrier, and two of
-those three are the *same shape* of defect the barrier exists to catch. A green barrier is
-not evidence that the barrier works; only breaking the code and watching the gate fail — or
-pass — tells you which one you are holding.
+of these confirmations, because a test that is green for the wrong reason is green. **Five of
+the six are in the one file this project names as its silent-corruption barrier** — only `#4`
+(`EarthlinkSearchViewModelSeamTest.kt:1223`) is outside it — and that makes the concentration
+worse than an earlier version of this paragraph stated, not better.
+
+**All five share one shape: the test cannot observe the behaviour it names.** `#1` never
+invokes it. `#2` asserts a hardcoded copy of it rather than the artefact. `#3`'s assertion is
+arithmetically independent of it. `#5` and `#6` compare counts without ever asserting the
+event was applied. `AGENTS.md` §9.1 names this file as the barrier generally and §4.2 names
+Invariant 2 specifically for physical deletion — and `#1` is the Invariant 2 case, blind in
+exactly the way §4.2 describes.
+
+**A green barrier is not evidence that the barrier works; only breaking the code and watching
+the gate fail — or pass — tells you which one you are holding.** And the converse, which is
+the useful half: one mutation run against two tests in the same class is enough to tell a
+barrier that works (`#7`, red) from one that cannot (`#1`, green). Nothing short of execution
+distinguished them, and they sit 20 lines apart.
