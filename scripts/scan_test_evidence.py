@@ -63,12 +63,18 @@ Rules
       `test_eb_expression_body_stops_at_a_class_modifier_follower` and
       `test_eb_expression_body_stops_before_the_next_tests_annotation` are the evidence. The
       last of those exists because a lone `@Test` line was once read as a continuation rather
-      than as a declaration lead-in, which put 498 of the 798 real blocks' next annotation line
-      inside the previous block; it is 0 now.
-  What it does NOT bound: the fallback path below, which has no upper bound at all. A helper
-  that is genuinely part of the test's verification is inside the test's own closing brace and
-  so is inside the range, and a test that delegates to a helper declared elsewhere in the file
-  is resolved by the file-wide, name-resolved helper walk rather than by the range.
+      than as a declaration lead-in, which put the next annotation line inside the previous
+      block for 498 of the 798 real tests. That count is now 0. The neighbouring measure is not:
+      a block whose REPORTED `end_line` equals the next test's `@Test` line is 6 file-wide, and
+      all 6 are fallback blocks (below) reporting the boundary they stop at. Among the 679
+      resolved blocks that have a following `@Test` it is 0. Neither number reaches a rule -
+      no rule reads `@Test`.
+  What it does NOT bound: a HELPER declared between two tests. On the resolved shapes the bound
+  is the test's own closing brace, so such a helper is outside both ranges; on the fallback
+  shape the bound is the next `@Test` line, so a helper sitting between two backtick-named tests
+  WOULD be inside the preceding range. No such case exists in this suite, and the fallback
+  fixture says so rather than implying otherwise. A test that delegates to a helper declared
+  elsewhere in the file is resolved by the file-wide, name-resolved helper walk, not the range.
 
   The direction of error is deliberate and applies to every rule: the scanner may
   under-report, and must never invent a finding. Four guards enforce it, and each was added
@@ -78,19 +84,27 @@ Rules
   that `inner class` and `value class` were not declarations (an invented F2 and F7), and a
   lone annotation line being read as a continuation (498 blocks, no rule affected).
 
-  The fallback, stated accurately: when no `fun` can be located at all, the block falls back to
-  the next `@Test` or end of file, and that fallback has NO upper bound, so a following test's
-  assertions are inside the range. The trigger is a `fun` the identifier pattern cannot match -
-  a Kotlin backtick-quoted test name - and not unbalanced braces. In this suite it is reached
-  by 7 of 798 tests, all in `core/ledger/NoteCleanerTest.kt`. Expression bodies are NOT a
-  fallback case; they are resolved. The self-test pins both resolved shapes and the fallback:
-  `test_fallback_resolves_a_test_whose_fun_cannot_be_located` writes ordinary compiling Kotlin
-  with a backtick-quoted name and proves the test is discovered rather than skipped and its own
-  assertions are counted. It does NOT prove the fallback bounds the block, because it does not;
-  pinning that would enshrine the over-report rather than close it, so it is stated here
-  instead of asserted. (The earlier claim that the fallback had no pin because "a file that
-  does not balance is not representable as a fixture" was wrong on both counts: the trigger is
-  an unlocatable `fun`, and such a file is ordinary compiling Kotlin.)
+  The fallback, stated accurately: when no `fun` can be located at all, the block is bounded at
+  the start of the next `@Test` line, or at end of file for the last test in its file. The
+  trigger is a `fun` the identifier pattern cannot match - a Kotlin backtick-quoted test name -
+  and not unbalanced braces. In this suite it is reached by 7 of 798 tests, all in
+  `core/ledger/NoteCleanerTest.kt`. Expression bodies are NOT a fallback case; they are
+  resolved.
+
+  The fallback is a BOUND, not a hole, and the correction matters: an earlier version of this
+  file claimed the fallback "has NO upper bound, so a following test's assertions are inside
+  the range". That was false, and it was repeated in the self-test and in the report. Measured:
+  the bound is the character offset of the START of the next `@Test` line, so the following
+  test's BODY is never inside the block - the first block of a two-test backtick fixture holds
+  its own assertion at line 9 and not the second test's at line 14. Only the reported
+  `end_line` names the boundary line rather than the last line the text occupies, and that is
+  inert. The live arm - `elif next_test_idx is not None`, 6 of the 798 blocks - is pinned by
+  `test_fallback_bounds_the_block_at_the_next_test`; the end-of-file arm is not, because the
+  suite never reaches it. On the real suite, 0 of the 6 live fallback blocks contain any
+  non-blank text after the test's own closing brace, and 0 hold an assertion past the next
+  `@Test` line. (The claim that the fallback had no pin because "a file that does not balance is
+  not representable as a fixture" was wrong on both counts: the trigger is an unlocatable
+  `fun`, and such a file is ordinary compiling Kotlin.)
 
 Body text handling
   Comments and string literals are blanked before the structural scan, so an `assertEquals`

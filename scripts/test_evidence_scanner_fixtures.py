@@ -1111,9 +1111,14 @@ class AnnotationBoundaryTest {
 
 # The block-bound fallback. `_FUN_NAME_RES` requires an identifier after `fun`, so a Kotlin
 # backtick-quoted test name (`fun \`a name between backticks\``) cannot be located and the block
-# falls back to the next `@Test`. That is the real trigger: 7 of the suite's 798 tests, all in
+# falls back. That is the real trigger: 7 of the suite's 798 tests, all in
 # core/ledger/NoteCleanerTest.kt. It is ordinary compiling Kotlin, so it is representable as a
 # fixture - the previous claim that it was not was wrong.
+#
+# TWO tests, not one, and that is the point. A one-test file takes the `else: end_char =
+# len(text)` arm, which is the arm the suite NEVER exercises. The arm that is live - `elif
+# next_test_idx is not None` - is reached by 6 of the 798 blocks and needs a following `@Test` to
+# reach at all, so the fixture has to supply one.
 BACKTICK_NAMED_FALLBACK_FIXTURE = '''
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -1123,6 +1128,11 @@ class BacktickNamedTest {
     @Test
     fun `a name written between backticks`() {
         assertEquals(250, computeDebt())
+    }
+
+    @Test
+    fun `a second backtick name`() {
+        assertEquals(125, computeHalf())
     }
 }
 '''
@@ -1298,47 +1308,94 @@ def test_every_kotlin_modifier_is_recognised_as_a_declaration():
           f"directions (none missing, none stray), and the second word is read.")
 
 
-def test_fallback_resolves_a_test_whose_fun_cannot_be_located():
+def test_fallback_bounds_the_block_at_the_next_test():
     """
-    The block-bound fallback is reachable by ordinary compiling Kotlin, so it is pinned.
+    The block-bound fallback is reachable by ordinary compiling Kotlin, so it is pinned, and the
+    branch that is actually LIVE is the one pinned.
 
     The trigger is a `fun` the identifier pattern cannot match - a backtick-quoted test name.
     7 of the suite's 798 tests are in this state, all in core/ledger/NoteCleanerTest.kt. The
-    previous report gave "a file that does not balance is not representable as a fixture" as
-    the reason the fallback had no pin; that was wrong, and this is the pin.
+    previous report gave "a file that does not balance is not representable as a fixture" as the
+    reason the fallback had no pin; that was wrong, and this is the pin.
 
-    What this proves: the test is DISCOVERED, not skipped, and its own assertions are counted
-    through the fallback path. What it does NOT prove: that the fallback bounds the block. It
-    does not - it runs to the next `@Test`, so a following test's assertions are inside the
-    range. Pinning that would enshrine the over-report rather than close it, so it is stated
-    here instead of asserted.
+    Which branch. `_build_blocks` has two fallback arms: `elif next_test_idx is not None` takes
+    the bound at the start of the next `@Test` line, and `else` runs to end of file. The suite
+    only ever exercises the first - 6 of the 798 blocks, the 7th being the last test in its
+    file - so a one-test fixture pins the arm the suite never reaches. This fixture has two.
+
+    What the live arm guarantees, and it is a guarantee rather than a limitation: the bound is
+    the character offset of the START of the next `@Test` line, so the following test's body is
+    never inside this block's text. The block's *reported* `end_line` is that boundary line
+    rather than the last line it occupies, which is inert - no rule reads `@Test`. Measured on
+    the real suite: 0 of the 6 live fallback blocks contain any non-blank text after the test's
+    own closing brace, and 0 hold an assertion past the next `@Test` line.
+
+    What this does not prove: that the fallback bounds a HELPER declared between two
+    backtick-named tests. It does not - such a helper would be inside the range. No such case
+    exists in the suite and none is representable without inventing Kotlin, so the limit is
+    stated here rather than asserted.
     """
     with tempfile.TemporaryDirectory() as tmpdir:
         findings, tests = scan_fixture(
             tmpdir, "BacktickNamedTest.kt", BACKTICK_NAMED_FALLBACK_FIXTURE
         )
 
-        assert len(tests) == 1, (
-            f"The backtick-named test must still be discovered through the fallback, got "
+        assert len(tests) == 2, (
+            f"Both backtick-named tests must be discovered through the fallback, got "
             f"{[(t['name'], t['line']) for t in tests]}"
         )
-        found = tests[0]
         unresolved = [t for t in tests if t["name"].startswith("<unnamed@test@")]
-        assert unresolved, (
-            "This fixture exists to exercise the fallback. The test name resolved to "
-            f"{found['name']!r}, which means `fun` was located and the fallback was NOT taken."
-        )
-        assert found["assertion_count"] == 1, (
-            "The fallback must still count the test's own assertion, got "
-            f"{found['assertion_count']} for {found['name']}"
-        )
-        assert rules_for(findings, found["name"]) == set(), (
-            f"The fallback must not invent a rule here; got "
-            f"{[(f.rule, f.detail) for f in findings if f.test_name == found['name']]}"
+        assert len(unresolved) == 2, (
+            "This fixture exists to exercise the fallback. A test name that resolved means "
+            f"`fun` was located and the fallback was NOT taken; got {sorted(t['name'] for t in tests)}"
         )
 
+        first, second = tests
+        assert first["assertion_count"] == 1, (
+            "The fallback must count the first test's own assertion, got "
+            f"{first['assertion_count']}"
+        )
+        assert second["assertion_count"] == 1, (
+            "The fallback must count the second test's own assertion, got "
+            f"{second['assertion_count']}"
+        )
+
+        # The live arm: the first block stops at the next @Test line, so it does NOT reach the
+        # second test's body. end_line is that boundary; the text stops before it.
+        assert first["end_line"] == second["line"], (
+            "The live fallback arm bounds the block at the start of the next @Test line. "
+            f"First block reported end_line {first['end_line']} while the next @Test is on "
+            f"line {second['line']}."
+        )
+
+        # And the consequence that matters: the second test's assertion is not in the first
+        # block. A bound that ran on to the next @Test's body would invent an F2 here.
+        lines = BACKTICK_NAMED_FALLBACK_FIXTURE.strip("\n").split("\n")
+        second_assert_line = next(
+            i + 1 for i, ln in enumerate(lines)
+            if "computeHalf" in ln
+        )
+        _l, blocks = scan_test_evidence._build_blocks(
+            write_fixture(tmpdir, "BoundaryProbe.kt", BACKTICK_NAMED_FALLBACK_FIXTURE)
+        )
+        first_block = blocks[0]
+        borrowed = [scan_test_evidence._abs_line(first_block, m.start())
+                    for m in scan_test_evidence._ASSERT_CALL_RE.finditer(first_block.code)]
+        assert borrowed == [first["line"] + 2], (
+            "The first fallback block must contain its own single assertion and nothing from the "
+            f"second test. It contains assertions at {borrowed}; the second test's assertion is "
+            f"on line {second_assert_line} and must not be among them."
+        )
+
+        for t in (first, second):
+            assert rules_for(findings, t["name"]) == set(), (
+                f"The fallback must not invent a rule for {t['name']}; got "
+                f"{[(f.rule, f.detail) for f in findings if f.test_name == t['name']]}"
+            )
+
         print("PASS FALLBACK: a backtick-named test whose `fun` cannot be located is still "
-              "discovered and its own assertion is counted.")
+              "discovered, its own assertion is counted, and the live branch bounds the block at "
+              "the next @Test so the following test's assertion is never borrowed.")
 
 
 # --------------------------------------------------------------------------------------------
@@ -1472,7 +1529,7 @@ TESTS = [
     test_eb_expression_body_stops_at_a_class_modifier_follower,
     test_eb_expression_body_stops_before_the_next_tests_annotation,
     test_every_kotlin_modifier_is_recognised_as_a_declaration,
-    test_fallback_resolves_a_test_whose_fun_cannot_be_located,
+    test_fallback_bounds_the_block_at_the_next_test,
     test_cli_rule_filter_and_exit_zero,
     test_cli_single_assertion_selector,
     test_cli_real_process_exit_code_is_zero_even_with_findings,
