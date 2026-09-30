@@ -563,3 +563,903 @@ either an excellent instrument or a broken one, and the output alone cannot dist
 those. Only adjudication can. Here, one of the two was real and one was a false positive —
 which is precisely the ratio that justifies the discipline of adjudicating every candidate
 by execution rather than acting on the scan.
+
+---
+
+## Task 3 — Adjudicating the single-assertion cohort by mutation
+
+**Scope: 1 review priority (`F5`), 69 candidates, 15 adjudicated, 10 mutations across 7
+production files, 15 executed Gradle runs.** No `.kt` file is modified by this commit. Ten
+production files were mutated transiently under the Ruling 1 gate and every one was reverted
+and byte-verified (§3.6).
+
+**Verdict count: 6 CONFIRMED, 9 REFUTED, 0 OPEN.**
+
+### 3.1 Why a single assertion is a review priority at all
+
+A single assertion is not automatically fake, and this round did not treat it as such. It is
+a **review priority** for one reason, and it is `F5`:
+
+> A lone assertion is easily satisfied by *setup* rather than by the behaviour under test.
+
+The two ways this happens, both observed below, are:
+
+1. **The assertion reads a value the test itself just wrote.** A fixture that inserts a row
+   and then asserts the row exists cannot fail for any reason except a broken database.
+2. **The assertion is arithmetically independent of the property it names.** A test can
+   assert a real value and still be incapable of distinguishing the correct implementation
+   from a wrong one, because the input makes the property irrelevant.
+
+Only the second class is invisible to reading with certainty, and both classes are settled the
+same way: **remove the production behaviour and see whether the test notices.**
+
+**`F5` is not statically detectable**, which is why the certified scanner reports it
+always-false by design. Everything in §3.4 therefore rests on execution. Where a verdict rests
+only on reading, it is labelled `reading` and is a strictly weaker claim — per this audit's
+global constraint, *execution confirms, reading only refutes*.
+
+### 3.2 The cohort, and the ranking rule
+
+The cohort was re-derived rather than assumed:
+
+```console
+$ python scripts/scan_test_evidence.py app/src/test --rule single-assertion
+==============================================================================
+=== Single-assertion @Test cohort (exactly one assert*/fail(/verify* call) ===
+==============================================================================
+[69 lines, one per test: path:line  testName  [ClassName]]
+------------------------------------------------------------------------------
+Total: 69 single-assertion tests out of 798 discovered.
+==============================================================================
+```
+
+The 69 distribute unevenly, and that distribution drove the ranking:
+
+| File | Cohort members |
+|:---|:---|
+| `DataIntegrityReleaseGateTest.kt` | **22** |
+| `DefectRemediationSeamTest.kt` | 3 |
+| `Phase2RemoteVersionAdversarialTest.kt` | 3 |
+| `SurgicalFixAdvanceAndRenewalTest.kt` | 3 |
+| `HistoricalSubscriberMatchingSafetyTest.kt` | 3 |
+| `ApiErrorSemanticsRegressionTest.kt` | 3 |
+| `EarthlinkSearchViewModelSeamTest.kt` | 3 |
+| `Phase5DestructiveActionReleaseGateTest.kt` | 2 |
+| `Workstream7ImportMatchingCollisionTest.kt` | 2 |
+| `BugMoney01PdfHidesSubscriberCreditTest.kt` | 2 |
+| `BugSri01CoordinatorAuditDaoWiringTest.kt` | 2 |
+| `UtowerDateParserTest.kt` | 2 |
+| `GetRemainingTimeTest.kt` | 6 |
+| 13 further files | 1 each |
+
+**A third of the cohort (22 of 69) sits in one file** — and that file is the one
+`AGENTS.md` §9.1 names as a `RELEASE-REQUIRED` suite directly protecting `INV-01`..`INV-16`
+and as *the silent-corruption barrier*. A fake assertion there is the most expensive finding
+this audit could produce, so the ranking is deliberately weighted toward it. This is a
+judgement, stated as one, not a measurement.
+
+**The ranking rule, in order:**
+
+1. The brief's keyword set — `Ledger`, `Balance`, `Dispatch`, `Atomicity`, `Money`,
+   `Convergence`, `Lineage`, `ReleaseGate`, `Correction` — because those files hold RED
+   invariants.
+2. Inside `DataIntegrityReleaseGateTest`, the named silent-corruption barrier.
+3. A single assertion guarding a **quantity of money** or a **history-preservation** rule.
+4. **Locus where setup could plausibly satisfy the assertion** — the `F5` mechanism.
+5. Tie-break, deliberately ranking **loop-wrapped and source-scanning assertions lower**,
+   because the scanner's *syntactic* count understates their runtime assertion count
+   (§3.5). They are the weakest members of the cohort, not the strongest.
+
+**The three tests the brief named first are not the top three.**
+`DataIntegrityReleaseGateTest.kt:192` and `:206` (`roundTrip_stateSource_…`,
+`roundTrip_stateConfidence_…`) are real production round trips through
+`buildOutboxPayloadMap` → `RemoteEntityValidator`; they rank mid-cohort, not top. The
+brief's caution was correct and the ranking was done independently.
+
+#### The 15 adjudicated, in rank order
+
+| # | File : line | Test | Why this rank |
+|:---|:---|:---|:---|
+| 1 | `DataIntegrityReleaseGateTest.kt:606` | `invariant_INV02_historicalSourceImmutability_ledgerDeleteUsesContraEntry` | `Ledger`; RED Invariant 2; the only cohort member guarding physical deletion. Rule 4 fires on sight |
+| 2 | `DataIntegrityReleaseGateTest.kt:923` | `backupRestore_migrationDefaults_safeForBalanceCalculator` | `Balance`; H-3 class; its own section header claims a migration assumption is being tested |
+| 3 | `DataIntegrityReleaseGateTest.kt:1275` | `oracle_noteTransaction_zeroFinancialImpact` | financial claim in the barrier; rule 4 plausible (a `0.0` amount makes a type claim untestable) |
+| 4 | `EarthlinkSearchViewModelSeamTest.kt:1223` | `testBalanceAfterMath_unknownBalance_isNull` | `Balance`; RED Invariant 1 null-vs-zero. Rule 4: computes its own value |
+| 5 | `DataIntegrityReleaseGateTest.kt:776` | `invariant_INV12_noOutboxLoopsOnRemoteApply` | RED Invariant 8; a *count* comparison, the shape most exposed to `0 == 0` |
+| 6 | `DataIntegrityReleaseGateTest.kt:819` | `idempotency_duplicateSyncEvent_zeroNewEntries` | RED Invariant 3, zero duplicate charges; same count-compare exposure |
+| 7 | `DataIntegrityReleaseGateTest.kt:627` | `invariant_INV04_zeroDoubleApplication_snapshotHistoryFiltered` | the exact H-3 invariant the whole file exists for |
+| 8 | `DataIntegrityReleaseGateTest.kt:534` | `corruptionInjection_rawJson_strippedFromCloudPayload_ledgerPath` | `Ledger`; names one exact production line |
+| 9 | `EarthlinkSearchViewModelSeamTest.kt:1168` | `testGetResellerBalance_success_returnsValue` | `Balance`; sibling of #4, same file |
+| 10 | `EarthlinkSearchViewModelSeamTest.kt:1200` | `testGetResellerBalance_apiFailure_resultsInNullNotZero` | `Balance`; the null-not-zero rule itself |
+| 11 | `Workstream7And8SafetyNetTest.kt:65` | `testUtowerDebtResolverPriority3AnchorsOnExplicitDebt` | financial baseline anchoring; independent literal oracle |
+| 12 | `BugMoney01PdfHidesSubscriberCreditTest.kt:47` | `exactlyZeroDebtAfter_stillRendersAsSettled` | `Money`; the boundary of a fixed financial-display defect |
+| 13 | `BugMoney01PdfHidesSubscriberCreditTest.kt:56` | `positiveDebtAfter_rendersAsOutstandingAmount` | `Money`; same file |
+| 14 | `DataIntegrityReleaseGateTest.kt:324` | `roundTrip_amountIqd_preservedThroughMoshiOutboxAndValidator` | financial field through a real production round trip |
+| 15 | `Phase5DestructiveActionReleaseGateTest.kt:81` | `testNoOtherUiScreens_callClearLocalData` | `ReleaseGate`; ranked last by rule 5 — see §3.5 |
+
+### 3.3 Execution discipline
+
+Per Ruling 2, `--rerun-tasks` was passed to **every** run and the JUnit XML was read after
+every run. `BUILD SUCCESSFUL` was never treated as evidence.
+
+- **16 log files, all executed.** Every log reports `35 actionable tasks: 35 executed`.
+- **`Task :app:testDebugUnitTest UP-TO-DATE` occurs zero times across all 16 logs.** The
+  `UP-TO-DATE` lines present belong to non-test tasks (`generateDebugAssets`, `preBuild`,
+  `preDebugUnitTestBuild`, …), which is normal and harmless.
+- **The failure mode Task 2 hit — `BUILD SUCCESSFUL in 1s` with nothing executed — did not
+  occur in this task.** Recorded because its absence is a measurement, not an assumption.
+
+All logs are outside the repository, in the OS temp directory, for the reason given in §2.5:
+an untracked file inside the worktree would appear in `git status --porcelain` and
+**destroy the Ruling 1 revert gate**. Path pattern:
+`C:\Users\ALMAHD~1\AppData\Local\Temp\opencode\r13-t3-*.log`.
+
+### 3.4 Verdicts, one at a time
+
+Legend for evidence class: **`mutation`** = a production behaviour was removed and the test
+was re-run; **`reading`** = production-path trace only, which can refute but never confirm.
+
+---
+
+#### 1. `DataIntegrityReleaseGateTest.kt:606` — `invariant_INV02_historicalSourceImmutability_ledgerDeleteUsesContraEntry` — **CONFIRMED**
+
+**Production behaviour named:** `LedgerRepository.deleteTransaction` must create a
+contra-entry and never physically `DELETE` a ledger row. The test's own comment cites this:
+`"Evidence: Repositories.kt:2358-2362 — deleteTransaction calls correctTransaction, not
+physical delete"`.
+
+**What the test actually does:** inserts an account, inserts one ledger entry, and asserts
+`assertNotNull("INV-02 SETUP | Original entry must exist before correction", beforeDelete)`.
+It **never calls `deleteTransaction` or `correctTransaction` at all**, and the assertion
+message says `SETUP`. The row it asserts on is the row it just inserted — setup case 1.
+
+**The mutation (M1)** — `Repositories.kt:2693-2697`, the exact production path named:
+
+```kotlin
+// BEFORE (the real implementation)
+override suspend fun deleteTransaction(id: String) {
+    // Normal financial correction: physical deletion of original financial event is forbidden (§3.2).
+    // Full reversal is the special case where intended amount = 0.0.
+    correctTransaction(originalEntryId = id, intendedAmount = 0.0, note = "[FULL REVERSAL for $id]")
+}
+
+// AFTER (R13-T3 transient mutation M1 — the exact RED-Invariant-2 violation)
+override suspend fun deleteTransaction(id: String) {
+    ledgerDao.deleteById(id)   // AppDatabase.kt:229 — DELETE FROM local_ledger_entries WHERE id = :id
+}
+```
+
+**Result: the test still passes.** Production now performs the physical row deletion that
+this release gate exists to forbid, and the gate is green.
+
+```console
+$ gradlew.bat :app:testDebugUnitTest \
+    --tests "*DataIntegrityReleaseGateTest.invariant_INV02_historicalSourceImmutability_ledgerDeleteUsesContraEntry" \
+    --rerun-tasks --console=plain
+```
+
+| | XML `tests` | `failures` | `errors` |
+|:---|:---|:---|:---|
+| Before (from the class baseline, §3.3) | 1 | 0 | 0 |
+| After mutation M1 | **1** | **0** | **0** |
+
+Log: `r13-t3-m1-inv02-physical-delete.log`. `BUILD SUCCESSFUL in 1m 16s`, 35 tasks executed.
+
+**Why this is the most serious finding in the round.** RED Invariant 2 (`AGENTS.md` §4.2) is
+*"No physical row deletion on `local_ledger_entries`"*, and
+`AppDatabase.kt:152` states the same rule in production. This test is named for that
+invariant, sits in the file `AGENTS.md` names as the barrier, and is blind to the violation
+by construction — because the behaviour it names is never invoked. The test cannot detect
+physical deletion, no matter how the code changes.
+
+**F5 CONFIRMED.** Task 5 owns the repair (call the real `deleteTransaction`, assert the
+original row survives and a `correctsEntryId` contra-entry appears).
+
+---
+
+#### 2. `DataIntegrityReleaseGateTest.kt:923` — `backupRestore_migrationDefaults_safeForBalanceCalculator` — **CONFIRMED**
+
+**Production behaviour named:** `MIGRATION_8_9` (`AppDatabase.kt:830-838`) and its `DEFAULT`
+values. The test's own section header (`D.5a`) states the intent precisely:
+
+> *"Room migrations use DEFAULT values that must be safe for BalanceCalculator.
+> **"Protected by Room migrations" is itself an assumption worth testing.**"*
+
+**What the test actually does:** constructs a `LocalAccount` **in Kotlin** with the values
+`0.0 / 0.0 / 0.0 / null / null` hardcoded, and asserts `BalanceCalculator` returns `50000.0`.
+No Room migration is ever executed — a fresh Robolectric database is created at the current
+version, so `MIGRATION_8_9` is inert. The test hardcodes a *copy* of the defaults and tests
+the copy.
+
+**The mutation (M3)** — `AppDatabase.kt:832-835`, the migration itself, made demonstrably
+unsafe:
+
+```kotlin
+// AFTER (R13-T3 transient mutation M3)
+db.execSQL("ALTER TABLE `local_accounts` ADD COLUMN `openingDebtIqd` REAL NOT NULL DEFAULT 999999.0")
+db.execSQL("ALTER TABLE `local_accounts` ADD COLUMN `openingAdvanceIqd` REAL NOT NULL DEFAULT 0.0")
+db.execSQL("ALTER TABLE `local_accounts` ADD COLUMN `openingLoanIqd` REAL NOT NULL DEFAULT 0.0")
+db.execSQL("ALTER TABLE `local_accounts` ADD COLUMN `stateSource` TEXT DEFAULT 'UTOWER_SNAPSHOT_RESOLVED'")
+```
+
+Every migrated legacy account would now carry a 999,999 IQD phantom opening debt **and** a
+snapshot `stateSource` that suppresses history filtering — the H-3 shape, manufactured
+directly in the migration.
+
+**Result: the test still passes.**
+
+| | XML `tests` | `failures` | `errors` |
+|:---|:---|:---|:---|
+| Before (class baseline) | 1 | 0 | 0 |
+| After mutation M3 | **1** | **0** | **0** |
+
+Log: `r13-t3-migration-defaults-unsafe.log` (full name
+`r13-t3-m3-migration-defaults-unsafe.log`). `BUILD SUCCESSFUL in 1m 20s`.
+
+**The nuance, stated precisely, because overstating it would be its own error.** This test
+is *not* vacuous: it makes a real call into production `BalanceCalculator.reconstructCurrentPosition`
+and asserts a real additive result, and that half is sound. What it provides **no evidence
+for** is the claim in its own name and in its own section header — that the *migration
+defaults* are safe. Measured: those defaults can be made arbitrarily unsafe and the test is
+unaffected.
+
+**F5 CONFIRMED for the named claim.** This is the exact failure of method
+`LL-BUG-HUNT-METHODOLOGY` warns about — testing a *copy* of a value and believing the
+original was tested — and it is the more dangerous half of this audit's remit, because
+`AGENTS.md` §11 records that H-3 was a *migration* incident.
+
+---
+
+#### 3. `DataIntegrityReleaseGateTest.kt:1275` — `oracle_noteTransaction_zeroFinancialImpact` — **CONFIRMED**
+
+**Production behaviour named:** `"note"` is a financial no-op transaction type
+(`TransactionTypeNormalizer.kt:25`, consumed by `BalanceCalculator.applyTransaction`'s
+`else` branch at `BalanceCalculator.kt:26`).
+
+**What the test actually does:** builds two entries — `took 40000.0` and
+**`note` with `amountIqd = 0.0`** — and asserts the result is `40000.0`. Because the note's
+amount is zero, the assertion is **arithmetically independent of the type claim**: adding
+zero to a debt leaves it unchanged for *every* possible classification. This is setup case 2.
+
+**The mutation (M7)** — `TransactionTypeNormalizer.kt:25`, the named behaviour, destroyed:
+
+```kotlin
+// BEFORE
+"note", "NOTE" -> "note"
+// AFTER (R13-T3 transient mutation M7)
+"note", "NOTE" -> "took"
+```
+
+`"note"` is now a debt-adding type. `"note"` also remains a *recognised* canonical type
+(`RECOGNIZED_CANONICAL_TYPES` contains `"took"`), so no other guard compensates.
+
+**Result: the test still passes.**
+
+| | XML `tests` | `failures` | `errors` |
+|:---|:---|:---|:---|
+| Before (class baseline) | 1 | 0 | 0 |
+| After mutation M7 | **1** | **0** | **0** |
+
+Log: `r13-t3-m7-note-reclassified-as-took.log`. `BUILD SUCCESSFUL in 1m 28s`.
+
+**F5 CONFIRMED.** The test named `oracle_noteTransaction_zeroFinancialImpact` proves that a
+**zero-amount** transaction does not move a balance — which is true of the type system, not
+of the note semantics. A note carrying a real amount misclassified as `took` would inflate
+debt and this gate would stay green. A non-zero `amountIqd` on the note entry is the missing
+ingredient.
+
+---
+
+#### 4. `EarthlinkSearchViewModelSeamTest.kt:1223` — `testBalanceAfterMath_unknownBalance_isNull` — **CONFIRMED**
+
+**Production behaviour it appears to name:** the reseller-balance null-vs-zero rule. **It names
+no production behaviour at all.** The entire body is:
+
+```kotlin
+val resellerBalance: Double? = null
+val packageCost = 40000.0
+val balanceAfter = resellerBalance?.let { it - packageCost }
+assertNull(balanceAfter)
+```
+
+This asserts that Kotlin's safe-call operator returns `null` when the receiver is `null`. No
+gateway, no ViewModel, no repository, no production code of any kind is reached. It is a
+`kotlin` language test wearing a `Balance` name.
+
+**The mutation (M2)** — `EarthlinkSearchViewModel.kt:144-146`, the balance seam, destroyed:
+
+```kotlin
+// BEFORE
+suspend fun getResellerBalance(): Double = withContext(Dispatchers.IO) { gateway.getBalance() }
+// AFTER (R13-T3 transient mutation M2)
+suspend fun getResellerBalance(): Double = withContext(Dispatchers.IO) { 0.0 }
+```
+
+**Result: the test still passes — and its sibling in the same file, in the same run, goes
+red.** This is the single most decisive result in the round, because one mutation and one run
+produce opposite verdicts on two tests in the same file:
+
+| Test | Before (baseline) | After mutation M2 |
+|:---|:---|:---|
+| `testBalanceAfterMath_unknownBalance_isNull` | pass | **pass — mutation undetected** |
+| `testGetResellerBalance_success_returnsValue` | pass | **FAIL — `expected:<150000.0> but was:<0.0>`** |
+
+XML: before `tests=2 failures=0 errors=0`; after `tests=2 failures=1 errors=0`.
+
+Log: `r13-t3-m2-resellerbalance-ignores-gateway.log`. `BUILD FAILED in 2m 8s`.
+
+**F5 CONFIRMED**, with the contrast as the killing evidence: the production method it is named
+after was replaced by a constant, and the test could not tell.
+
+**A twin exists outside the cohort, and the cohort cut hides it.**
+`testBalanceAfterMath_knownBalance_computesCorrectly` (same file, `:1214`) has the same
+defect — it asserts `100000.0 - 40000.0 == 60000.0` in the test file — but because it carries
+**two** assertions it is not in the single-assertion cohort at all. It was therefore never a
+candidate for this task, this audit, or (on the evidence so far) any prior review. Flagged
+for Task 4, which owns the largest files; it is not adjudicated here and no claim is made
+about it beyond the reading.
+
+---
+
+#### 5. `DataIntegrityReleaseGateTest.kt:776` — `invariant_INV12_noOutboxLoopsOnRemoteApply` — **CONFIRMED**
+
+**Production behaviour named:** applying a remote event via `RemoteSyncCoordinator.processEvent`
+must not enqueue a local outbox record (RED Invariant 8 — no sync echo loop).
+
+**What the test does:** counts outbox rows before, calls the real `processEvent`, counts after,
+asserts `outboxBefore == outboxAfter`. It **never asserts that the event was applied**. The two
+counting worlds are indistinguishable: "applied and correctly produced no echo" and "never
+applied at all" both yield an unchanged count.
+
+**The mutation (M9)** — `RemoteSyncCoordinator.kt:232`, the dedup gate, widened so that
+**every** remote event is suppressed:
+
+```kotlin
+// BEFORE
+if (processedKeys.containsKey(key)) {
+// AFTER (R13-T3 transient mutation M9)
+if (true || processedKeys.containsKey(key)) {
+```
+
+No remote event is ever applied anywhere in the process.
+
+**Result: the test still passes.**
+
+| | XML `tests` | `failures` | `errors` |
+|:---|:---|:---|:---|
+| Before (class baseline) | 1 | 0 | 0 |
+| After mutation M9 (run with #6 below) | **1** | **0** | **0** |
+
+Log: `r13-t3-m9-all-events-suppressed.log`. `BUILD SUCCESSFUL in 55s`.
+
+Corroborating signal, not the evidence: the test's runtime fell from **17.22s** (baseline) to
+**5.878s**, consistent with no database work occurring. The XML numbers are the authority; the
+timing is a supporting observation only.
+
+**F5 CONFIRMED.** The gate is blind to the case where remote apply stops working altogether —
+which is the more dangerous neighbour of an echo loop, and the one an operator would
+diagnose from this test's green.
+
+---
+
+#### 6. `DataIntegrityReleaseGateTest.kt:819` — `idempotency_duplicateSyncEvent_zeroNewEntries` — **CONFIRMED**
+
+**Production behaviour named:** applying the same remote ledger event twice must not create
+duplicate entries (RED Invariant 3 — zero duplicate charges).
+
+**What the test does:** applies the event, counts entries (`countAfterFirst`), applies it
+again, counts again, asserts `countAfterFirst == countAfterSecond`. The name says
+`zeroNewEntries`, but **nothing asserts the first apply created anything**. If both applies
+create nothing, `0 == 0` passes. The same `0 == 0` exposure as #5.
+
+**The mutation:** the same M9 as #5 — every remote event suppressed — was run against this
+test in the same invocation, which is what settled it.
+
+**Result: the test still passes.**
+
+| | XML `tests` | `failures` | `errors` |
+|:---|:---|:---|:---|
+| Before (class baseline) | 1 | 0 | 0 |
+| After mutation M9 (run with #5 above) | **1** | **0** | **0** |
+
+Log: `r13-t3-m9-all-events-suppressed.log` (`tests=2 failures=0 errors=0` for the pair).
+
+**F5 CONFIRMED.** This was the one candidate I expected to have to record as `OPEN` (§3.7
+records why it did not need to be). Asserting `countAfterFirst == 1` before the comparison
+would close it — the same missing-precondition shape Task 2 confirmed at `F4`.
+
+---
+
+#### 7. `DataIntegrityReleaseGateTest.kt:627` — `invariant_INV04_zeroDoubleApplication_snapshotHistoryFiltered` — **REFUTED**
+
+**Production behaviour named:** `BalanceCalculator.reconstructCurrentPosition` must filter
+`isSnapshotHistory` entries when `isSnapshotBaseline` is true — **the exact H-3 invariant**
+this whole file was written to prevent, per the file's own header (`H-3: … inflating debt by
+9.5M IQD across 84 accounts`).
+
+**The mutation (M4)** — `BalanceCalculator.kt:70-74`, the filter, removed:
+
+```kotlin
+// BEFORE
+val eligibleTxs = if (isSnapshotBaseline) {
+    transactions.filter { !it.isSnapshotHistory }
+} else { transactions }
+// AFTER (R13-T3 transient mutation M4)
+val eligibleTxs = transactions
+```
+
+**Result: the test goes RED, with the mutant's value exactly as the test's own comment
+predicted it** (`:655` — *"NOT: 100000 + (30 × 40000) + 25000 = 1,325,000"*):
+
+| | XML `tests` | `failures` | `errors` |
+|:---|:---|:---|:---|
+| Before (class baseline) | 1 | 0 | 0 |
+| After mutation M4 | 1 | **1** | 0 |
+
+```console
+java.lang.AssertionError: INV-04 VIOLATED | Zero double-application: 30 isSnapshotHistory
+entries must be filtered. Expected: 125000.0 (opening 100k + runtime 25k) |
+Actual: 1325000.0 | If actual > 125000, historical entries were re-applied on top of
+baseline (H-3 failure mode) expected:<125000.0> but was:<1325000.0>
+```
+
+Log: `r13-t3-m4-balancecalculator-no-history-filter.log`. `BUILD FAILED in 1m 21s`.
+
+**REFUTED — the killing evidence is that the test fails.** Its oracle is explicit
+arithmetic written in the test (`125000.0` = 100k opening + one 25k runtime entry, per the
+Testing Playbook §9.3 3-vector rule), the 30 historical entries are the discriminating
+input, and the failure message is self-diagnosing. This is what a real barrier looks like,
+and it is the direct counterpart to #1 in the same file: two single assertions, same class,
+one proves the invariant and one does not.
+
+---
+
+#### 8. `DataIntegrityReleaseGateTest.kt:534` — `corruptionInjection_rawJson_strippedFromCloudPayload_ledgerPath` — **REFUTED**
+
+**Production behaviour named:** one exact line — `SyncRepositoryImpl.kt:719`,
+`dataMap.remove("rawJson")` in the `local_ledger_entries` branch of `buildOutboxPayloadMap`.
+
+**The mutation (M5):** that statement deleted, leaving the branch empty.
+
+**Result: the test goes RED.**
+
+| | XML `tests` | `failures` | `errors` |
+|:---|:---|:---|:---|
+| Before (class baseline) | 1 | 0 | 0 |
+| After mutation M5 | 1 | **1** | 0 |
+
+```console
+java.lang.AssertionError: INV-02 VIOLATED | rawJson must be stripped from ledger cloud payload.
+Evidence: SyncRepositoryImpl.kt:713
+```
+
+Log: `r13-t3-m5-rawjson-ledger-strip-removed.log`. `BUILD FAILED in 1m 24s`.
+
+**REFUTED.** The assertion reads a map built by real production code and rejects exactly the
+condition it names. Note the *account*-path twin at `:521` was not run — it exercises the
+sibling branch at `SyncRepositoryImpl.kt:716`; see §3.7.
+
+---
+
+#### 9. `EarthlinkSearchViewModelSeamTest.kt:1168` — `testGetResellerBalance_success_returnsValue` — **REFUTED** (`mutation`)
+
+Same mutation M2, same run as #4. The gateway reports `150000.0`; the ViewModel is made to
+return a constant `0.0`.
+
+**Result: RED** — `expected:<150000.0> but was:<0.0>`, XML `tests=2 failures=1 errors=0`.
+Log: `r13-t3-m2-resellerbalance-ignores-gateway.log`.
+
+**REFUTED**, and it is the control that makes #4's verdict trustworthy: two tests, one file,
+one mutation, opposite outcomes. Had M2 produced two greens, #4's green would have been
+uninformative.
+
+---
+
+#### 10. `EarthlinkSearchViewModelSeamTest.kt:1200` — `testGetResellerBalance_apiFailure_resultsInNullNotZero` — **REFUTED** (`reading`)
+
+**Production behaviour named:** a gateway balance failure must not surface as `0.0`
+(RED Invariant 1 — a legitimate zero is not a missing value).
+
+**Killing evidence.** The test seeds the local as `0.0` and then either assigns the call
+result or `null` in the `catch`. `assertNull(resellerBalance)` therefore **rejects the
+zero case**: if the ViewModel returned `0.0` on failure, the assertion fails. That is a
+real discriminating power, not a tautology — the same structure Task 2 used to clear `F6`.
+It reaches real production (`vm.getResellerBalance()` → `gateway.getBalance()`).
+
+**What reading cannot settle, stated as such:** the test cannot distinguish *"threw"* from
+*"returned null"*, so it does not pin which mechanism production uses, and it was not
+mutation-proven in this task. The verdict is refutation, not confirmation, and rests on the
+production-path trace.
+
+---
+
+#### 11. `Workstream7And8SafetyNetTest.kt:65` — `testUtowerDebtResolverPriority3AnchorsOnExplicitDebt` — **REFUTED** (`mutation`)
+
+**Production behaviour named:** `UtowerDebtResolver.resolveDebtForAccount` Priority 3 must
+anchor on `explicitSourceDebt` — the uTower authoritative baseline (RED Invariant 1). The
+test's comment carries its own counterfactual: *"Without explicitSourceDebt, openingDebt is
+50000.0 + 10000.0 = 60000.0."*
+
+**The mutation (M8)** — `UtowerDebtResolver.kt:49`, `explicitSourceDebt` dropped from the
+opening-debt expression:
+
+```kotlin
+// BEFORE
+val openingDebt = explicitSourceDebt ?: account.openingDebtIqd.takeIf { it >= 0.0 } ?: account.debtIqd
+// AFTER (R13-T3 transient mutation M8)
+val openingDebt = account.openingDebtIqd.takeIf { it >= 0.0 } ?: account.debtIqd
+```
+
+**Result: the test goes RED, with the counterfactual value its own comment predicted.**
+
+| | XML `tests` | `failures` | `errors` |
+|:---|:---|:---|:---|
+| Before (post-revert clean-tree run, §3.3) | 1 | 0 | 0 |
+| After mutation M8 | 1 | **1** | 0 |
+
+```console
+java.lang.AssertionError: expected:<35000.0> but was:<60000.0>
+```
+
+Log: `r13-t3-m8-debtresolver-ignores-explicit.log`. `BUILD FAILED in 1m 19s`.
+
+**REFUTED.** The expected value `35000.0` is primitive arithmetic written in the test
+(`25000.0` explicit + `10000.0` took), derived from the business rule and not from
+production — exactly the independent-oracle standard.
+
+---
+
+#### 12 & 13. `BugMoney01PdfHidesSubscriberCreditTest.kt:47` and `:56` — **REFUTED** (`mutation`), with a measured coverage limitation
+
+**Production behaviour named:** `PdfStatementGenerator.balanceTextFor`
+(`PdfStatementGenerator.kt:38-42`) rendering a running balance for a customer-facing PDF.
+
+**The mutation (M6)** — the file's own regression defect, `BUG-MONEY-1`, re-introduced
+verbatim from the test's KDoc (every value `<= 0.0` collapsed to "settled"):
+
+```kotlin
+// AFTER (R13-T3 transient mutation M6)
+internal fun balanceTextFor(debtAfterIqd: Double): String = when {
+    debtAfterIqd <= 0.0 -> "0 د.ع (خالص)"
+    else -> String.format(Locale.US, "%,.0f د.ع", debtAfterIqd)
+}
+```
+
+**Result — and this is the finding:**
+
+| Test | in cohort? | Baseline | After M6 |
+|:---|:---|:---|:---|
+| `negativeDebtAfter_rendersAsVisibleCredit_notAsZeroSettled` | **no** — 2 assertions | pass | **FAIL** |
+| `exactlyZeroDebtAfter_stillRendersAsSettled` (`:47`) | yes | pass | **pass** |
+| `positiveDebtAfter_rendersAsOutstandingAmount` (`:56`) | yes | pass | **pass** |
+
+XML: before `tests=3 failures=0 errors=0`; after M6 `tests=3 failures=1 errors=0`.
+Log: `r13-t3-m6-bugmoney01-reintroduced.log`. `BUILD FAILED in 1m 10s`.
+
+**Measured: the only test in the file that detects `BUG-MONEY-1` is the one with two
+assertions, and it is therefore outside the cohort entirely.** Both single-assertion members
+pass with the bug present. This is a structural bias in the cohort, not bad luck: a
+regression test for a boundary bug needs a negative case to be worth anything, and the
+negative case is what pushes it to two assertions and out of the cohort.
+
+**The verdict is nevertheless REFUTED, and here is the executed evidence for that** — M6 does
+*not* answer the `F5` question for these two, because it did not touch the behaviour *they*
+name, so I ran a second mutation rather than rest on reading.
+
+**The mutation (M10)** — the two rendered strings these two tests pin:
+
+```kotlin
+debtAfterIqd == 0.0 -> "0 د.ع (خالص) MUTATED"
+else -> String.format(Locale.US, "%,.0f د.ع MUTATED", debtAfterIqd)
+```
+
+**Result: both go RED.** XML `tests=3 failures=2 errors=0` — the two cohort members failed,
+the negative-credit test passed (its string was untouched). Log:
+`r13-t3-m10-pdf-strings-changed.log`. `BUILD FAILED in 45s`.
+
+**REFUTED** — executed, not inferred. Both assertions are bound to production output with an
+independent literal oracle (the KDoc derives the expected rendering from
+`.forensic-bug02/real_data.json`, not from production code). **The recorded limitation stands
+as a coverage gap for Task 5, not as a fake-evidence finding:** these two tests cannot detect
+a re-introduction of the bug whose regression they accompany.
+
+---
+
+#### 14. `DataIntegrityReleaseGateTest.kt:324` — `roundTrip_amountIqd_preservedThroughMoshiOutboxAndValidator` — **REFUTED** (`reading`)
+
+**Production behaviour named:** a ledger `amountIqd` must survive Moshi serialisation →
+`SyncRepositoryImpl.buildOutboxPayloadMap` → `RemoteEntityValidator.validateAndMapLedgerEntry`
+(H-3's actual serialisation mechanism).
+
+**Killing evidence:** the value asserted on can only be produced by that production chain —
+the test builds a `LocalLedgerEntry` with `amountIqd = 157500.0`, round-trips it through real
+Moshi adapters and the real repository and validator, and compares against the literal
+`157500.0` with a `0.001` delta. The shared `roundTripLedgerEntry` helper (`:175-190`) also
+asserts the validator returned `Valid`, so a fail-closed rejection cannot pass silently.
+
+**Not mutation-proven in this task.** The class-level mutation M4 that would have exercised
+the BalanceCalculator half of the chain was not aimed here, and no dedicated mutation was run
+for this test within the run budget. The verdict is a refutation by production-path trace
+only, and is labelled as such.
+
+---
+
+#### 15. `Phase5DestructiveActionReleaseGateTest.kt:81` — `testNoOtherUiScreens_callClearLocalData` — **REFUTED** (`reading`, with a measured caveat)
+
+**Production behaviour named:** no UI screen outside the debug-gated `SettingsScreen` may call
+or expose `clearLocalData` (RC-07 / `INV-15`).
+
+**Killing evidence:** the assertion reads real source files from disk and rejects the
+forbidden call. It is not vacuous in the way a loop can be — the directory is resolved by
+`findSourceDir`, which calls `error(...)` (`:44`) if the directory is absent, so an empty walk
+fails loudly rather than passing silently. That is the `F7` failure mode, and it is guarded.
+
+**The caveat, which is why this ranks last (§3.2 rule 5):** see §3.5.
+
+---
+
+### 3.5 The scanner counts assertions *syntactically*, and a loop hides them
+
+`testNoOtherUiScreens_callClearLocalData` and its sibling
+`testNoRawBuildConfigReferencesInUiCode` (`:115`) each contain **one** `assert*` call,
+syntactically inside a `for` loop over every UI source file. Measured on this tree:
+
+```console
+UI .kt files walked by the loop: 27
+  skipped by the allowlist (SettingsScreen.kt / DashboardViewModel.kt): 2
+=> runtime assertion executions in testNoOtherUiScreens_callClearLocalData: 25
+```
+
+**One syntactic assertion is 25 runtime assertions.** The scanner's cohort is a *syntactic*
+count, so these two tests are the **strongest** members of the cohort by discriminating
+power and the scanner cannot tell. They are ranked 15th and 13th-of-file on that basis, which
+is the opposite of their true weight.
+
+**This is a property of the certified instrument, reported and not acted upon.** Per the
+binding constraint the scanner was not edited and its fixtures were not touched; the
+self-test was not re-run. If the controller wants the cohort to rank by *runtime* assertion
+count, that is a scanner change and a new certification, not a Task 3 repair.
+
+---
+
+### 3.6 Stale evidence citations, found while tracing (not findings about evidence)
+
+Four tests cite production line numbers that no longer point at the code they name. These are
+**documentation-accuracy observations**, not evidence defects, and no verdict rests on them —
+in each case the cited behaviour exists and the tests were adjudicated against the real
+location.
+
+| Test | Cites | Actually at |
+|:---|:---|:---|
+| `DataIntegrityReleaseGateTest.kt:606` | `Repositories.kt:2358-2362` — "`deleteTransaction` calls `correctTransaction`" | `deleteTransaction` is `Repositories.kt:2693`; `:2358-2362` is inside `addPaymentInternal`'s idempotency block |
+| `DataIntegrityReleaseGateTest.kt:923` | `AppDatabase.kt:768-776 (MIGRATION_8_9)` | `MIGRATION_8_9` is `AppDatabase.kt:830-838` |
+| `DataIntegrityReleaseGateTest.kt:534` | `SyncRepositoryImpl.kt:713` | `dataMap.remove("rawJson")` (ledger path) is `SyncRepositoryImpl.kt:719` |
+| `DataIntegrityReleaseGateTest.kt:521` | `SyncRepositoryImpl.kt:710` | account-path strip is `SyncRepositoryImpl.kt:716` |
+
+The first row matters beyond tidiness: the INV-02 test cites a line that does not contain the
+function it names. That is consistent with the behaviour having been *moved* out of the test
+at some point, but **I did not establish that history and do not assert it** — git history was
+not consulted. The current-state finding stands on its own: the behaviour is not called.
+
+---
+
+### 3.7 The revert gate, verified
+
+Ruling 1 required `git status --porcelain` to be empty before each new mutation, and the
+production files byte-identical to `c09918d` at the end. Both were **checked, not assumed**,
+after every one of the ten mutations:
+
+```console
+$ git status --porcelain
+                              <-- empty, after each of the 10 reverts
+
+$ git diff --stat c09918d
+                              <-- empty
+
+$ git diff c09918d --name-only | Measure-Object
+Count: 0
+
+$ git diff c09918d --name-only -- "*.kt" | Measure-Object
+Count: 0
+
+$ Get-ChildItem app\src -Recurse -Include *.kt |
+      Select-String -Pattern "R13-T3 TRANSIENT MUTATION"
+Count: 0
+```
+
+Every mutation carried an `R13-T3 TRANSIENT MUTATION` marker comment so a missed revert would
+be greppable rather than invisible. The marker count is `0` repo-wide.
+
+**Post-revert re-execution, to prove the reverts landed rather than asserting it:**
+
+| Class | Baseline | Post-revert | Log |
+|:---|:---|:---|:---|
+| `DataIntegrityReleaseGateTest` (full) | 36 / 0 / 0 | **36 / 0 / 0** | `r13-t3-postrevert-dataintegrity-full.log` |
+| `BugMoney01PdfHidesSubscriberCreditTest` | 3 / 0 / 0 | **3 / 0 / 0** | `r13-t3-postrevert-bugmoney01.log` |
+| `Workstream7And8SafetyNetTest.testUtowerDebtResolver…` | 1 / 0 / 0 † | **1 / 0 / 0** | `r13-t3-postrevert-workstream78.log` |
+
+† this single method had no pre-mutation baseline run of its own; its "before" number is the
+post-revert run, recorded as such in §3.8 rather than back-filled.
+
+---
+
+### 3.8 Every run, and every run discarded
+
+All 16 runs, all with `--rerun-tasks`, all reporting `35 actionable tasks: 35 executed`.
+
+| # | Purpose | Selection | `tests`/`failures`/`errors` | Log |
+|:---|:---|:---|:---|:---|
+| R1 | baseline | `*DataIntegrityReleaseGateTest*` | 36/0/0 | `r13-t3-baseline-dataintegrity.log` |
+| M1 | `deleteTransaction` → physical `DELETE` | INV-02 | 1/**0**/0 | `r13-t3-m1-inv02-physical-delete.log` |
+| B1 | baseline | 2 seam-balance methods | 2/0/0 | `r13-t3-baseline-seambalance.log` |
+| B2 | baseline | `*BugMoney01*` | 3/0/0 | `r13-t3-baseline-bugmoney01.log` |
+| M2 | `getResellerBalance` ignores gateway | 2 seam-balance methods | 2/**1**/0 | `r13-t3-m2-resellerbalance-ignores-gateway.log` |
+| M3 | `MIGRATION_8_9` defaults unsafe | migrationDefaults | 1/**0**/0 | `r13-t3-m3-migration-defaults-unsafe.log` |
+| M4 | BalanceCalculator filter removed | INV-04 | 1/**1**/0 | `r13-t3-m4-balancecalculator-no-history-filter.log` |
+| M5 | ledger `rawJson` strip removed | rawJson ledgerPath | 1/**1**/0 | `r13-t3-m5-rawjson-ledger-strip-removed.log` |
+| M6 | `BUG-MONEY-1` re-introduced | `*BugMoney01*` | 3/**1**/0 | `r13-t3-m6-bugmoney01-reintroduced.log` |
+| M7 | `"note"` → `"took"` | oracle_noteTransaction | 1/**0**/0 | `r13-t3-m7-note-reclassified-as-took.log` |
+| M8 | resolver ignores `explicitSourceDebt` | debt resolver | 1/**1**/0 | `r13-t3-m8-debtresolver-ignores-explicit.log` |
+| M9 | all remote events suppressed | INV-12 + idempotency | 2/**0**/0 | `r13-t3-m9-all-events-suppressed.log` |
+| M10 | the two pinned PDF strings changed | `*BugMoney01*` | 3/**2**/0 | `r13-t3-m10-pdf-strings-changed.log` |
+| PA | post-revert | debt resolver | 1/0/0 | `r13-t3-postrevert-workstream78.log` |
+| PB | post-revert | `*BugMoney01*` | 3/0/0 | `r13-t3-postrevert-bugmoney01.log` |
+| PC | post-revert | `*DataIntegrityReleaseGateTest*` | 36/0/0 | `r13-t3-postrevert-dataintegrity-full.log` |
+
+**Runs discarded — one, and it is mine:**
+
+- **A chained double launch produced no run at all.** B1 and B2 were launched as a single
+  `cmd /c` string containing an embedded newline. B1 executed (its log and XML exist); **B2
+  never started** — no log file was created and no XML was written. I detected it by polling
+  for `r13-t3-baseline-bugmoney01.log`, confirmed no Gradle test process was alive, and
+  re-launched B2 standalone, which ran normally (3/0/0). **Discarded: nothing was counted
+  from it.** The lesson is the one Ruling 2 exists to enforce, arriving from a different
+  direction: a silent no-op is indistinguishable from a pass unless you check for the
+  artefact. Checking the XML, not the exit path, is what caught it.
+
+**No repetition batch was run, and none is claimed.** Unlike Task 2, no test in this cohort
+was executed more than twice (once mutated, once post-revert), so there is no stability
+count here and none is implied. Each `F5` verdict rests on a single decisive execution, which
+is sufficient for the question asked — *does this mutation change the outcome* — and would not
+be sufficient for a flakiness claim, which is not made.
+
+---
+
+### 3.9 What this task did NOT execute
+
+Stated as plainly as what it did, per `LL-BUG-HUNT-METHODOLOGY` §7.
+
+- **54 of the 69 cohort members were not adjudicated.** They fall below the cut on the §3.2
+  rule, and the rule weighted toward financial/ledger files, `DataIntegrityReleaseGateTest`,
+  and the `F5` mechanism. The 54 are dominated by: the remaining 17
+  `DataIntegrityReleaseGateTest` members (the *other* round-trip fields, the account-path
+  `rawJson` twin at `:521`, the oracle and backup/restore cases); `GetRemainingTimeTest` (6,
+  pure UI string formatting); the identity/provenance matchers in
+  `DefectRemediationSeamTest`, `Workstream7ImportMatchingCollisionTest` and
+  `HistoricalSubscriberMatchingSafetyTest` (9, `assertFalse(matches…)` on a single input);
+  `UtowerDateParserTest` (2, date parsing); `ApiErrorSemanticsRegressionTest` (3, legitimate
+  zero vs unavailable — financially material and a plausible future candidate);
+  `Phase2RemoteVersionAdversarialTest` / `Phase2ServerConfirmedLifecycleTest` (4);
+  `BugSri01CoordinatorAuditDaoWiringTest` (2, wiring assertions); and 11 singletons.
+  **No claim is made about any of them.** "Below the cut" is a ranking statement, not a
+  clearance.
+- **`corruptionInjection_rawJson_strippedFromCloudPayload_accountPath` (`:521`) was not run.**
+  It is the account-path twin of #8 and would be expected to behave identically against a
+  mutation at `SyncRepositoryImpl.kt:716`. Expected is not measured; it is unadjudicated.
+- **`testBalanceAfterMath_knownBalance_computesCorrectly` (`:1214`) was not adjudicated.** It
+  is outside the cohort (2 assertions) but appears to share #4's defect. Flagged, unproven.
+- **The full 798-test suite was not run**, per Ruling 3. **The claim "the other 783 tests are
+  unaffected" rests on the absence of committed changes, not on an observed green run.**
+- **The remaining 5 production files were not examined for this cohort:** `Repositories.kt`
+  was mutated once and read; `SyncRepositoryImpl.kt` was mutated once; nothing here says
+  anything about their other behaviour.
+- **No product defect is asserted.** Every mutation was reverted. Where a mutation would have
+  caused real damage (M1, M3, M4), that is a statement about the *test's blindness*, not
+  about the shipped code, which is correct as committed.
+- **The scanner was not audited and not modified.** §3.5 is a reported property, not a change.
+  The certified self-test `scripts/test_evidence_scanner_fixtures.py` was **not re-run**.
+- **The `F4` finding from Task 2 was not touched**, per Ruling 4 — not repaired, not
+  re-adjudicated, not pre-conditioned. The six deferred minors N1–N6 were left alone.
+- **No git history was consulted**, so no claim is made about *when* or *why* the INV-02 test
+  stopped calling `deleteTransaction` (§3.6).
+- **`#10`, `#14` and `#15` are refutations by reading, not by execution.** They are the
+  weakest three verdicts in this section and are labelled as such at each entry.
+
+---
+
+### 3.10 Verdict table
+
+| # | Location | Test | Verdict | Evidence |
+|:---|:---|:---|:---|:---|
+| 1 | `DataIntegrityReleaseGateTest.kt:606` | `invariant_INV02_…ledgerDeleteUsesContraEntry` | **CONFIRMED** | mutation M1 |
+| 2 | `DataIntegrityReleaseGateTest.kt:923` | `backupRestore_migrationDefaults_safeForBalanceCalculator` | **CONFIRMED** | mutation M3 |
+| 3 | `DataIntegrityReleaseGateTest.kt:1275` | `oracle_noteTransaction_zeroFinancialImpact` | **CONFIRMED** | mutation M7 |
+| 4 | `EarthlinkSearchViewModelSeamTest.kt:1223` | `testBalanceAfterMath_unknownBalance_isNull` | **CONFIRMED** | mutation M2 |
+| 5 | `DataIntegrityReleaseGateTest.kt:776` | `invariant_INV12_noOutboxLoopsOnRemoteApply` | **CONFIRMED** | mutation M9 |
+| 6 | `DataIntegrityReleaseGateTest.kt:819` | `idempotency_duplicateSyncEvent_zeroNewEntries` | **CONFIRMED** | mutation M9 |
+| 7 | `DataIntegrityReleaseGateTest.kt:627` | `invariant_INV04_zeroDoubleApplication_…` | **REFUTED** | mutation M4 → red |
+| 8 | `DataIntegrityReleaseGateTest.kt:534` | `corruptionInjection_rawJson_…_ledgerPath` | **REFUTED** | mutation M5 → red |
+| 9 | `EarthlinkSearchViewModelSeamTest.kt:1168` | `testGetResellerBalance_success_returnsValue` | **REFUTED** | mutation M2 → red |
+| 10 | `EarthlinkSearchViewModelSeamTest.kt:1200` | `testGetResellerBalance_apiFailure_resultsInNullNotZero` | **REFUTED** | reading |
+| 11 | `Workstream7And8SafetyNetTest.kt:65` | `testUtowerDebtResolverPriority3AnchorsOnExplicitDebt` | **REFUTED** | mutation M8 → red |
+| 12 | `BugMoney01PdfHidesSubscriberCreditTest.kt:47` | `exactlyZeroDebtAfter_stillRendersAsSettled` | **REFUTED** | mutations M6, M10 |
+| 13 | `BugMoney01PdfHidesSubscriberCreditTest.kt:56` | `positiveDebtAfter_rendersAsOutstandingAmount` | **REFUTED** | mutations M6, M10 |
+| 14 | `DataIntegrityReleaseGateTest.kt:324` | `roundTrip_amountIqd_preservedThrough…` | **REFUTED** | reading |
+| 15 | `Phase5DestructiveActionReleaseGateTest.kt:81` | `testNoOtherUiScreens_callClearLocalData` | **REFUTED** | reading |
+
+**6 CONFIRMED, 9 REFUTED, 0 OPEN.**
+
+Every candidate resolves. No candidate was left OPEN, and none was given a verdict to tidy
+the list: #6 was genuinely heading for `OPEN` and was settled only because mutation M9 turned
+out to answer it.
+
+**The refuted half is the load-bearing half, twice over.**
+
+1. **#7 vs #1 is the whole thesis in one pair of rows.** Two single assertions, same class,
+   same file, the same RED-invariant family. One names the H-3 filter and *fails* when it is
+   removed. The other names the no-physical-deletion rule and *passes* when physical deletion
+   is introduced. A single-assertion count cannot tell them apart. Only the mutation did.
+2. **#4 vs #9 is the same result in miniature**, from one mutation and one run: two tests in
+   one file, opposite verdicts, the difference being whether the test actually calls
+   production. Had #4 been cleared on reading ("it asserts something real"), the defect would
+   have shipped — and had #9 been condemned on the same reading, real coverage would have
+   been destroyed. Both errors were available on the evidence available *before* the runs.
+   Neither survived them.
+
+**What the six confirmations share.** Four of the six (`#1`, `#2`, `#3`, `#4`) are satisfied
+by setup or by the *absence* of the behaviour: an assertion on a row the test just inserted,
+a hardcoded copy of a migration's defaults, a zero amount that makes a type claim
+arithmetically irrelevant, and a test that never leaves the test file. The other two (`#5`,
+`#6`) are satisfied by `0 == 0`. **In all six, the assertion passes in a world where the
+production behaviour is absent, wrong, or never invoked** — which is precisely and only what
+`F5` asks.
+
+**Carry-forward for Task 5 (repairs), in the order the evidence supports:**
+
+- `#1` is the priority: a `RELEASE-REQUIRED` barrier for RED Invariant 2 that cannot see
+  physical deletion.
+- `#2` and `#3` need *input* changes, not assertion changes — a real migration, a non-zero
+  note amount. Adding assertions alone will not fix either.
+- `#5` and `#6` need one precondition each (`assertNotNull(EventSyncResult.APPLIED)`,
+  `assertEquals(1, countAfterFirst)`) and are otherwise sound. These are the cheapest real
+  repairs in the set.
+- `#4` and its out-of-cohort twin `:1214` are, on the evidence here, removable or should be
+  rewritten to call production. **I did not establish that `:1214` is defective — only that
+  it looks the same. Do not delete either on the strength of this section.**
+
+---
+
+### 3.11 Gate assessment for this task
+
+The gates that mattered, and how each fared.
+
+- **Execution confirms, reading only refutes — held.** All 6 `CONFIRMED` verdicts rest on a
+  run that shows the test green with the behaviour removed or absent. The 3 reading-only
+  verdicts (`#10`, `#14`, `#15`) are refutations, are labelled `reading` at each entry, and
+  are named in §3.9 as the weakest claims in the section.
+- **The revert gate — held and verified ten times.** §3.7. `git diff c09918d` is empty; zero
+  mutation markers remain; three classes were re-executed post-revert and returned to their
+  baseline numbers.
+- **Ruling 2 (Gradle will lie) — held.** 16 runs, `--rerun-tasks` on every one, XML read
+  after every one, `testDebugUnitTest UP-TO-DATE` observed zero times. The one discarded run
+  is disclosed in §3.8 with its cause.
+- **Ruling 4 (adjudicating, not fixing) — held.** No repair was applied. The Task 2 `F4`
+  finding was not touched. Ten production mutations, all reverted, none committed.
+- **Ruling 5 (append only) — held.** This is a new `##` section. §1–§2 are byte-unchanged,
+  as are Task 1's and Task 2's subsections.
+- **The gate that got closest to failing — "is this test's *name* the claim I am judging?"
+  Findings #2 and #12 turned on it.** In both, the test does something real and the *name*
+  claims something else. The rule I applied, and recommend: **judge the test against the
+  claim in its own name and section header, and report the mismatch explicitly rather than
+  quietly grading the narrower thing it actually does.** Reporting only the narrow grade would
+  have turned #2 and #12 into `REFUTED` and lost both findings; reporting only the name would
+  have overstated them. Both are `CONFIRMED`/`REFUTED` *with the mismatch stated*.
+- **Not reached — whether the suite as a whole is sound.** 15 of 69 adjudicated, 6 of 15 by
+  mutation. The remaining 54 and the 3 largest files are Tasks 4–6, and nothing in this
+  section speaks for them.
+
+**The lesson worth carrying forward.** The suite's 798/798 green is compatible with *all six*
+of these confirmations, because a test that is green for the wrong reason is green. Three of
+the six are in the one file this project names as its silent-corruption barrier, and two of
+those three are the *same shape* of defect the barrier exists to catch. A green barrier is
+not evidence that the barrier works; only breaking the code and watching the gate fail — or
+pass — tells you which one you are holding.
