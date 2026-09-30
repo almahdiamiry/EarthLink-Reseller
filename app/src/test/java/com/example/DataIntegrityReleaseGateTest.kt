@@ -1,6 +1,9 @@
 package com.example
 
 import android.content.Context
+import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.sqlite.db.SupportSQLiteOpenHelper
+import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.core.app.ApplicationProvider
 import com.example.core.database.AppDatabase
 import com.example.core.database.SyncOutboxDao
@@ -19,6 +22,7 @@ import com.example.core.sync.RemoteEventSource
 import com.example.core.sync.RemoteSyncCoordinator
 import com.example.core.sync.SyncRepositoryImpl
 import com.example.data.repository.LocalLedgerRepositoryImpl
+import com.example.data.repository.rebuildAccountBalances
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
@@ -987,55 +991,225 @@ class DataIntegrityReleaseGateTest {
 
     @Test
     fun backupRestore_migrationDefaults_safeForBalanceCalculator() = runBlocking {
-        // Evidence: AppDatabase.kt:768-776 (MIGRATION_8_9)
-        // openingDebtIqd DEFAULT 0.0 → BalanceCalculator uses 0 as starting point → safe
-        // openingAdvanceIqd DEFAULT 0.0 → safe
-        // openingLoanIqd DEFAULT 0.0 → safe
-        // stateSource DEFAULT NULL → isSnapshotBaseline = false → safe (no filtering occurs)
-        // isSnapshotHistory DEFAULT 0 (false) → won't be filtered → safe for non-snapshot accounts
+        // CLAIM: the column DEFAULTs written by MIGRATION_8_9 are safe input for BalanceCalculator.
+        //
+        // Nothing in this test restates those DEFAULTs. The fixture is a REAL pre-migration SQLite
+        // database created at Room schema version 8, where the six MIGRATION_8_9 columns do not
+        // exist at all. Every value the derivation consumes is read back OUT of that database AFTER
+        // AppDatabase.MIGRATION_8_9 has run, and the isSnapshotBaseline branch is derived by
+        // production (Repositories.kt:3561) — never by this test.
+        //
+        // Evidence: AppDatabase.kt:830-839 (MIGRATION_8_9), :841-847 (MIGRATION_9_10),
+        //           :849-854 (MIGRATION_10_11), Repositories.kt:3560-3573 (the derivation),
+        //           BalanceCalculator.kt:70-74 (isSnapshotBaseline filters isSnapshotHistory).
+        //
+        // Independent oracle: a pre-migration account whose opening baseline defaults to 0.0 must
+        // derive 0.0 + 30,000 + 20,000 = 50,000 IQD from its two charges. The pre-migration cached
+        // debtIqd is seeded to 0.0 so that only a real recalculation can satisfy the assertion.
+        val legacyDbFile = context.getDatabasePath("t6_pre_migration_v8.db")
+        legacyDbFile.parentFile?.mkdirs()
+        if (legacyDbFile.exists()) legacyDbFile.delete()
 
-        // Simulate a "legacy" account that existed before MIGRATION_8_9
-        // (i.e., all snapshot fields at their DEFAULT values)
-        val legacyAccount = LocalAccount(
-            id = "legacy_acc_001", displayName = "Pre-Migration Account",
-            debtIqd = 50000.0,
-            openingDebtIqd = 0.0,     // MIGRATION_8_9 DEFAULT
-            openingAdvanceIqd = 0.0,  // MIGRATION_8_9 DEFAULT
-            openingLoanIqd = 0.0,     // MIGRATION_8_9 DEFAULT
-            stateSource = null,       // MIGRATION_8_9 DEFAULT NULL
-            stateConfidence = null    // MIGRATION_8_9 DEFAULT NULL
+        val legacyConfig = SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name(legacyDbFile.name)
+            .callback(object : SupportSQLiteOpenHelper.Callback(8) {
+                override fun onCreate(sqliteDb: SupportSQLiteDatabase) {
+                    // local_accounts exactly as Room v8 emitted it: the exported v9 schema
+                    // (assets/com.example.core.database.AppDatabase/9.json) minus the six columns
+                    // MIGRATION_8_9 adds.
+                    sqliteDb.execSQL("""
+                        CREATE TABLE IF NOT EXISTS `local_accounts` (
+                            `id` TEXT NOT NULL,
+                            `sourceExternalId` TEXT,
+                            `sourceBatchId` TEXT,
+                            `displayName` TEXT NOT NULL,
+                            `earthlinkUsername` TEXT,
+                            `phone1` TEXT,
+                            `phone2` TEXT,
+                            `packageName` TEXT,
+                            `currentPriceIqd` REAL NOT NULL,
+                            `debtIqd` REAL NOT NULL,
+                            `loanIqd` REAL NOT NULL,
+                            `advanceIqd` REAL NOT NULL,
+                            `towerName` TEXT,
+                            `zoneName` TEXT,
+                            `address` TEXT,
+                            `nanoIp` TEXT,
+                            `latitude` REAL,
+                            `longitude` REAL,
+                            `note` TEXT,
+                            `expiresAt` TEXT,
+                            `lastPaymentAt` INTEGER,
+                            `rawJson` TEXT,
+                            `isLegacy` INTEGER NOT NULL,
+                            `createdAt` INTEGER NOT NULL,
+                            `updatedAt` INTEGER NOT NULL,
+                            PRIMARY KEY(`id`)
+                        )
+                    """.trimIndent())
+
+                    // local_ledger_entries as of v9; isSnapshotHistory does not exist yet.
+                    sqliteDb.execSQL("""
+                        CREATE TABLE IF NOT EXISTS `local_ledger_entries` (
+                            `id` TEXT NOT NULL,
+                            `accountId` TEXT NOT NULL,
+                            `sourceExternalId` TEXT,
+                            `sourceBatchId` TEXT,
+                            `typeRaw` TEXT NOT NULL,
+                            `amountIqd` REAL NOT NULL,
+                            `debtAfterIqd` REAL NOT NULL,
+                            `note` TEXT,
+                            `occurredAt` INTEGER NOT NULL,
+                            `rawJson` TEXT,
+                            `createdAt` INTEGER NOT NULL,
+                            PRIMARY KEY(`id`),
+                            FOREIGN KEY(`accountId`) REFERENCES `local_accounts`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                        )
+                    """.trimIndent())
+
+                    // import_batches as of v9 minus the two columns MIGRATION_9_10 adds.
+                    sqliteDb.execSQL("""
+                        CREATE TABLE IF NOT EXISTS `import_batches` (
+                            `id` TEXT NOT NULL,
+                            `fileName` TEXT NOT NULL,
+                            `fileHash` TEXT NOT NULL,
+                            `accountsImported` INTEGER NOT NULL,
+                            `transactionsImported` INTEGER NOT NULL,
+                            `totalDebtIqd` REAL NOT NULL,
+                            `warningsJson` TEXT,
+                            `createdAt` INTEGER NOT NULL,
+                            `status` TEXT NOT NULL,
+                            PRIMARY KEY(`id`)
+                        )
+                    """.trimIndent())
+
+                    // A subscriber that existed BEFORE MIGRATION_8_9: the opening*/state* columns
+                    // are absent, and the cached debtIqd is stale so it cannot satisfy the oracle.
+                    sqliteDb.execSQL("""
+                        INSERT INTO `local_accounts` (
+                            `id`, `displayName`, `currentPriceIqd`, `debtIqd`, `loanIqd`, `advanceIqd`,
+                            `isLegacy`, `createdAt`, `updatedAt`
+                        ) VALUES (
+                            'legacy_acc_001', 'Pre-Migration Account', 35000.0, 0.0, 0.0, 0.0,
+                            0, 1600000000000, 1600000000000
+                        )
+                    """.trimIndent())
+
+                    // Two pre-MIGRATION_8_9 charges. legacy_tx1 carries an ISP external id, so
+                    // MIGRATION_10_11 backfills isSnapshotHistory = 1 for it; legacy_tx2 does not,
+                    // so it stays 0. That asymmetry is what makes the isSnapshotBaseline branch
+                    // observable for this account.
+                    sqliteDb.execSQL("""
+                        INSERT INTO `local_ledger_entries` (
+                            `id`, `accountId`, `sourceExternalId`, `typeRaw`, `amountIqd`,
+                            `debtAfterIqd`, `occurredAt`, `createdAt`
+                        ) VALUES (
+                            'legacy_tx1', 'legacy_acc_001', 'utower_legacy_tx1', 'took', 30000.0,
+                            30000.0, 1600000000000, 1600000000000
+                        )
+                    """.trimIndent())
+                    sqliteDb.execSQL("""
+                        INSERT INTO `local_ledger_entries` (
+                            `id`, `accountId`, `sourceExternalId`, `typeRaw`, `amountIqd`,
+                            `debtAfterIqd`, `occurredAt`, `createdAt`
+                        ) VALUES (
+                            'legacy_tx2', 'legacy_acc_001', NULL, 'took', 20000.0,
+                            50000.0, 1600100000000, 1600100000000
+                        )
+                    """.trimIndent())
+                }
+
+                override fun onUpgrade(sqliteDb: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {}
+            })
+            .build()
+
+        val legacyHelper = FrameworkSQLiteOpenHelperFactory().create(legacyConfig)
+        val legacyDb = legacyHelper.writableDatabase
+
+        // Run the REAL migrations. The account's opening*/state* values are produced here and
+        // nowhere else in this test.
+        AppDatabase.MIGRATION_8_9.migrate(legacyDb)
+        AppDatabase.MIGRATION_9_10.migrate(legacyDb)
+        AppDatabase.MIGRATION_10_11.migrate(legacyDb)
+
+        val accountCursor = legacyDb.query(
+            "SELECT id, displayName, currentPriceIqd, debtIqd, loanIqd, advanceIqd, isLegacy, " +
+                "openingDebtIqd, openingAdvanceIqd, openingLoanIqd, stateSource, stateConfidence, " +
+                "snapshotCapturedAt, createdAt, updatedAt FROM local_accounts WHERE id = 'legacy_acc_001'"
         )
-        val legacyEntries = listOf(
-            LocalLedgerEntry(
-                id = "legacy_tx1", accountId = legacyAccount.id,
-                typeRaw = "took", amountIqd = 30000.0, debtAfterIqd = 30000.0,
-                occurredAt = 1600000000000L,
-                isSnapshotHistory = false  // MIGRATION_9_10 DEFAULT = 0
-            ),
-            LocalLedgerEntry(
-                id = "legacy_tx2", accountId = legacyAccount.id,
-                typeRaw = "took", amountIqd = 20000.0, debtAfterIqd = 50000.0,
-                occurredAt = 1600100000000L,
-                isSnapshotHistory = false
+        assertTrue("MIGRATION_8_9 must preserve the pre-existing account row", accountCursor.moveToFirst())
+        val migratedAccount = LocalAccount(
+            id = accountCursor.getString(0),
+            displayName = accountCursor.getString(1),
+            currentPriceIqd = accountCursor.getDouble(2),
+            debtIqd = accountCursor.getDouble(3),
+            loanIqd = accountCursor.getDouble(4),
+            advanceIqd = accountCursor.getDouble(5),
+            isLegacy = accountCursor.getInt(6) == 1,
+            openingDebtIqd = accountCursor.getDouble(7),
+            openingAdvanceIqd = accountCursor.getDouble(8),
+            openingLoanIqd = accountCursor.getDouble(9),
+            stateSource = if (accountCursor.isNull(10)) null else accountCursor.getString(10),
+            stateConfidence = if (accountCursor.isNull(11)) null else accountCursor.getString(11),
+            snapshotCapturedAt = if (accountCursor.isNull(12)) null else accountCursor.getLong(12),
+            createdAt = accountCursor.getLong(13),
+            updatedAt = accountCursor.getLong(14)
+        )
+        accountCursor.close()
+
+        val ledgerCursor = legacyDb.query(
+            "SELECT id, accountId, sourceExternalId, typeRaw, amountIqd, debtAfterIqd, occurredAt, " +
+                "createdAt, isSnapshotHistory FROM local_ledger_entries ORDER BY occurredAt ASC"
+        )
+        val migratedLedger = mutableListOf<LocalLedgerEntry>()
+        while (ledgerCursor.moveToNext()) {
+            migratedLedger.add(
+                LocalLedgerEntry(
+                    id = ledgerCursor.getString(0),
+                    accountId = ledgerCursor.getString(1),
+                    sourceExternalId = if (ledgerCursor.isNull(2)) null else ledgerCursor.getString(2),
+                    typeRaw = ledgerCursor.getString(3),
+                    amountIqd = ledgerCursor.getDouble(4),
+                    debtAfterIqd = ledgerCursor.getDouble(5),
+                    occurredAt = ledgerCursor.getLong(6),
+                    createdAt = ledgerCursor.getLong(7),
+                    isSnapshotHistory = ledgerCursor.getInt(8) == 1
+                )
             )
-        )
+        }
+        ledgerCursor.close()
 
-        // BalanceCalculator with migration DEFAULT values must produce correct results
-        val isSnapshot = legacyAccount.stateSource != null  // false (DEFAULT NULL)
-        val (balances, _) = BalanceCalculator.reconstructCurrentPosition(
-            openingDebt = legacyAccount.openingDebtIqd,
-            openingAdvance = legacyAccount.openingAdvanceIqd,
-            openingLoan = legacyAccount.openingLoanIqd,
-            transactions = legacyEntries,
-            isSnapshotBaseline = isSnapshot
-        )
+        legacyDb.close()
+        legacyHelper.close()
+        if (legacyDbFile.exists()) legacyDbFile.delete()
 
+        assertEquals("The migration chain must preserve both pre-existing charges", 2, migratedLedger.size)
         assertEquals(
-            "MIGRATION DEFAULT SAFETY | Pre-migration account with DEFAULT opening values (0.0) " +
-            "and stateSource=null must calculate correctly. " +
-            "Expected: 50000.0 (0 + 30k + 20k) | Actual: ${balances.debtIqd} | " +
-            "Evidence: AppDatabase.kt MIGRATION_8_9 (L770-773)",
-            50000.0, balances.debtIqd, 0.001
+            "PRECONDITION | MIGRATION_10_11 must mark the ISP-sourced charge as snapshot history. " +
+                "Without one filtered row the isSnapshotBaseline branch has nothing to filter and " +
+                "this fixture would not observe MIGRATION_8_9's stateSource DEFAULT at all.",
+            true,
+            migratedLedger.first { it.id == "legacy_tx1" }.isSnapshotHistory
+        )
+
+        // Hand the migrated rows to production and let production derive the position.
+        db.localAccountDao().insert(migratedAccount)
+        db.localLedgerEntryDao().insertAll(migratedLedger)
+
+        rebuildAccountBalances(db)
+
+        val persisted = db.localAccountDao().getByIdOneShot(migratedAccount.id)!!
+        assertEquals(
+            "MIGRATION DEFAULT SAFETY | A pre-migration account whose opening* and state* columns " +
+                "were written by MIGRATION_8_9 DEFAULTs must derive 50,000 IQD (0.0 opening baseline " +
+                "+ 30,000 + 20,000) with no snapshot filtering. " +
+                "Actual debtIqd: ${persisted.debtIqd} | " +
+                "openingDebtIqd read back from the migrated DB: ${migratedAccount.openingDebtIqd} | " +
+                "openingAdvanceIqd read back: ${migratedAccount.openingAdvanceIqd} | " +
+                "openingLoanIqd read back: ${migratedAccount.openingLoanIqd} | " +
+                "stateSource read back from the migrated DB: ${migratedAccount.stateSource} | " +
+                "Evidence: AppDatabase.kt:830-839",
+            50000.0, persisted.debtIqd, 0.001
         )
     }
 

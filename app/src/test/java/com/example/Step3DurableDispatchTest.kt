@@ -632,6 +632,22 @@ class Step3DurableDispatchTest {
         val resolution = ledgerRepo.verifyAndResolvePendingOperation(op.businessTransactionId, fakeGateway, baselineExpirationDate = null)
         
         assertEquals("Statement match for different user must be rejected as INCONCLUSIVE", UnknownOutcomeResolutionResult.INCONCLUSIVE, resolution.result)
+        // INCONCLUSIVE is reachable by two different routes, so the result alone does not prove the
+        // 4-tuple did the rejecting. Only the diagnostic distinguishes them:
+        //   Repositories.kt:2006 "Renewal statement correlation inconclusive: no single matching
+        //       ledger transaction"  <- verifyRenewalViaStatement returned INCONCLUSIVE because
+        //       matchesUser (Repositories.kt:1684) rejected the wrong user's statement.
+        //   Repositories.kt:2055 "Renewal inspection inconclusive: <cause>"  <- the wrong user's
+        //       statement was ACCEPTED, resolvePendingOperationVerifiedSuccess threw
+        //       MISSING_LOCAL_FINANCIAL_TARGET, and the catch at :2042 swallowed it. The outcome is
+        //       still INCONCLUSIVE, so only this message reveals that the 4-tuple let it through.
+        assertEquals(
+            "4-TUPLE MUST BE THE REJECTOR | The rejection must come from the statement 4-tuple " +
+                "correlator (matchesUser at Repositories.kt:1684), not from a downstream exception " +
+                "caught at :2042. Diagnostic: ${resolution.diagnosticMessage}",
+            "Renewal statement correlation inconclusive: no single matching ledger transaction",
+            resolution.diagnosticMessage
+        )
 
         // Now provide statement with matching targetUser
         val statementsWithTargetUser = listOf(
