@@ -58,6 +58,14 @@ The scanner is **certified**; Task 2 did not modify it and must not. Per the pla
 Reproduced by Task 2 on 2026-09-30 with `python scripts/scan_test_evidence.py app/src/test`.
 Every figure matched the fact-check exactly; none was contradicted.
 
+> **Attribution note (corrected 2026-09-30).** The block below was previously captioned as
+> output of the single command above, but **`single-assertion cohort: 69` is not emitted by
+> that command.** It requires `python scripts/scan_test_evidence.py app/src/test
+> --rule single-assertion` (equivalently `--single-assertion`, per `:122-130`). Every other
+> line is genuine output of the plain invocation. The value is correct; the attribution was
+> not, and it is corrected here rather than left in a document whose thesis is "verify the
+> verifier".
+
 ```
 Kotlin files scanned: 113
 @Test discovered    : 798
@@ -70,14 +78,38 @@ F5  No RED proof    : 0 (execution-only, reported always-false)
 F6  Mock-only       : 1
 F7  Vacuous path    : 0
 Total findings      : 2
-single-assertion cohort: 69
+single-assertion cohort: 69   <-- NOT from the command above; needs --rule single-assertion
 ```
 
-**2 findings on a 113-file, 798-test suite, both on a single test.** The scanner's
-direction-of-error bias is deliberate: when locating a test body it walks from each `@Test`
-to the *next* `@Test` rather than stopping at the `fun` signature, so it can under-report a
-rule but cannot invent one. A low count is the expected shape of a working scanner, not
-evidence of a broken one.
+**2 findings on a 113-file, 798-test suite, both on a single test.**
+
+**How the scanner bounds a test body** (corrected 2026-09-30; the previous wording here
+attributed fallback behaviour to the instrument in general, which is wrong for 99% of the
+suite). Per `scripts/scan_test_evidence.py:39-45`, a test body runs from its `@Test` to the
+end of **that test's own function body**, located by matching the braces of its `fun`. It
+does *not* stop at the `fun` signature line, because an annotation (`@Suppress`,
+`@DisplayName`) may sit between `@Test` and `fun` and stopping there hides the body. It is
+also **not** bounded at the next `@Test`.
+
+The next-`@Test` bound is the **fallback only**: it applies when no `fun` can be located at
+all, which the trigger is an unlocatable `fun` — a Kotlin backtick-quoted test name — and
+not unbalanced braces. In this suite it is reached by **7 of 798 tests, all in
+`core/ledger/NoteCleanerTest.kt`** (`:87-92`).
+
+**On "can never invent a finding".** The scanner's own stated direction of error is that it
+"may under-report, and must never invent a finding" (`:79-81`), enforced by four guards, each
+added after the class was demonstrated to be violated. For the **791 resolved** blocks that
+guarantee is well-founded: the bound neither stops early (so it cannot hide an assertion and
+invent a vacuity finding) nor over-runs (so it cannot borrow another function's assertions and
+invent an `F2`/`F3`/`F7`).
+
+**It is not unconditional, and the exception is this document's own Ruling 2 note below.** The
+guarantee that a *helper between two tests* falls outside both ranges holds on resolved shapes
+but **not** on the fallback shape, where a helper sitting between two backtick-named tests
+**would** be inside the preceding range and can invent an `F2` on ordinary compiling Kotlin
+(`:72-77`). So the never-invent property is scoped to the resolved shapes; on the 7 fallback
+blocks it carries a known latent exception. No such case exists in this suite's data. A low
+count is the expected shape of a working scanner, not evidence of a broken one.
 
 ### Ruling 2 note — `F2` on backtick-named blocks
 
@@ -100,10 +132,37 @@ file created by this task was a throwaway diagnostic, which has been deleted (§
 
 ```console
 $ python scripts/scan_test_evidence.py app/src/test --rule F1
-Kotlin files scanned: 113
-  F1  Vacuous         : 0
-Total findings      : 0
 ```
+
+Full output, unedited (`Root`, the discovery and assertion counts, and all seven rule lines
+are emitted here too; previously only three lines were quoted with no marker, which read as
+complete output when it was not):
+
+```console
+==============================================================================
+=== Static Test-Evidence Scanner (triage instrument, not a gate) ===
+==============================================================================
+Root                : app/src/test
+Kotlin files scanned: 113
+@Test discovered    : 798
+Assertion calls     : 4285
+------------------------------------------------------------------------------
+Per-rule counts
+  F1  Vacuous         : 0
+  F2  Tautological    : 0
+  F3  Circular        : 0
+  F4  No precondition : 1
+  F5  No RED proof    : 0 (execution-only: reported always-false, never inferred from source)
+  F6  Mock-only       : 1
+  F7  Vacuous path    : 0
+------------------------------------------------------------------------------
+Total findings      : 0
+Exit code is 0 by design: findings are candidates for adjudication, not failures.
+```
+
+`--rule F1` filters the *findings* to that rule but still prints the whole summary, so the
+per-rule counts above are the same as a full run; only `Total findings` differs (0, because
+the one `F4` and one `F6` finding are filtered out).
 
 **Plan Step 1 and Step 2 had nothing to do as written, and that is the result.** There is no
 `F1` candidate to classify as genuinely vacuous / Mockito-only / scanner error, because the
@@ -275,7 +334,12 @@ The answer is that it is **already meaningful on its own**, and the `F6` flag is
 
 **Fact 1 — the assertion has real discriminating power.** A negative control drove the
 *success* path, where production does call `syncRepo.requestSync(USER_ACTION)`
-(`LocalAccountsViewModel.kt:332`), and then ran the very same `verifyNoInteractions`:
+(`LocalAccountsViewModel.kt:332`), and then ran the very same `verifyNoInteractions`. The
+suite itself already pins that method name on that mock: the sibling success test asserts
+`verify(mockSyncRepo, times(1)).requestSync(SyncReason.USER_ACTION)` at
+`LocalAccountsViewModelTgzSyncTriggerTest.kt:185`, followed by `verifyNoMoreInteractions`
+at `:186`. So `syncRepoInvocations=1` below is the count of calls to *that* method, not an
+anonymous interaction:
 
 ```console
 PROBE3 attempts=3 importResultSuccess=true importResultError=null error=null
@@ -289,10 +353,40 @@ caught) whenever sync was genuinely requested, and passed when it was not. A vac
 assertion cannot reject anything. This one can, so it is a live observation of a real
 negative, not a rubber stamp.
 
+**Disclosure — this control did not assert its own precondition (`F4` in miniature).**
+`probe3` *prints* `importResultSuccess` but its only assertion is `assertTrue(rejectedSync)`
+(preserved clone, `:258-261`). It never asserts that the success-path import actually
+succeeded before treating the rejection as meaningful. That is the very defect class this
+round exists to catch, committed by the control that was meant to rule the defect out, and it
+was not disclosed when the `F6` verdict was first recorded.
+
+It is also the most likely explanation of the single unexplained failure in §2.6. Because the
+control never checked that the import succeeded, it could not distinguish *"the import
+succeeded and requested sync"* from *"the import never got far enough to request sync"*. In
+the second case `verifyNoInteractions` has nothing to reject, `rejectedSync` stays `false`,
+and the control **fails** — which is what the recorded run did. Had the control asserted
+`importResultSuccess == true` first, that run would have failed loudly at the precondition
+instead, naming the real cause instead of surfacing as an unexplained rejection failure.
+
+**This does not weaken the `F6` verdict, and the direction of the error is the reason.** The
+control's only assertion is `assertTrue(rejectedSync)`, so a missing precondition can only
+make it fail, never pass: the unsound path produces a **false failure** — demanding a
+rejection that could not occur — which is exactly the failure observed. It cannot produce a
+false pass, because a pass requires `rejectedSync == true`, which requires an actual
+`AssertionError` from `verifyNoInteractions`. The 8 correct rejections recorded in §2.6 are
+therefore uncontaminated by this defect. The `REFUTED` verdict additionally rests on Fact 2
+below, which is a different probe.
+
 **Fact 2 — with the precondition supplied, the assertion means what it says.** §2.3
 executed the repaired form: the precondition passes (proving the import really ran and
 really failed) and `verifyNoInteractions(mockSyncRepo)` still holds (proving no sync was
 requested). That is exactly the test's stated claim, and both halves are now measured.
+
+**Carry-forward for Task 5 (which repairs this very test).** Any control added to prove the
+repaired test discriminates must assert *its own* precondition before its verdict counts.
+A control that skips this is `F4` in miniature, and it fails in the direction that flatters
+the conclusion — or, as here, in the direction that produces a failure whose cause has to be
+guessed at afterwards.
 
 **Therefore the `verifyNoInteractions` is the *right* assertion for this test and is not
 weak.** The harm in this test came entirely from the missing `F4` precondition, not from the
@@ -336,6 +430,24 @@ suite=...LocalAccountsViewModelTgzSyncTriggerTest tests=3 failures=0 errors=0
   testSuccessfulTgzImport_..._andSetsReplaceAllMarker          time=0.792  passed
 ```
 
+#### Where the raw execution evidence lives — and why it is not durable
+
+Every measured output quoted in §2.2–§2.6 comes from artefacts that are **outside the
+repository**, in the OS temp directory:
+
+| Artefact | Path | Contents |
+|:---|:---|:---|
+| Run logs | `C:\Users\ALMAHD~1\AppData\Local\Temp\opencode\r13-*.log` | The full `--console=plain -i` Gradle output of every executed run, including the `PROBn` stdout lines quoted above |
+| Preserved clone | `C:\Users\ALMAHD~1\AppData\Local\Temp\opencode\R13EvidenceDiagnostic.kt.preserved` | Verbatim 308-line copy of the deleted `R13EvidenceDiagnostic.kt`, so the clone in §2.2 can be diffed against what actually ran |
+| Runner script | `C:\Users\ALMAHD~1\AppData\Local\Temp\opencode\r13-stability.ps1` | The harness that drove the `--rerun-tasks` repetitions behind the §2.6 counts |
+
+**These are not durable evidence and are not part of the repository.** They sit outside the
+worktree, they are not tracked by git, and a temp-directory clean will destroy them. A later
+task therefore **cannot re-verify the 8-run count or the clone text from the repository** —
+the §2.6 table is a claim this document makes on the strength of evidence that no longer
+ships with it. Anyone re-deriving those numbers must re-run the diagnostic, and the probe
+bodies are quoted here in §2.2–§2.4 precisely so that is possible without the original file.
+
 ### 2.6 Run accounting, and one honest correction
 
 Repetition counts in this audit are easy to overstate, so the accounting is explicit.
@@ -353,19 +465,28 @@ verification loop, not passes, and are not counted below.
 | `probe4` (precondition negative control) | 8 | 8 | 0 | `attempts=50 preconditionRejected=true` |
 
 **The one `probe3` failure is disclosed, not buried.** On the first cold run the negative
-control did not reject a sync request. The cause was not established: the failing run
-predates the instrumentation that prints `syncRepoInvocations` and `importResultSuccess`, so
-the recorded evidence for that specific run does not distinguish "the success import did not
-complete" from "the control is unsound". Eight subsequent executed runs — seven of them full
-class, four forced with `--rerun-tasks` — all rejected correctly with `syncRepoInvocations=1`
-and `importResultSuccess=true`.
+control did not reject a sync request. The cause was not established at the time; §2.4 now
+records the most likely mechanism — the control asserted no precondition of its own, so a run
+in which the success import produced no sync left `verifyNoInteractions` with nothing to
+reject. Note this is **not** a load or timing hypothesis: nothing in the recorded evidence
+points to load. The failing run predates the instrumentation that prints
+`syncRepoInvocations` and `importResultSuccess`, so the evidence for that specific run cannot
+discriminate between that mechanism and a sound control that was simply defeated.
+Eight subsequent executed runs — seven of them full class, four forced with `--rerun-tasks`
+— all rejected correctly with `syncRepoInvocations=1` and `importResultSuccess=true`.
 
 The `F6` `REFUTED` verdict does not rest on the single failing run. It rests on the
 **conjunction** of §2.4 Fact 1 (8 measured rejections, proving the assertion discriminates)
 and Fact 2 (§2.3, the repaired form passes with the precondition proven). A control that is
-merely *usually* right would not be adequate evidence, and the caveat is recorded so a later
-reader can weigh it: if Task 5 finds `verifyNoInteractions` behaving inconsistently under
-load, this is the first place to look.
+merely *usually* right would not be adequate evidence. As §2.4 sets out, the missing
+precondition in `probe3` could only cost the control a spurious **failure** (its sole
+assertion is `assertTrue(rejectedSync)`), never a spurious **pass**, so the 8 correct
+rejections are not inflated by that defect.
+
+**If Task 5 revisits this control, the first thing to change is the missing precondition
+assertion — not the load.** An earlier version of this paragraph pointed at load and
+"behaving inconsistently under load"; nothing in the recorded evidence supports a load
+hypothesis, and the corrected mechanism is the absent precondition.
 
 Note also that this instability is in **my throwaway diagnostic**, not in the suite. The
 audited class ran green in every execution, before and after the clone was deleted.
@@ -406,15 +527,36 @@ Stated as plainly as what it did, per `LL-BUG-HUNT-METHODOLOGY` §7.
 - **The scanner was not audited for correctness beyond reproducing its counts.** Its
   certified self-test was not re-run. Ruling 2's latent `F2` over-report paths were not
   exercised, because this adjudication produced no `F2`.
-- **The flaky `probe3` first run was not root-caused.** See §2.6.
+- **The flaky `probe3` first run was not root-caused.** See §2.6, and the disclosure in §2.4
+  that the control asserted no precondition of its own.
+- **This worktree could not build until two gitignored files were copied in.** Tasks 3, 4
+  and 5 all need Gradle, and each would otherwise burn two build cycles on
+  `SDK location not found` then `File google-services.json is missing`. Before running any
+  Gradle command in this worktree, confirm these two exist:
+  - `local.properties` — absent; copy from the main checkout
+    `C:\Users\Almahdi-BOC\antigravity\Earthlink-Reseller-V1\local.properties`
+  - `app\google-services.json` — absent; copy from
+    `C:\Users\Almahdi-BOC\antigravity\Earthlink-Reseller-V1\app\google-services.json`
+
+  Both are gitignored (`.gitignore`: `/local.properties`, `/app/google-services.json`), so
+  copying them cannot affect a commit — `git status` was verified clean after each copy in
+  this task. This is a worktree-provisioning gap, not an audit finding.
 
 ### 2.9 Gate assessment for this task
 
 The weakest gate was **Gate 1 (reachability) applied to the repair**, not the adjudication
-itself. The adjudication is strong: the `F4` proof is an execution result, not an argument,
-and it is backed by a negative control on the repair. What remains unproven is whether the
-suite *as a whole* is sound — which is the entire subject of Tasks 3–5 and is not something
-two findings on one file can speak to.
+itself. *Gate 1* here means the requirement, inherited from `LL-BUG-HUNT-METHODOLOGY` §3.2,
+that a claimed defect be shown to be reachable by naming the exact production path that
+produces it — in this case, whether the awaited state is actually reachable on the real
+production path so that the proposed repair has something real to assert. (§3.2 numbers its
+gates within the bug-hunt pipeline; this document is a test-evidence audit, so the name is
+borrowed for the analogous requirement. The plan defines only `GATE-INTEGRITY-01`.) It is
+assessed as reached for the repair: §2.3 executed the real path and observed the awaited
+state, and §2.2's negative control showed the precondition fails when that state is absent.
+The adjudication itself is strong: the `F4` proof is an execution result, not an argument,
+and it is backed by that negative control. What remains unproven is whether the suite *as a
+whole* is sound — which is the entire subject of Tasks 3–5 and is not something two findings
+on one file can speak to.
 
 **The lesson worth carrying forward:** a scanner that reports 2 findings on 798 tests is
 either an excellent instrument or a broken one, and the output alone cannot distinguish
