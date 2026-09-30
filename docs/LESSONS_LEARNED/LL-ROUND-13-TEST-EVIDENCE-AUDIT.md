@@ -1723,3 +1723,840 @@ the gate fail — or pass — tells you which one you are holding.** And the con
 the useful half: one mutation run against two tests in the same class is enough to tell a
 barrier that works (`#7`, red) from one that cannot (`#1`, green). Nothing short of execution
 distinguished them, and they sit 20 lines apart.
+---
+
+## Task 4 — Adjudicating the unmeasured cohort and the unaudited dispatch tests
+
+**Scope: 54 unadjudicated single-assertion cohort members across 23 files, of which 53 were
+screened fresh and 1 was already adjudicated by Task 2. Plus a sample of the two files the
+controller named as never audited: `Step3DurableDispatchTest.kt` (23 tests) and
+`EarthlinkSearchViewModelSeamTest.kt` (40 tests). 13 mutation applications — 12 conceptual
+mutations, M5 applied in two stages — across 8 production files, in 19 Gradle runs of which 15 are
+reported as evidence.** No `.kt` file is modified by this commit:
+`git diff --stat 50c094b -- "*.kt"` is empty (§4.6).
+
+**Verdict count: 7 CONFIRMED, 10 REFUTED, 1 LEAD, 0 OPEN — across 17 adjudicated tests.**
+
+**Correction, recorded before it could be published rather than after.** An earlier draft of this
+section's summary line read *"6 CONFIRMED, 10 REFUTED, 1 LEAD"*. That was wrong: the verdict table
+below has **17 rows**, of which **7** are `CONFIRMED` (1, 2, 3, 6, 7, 13, 14) and **9** are
+`REFUTED` (4, 5, 8, 9, 10, 11, 15, 16, 17). The error came from carrying a part-sum
+(*"Part 2 cohort: 4 CONFIRMED"*) forward without re-adding the two `CONFIRMED` results from the
+`EarthlinkSearchViewModelSeamTest` sample. It is corrected here and the arithmetic is now
+checkable against the table rather than asserted, which is the rule this document exists to enforce.
+
+### 4.1 Why this section is a static screen followed by execution
+
+Task 3 left 54 cohort members unadjudicated and, more importantly, ~109 of 113 test files
+untouched. §3.10 recorded **6 CONFIRMED / 9 REFUTED / 0 OPEN**, all six found by mutation, and all
+six matched one of three shapes. Those shapes are cheap to detect statically, which is why they are
+worth applying across a wide surface before spending execution budget:
+
+- **P1 — the named path is never invoked.** The test's name, comment or section header cites a
+  production function, file or behaviour; the body contains no call to it.
+- **P2 — count-compare without asserting the operation happened.** The assertion is
+  `assertEquals(before, after)` or a zero-count, and nothing establishes that the operation actually
+  ran. `0 == 0` passes.
+- **P3 — the test exercises the language, not the production code.** The result is fixed by Kotlin
+  semantics (null-safety, arithmetic on locals, a collection literal) with no production call in
+  the body.
+
+**A pattern match is a lead, not a finding.** §3.11 recorded that this round's own narrow risk
+grade was necessary, because *"a narrow grade would have lost #2"*. This section applies the rule
+in the other direction, and the arithmetic is worth stating up front: **of the 10 tests that matched
+a pattern, execution refuted 2, confirmed 7, and left 1 a `LEAD`.** A pattern match predicted the
+wrong verdict **20% of the time**, in both directions — two accusations that execution refuted, and
+two test families that a shape-based review would have condemned and that caught every mutation
+thrown at them. The screen narrows the field; only the run decides.
+
+### 4.2 The 54, re-derived by counting, not by subtraction from memory
+
+The residual was computed mechanically from the scanner's cohort list minus Task 3's fifteen
+adjudicated `file:line` pairs, and the arithmetic was checked:
+
+```console
+cohort size (scanner):        69
+adjudicated by Task 3:        15
+residual (this task):         54
+sum of the per-file counts:   54      <- printed by the script, not asserted
+```
+
+23 files: one with 14 members, one with 6, five with 3, three with 2, and thirteen with 1
+(14 + 6 + 15 + 6 + 13 = 54).
+
+| Residual file | Members | P1/P2/P3 matches | Outcome |
+|:---|:---|:---|:---|
+| `DataIntegrityReleaseGateTest.kt` | 14 | 0 | 1 adversarially probed → REFUTED (§4.4 #11) |
+| `GetRemainingTimeTest.kt` | 6 | 0 | all call production `getRemainingTime` (`SharedComponents.kt:177`) |
+| `ApiErrorSemanticsRegressionTest.kt` | 3 | **1** | `:343` **CONFIRMED**; `:315` no match; `:304` **LEAD** |
+| `DefectRemediationSeamTest.kt` | 3 | 0 | all call production `LocalAccountMatcher.findMatching` |
+| `HistoricalSubscriberMatchingSafetyTest.kt` | 3 | **3** | 2 CONFIRMED, 1 REFUTED |
+| `Phase2RemoteVersionAdversarialTest.kt` | 3 | 0 | all call `coordinator.resolveLocalVersion` |
+| `SurgicalFixAdvanceAndRenewalTest.kt` | 3 | 0 | all call `HistoryPresentationManager.classifyHistoryItem` |
+| `BugSri01CoordinatorAuditDaoWiringTest.kt` | 2 | 0 | `:55` is a real reflective wiring read; `:82` drives the real coordinator |
+| `UtowerDateParserTest.kt` | 2 | 0 | both call `UtowerDateParser` |
+| `Workstream7ImportMatchingCollisionTest.kt` | 2 | **2** | both **REFUTED** |
+| `Bug16ForensicReproductionTest.kt` | 1 | 0 | calls `BackupManager.importBackupFromUri` |
+| `BugOb01ExpiryAlertThrottleTest.kt` | 1 | **1** | **REFUTED** |
+| `Change3AMissingParentOptimizationRegressionTest.kt` | 1 | 0 | drives `handleSnapshot` end to end |
+| `DashboardViewModelForecastTest.kt` | 1 | **1** | **REFUTED** |
+| `LocalAccountsViewModelTgzSyncTriggerTest.kt` | 1 | — | **excluded: already adjudicated by Task 2** (§4.5) |
+| `Phase1FirestoreDocumentIdentityTest.kt` | 1 | **1** | **CONFIRMED** |
+| `Phase2ServerConfirmedLifecycleTest.kt` | 1 | 0 | drives `processEvent` and `resolveLocalVersion` |
+| `Phase5DestructiveActionReleaseGateTest.kt` | 1 | 0 | loop-wrapped source scan; `findSourceDir` guards `F7` |
+| `Phase5SettingsSyncUnifiedCallerTest.kt` | 1 | 0 | reads real sources via a resolving helper |
+| `ResolveLocalVersionTest.kt` | 1 | 0 | calls `resolveLocalVersion` |
+| `Workstream10_5MonotonicRemoteVersionTest.kt` | 1 | 0 | `assertEquals("200", metaDao.get(key))` — a null result fails |
+| `Workstream1StatementCorrelationTest.kt` | 1 | **1** | **CONFIRMED** |
+| `Workstream6LocalAccountProvenanceGuardTest.kt` | 1 | 0 | real spy-gateway call count, with a poll that fails on zero |
+
+**Totals, counted: 54 screened · 1 excluded as already adjudicated · 53 screened fresh · 10 pattern
+matches · 10 of the 10 mutation-proven · 43 screened with no pattern match.**
+
+**"No pattern match" is not "proven real evidence".** It is the absence of the three shapes this
+round has learned to look for, nothing more. Forty-three tests are unproven and are claimed as
+unproven (§4.8).
+
+#### The ranking rule, in order
+
+1. **Pattern strength** — P3 (no production call at all) above P2 (production called, assertion
+   satisfiable by absence) above the P2-family `assertNull` shapes.
+2. **Whether the named claim is a RED invariant** — `INV-01`..`INV-16` and the domain lessons in
+   `AGENTS.md` §9.7 — because a fake assertion there is the most expensive finding available.
+3. **Whether the cohort member's own assertion message names a specific production rule**, because
+   that is what makes a finding *scoped* rather than vague.
+4. **Whether a sibling in the same class can serve as the positive control**, which is what lets one
+   mutation run produce two opposite verdicts.
+
+### 4.3 Execution discipline
+
+`--rerun-tasks` was passed to every run reported as evidence. `BUILD SUCCESSFUL` was never treated
+as evidence; the JUnit XML was read after every run.
+
+- **19 log files** in `C:\Users\ALMAHD~1\AppData\Local\Temp\opencode\`, named
+  `r13-t4-<purpose>.log`. They are outside the repository because an untracked file inside the
+  worktree would appear in `git status --porcelain` and **destroy the Ruling 1 revert gate**.
+- **15 are reported as evidence**; **four are discarded** and the reasons are in §4.10.
+- **`Task :app:testDebugUnitTest UP-TO-DATE` occurs zero times across all 19 logs.**
+- Every log reported for evidence reports `35 actionable tasks: 35 executed`.
+- The single baseline covering every candidate was **38 tests / 0 failures / 0 errors** across 11
+  classes, taken from a forced run (`r13-t4-baseline-forced.log`).
+
+### 4.4 Verdicts, one at a time
+
+Evidence class: **`mutation`** = a production behaviour was removed and the test re-run;
+**`reading`** = production-path trace only. Every `CONFIRMED` below rests on a run showing the test
+green with the named behaviour removed or absent.
+
+---
+
+#### 1. `Workstream1StatementCorrelationTest.kt:46` — `testBaghdadTimezoneConversion` — **CONFIRMED**
+
+**Production behaviour named:** the class KDoc (`:12-16`) claims *"statement timestamp parsing
+resolves against Asia/Baghdad timezone (INV-05 / RED-5)"* with the independent oracle *"Iraq
+standard time (UTC+3)"*.
+
+**What the test actually does (`:47-59`):** builds two `java.text.SimpleDateFormat` instances, one in
+`Asia/Baghdad` and one in `UTC`, parses the same wall-clock string through both, and asserts the
+difference is `10_800_000L`. **No production code is reached.** It is a `kotlin`/`javax` language
+test wearing an `INV-05` name — the exact shape of §3.4 #4. **P3.**
+
+**The mutation (M1)** — `Models.kt:327`, the ISP statement date field's Moshi key destroyed:
+
+```kotlin
+// BEFORE
+@Json(name = "date") val occurredAt: String? = null,
+// AFTER (R13-T4 transient mutation M1)
+@Json(name = "date_R13_T4_MUTATED") val occurredAt: String? = null,
+```
+
+**Result: the target test still passes; its sibling goes red in the same run.**
+
+| Test | Baseline | After M1 |
+|:---|:---|:---|
+| `testBaghdadTimezoneConversion` (`:46`) | pass | **pass — mutation undetected** |
+| `testContractStatementFieldsDeserialization` (`:24`) | pass | **FAIL** — `expected:<2026-01-15 14:30:00> but was:<null>` |
+
+XML: before `tests=2 failures=0 errors=0`; after `tests=2 failures=1 errors=0`.
+Log: `r13-t4-m1-statementitem-date-key.log`. `BUILD FAILED`.
+
+**F5 CONFIRMED.** The class that carries the RED-5 correlation claim proves only that the JVM's
+timezone database offsets Baghdad from UTC by three hours.
+
+---
+
+#### 2. `Phase1FirestoreDocumentIdentityTest.kt:820` — `testScenarioJ_counterfactualRawPayloadContainsRawJson` — **CONFIRMED**
+
+**Production behaviour named:** none in the body. The test's own comment reads *"Verifies that
+unstripped raw payload map DOES contain rawJson key"* — a counterfactual, not a production
+invariant.
+
+**What the test actually does (`:821-832`):** constructs a `mapOf<String, Any>(...)` literal that
+includes `"rawJson" to rawUtowerJson` (`:828`), then asserts
+`rawUnstrippedMap.containsKey("rawJson")`. **The assertion reads the literal built four lines above
+it.** `SyncRepositoryImpl.buildOutboxPayloadMap` is never called. **P3, pure.**
+
+**The mutation (M2)** — `SyncRepositoryImpl.kt:719`, the ledger-path `rawJson` strip, deleted:
+
+```kotlin
+// BEFORE
+dataMap.remove("rawJson")
+// AFTER (R13-T4 transient mutation M2)
+// dataMap.remove("rawJson")
+```
+
+**Result: the target test still passes; its sibling goes red in the same run.**
+
+| Test | Baseline | After M2 |
+|:---|:---|:---|
+| `testScenarioJ_counterfactualRawPayloadContainsRawJson` (`:820`) | pass | **pass — mutation undetected** |
+| `testScenarioI_financialSemanticsPreservedWithoutRawJson` (`:784`) | pass | **FAIL** |
+
+XML: before `tests=2 failures=0 errors=0`; after `tests=2 failures=1 errors=0`.
+Log: `r13-t4-m2-ledger-rawjson-not-stripped.log`. `BUILD FAILED`.
+
+**F5 CONFIRMED.** With `rawJson` now uploaded to Cloud Firestore, the counterfactual test cannot
+tell. The sibling that does tell is not a single-assertion test, which is why it was never a cohort
+candidate.
+
+---
+
+#### 3. `ApiErrorSemanticsRegressionTest.kt:343` — `testApi03_dashboard_networkFailureYieldsNullUnavailable` — **CONFIRMED**
+
+**The controller's escalation, and it is correct.** `_testCount` initialises to `null`
+(`DashboardViewModel.kt:40`) and the failure branch sets `_testCount.value = null` (`:190`). A
+`loadDashboardData` that did nothing at all would leave it `null` and the assertion would pass.
+**P2.**
+
+**The mutation (M3)** — `DashboardViewModel.kt:184-192`, the entire active-test-users fetch removed:
+
+```kotlin
+// AFTER (R13-T4 transient mutation M3)
+val testCountJob = async {
+    try {
+        @Suppress("UNUSED_EXPRESSION")
+        val unusedGuard = Unit          // the fetch is gone
+    } catch (e: Exception) { ... _testCount.value = null }
+}
+```
+
+**Result: the target test still passes; its sibling goes red in the same run.**
+
+| Test | Baseline | After M3 |
+|:---|:---|:---|
+| `testApi03_dashboard_networkFailureYieldsNullUnavailable` (`:343`) | pass | **pass — mutation undetected** |
+| `testApi03_dashboard_legitimateZeroPreserved` (`:315`) | pass | **FAIL** — `expected:<0> but was:<null>` |
+| `testApi03_repository_legitimateZeroReturned` (`:304`) | pass | pass — *M3 does not reach it*, see #12 |
+| `testApi03_repository_missingCountFieldThrowsBusinessException` | pass | pass |
+| `testApi03_repository_networkFailureThrowsTransportException` | pass | pass |
+
+XML: before `tests=5 failures=0 errors=0`; after `tests=5 failures=1 errors=0`.
+Log: `r13-t4-m3-testcount-fetch-removed.log`. `BUILD FAILED`.
+
+**F5 CONFIRMED** — exactly the `#5`/`#6` shape §3.9 predicted. **This also settles §3.9's
+re-ordering by measurement.** Task 3 classified `:315` as *"Not exposed at all. Absence cannot
+satisfy it."* That classification is **now executed, not merely read**: with the fetch removed,
+`:315` demands `0`, rejects the `null` absence leaves behind, and goes red. The earlier reading was
+right, and it was worth checking rather than trusting.
+
+---
+
+#### 4. `BugOb01ExpiryAlertThrottleTest.kt:64` — `suppressedAlert_doesNotWriteThrottleMarker` — **REFUTED**
+
+**Production behaviour named:** `ExpiryNotificationManager` must record the throttle marker only when
+the notification was genuinely delivered (`if (delivered)`, `:96`).
+
+**Static pattern: P2.** The assertion is `assertEquals(0L, marker)` where `throttleMarker`
+(`:60-62`) reads `getLong("notified_${accountId}", 0L)`. **The expected value is the default.** If
+`checkAndNotifyExpiringSubscriptions` did nothing at all, the marker would be `0L` and the assertion
+would pass — the textbook P2 shape.
+
+**The mutation (M4)** — `ExpiryNotificationManager.kt:96-103`, the `if (delivered)` gate removed so
+the marker is written unconditionally:
+
+```kotlin
+// AFTER (R13-T4 transient mutation M4)
+val delivered = postNotification(context, account.id.hashCode(), title, body)
+sharedPrefs.edit().putLong("notified_${account.id}", currentMs).apply()
+notificationCount++
+```
+
+**Result: the test goes RED** — `expected:<0> but was:<1790775423845>`.
+XML: before `tests=1 failures=0 errors=0`; after `tests=1 failures=1 errors=0`.
+Log: `r13-t4-m4-throttle-marker-always-written.log`. `BUILD FAILED`.
+
+**REFUTED, by execution. The P2 pattern match was wrong about this test**, and this is why the
+brief's rule that a match is only a lead is load-bearing rather than decorative. A *negative*
+assertion is not satisfied by reading a default when the value it forbids is itself observable: the
+mutation that writes the marker is caught immediately.
+
+---
+
+#### 5. `DashboardViewModelForecastTest.kt:72` — `testDefaultDaysIsSeven` — **REFUTED**
+
+**Production behaviour named:** the configured prepaid-needed window defaults to seven days.
+
+**Static pattern: P2.** The body asserts a `StateFlow` initialiser and never calls
+`loadDashboardData`.
+
+**The mutation (M8)** — `DashboardViewModel.kt:34`, the default changed from `7` to `30`.
+
+**Result: the test goes RED** — `expected:<7> but was:<30>`.
+XML: before `tests=1 failures=0 errors=0`; after `tests=1 failures=1 errors=0`.
+Log: `r13-t4-m8-prepaid-days-default-30.log`. `BUILD FAILED`.
+
+**REFUTED, by execution.** The claim in the name is precisely the thing asserted, and the assertion
+is bound to the production initialiser. **A second P2 pattern match refuted by execution.**
+
+---
+
+#### 6 & 7. `HistoricalSubscriberMatchingSafetyTest.kt:237` and `:259` — **CONFIRMED**, and the finding is narrower than it looks
+
+**Production behaviour named:** *"Historical account must NEVER be matched via phone fallback"*
+(`:256`) and the same for name fallback (`:278`) — the `isHistoryOnlySubscriber` gates at
+`SubscriberMatcher.kt:103` and `:119`.
+
+**Static pattern: P2-family.** The assertion is `assertNull(matched.accountOrNull)`. A matcher that
+returned null for *any* reason satisfies it.
+
+**Two mutations, because one was not enough.** M5a removed the Stage-3 and Stage-4 historical gates.
+All 11 selected tests passed — **11/11 green, mutation undetected.** Because Stage 1 carries a
+*separate* historical gate at `:75-79` that M5a did not touch, M5b removed that one too:
+
+| | Baseline | M5a (stages 3+4) | M5b (+ stage 1) |
+|:---|:---|:---|:---|
+| `testPhoneMatching_cannotCrossHistoricalBoundary` (`:237`) | pass | **pass** | **pass** |
+| `testNameMatching_cannotCrossHistoricalBoundary` (`:259`) | pass | **pass** | **pass** |
+| `testRecycledUsername_withNullExtId_cannotCrossHistoricalBoundary` (`:330`) | pass | pass | **FAIL** |
+
+XML: baseline `tests=7 failures=0`; M5a `tests=7+4=11 failures=0 errors=0`; M5b
+`tests=7 failures=2 errors=0` — the second failure is
+`testCoreR3_recycledUsername_doesNotMergeIntoHistoricalAccount`, which is **not** a cohort member.
+Logs: `r13-t4-m5-historical-boundary-guard-removed.log`,
+`r13-t4-m5b-stage1-historical-gate-removed.log`. Both `BUILD SUCCESSFUL`.
+
+**Why `:237` and `:259` stayed green — established by reading the guard chain, not guessed.** With
+the historical gate gone, Stage 3 still evaluates
+`conflictingExtId = cleanExtId != null && acc.sourceExternalId != cleanExtId`, which is **true** for
+these fixtures (`e_11111` vs incoming `e_22222`), so the candidate is excluded by a *second,
+independent* rule. **The assertion is double-guarded and cannot attribute the rejection to the rule
+it names.** *That mechanism is `reading`; the verdict rests on the runs.*
+
+**The scope is stated precisely, and it is narrower than §3.4 #1.** These tests are **not** blind:
+they call production, and a broad breakage of Stage 3/4 matching would be caught — see #8 and #9,
+where two sibling tests in the same domain went red under a related mutation, and
+`subscriberMatcher_stage3_matchesWhenUsernameNotConflicting` (`:37`), which demands a *non-null*
+match, passed under every mutation in this section. **F5 CONFIRMED for the named claim:** the
+historical-subscriber gate was removed and neither test could tell.
+
+---
+
+#### 8 & 9. `Workstream7ImportMatchingCollisionTest.kt:17` and `:68` — **REFUTED**
+
+**Production behaviour named:** Stage 3 must reject a candidate whose `earthlinkUsername` contradicts
+the incoming `userID` (`:106`); Stage 4 must do the same (`:122`).
+
+**The mutation (M6)** — both `conflictingUsername` computations replaced with `false`:
+
+```kotlin
+// AFTER (R13-T4 transient mutation M6)
+val conflictingUsername = false
+```
+
+**Result: both go RED in the same run.**
+
+| Test | Baseline | After M6 |
+|:---|:---|:---|
+| `subscriberMatcher_stage3_rejectsConflictingUsername` (`:17`) | pass | **FAIL** |
+| `subscriberMatcher_stage4_rejectsConflictingUsername` (`:68`) | pass | **FAIL** |
+| `subscriberMatcher_multipleCandidatesWithSamePhone_returnsNullDueToAmbiguity` | pass | pass |
+| `subscriberMatcher_stage3_matchesWhenUsernameNotConflicting` (`:37`) | pass | pass |
+| all 7 `HistoricalSubscriberMatchingSafetyTest` tests | pass | pass |
+
+XML: baseline `tests=7+4=11 failures=0 errors=0`; after `HistoricalSubscriberMatchingSafetyTest`
+`tests=7 failures=0` and `Workstream7ImportMatchingCollisionTest` `tests=4 failures=2`.
+Log: `r13-t4-m6-conflicting-username-guard-removed.log`. `BUILD FAILED`.
+
+**REFUTED, by execution.** These two cohort members are the *positive control* for #6 and #7: the
+same `assertNull` shape, the same production file, the same class of mutant — and they caught it.
+**That contrast is what makes #6/#7 credible.** A single-assertion count and an `assertNull` shape
+cannot distinguish them; only the mutation can.
+
+---
+
+#### 10. `HistoricalSubscriberMatchingSafetyTest.kt:330` — `testRecycledUsername_withNullExtId_cannotCrossHistoricalBoundary` — **REFUTED**
+
+Same mutation family, opposite outcome: **M5b — Stage 1's historical gate removed — turns it RED.**
+XML: `tests=7 failures=2 errors=0`. Log: `r13-t4-m5b-stage1-historical-gate-removed.log`.
+
+**REFUTED.** This is the case that shows #6/#7 are not "the file is weak": three tests of the same
+shape in one class, one blind to its named rule and two not — and the difference is which
+*specific* production line the test's fixture actually routes through.
+
+---
+
+#### 11. `DataIntegrityReleaseGateTest.kt:1303` — `oracle_unrecognizedTransactionType_noOp` — **REFUTED** (adversarial control, no pattern match)
+
+This test matched **no** P1/P2/P3 pattern: it calls `BalanceCalculator.reconstructCurrentPosition`
+with a real non-zero entry. It was probed anyway, because it is the direct sibling of §3.4 #3
+(`oracle_noteTransaction_zeroFinancialImpact`, **CONFIRMED**) and the pair settles a question §3.4
+could not: *is the zero-amount sibling's blindness a property of that test, or of the oracle family?*
+
+**The mutation (M7)** — `TransactionTypeNormalizer.kt:26`, a **different mutant from §3.4's M7**: the
+whole `else` branch collapses so an unrecognized type resolves to `"took"`.
+
+```kotlin
+// AFTER (R13-T4 transient mutation M7)
+else -> "took"
+```
+
+**Result: the two siblings diverge in one run.**
+
+| Test | Baseline | After M7 |
+|:---|:---|:---|
+| `oracle_unrecognizedTransactionType_noOp` (`:1303`) | pass | **FAIL** — `expected:<40000.0> but was:<139999.0>` |
+| `oracle_noteTransaction_zeroFinancialImpact` (`:1275`) | pass | **pass — undetected, replicating §3.4 #3** |
+| `oracle_pureRuntimeAccount_allEntriesApplied` | pass | pass |
+| `oracle_zeroBalanceAccount_noEntries` | pass | pass |
+| `oracle_snapshotAccountWithHistory_correctBalance` | pass | pass |
+
+XML: baseline `tests=5 failures=0 errors=0`; after `tests=5 failures=1 errors=0`.
+Log: `r13-t4-m7-unknown-type-becomes-took.log`. `BUILD FAILED`.
+
+**REFUTED, by execution**, and it independently **replicates §3.4's finding #3 under a different
+mutant**: `139999.0` is `40000 + 99999` — the exact H-3 inflation shape — and the zero-amount
+sibling cannot see it while its non-zero sibling can. §3.10's advice to Task 5 — *"`#3` needs
+**input** changes, not assertion changes"* — is confirmed by a second, independent mutant: the
+missing ingredient is a non-zero amount.
+
+---
+
+#### 12. `ApiErrorSemanticsRegressionTest.kt:304` — `testApi03_repository_legitimateZeroReturned` — **LEAD**
+
+**Static pattern: P2-family.** Mocks `{"value":0}`, asserts `assertEquals(0, count)` off
+`gatewayImpl.getTestUsersCount()`. A gateway returning a constant `0` would satisfy it. §3.9
+correctly separated this from `:343`: it is closer to §3.4 #4 (asserts something a stub satisfies)
+than to `#5`/`#6`.
+
+**Why it is a LEAD and not a verdict. M3 does not reach it.** `:304` calls the **repository** seam
+(`gatewayImpl.getTestUsersCount()`); M3 mutated the **ViewModel**'s fetch of the same value. M3 is
+the correct mutation for `:343` and provably the wrong one for `:304`: `:304` passed under M3, and
+**passing under a mutation that never enters its call path is uninformative** — exactly the trap
+§3.7 recorded for M1/M2/M3 against the post-revert class.
+
+**Blocker, named:** the discriminating mutation is in `EarthlinkGatewayImpl.getTestUsersCount`'s
+zero-returning branch. Applying it is a **14th mutation**, over the stated budget of 12. Per the
+brief's rule, an honest `LEAD` is the correct answer and **this is not promoted to a finding.**
+
+---
+
+#### 13. `EarthlinkSearchViewModelSeamTest.kt:1214` — `testBalanceAfterMath_knownBalance_computesCorrectly` — **CONFIRMED**
+
+**Production behaviour named:** none. §3.4 #4 flagged this as *"a twin outside the cohort"* and
+Task 3 correctly declined to adjudicate it: it carries **two** assertions, so the scanner's
+single-assertion rule never surfaced it.
+
+**What the test does (`:1214-1219`):**
+
+```kotlin
+val resellerBalance: Double? = 100000.0
+val packageCost = 40000.0
+val balanceAfter = resellerBalance?.let { it - packageCost }
+assertNotNull(balanceAfter)
+assertEquals(60000.0, balanceAfter!!, 0.001)
+```
+
+`100000.0 - 40000.0` computed in the test file. No ViewModel, no repository, no gateway. **P3.**
+
+**The mutation (M9)** — `EarthlinkSearchViewModel.kt:144-146`, the balance seam, replaced by a
+constant (a re-application of §3.4's M2, aimed at this test for the first time):
+
+```kotlin
+// AFTER (R13-T4 transient mutation M9)
+suspend fun getResellerBalance(): Double = withContext(Dispatchers.IO) { 0.0 }
+```
+
+**Result: both tests in the section stay green.** XML: before `tests=2 failures=0 errors=0`; after
+`tests=2 failures=0 errors=0`. Log: `r13-t4-m9-resellerbalance-constant-zero.log`.
+`BUILD SUCCESSFUL`.
+
+**F5 CONFIRMED.** §3.10 said *"Do not delete either on the strength of this section"* and *"I did
+not establish that `:1214` is defective — only that it looks the same."* **It is now established, by
+execution.** Task 5 may treat #13 and §3.4 #4 as a pair.
+
+---
+
+#### 14. `Step3DurableDispatchTest.kt:593` — `test17_statement4TupleRejectsDifferentUserEvenWithMatchingAmountAndTime` — **CONFIRMED**
+
+**Production behaviour named:** the 4-tuple correlation `(userID, operation, amount, timestamp ±90s)`
+of RED Invariant 5 and `AGENTS.md` §9.7 lesson 3. The test's comment at `:631` states: *"When
+baselineExpirationDate is null, verifyRenewalViaStatement is invoked."*
+
+**A pattern misclassification, corrected rather than published.** I first graded this **P1** (named
+path never invoked), on the reasoning that the comment's claim was false. **It is not.** The comment
+is *true of the code path*: `Repositories.kt:1959-1961` is the `else` of
+`if (!baselineExpirationDate.isNullOrBlank())`, so a null baseline **does** reach
+`verifyRenewalViaStatement`, which the test reaches and production executes. The correct grade is
+**P2-family**: production is invoked, and the assertion is satisfied without depending on the part
+of it the test names.
+
+**The mutation (M12)** — `Repositories.kt:1684`, the userID element of the tuple removed:
+
+```kotlin
+// BEFORE
+val matchesUser = item.userID.equals(op.accountId, ignoreCase = true)
+// AFTER (R13-T4 transient mutation M12)
+val matchesUser = true
+```
+
+**Result: the test still passes.** XML: before `tests=1 failures=0 errors=0`; after
+`tests=1 failures=0 errors=0`. Log: `r13-t4-m12-4tuple-userid-element-dropped.log`.
+`BUILD SUCCESSFUL`.
+
+**The mutation is confirmed compiled and executed, not assumed.** `git diff` showed it applied
+before the run, and the log reports `35 actionable tasks: 35 executed` with
+`> Task :app:testDebugUnitTest` — **not** `UP-TO-DATE`. A green result from a mutant that never
+compiled would have been the Task-2 false green; that possibility was checked and excluded.
+
+**The first assertion is satisfied by an unrelated exception path.** It expects `INCONCLUSIVE` for a
+statement belonging to a *different* user. With the userID element removed, the wrong user's
+statement now matches the tuple, so production proceeds to
+`resolvePendingOperationVerifiedSuccess(businessTransactionId, "[VERIFIED RENEW]")` (`:1976`),
+which throws `IllegalStateException("MISSING_LOCAL_FINANCIAL_TARGET…")` at `Repositories.kt:1541` —
+the local account is inserted at `Step3DurableDispatchTest.kt:653`, *after* this assertion — and the
+`catch` at `:2044` converts it to `INCONCLUSIVE`. **That mechanism is `reading`; the verdict rests
+on the run.** A statement correlation that accepts the wrong subscriber is masked by a
+materialization failure downstream.
+
+**F5 CONFIRMED for the first assertion. The second half of the test is sound** — it materializes a
+real ledger entry through `resolvePendingOperationVerifiedSuccess`, so it is bound to production.
+The finding is scoped to the first assertion, and the class as a whole is not impeached — #15 to #17
+show three of its tests catching mutations outright.
+
+---
+
+#### 15, 16 & 17. `Step3DurableDispatchTest.kt` — `test01`, `test02`, `test21` — **REFUTED** (adversarial control probes, no pattern match)
+
+`Step3DurableDispatchTest.kt` had **never been audited**. A per-test census (§4.7) found **zero**
+P1/P2/P3 matches. Rather than substitute weaker pattern probes, the highest-RED-invariant-risk tests
+in it were probed directly. All three REFUTED.
+
+**The mutation (M10)** — `Repositories.kt:1377-1380`, the single-writer hardware claim of RED
+Invariant 3, replaced by an unconditional grant — the exact mutation that would produce **duplicate
+charges**:
+
+```kotlin
+// AFTER (R13-T4 transient mutation M10)
+override suspend fun claimDispatchAuthorization(businessTransactionId: String): Boolean {
+    return true
+}
+```
+
+| Test | Baseline | After M10 |
+|:---|:---|:---|
+| `test01_claimDispatchAuthorizationSucceedsForFreshOperation` (`:146`) | pass | **FAIL** — `expected:<DISPATCHING> but was:<PENDING>` |
+| `test02_secondClaimAttemptFails` (`:168`) | pass | **FAIL** — *"Second dispatch claim must be rejected"* |
+
+XML: before `tests=2 failures=0 errors=0`; after `tests=2 failures=2 errors=0`.
+Log: `r13-t4-m10-dispatch-claim-always-granted.log`. `BUILD FAILED`.
+
+**The mutation (M11)** — `Repositories.kt:1965`, the `dispatchClaimCount == 0` rejection in the
+4-tuple fallback path, removed. This is the exact violation of `AGENTS.md` §9.7 lesson 1
+(*"`dispatchClaimCount = 0` signifies the local operation was **not authorized** for external
+dispatch"*), and `test21` exists to forbid it:
+
+| Test | Baseline | After M11 |
+|:---|:---|:---|
+| `test21_crashEquivalentPendingCountZero_cannotBecomeVerifiedSuccessEvenWithGatewayMatch` (`:1216`) | pass | **FAIL** — `expected:<VERIFIED_FAILURE> but was:<VERIFIED_SUCCESS>` |
+
+XML: before `tests=1 failures=0 errors=0`; after `tests=1 failures=1 errors=0`.
+Log: `r13-t4-m11-unclaimed-operation-can-materialize.log`. `BUILD FAILED`.
+
+**REFUTED, three times over.** This file is the strongest evidence this task found.
+
+### 4.5 What was excluded, and why
+
+**`LocalAccountsViewModelTgzSyncTriggerTest.kt:196` — `testFailedTgzImport_corruptArchive_doesNotTriggerSync`
+— excluded, not re-adjudicated.** It is in the 54 and it is a textbook **P2** match: the `while`
+loop at `:207` polls for `importResult`/`error` up to 50 times, then asserts
+`verifyNoInteractions(mockSyncRepo)` at `:213`, and nothing establishes the import ran.
+**It is already adjudicated: §2.2 records it as the `F4` CONFIRMED finding at line `207`, assertion
+at `213`.** Re-proving it would duplicate a settled finding, and Ruling 4 forbids touching Task 5's
+work. It is counted in the 54 and reported as **already settled by Task 2**, not as a new result.
+
+### 4.6 The revert gate, verified
+
+Ruling 1 required `git status --porcelain` to be empty before each new mutation and
+`git diff --stat 50c094b -- "*.kt"` to be empty at the end. Both were **checked, not assumed**.
+
+**Per-revert, after each of the 13 applications, before the next began.** Every one carried an
+`R13-T4 TRANSIENT MUTATION` marker so that a missed revert would be greppable rather than invisible:
+
+```console
+PS> git checkout -- <mutated .kt>
+PS> git status --porcelain
+PS> [empty — this empty output IS the evidence, and it was checked 13 times]
+PS> git diff --stat
+PS> [empty]
+PS> (Get-ChildItem app\src -Recurse -Include *.kt |
+      Select-String -Pattern "R13-T4 TRANSIENT MUTATION" | Measure-Object).Count
+1                                  <-- the in-flight marker, present before the checkout
+0                                  <-- after the checkout, on every one of the 13
+```
+
+| After reverting | `git status --porcelain` | `git diff --stat` | markers |
+|:---|:---|:---|:---|
+| M1 `Models.kt` | *empty* | *empty* | 0 |
+| M2 `SyncRepositoryImpl.kt` | *empty* | *empty* | 0 |
+| M3 `DashboardViewModel.kt` | *empty* | *empty* | 0 |
+| M4 `ExpiryNotificationManager.kt` | *empty* | *empty* | 0 |
+| M5a `SubscriberMatcher.kt` | *empty* | *empty* | 0 |
+| M5b `SubscriberMatcher.kt` | *empty* | *empty* | 0 |
+| M6 `SubscriberMatcher.kt` | *empty* | *empty* | 0 |
+| M7 `TransactionTypeNormalizer.kt` | *empty* | *empty* | 0 |
+| M8 `DashboardViewModel.kt` | *empty* | *empty* | 0 |
+| M9 `EarthlinkSearchViewModel.kt` | *empty* | *empty* | 0 |
+| M10 `Repositories.kt` | *empty* | *empty* | 0 |
+| M11 `Repositories.kt` | *empty* | *empty* | 0 |
+| M12 `Repositories.kt` | *empty* | *empty* | 0 |
+
+**The end state, at the commit this section is part of:**
+
+```console
+PS> git status --porcelain
+PS> [empty]
+
+PS> git diff --stat 50c094b -- "*.kt"
+PS> [empty]
+
+PS> git diff 50c094b --name-only -- "*.kt" | Measure-Object
+Count: 0                       <-- the figure that carries the Ruling 1 guarantee
+```
+
+**Eight production files were mutated** across 13 applications; three carry more than one —
+`SubscriberMatcher.kt` (M5a, M5b, M6), `Repositories.kt` (M10, M11, M12) and
+`DashboardViewModel.kt` (M3, M8) — giving 1 + 1 + 1 + 1 + 3 + 1 + 1 + 3 = 13. The marker scan
+covers `app\src`, not the whole repository; that is stated rather than rounded away.
+
+**Post-revert re-execution, from a clean tree, after the last mutation** — to show the reverts
+landed rather than asserting it. All 11 classes re-run together:
+
+```console
+gradlew.bat :app:testDebugUnitTest --tests "*Workstream1StatementCorrelationTest*" --tests "*ApiErrorSemanticsRegressionTest.testApi03*" --tests "*BugOb01ExpiryAlertThrottleTest*" --tests "*DashboardViewModelForecastTest.testDefaultDaysIsSeven" --tests "*HistoricalSubscriberMatchingSafetyTest*" --tests "*Workstream7ImportMatchingCollisionTest*" --tests "*Phase1FirestoreDocumentIdentityTest.testScenarioI*" --tests "*Phase1FirestoreDocumentIdentityTest.testScenarioJ*" --tests "*DefectRemediationSeamTest.fix3_*" --tests "*DataIntegrityReleaseGateTest.oracle_*" --tests "*EarthlinkSearchViewModelSeamTest.testBalanceAfterMath*" --tests "*Step3DurableDispatchTest.test01*" --tests "*Step3DurableDispatchTest.test02*" --tests "*Step3DurableDispatchTest.test17*" --tests "*Step3DurableDispatchTest.test21*" --rerun-tasks --console=plain
+```
+
+**Post-revert: `tests=38 failures=0 errors=0` across 11 classes — identical to the forced baseline in
+§4.3.** Log: `r13-t4-postrevert-full.log`. `BUILD SUCCESSFUL in 1m 39s`,
+`35 actionable tasks: 35 executed`.
+
+| Order | Run | XML `tests`/`failures`/`errors` | Log | mtime |
+|:---|:---|:---|:---|:---|
+| 1 | baseline (forced) | 38/0/0 | `r13-t4-baseline-forced.log` | 16:29:52 |
+| 2 | M1 | 2/**1**/0 | `r13-t4-m1-statementitem-date-key.log` | 16:31:50 |
+| 3 | M2 | 2/**1**/0 | `r13-t4-m2-ledger-rawjson-not-stripped.log` | 16:33:38 |
+| 4 | M3 | 5/**1**/0 | `r13-t4-m3-testcount-fetch-removed.log` | 16:35:09 |
+| 5 | M4 | 1/**1**/0 | `r13-t4-m4-throttle-marker-always-written.log` | 16:37:07 |
+| 6 | M5a | 11/**0**/0 | `r13-t4-m5-historical-boundary-guard-removed.log` | 16:38:46 |
+| 7 | M5b | 7/**2**/0 | `r13-t4-m5b-stage1-historical-gate-removed.log` | 16:40:51 |
+| 8 | M6 | 7/0/0 **and** 4/**2**/0 | `r13-t4-m6-conflicting-username-guard-removed.log` | 16:42:59 |
+| 9 | M7 | 5/**1**/0 | `r13-t4-m7-unknown-type-becomes-took.log` | 16:46:27 |
+| 10 | M8 | 1/**1**/0 | `r13-t4-m8-prepaid-days-default-30.log` | 16:48:52 |
+| 11 | M9 | 2/**0**/0 | `r13-t4-m9-resellerbalance-constant-zero.log` | 16:50:24 |
+| 12 | M10 | 2/**2**/0 | `r13-t4-m10-dispatch-claim-always-granted.log` | 16:51:52 |
+| 13 | M11 | 1/**1**/0 | `r13-t4-m11-unclaimed-operation-can-materialize.log` | 16:53:32 |
+| 14 | M12 | 1/**0**/0 | `r13-t4-m12-4tuple-userid-element-dropped.log` | 16:55:37 |
+| 15 | post-revert | 38/0/0 | `r13-t4-postrevert-full.log` | 17:00:06 |
+
+**Every mutation is execution-covered by the post-revert run, and the claim is counted rather than
+assumed.** Each mutated file is called by at least one of the 11 re-run classes:
+
+| Mutation | Mutated symbol | Called by a post-revert class? |
+|:---|:---|:---|
+| M1 | `AccountStatementItem.occurredAt` Moshi key | **yes** — `Workstream1StatementCorrelationTest:24` |
+| M2 | `SyncRepositoryImpl.buildOutboxPayloadMap` | **yes** — `Phase1FirestoreDocumentIdentityTest.testScenarioI` |
+| M3 | `DashboardViewModel` test-count fetch | **yes** — `ApiErrorSemanticsRegressionTest.testApi03_dashboard_*` |
+| M4 | `ExpiryNotificationManager` throttle gate | **yes** — `BugOb01ExpiryAlertThrottleTest:64` |
+| M5a/M5b/M6 | `SubscriberMatcher.matchSubscriber` | **yes** — `HistoricalSubscriberMatchingSafetyTest` + `Workstream7ImportMatchingCollisionTest` |
+| M7 | `TransactionTypeNormalizer.normalizeTransactionType` | **yes** — `DataIntegrityReleaseGateTest.oracle_*` |
+| M8 | `DashboardViewModel.prepaidNeededDays` initialiser | **yes** — `DashboardViewModelForecastTest.testDefaultDaysIsSeven` |
+| M9 | `EarthlinkSearchViewModel.getResellerBalance` | **no** — no re-run class calls it. **Disclosed** |
+| M10/M11/M12 | `Repositories.claimDispatchAuthorization`, the `dispatchClaimCount` gates, `verifyRenewalViaStatement` | **yes** — `Step3DurableDispatchTest` test01/test02/test21/test17 |
+
+**Twelve of the thirteen applications are execution-covered by the post-revert run; M9 is not.**
+Task 3's §3.7 established the counting rule this follows: *a post-revert re-execution only covers
+mutations whose mutated code that run actually calls, applied before it ran.* M9's revert rests on
+the `git status --porcelain` gate, the `*.kt` byte-identity check and the zero-marker count alone.
+The `*.kt` `Count: 0` is an **end-state** measurement and is presented as such, not back-filled.
+
+### 4.7 The sample of the two never-audited files, and what it does not cover
+
+**This is a sample, not a sweep, and the figures are stated rather than rounded.**
+
+`Step3DurableDispatchTest.kt` — **23 of 23 tests screened by census**, so this file is covered
+*statically in full* and probed on its four highest-risk tests. `EarthlinkSearchViewModelSeamTest.kt`
+— **40 of 40 tests screened by census.**
+
+The census recorded, per test, the number of assertion call sites and the set of production methods
+invoked. Both files are structurally unlike the 54: **61 of the 63 tests reach production**, and only
+**two tests in the entire pair reach none at all** — `EarthlinkSearchViewModelSeamTest.kt:1214` (#13,
+**CONFIRMED**) and `:1222` (§3.4 **#4**, already CONFIRMED).
+`Step3DurableDispatchTest.kt` carries **144 assertion call sites across its 23 tests**, a **minimum of
+2 and a maximum of 12 per test, and not one test with a single assertion**. The P2 shape that produced
+§3.4's `#5` and `#6` is **absent from both files**.
+
+| File | Tests | Assertion sites | Tests reaching production | P1/P2/P3 matches | Probed |
+|:---|:---|:---|:---|:---|:---|
+| `Step3DurableDispatchTest.kt` | 23 | 144 (min 2, max 12) | **23 / 23** | 0 | test01, test02, test17, test21 |
+| `EarthlinkSearchViewModelSeamTest.kt` | 40 | — | **38 / 40** | 2 (`:1214`, `:1222`) | `:1214` (`:1222` already §3.4 #4) |
+
+**Not covered, explicitly:**
+
+- **19 of the 23 `Step3DurableDispatchTest` tests were not executed**, only screened. That includes
+  `test18_allFourSuccessPathsMaterializeViaCanonicalSuccessResolver` (12 assertions), the four
+  success-path materializers behind RED Invariant 4, and `testADV_C16_exactBoundaryTests`, which pins
+  the ±90s window edges of RED Invariant 5. **The ±90s boundary was not mutation-proven** — M12
+  removed the userID element of the tuple, not the time window.
+- **39 of the 40 `EarthlinkSearchViewModelSeamTest` tests were not executed**, only screened.
+- **43 of the 54 cohort members were never mutation-proven** (§4.8).
+- **The other ~90 files in the suite were not touched at all.** This task's surface is the 54 plus
+  two files; it says nothing about the remaining ~90.
+- **No repetition batch was run and none is claimed.** Every verdict rests on a single decisive
+  execution, which answers *"does this mutation change the outcome"* and would not support a
+  flakiness claim. No flakiness claim is made.
+- **The full 798-test suite was not run**, per Ruling 3. The claim "the other tests are unaffected"
+  rests on the absence of committed changes, not on an observed green run.
+
+### 4.8 What this section does NOT prove
+
+- **43 of the 54 cohort members are unproven.** They showed no P1/P2/P3 pattern and no mutation was
+  aimed at them. **"No pattern match" is not "proven real evidence"** — it is the absence of the
+  three shapes this round learned to look for. §4.2's "no match" column is a screening result.
+- **`ApiErrorSemanticsRegressionTest.kt:304` is a LEAD, not a clearance and not a finding** (#12). The
+  blocker is a 14th mutation in the gateway's zero-return branch.
+- **The two `reading`-only mechanisms are labelled `reading`** — the double-guard chain in #6/#7 and
+  the exception path in #14. Both verdicts rest on runs; neither mechanism was proven by execution.
+- **No product defect is asserted.** Every mutation was reverted; where a mutation would have caused
+  real damage (M2, M3, M9, M10, M11) that is a statement about *a test's blindness*, not about the
+  shipped code, which is correct as committed.
+- **No `DataIntegrityReleaseGateTest.kt` member was CONFIRMED here.** 14 of its cohort members remain
+  unadjudicated; §3.4's five stand. This section's M7 run touched that class, but only through its
+  `oracle_*` selection.
+- **The six CONFIRMED findings from §3.4 were not touched** (Ruling 4), nor was Task 2's `F4`. M7
+  *replicates* §3.4 #3 with an independent mutant; it does not re-adjudicate it.
+- **The scanner and its fixtures were not edited or re-certified.** Its `F5` rule remains
+  execution-only.
+- **No git history was consulted**, so no claim is made about when or why `test17`'s first assertion
+  came to be satisfied by a materialization failure rather than by the 4-tuple.
+
+### 4.9 Every run, and every run discarded
+
+**Nineteen logs. Fifteen are evidence; four are discarded.**
+
+| # | Purpose | Selection | `tests`/`failures`/`errors` | Log | mtime |
+|:---|:---|:---|:---|:---|:---|
+| — | **discarded** | 4 classes | *no run* | `r13-t4-baseline-batch1.log` | 16:22:16 |
+| — | **discarded** | batch A | 20/0/0 | `r13-t4-baseline-batchA.log` | 16:24:03 |
+| — | **discarded** | batch B | 12/0/0 | `r13-t4-baseline-batchB.log` | 16:25:14 |
+| — | **discarded** | batch C | 6/0/0 | `r13-t4-baseline-batchC.log` | 16:26:25 |
+| 1 | baseline | 11 classes | 38/0/0 | `r13-t4-baseline-forced.log` | 16:29:52 |
+| 2 | M1 | `*Workstream1StatementCorrelationTest*` | 2/**1**/0 | `r13-t4-m1-statementitem-date-key.log` | 16:31:50 |
+| 3 | M2 | `Phase1…ScenarioI/J*` | 2/**1**/0 | `r13-t4-m2-ledger-rawjson-not-stripped.log` | 16:33:38 |
+| 4 | M3 | `*ApiErrorSemanticsRegressionTest.testApi03*` | 5/**1**/0 | `r13-t4-m3-testcount-fetch-removed.log` | 16:35:09 |
+| 5 | M4 | `*BugOb01ExpiryAlertThrottleTest*` | 1/**1**/0 | `r13-t4-m4-throttle-marker-always-written.log` | 16:37:07 |
+| 6 | M5a | `*Historical…*` + `*Workstream7…*` | 11/**0**/0 | `r13-t4-m5-historical-boundary-guard-removed.log` | 16:38:46 |
+| 7 | M5b | `*Historical…*` + `*Workstream7…*` | 7/**2**/0 | `r13-t4-m5b-stage1-historical-gate-removed.log` | 16:40:51 |
+| 8 | M6 | `*Historical…*` + `*Workstream7…*` | 7/0/0 + 4/**2**/0 | `r13-t4-m6-conflicting-username-guard-removed.log` | 16:42:59 |
+| 9 | M7 | `*DataIntegrityReleaseGateTest.oracle_*` | 5/**1**/0 | `r13-t4-m7-unknown-type-becomes-took.log` | 16:46:27 |
+| 10 | M8 | `…testDefaultDaysIsSeven` | 1/**1**/0 | `r13-t4-m8-prepaid-days-default-30.log` | 16:48:52 |
+| 11 | M9 | `*…SeamTest.testBalanceAfterMath*` | 2/**0**/0 | `r13-t4-m9-resellerbalance-constant-zero.log` | 16:50:24 |
+| 12 | M10 | `…DispatchTest.test01*` + `test02*` | 2/**2**/0 | `r13-t4-m10-dispatch-claim-always-granted.log` | 16:51:52 |
+| 13 | M11 | `…DispatchTest.test21*` | 1/**1**/0 | `r13-t4-m11-unclaimed-operation-can-materialize.log` | 16:53:32 |
+| 14 | M12 | `…DispatchTest.test17*` | 1/**0**/0 | `r13-t4-m12-4tuple-userid-element-dropped.log` | 16:55:37 |
+| 15 | post-revert | 11 classes | 38/0/0 | `r13-t4-postrevert-full.log` | 17:00:06 |
+
+**Runs discarded — four, all mine, with the reason for each.**
+
+- **`baseline-batch1` — no test executed at all.** The command was issued through `cmd /c` with
+  single-quoted `--tests` filters. `cmd` does not treat `'` as a quote character, so Gradle received
+  the literal filters and failed with *"No tests found for given includes"*. **`BUILD FAILED`, and
+  no XML was written.** Discarded; nothing was counted from it.
+- **`baseline-batchA`, `-batchB`, `-batchC` — executed, but superseded.** These three did run and
+  did write correct XML (20/0/0, 12/0/0, 6/0/0), and no `testDebugUnitTest UP-TO-DATE` appears in
+  any of them — but they were launched **without `--rerun-tasks`**, which this task's Ruling 2 makes
+  unconditional ("Always `--rerun-tasks`"). They are therefore **not reported as evidence.** They
+  were replaced by the single forced baseline at row 1, and every candidate's "before" number in
+  §4.4 is taken from that run, never from these three. **Their XML numbers are recorded here only so
+  the count is auditable, and no verdict depends on them.**
+
+`Task :app:testDebugUnitTest UP-TO-DATE` occurs **zero times across all 19 logs.** The `UP-TO-DATE`
+lines present belong to non-test tasks (`generateDebugAssets`, `preBuild`, `preDebugUnitTestBuild`, …),
+which is normal and harmless.
+
+### 4.10 Verdict table
+
+| # | Location | Test | Verdict | Evidence |
+|:---|:---|:---|:---|:---|
+| 1 | `Workstream1StatementCorrelationTest.kt:46` | `testBaghdadTimezoneConversion` | **CONFIRMED** | mutation M1 → green (P3) |
+| 2 | `Phase1FirestoreDocumentIdentityTest.kt:820` | `testScenarioJ_counterfactualRawPayloadContainsRawJson` | **CONFIRMED** | mutation M2 → green (P3) |
+| 3 | `ApiErrorSemanticsRegressionTest.kt:343` | `testApi03_dashboard_networkFailureYieldsNullUnavailable` | **CONFIRMED** | mutation M3 → green (P2) |
+| 4 | `BugOb01ExpiryAlertThrottleTest.kt:64` | `suppressedAlert_doesNotWriteThrottleMarker` | **REFUTED** | mutation M4 → red (P2 match, refuted) |
+| 5 | `DashboardViewModelForecastTest.kt:72` | `testDefaultDaysIsSeven` | **REFUTED** | mutation M8 → red (P2 match, refuted) |
+| 6 | `HistoricalSubscriberMatchingSafetyTest.kt:237` | `testPhoneMatching_cannotCrossHistoricalBoundary` | **CONFIRMED** | mutations M5a+M5b → green |
+| 7 | `HistoricalSubscriberMatchingSafetyTest.kt:259` | `testNameMatching_cannotCrossHistoricalBoundary` | **CONFIRMED** | mutations M5a+M5b → green |
+| 8 | `Workstream7ImportMatchingCollisionTest.kt:17` | `subscriberMatcher_stage3_rejectsConflictingUsername` | **REFUTED** | mutation M6 → red |
+| 9 | `Workstream7ImportMatchingCollisionTest.kt:68` | `subscriberMatcher_stage4_rejectsConflictingUsername` | **REFUTED** | mutation M6 → red |
+| 10 | `HistoricalSubscriberMatchingSafetyTest.kt:330` | `testRecycledUsername_withNullExtId_cannotCrossHistoricalBoundary` | **REFUTED** | mutation M5b → red |
+| 11 | `DataIntegrityReleaseGateTest.kt:1303` | `oracle_unrecognizedTransactionType_noOp` | **REFUTED** | mutation M7 → red (control) |
+| 12 | `ApiErrorSemanticsRegressionTest.kt:304` | `testApi03_repository_legitimateZeroReturned` | **LEAD** | blocker: 14th mutation needed |
+| 13 | `EarthlinkSearchViewModelSeamTest.kt:1214` | `testBalanceAfterMath_knownBalance_computesCorrectly` | **CONFIRMED** | mutation M9 → green (P3) |
+| 14 | `Step3DurableDispatchTest.kt:593` | `test17_statement4TupleRejectsDifferentUser…` | **CONFIRMED** | mutation M12 → green (P2-family) |
+| 15 | `Step3DurableDispatchTest.kt:146` | `test01_claimDispatchAuthorizationSucceeds…` | **REFUTED** | mutation M10 → red (control) |
+| 16 | `Step3DurableDispatchTest.kt:168` | `test02_secondClaimAttemptFails` | **REFUTED** | mutation M10 → red (control) |
+| 17 | `Step3DurableDispatchTest.kt:1216` | `test21_crashEquivalentPendingCountZero_…` | **REFUTED** | mutation M11 → red (control) |
+
+**7 CONFIRMED, 9 REFUTED, 1 LEAD, 0 OPEN — across 17 adjudicated tests.**
+
+Counted from the table above, not carried forward: `CONFIRMED` = rows 1, 2, 3, 6, 7, 13, 14 = **7**.
+`REFUTED` = rows 4, 5, 8, 9, 10, 11, 15, 16, 17 = **9**. `LEAD` = row 12 = **1**. 7 + 9 + 1 = 17.
+
+**Three of the seven confirmations are P3, one is P2, two are P2-family, and one was misgraded P1 on
+first reading and corrected to P2-family (#14).** All seven share §3.11's shape: **the assertion
+passes in a world where the production behaviour it names is absent, removed, or irrelevant** — a
+timezone table, a literal map, a `null` field initialiser, two independent guards where one is named,
+and a downstream exception standing in for a correlation that no longer rejects.
+
+**Two things this section adds that §3 could not.**
+
+1. **The pattern predicts almost nothing on its own.** Two of the ten P2 matches (#4, #5) were
+   refuted by execution. A static review of the 54 would have produced two false accusations, one of
+   them against a file adjacent to the release gate, and would have said nothing about the nine
+   mutations that did land. **The screen narrows the field; only the run decides.**
+2. **The refuted half carries the round.** #8 and #9 are the positive control for #6 and #7: four
+   tests, one production file, the same `assertNull` shape, the same family of mutant — and two went
+   red where two stayed green. That contrast is the only reason #6/#7 can be trusted, and it is
+   exactly the structure of §3.4's `#7` vs `#1`.
+
+**Carry-forward for Task 5 (repairs), in the order the evidence supports:**
+
+- **#1, #2 and #13 are removals, not repairs.** Each is a pure-language or pure-literal test wearing
+  an `INV-05` / counterfactual / `BALANCE-UI-01` name. **Do not add assertions to them.** #13 is
+  §3.4 #4's twin and the pair should be considered together.
+- **#3 needs one precondition** — `assertNotNull` on the balance/search fetch succeeding, or an
+  `assertEquals(0, gatewayInvocations)` — so absence cannot satisfy it. Its sibling `:315` is the
+  model: same setup, opposite outcome under the same mutation.
+- **#6 and #7 need their fixtures changed, not their assertions.** Both are double-guarded; to
+  isolate the historical rule, give the incoming record the *same* `sourceExternalId` as the
+  historical candidate, or omit it, so the conflicting-extId gate cannot do the rejecting.
+- **#14 needs its first assertion re-anchored** on the 4-tuple's own outcome rather than on
+  `PendingOperationResolution.result`, which a downstream materialization failure can also produce.
+- **#12 stays a LEAD** until the gateway zero-branch is mutated. It is a *review priority*, and
+  §3.9 was right to rank it second.
+
+**The lesson worth carrying forward, and it is the inverse of §3.11's.** §3.4 proved that a single
+assertion can hide a missing production call. This section proves the complementary and more
+expensive error: **a reviewer's static judgement is not evidence either.** Six tests read as sound
+pattern matches produced six verdicts, and **four of the six pattern-based predictions were wrong** —
+two accusations execution refuted, and two test families (`Step3DurableDispatchTest`,
+`Workstream7ImportMatchingCollisionTest`) that a shape-based review would have condemned and that
+caught every mutation thrown at them. **Breaking the code and watching the test fail, or pass, is
+the only measurement that has not yet been wrong in this audit.**
