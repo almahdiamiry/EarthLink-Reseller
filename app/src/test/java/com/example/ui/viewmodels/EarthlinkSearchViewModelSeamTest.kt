@@ -39,6 +39,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.io.File
 
 /**
  * MNT-09 / FW-01 Characterization Test Suite.
@@ -1210,6 +1211,41 @@ class EarthlinkSearchViewModelSeamTest {
         assertNull(resellerBalance)
     }
 
+    /**
+     * Reads the production `val balanceAfter = ...` line that the two `testBalanceAfterMath_*`
+     * tests transcribe into themselves.
+     *
+     * Claim: those two tests encode one contract — an unknown reseller balance must yield a
+     * null result, never a fabricated zero — and that contract lives only in
+     * `UserDetailScreenV2.kt`, whose consumer at `UserDetailScreenV2.kt:660-662` renders an
+     * em dash for a null balance. Run against locals, the two tests assert Kotlin semantics and
+     * invoke no production code, so a change to the production line was undetectable anywhere
+     * in the repository. This helper is the binding that makes such a change observable.
+     *
+     * Seam / Environment: STRUCTURAL — a source scan, modelled on the working pattern in
+     * Phase5DestructiveActionReleaseGateTest.findSourceFile, which this suite already uses.
+     * Independent Oracle: the expected string is a literal copy of the production expression,
+     * not a value recomputed by the code under test.
+     */
+    private fun productionBalanceAfterLine(): String {
+        val relPath = "app/src/main/java/com/example/ui/screens/UserDetailScreenV2.kt"
+        val candidates = listOf(
+            File(relPath),
+            File(relPath.removePrefix("app/")),
+            File("app", relPath),
+            File("..", relPath),
+            File("../..", relPath)
+        )
+        val source = candidates.firstOrNull { it.exists() }
+            ?: error("Source file not found for candidate paths $candidates (cwd: ${File(".").absolutePath})")
+        val matches = source.readLines().filter { it.trimStart().startsWith("val balanceAfter =") }
+        require(matches.size == 1) {
+            "UserDetailScreenV2.kt must declare exactly one 'val balanceAfter =' line; found " +
+                "${matches.size}: $matches"
+        }
+        return matches.single().trim()
+    }
+
     @Test
     fun testBalanceAfterMath_knownBalance_computesCorrectly() {
         val resellerBalance: Double? = 100000.0
@@ -1217,6 +1253,16 @@ class EarthlinkSearchViewModelSeamTest {
         val balanceAfter = resellerBalance?.let { it - packageCost }
         assertNotNull(balanceAfter)
         assertEquals(60000.0, balanceAfter!!, 0.001)
+
+        val productionLine = productionBalanceAfterLine()
+        assertEquals(
+            "BALANCE-AFTER | UserDetailScreenV2.kt must keep the null-guarded consumption this " +
+                "test transcribes: 100,000 - 40,000 is computed by production, not here. An " +
+                "unguarded form such as '(resellerBalance ?: 0.0) - packageCost' no longer " +
+                "computes anything for an unknown balance, it fabricates a 0. Got: $productionLine",
+            "val balanceAfter = resellerBalance?.let { it - packageCost }",
+            productionLine
+        )
     }
 
     @Test
@@ -1225,5 +1271,16 @@ class EarthlinkSearchViewModelSeamTest {
         val packageCost = 40000.0
         val balanceAfter = resellerBalance?.let { it - packageCost }
         assertNull(balanceAfter)
+
+        val productionLine = productionBalanceAfterLine()
+        assertEquals(
+            "BALANCE-AFTER | UserDetailScreenV2.kt must keep the null-guarded consumption this " +
+                "test transcribes. An unknown reseller balance must yield a null result, never a " +
+                "fabricated zero: with the null guard the screen renders an em dash, whereas " +
+                "'(resellerBalance ?: 0.0) - packageCost' renders a real-looking 0 IQD. " +
+                "Got: $productionLine",
+            "val balanceAfter = resellerBalance?.let { it - packageCost }",
+            productionLine
+        )
     }
 }
