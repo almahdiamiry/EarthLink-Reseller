@@ -39,9 +39,23 @@ assertNotNull(
 
 | State | Command (abbreviated) | Log | tests | failures | errors |
 |:--|:--|:--|--:|--:|--:|
-| GREEN under mutant, **before** repair (the defect) | `--tests ...LocalAccountsViewModelTgzSyncTriggerTest` | `r13-t5-t1-m1-pre-repair.log` | 3 | 0 | 0 |
-| RED under same mutant, after repair | same | `r13-t5-t1-m1-post-repair.log` | 3 | 1 | 0 |
-| GREEN on clean code | same | `r13-t5-t1-rep1-clean.log` | 3 | 0 | 0 |
+| GREEN under mutant, **before** repair (the defect) | `--tests ...LocalAccountsViewModelTgzSyncTriggerTest` | `r13-t5-t1-fixr1-rep1-stateA-mutant-unrepaired.log` | 3 | 0 | 0 |
+| RED under same mutant, after repair | same | `r13-t5-t1-fixr1-rep1-stateB-mutant-repaired.log` | 3 | 1 | 0 |
+| GREEN on clean code | same | `r13-t5-t1-fixr1-rep1-stateC-clean-repaired.log` | 3 | 0 | 0 |
+
+**Corrected in fix round 2.** The first two rows of this table originally cited
+`r13-t5-t1-m1-pre-repair.log` and `r13-t5-t1-m1-post-repair.log`. **Those two citations were false and
+are struck here:** fix round 1 proved by test identity that both files are Repair 2's *mutant A* runs
+(`m1-pre-repair.log:1048` names `invariant_INV12_noOutboxLoopsOnRemoteApply`;
+`m1-post-repair.err.log` reads `1 tests completed, 1 failed`). The correct numbers are unchanged, but
+the only artefacts that back them are the `fixr1-state*` runs. **Do not read the struck rows as
+evidence.** The authoritative state table, with setup, timestamps and per-state execution proofs, is
+in fix round 1 at `task-1-report.md:402-406`.
+
+The third row was already sound: `r13-t5-t1-rep1-clean.log` is a genuine green run of this class from
+the original round — `rep1-clean.log:1045` carries `> Task :app:testDebugUnitTest` and `:1048` reads
+`BUILD SUCCESSFUL in 1m 1s`. It is kept as the original-round clean baseline, and the round-2 `stateC`
+run backs the same fact a second time.
 
 The RED assertion message confirms the awaited state was genuinely reached before the repair —
 `error=null, importResult=ImportResult(..., success=false, ... errorMessage=Could not find uTower
@@ -386,12 +400,25 @@ r13-t5-t1-m1-post-repair.err.log → 1 test completed, 1 failed
 
 Both are Repair 2's **mutant A** runs. **The reviewer's diagnosis of the cause is exactly right:** my
 Repair 1 runs used the `m1-` prefix, and when I moved to Repair 2 I reused `m1-`/`m2-` for *its*
-mutants A and B, overwriting the Repair 1 files. The timestamps agree (Repair 1 ~19:59–20:05;
-Repair 2 `m1-` 20:14, `m2-` 20:07), which is why the reviewer read it as transcription error rather
-than fabrication — and that is what it was. **It was a naming collision, not fabricated evidence, and
-not a transcription slip in the prose: the numbers I reported for Repair 1 (3/0/0 and 3/1/0) were read
-from real XML at the time. But the artefacts backing them no longer exist under those names, so the
-proof was unverifiable.** The reviewer was right to refuse to accept it.
+mutants A and B, overwriting the Repair 1 files.
+
+**Correction to the timestamp claim (fix round 2).** The original text here read "The timestamps agree
+(Repair 1 ~19:59–20:05; Repair 2 `m1-` 20:14, `m2-` 20:07)". **That sentence was reconstructed, not
+read, and it does not reconcile with the artefacts.** The actual mtimes are `m1-pre-repair.log`
+**18:59:54**, `m1-post-repair.log` **19:03:48**, `m2-pre-repair.log` **18:52:43**, `m2-post-repair.log`
+**18:56:17** — all roughly +1h14m from what I wrote, and `m2-` is **earlier** than `m1-`, which
+contradicts the "when I moved to Repair 2" ordering the sentence was offered to support. I cannot
+recover the true original Repair 1 run times: those files were overwritten. The offset pattern
+indicates the values I gave were estimated rather than observed, so they should not be relied on.
+
+**What actually establishes the collision is test identity, not the clock.**
+`m1-pre-repair.log:1048` reads
+`DataIntegrityReleaseGateTest > invariant_INV12_noOutboxLoopsOnRemoteApply FAILED` and
+`m1-post-repair.err.log` reads `1 tests completed, 1 failed` — a one-test run of the wrong class. No
+timestamp argument is needed, and none is made now. **It was a naming collision, not fabricated
+evidence, and not a transcription slip in the prose: the numbers I reported for Repair 1 (3/0/0 and
+3/1/0) were read from real XML at the time. But the artefacts backing them no longer exist under those
+names, so the proof was unverifiable.** The reviewer was right to refuse to accept it.
 
 ### Re-run: all three states, new unambiguous filenames
 
@@ -420,11 +447,49 @@ State B's failing test is named in the log as `testFailedTgzImport_corruptArchiv
 the full `ImportResult(..., success=false, ..., errorMessage=Could not find uTower database in the
 provided file.)`, confirming the corrupt-archive path was genuinely exercised.
 
-**Setup was verified, not assumed**, at every state: `PRECONDITION` grep hit count 0 before state A
-and 2 before states B and C; file first bytes `70 61 63` (`pac`, i.e. clean ASCII, no BOM) each time;
-`FIXR1-MUT-A` present in `LocalAccountsViewModel.kt` for A and B, absent for C.
+**Setup verification is of two different strengths, and the distinction matters (corrected in fix
+round 2).** The original text said "Setup was verified, not assumed" for all three states. That
+overclaimed for state A.
+
+- **Independently re-checkable against the live tree** (the claim is about the committed file, so
+  anyone can reproduce it now): the repaired tgz file has `PRECONDITION` hit count **2**; its first
+  three bytes are `70 61 63` (`pac`) — clean ASCII, no BOM. These hold now because the tree is at
+  `HEAD` with the repair committed, so they are facts about the repository, not transcriptions.
+- **Same-moment greps, not re-checkable** (they described files that were transiently modified, so no
+  artefact preserves them): the state-A half of the setup check — `PRECONDITION` count **0** and
+  `FIXR1-MUT-A` present — was captured by grep at the time and survives only as this transcription.
+  By the M2 limitation I documented above, a same-moment grep is not a re-checkable artefact.
+
+What backs state A's *setup* without relying on those greps is the log itself: the run compiled and
+executed this class at all (`stateA.log:1045` `> Task :app:testDebugUnitTest`, `:1048` `BUILD
+SUCCESSFUL in 1m 28s`), and the file it compiled could only have been the BOM-free,
+precondition-free one. `FIXR1-MUT-A` presence for states A and B, and absence for C, is likewise
+transcribed; state C's clean-code claim is separately backed by `stateC.log:1044` `> Task
+:app:testDebugUnitTest` with `:1047` `BUILD SUCCESSFUL in 1m 36s`, and by the absence of the mutant
+in the current tree.
 
 ### A second, deeper defect I found while re-running — and the reason the state-A method matters
+
+**Disclosed in fix round 2: there were THREE superseded runs, in two passes, not one.** The original
+text named only `rep1a`. All three are listed here; none is evidence for any state.
+
+| Discarded run | mtime | What it actually shows | Disposition |
+|:--|:--|:--|:--|
+| `r13-t5-t1-fixr1-rep1a-mutant-unrepaired.log` | 20:15:55 | `:1038 > Task :app:compileDebugUnitTestKotlin FAILED`; `.err` is a 666 KB cascade of `Syntax error: Expecting a top level declaration` at `LocalAccountsViewModelTgzSyncTriggerTest.kt:1:1` … `1:13` | **pass 1 state A** — BOM corruption; test task never ran |
+| `r13-t5-t1-fixr1-rep1b-mutant-repaired.log` | 20:19:39 | `:1047 LocalAccountsViewModelTgzSyncTriggerTest > testFailedTgzImport_corruptArchive_doesNotTriggerSync FAILED`; `.err` `3 tests completed, 1 failed` | **pass 1 state B** — a *valid* run, but from the pass whose state A was invalid |
+| `r13-t5-t1-fixr1-rep1c-clean-repaired.log` | 20:22:56 | `:1044 > Task :app:testDebugUnitTest`, `:1047 BUILD SUCCESSFUL in 1m 13s` | **pass 1 state C** — a valid green tgz run; see the stale-XML role below |
+
+The thirteen consecutive `Syntax error` positions `1:1`–`1:13` are the signature of a 3-byte UTF-8 BOM
+(`EF BB BF`) read as source content, which is exactly what the PowerShell `>` redirect produced.
+
+**`rep1c` is the most valuable artefact in this round, and the original text hid it.** It was a **green
+run of the tgz class** whose XML it wrote into `test-results/` was the **live stale candidate sitting
+there when pass 2's state A executed at 20:26:59**. Had I not deleted the target XML before each run —
+the very discipline I adopted *because* of the `rep1a` incident — pass 2's state A could have read
+`rep1c`'s XML and I would have recorded a green state produced by a run from a **different setup**
+(the repaired test, clean code) as if it were the unrepaired test under a mutant. The three discarded
+runs are therefore not redundant noise: `rep1a` is the cause, and `rep1c` is the concrete instance of
+the hazard that cause creates.
 
 My **first** state-A attempt was invalid and I discarded it. I had produced the unrepaired file with
 `git show 1b9fff7:path > path`; under PowerShell that redirect wrote a BOM-corrupted file, so
@@ -459,21 +524,40 @@ establishes that the fetch was **invoked**. It does not establish that the failu
 already `null` from `:40` — the same structural fact that forced the `atLeastOnce()` choice, and the
 same reason the sibling's state-assertion shape was unusable.
 
-**The mutation that survives this repair: delete the catch block at `DashboardViewModel.kt:188-191`.**
-With `gateway.getTestUsersCount()` still invoked (so the precondition passes) and `_testCount` never
-assigned in the catch (so it stays at its initial `null` and the `assertNull` passes), **both
-assertions remain green while the failure is no longer handled at all** — the exception would
-propagate and the dashboard would lose its unavailable-state semantics.
+**Hypothesis about a residual (softened in fix round 2 — NOT an established finding).** The candidate
+mutation is **deletion of the catch block at `DashboardViewModel.kt:188-191`**. On the *assertions*,
+both would still hold: `gateway.getTestUsersCount()` is still invoked, so the precondition passes, and
+`_testCount` is never assigned in the catch, so it remains at its initial `null` and the `assertNull`
+passes. **I have not run this mutation, and I am not permitted to** (no production edits outside a
+transient mutant, and it is out of Task 1's scope). **The re-reviewer could not validate it either.**
 
-This is a **real residual and it is inherent to the production design**, not a defect in the repair:
-the production code makes "handled" and "never ran" observationally identical. **Not fixed here** — it
-is outside Task 1's four repairs and the plan forbids repairs beyond them.
+**Why it is unconfirmed, specifically.** My original text asserted the deletion "leaves both assertions
+green while the failure is no longer handled" as fact. That claim concerns the two *assertions*, but the
+re-reviewer identified the open question as something narrower and more important: **whether the test
+method completes at all.** `loadDashboardData` launches into `viewModelScope` (`:85`) and then
+`coroutineScope` (`:89`), and the four fetch jobs are joined by `awaitAll` at `:194`. Deleting the catch
+makes the `testCountJob` `async` child **fail**, which in structured concurrency **cancels the enclosing
+scope** and **rethrows at `awaitAll`**. Whether that surfaces as a JUnit test failure or escapes to the
+uncaught-exception handler — and thus whether `runTest` fails the test or the exception is merely
+recorded — depends on the interaction with `setMain(StandardTestDispatcher)` in this suite's `setUp`.
+**That behaviour is untested and unverified.** So the honest statement is narrower than "both
+assertions remain green": the *assertions* are individually satisfied by the mutation, but the *test
+outcome* is genuinely unknown and may well be red.
 
-> **For Task 7 §6 ("what is still unproven").** Repair 4 of Task 1 proves *attempted*, not *handled*.
-> The unobservable residual is `DashboardViewModel.kt:188-191` (the catch that assigns
-> `_testCount.value = null`), and the demonstrating mutation is deletion of that catch block. Any claim
-> that a network failure in the dashboard is *handled* — as opposed to merely *initiated* — is
-> **currently unproven anywhere in the suite**.
+This is a residual inherent to the production design, not a defect in the repair: the production code
+makes "handled" and "never ran" observationally identical **at the level of the state flow**. **Not
+fixed here** — outside Task 1's four repairs, and the plan forbids repairs beyond them.
+
+> **For Task 7 §6 ("what is still unproven") — HYPOTHESIS, NOT ESTABLISHED.** Repair 4 of Task 1 proves
+> *attempted*, not *handled*: the unobservable assignment is `DashboardViewModel.kt:190`
+> (`_testCount.value = null` inside the catch at `:188-191`), whose value is indistinguishable from the
+> `:40` initial state. The candidate mutation is **deletion of that catch block**, and
+> **`verify` and `assertNull` would both be satisfied by it** — but **whether the test as a whole would
+> then go red via `awaitAll` (`:194`) propagating a failed `async` child is unresolved and unrun.** Task 7
+> must record this as a hypothesis about an unproven residual, explicitly not as a demonstrated gap,
+> unless someone constructs the mutation and executes it. Any claim that a dashboard network failure is
+> *handled* — as opposed to merely *initiated* — remains **unproven by this test either way**; what is
+> unproven is only whether the suite would *detect* its removal.
 
 ## Important 2 — Mutant B's lineage corrected
 
@@ -574,3 +658,131 @@ docs(audit): correct the task-1 repair record and re-prove repair 1
 ```
 
 Report-only. No test file, no production file, and no other task's section was modified.
+
+---
+
+# Fix round 2
+
+The re-reviewer confirmed the code is complete and the suite is green at **798/0** (verified
+independently by deleting every JUnit XML and re-running at my `HEAD`). What remained were three text
+defects in this record. **No `.kt` file was changed and no Gradle run was made in this round** — the
+test code at `6a53357` stands exactly as re-reviewed.
+
+## 1 — The Repair 1 table cited collision-damaged logs
+
+**Changed `task-1-report.md:40-57`.** The table at the top of the Repair 1 section is where a reader
+entering the report meets Repair 1's evidence, and it still pointed at
+`r13-t5-t1-m1-pre-repair.log` / `r13-t5-t1-m1-post-repair.log` — the two files fix round 1 proved
+belong to Repair 2's mutant A. That left the exact defect this round was opened to fix as the first
+thing a reader sees.
+
+The table now cites only `fixr1-state*` logs for the mutant states and points at the authoritative
+state table in fix round 1. The two superseded citations are **struck and explicitly labelled false**,
+with the evidence that indicts them (`m1-pre-repair.log:1048` names
+`invariant_INV12_noOutboxLoopsOnRemoteApply`; `m1-post-repair.err.log` reads `1 tests completed, 1
+failed`) and the instruction not to read them as evidence.
+
+The third row (`r13-t5-t1-rep1-clean.log`) was already sound and is kept, now with its own
+provenance: `rep1-clean.log:1045` `> Task :app:testDebugUnitTest`, `:1048` `BUILD SUCCESSFUL in 1m 1s` —
+a genuine green tgz-class run from the original round, independently backing what `stateC` shows.
+
+**Numbers are unchanged (3/0/0, 3/1/0, 3/0/0). Only the citations were false, and they now point at
+artefacts that show what the numbers claim.**
+
+## 2 — The timestamp narrative did not reconcile with the artefacts
+
+**Changed `task-1-report.md:387-406`.** The sentence "The timestamps agree (Repair 1 ~19:59–20:05;
+Repair 2 `m1-` 20:14, `m2-` 20:07)" is **removed as false and marked reconstructed.**
+
+Measured mtimes: `m1-pre-repair.log` **18:59:54**, `m1-post-repair.log` **19:03:48**,
+`m2-pre-repair.log` **18:52:43**, `m2-post-repair.log` **18:56:17**. All four are ~+1h14m off what I
+wrote, and `m2-` is **earlier** than `m1-`, contradicting the "when I moved to Repair 2 I reused
+`m1-`/`m2-`" ordering the sentence was offered to support. The constant offset is the signature of
+values estimated rather than read.
+
+I cannot recover the true original Repair 1 run times — those files were overwritten — and the report
+now says so instead of restating reconstructed numbers.
+
+**What replaces it: test identity reconciles, the mtimes do not.** The collision is established by
+`m1-pre-repair.log:1048` naming `invariant_INV12_noOutboxLoopsOnRemoteApply` and
+`m1-post-repair.err.log` reading `1 tests completed, 1 failed` — a one-test run of the wrong class. No
+timestamp argument is made. The conclusion (naming collision, not fabrication) is unchanged and, per
+the re-reviewer, sound; it simply no longer leans on a clock that contradicts it.
+
+## 3 — The discarded-attempt set was incomplete
+
+**Changed `task-1-report.md:471-500`.** The previous text named one discarded run (`rep1a`). There were
+**three, across two passes**, now tabulated with mtime, what each actually shows, and disposition:
+
+| Discarded run | mtime | Marker |
+|:--|:--|:--|
+| `fixr1-rep1a-mutant-unrepaired.log` | 20:15:55 | `:1038 > Task :app:compileDebugUnitTestKotlin FAILED`; 666 KB `.err` of `Syntax error` at `…TgzSyncTriggerTest.kt:1:1`–`1:13` |
+| `fixr1-rep1b-mutant-repaired.log` | 20:19:39 | `:1047` names the correct test; `.err` `3 tests completed, 1 failed` |
+| `fixr1-rep1c-clean-repaired.log` | 20:22:56 | `:1044` `> Task :app:testDebugUnitTest`, `:1047` `BUILD SUCCESSFUL in 1m 13s` |
+
+**`rep1c` is now disclosed as the most valuable artefact in the round**, which the previous text hid by
+omission. It was a **green run of the tgz class** whose XML it left in `test-results/` was the **live
+stale candidate** sitting there when pass 2's state A executed at 20:26:59. Without the
+delete-the-XML-first discipline — which I adopted *because* of the `rep1a` incident — pass 2's state A
+could have read `rep1c`'s XML and recorded a green state produced by an entirely different setup
+(repaired test, clean code) as if it were the unrepaired test under a mutant. `rep1a` is the cause;
+`rep1c` is the concrete instance of the hazard the cause creates. Disclosing only one of three was an
+incomplete disclosure of the same kind this round exists to correct.
+
+## Wording fix — "Setup was verified, not assumed" was an overclaim
+
+**Changed `task-1-report.md:450-469`.** The claim covered all three states. It does not.
+
+- **Independently re-checkable** (facts about the committed file, reproducible by anyone now): the
+  repaired tgz file has `PRECONDITION` hit count **2**, and its first three bytes are `70 61 63` (`pac`)
+  — clean ASCII, no BOM.
+- **Same-moment greps, not re-checkable** (they described transiently-modified files, so no artefact
+  preserves them): the state-A half — `PRECONDITION` count **0**, `FIXR1-MUT-A` present — survives only
+  as transcription. By the M2 limitation already documented in this report, a same-moment grep is not a
+  re-checkable artefact.
+
+State A's setup is instead backed by the log: it compiled and ran this class
+(`stateA.log:1045` `> Task :app:testDebugUnitTest`, `:1048` `BUILD SUCCESSFUL in 1m 28s`), and the file
+it compiled could only have been the BOM-free, precondition-free one.
+
+*Method note, recorded because it nearly produced a new error in this very round:* my first two
+line-number probes used `Get-Content | Select-Object -Skip` with hand-added offsets and returned
+**wrong** line numbers (`:1051`, `:1048-1051`). Re-probing with `Select-String`'s `.LineNumber` gave the
+true values, which **match the re-reviewer's citations exactly**. Every line number I cite in this
+round was taken from the `Select-String` form. The same probe showed `rep1-clean.log`'s task line is
+**1045**, not the 1047 I first wrote in edit 1 — corrected in place before commit.
+
+## Task 7 flag — Repair-4 residual softened from established fact to hypothesis
+
+**Changed `task-1-report.md:519-556`** and the Task 7 §6 blockquote. The re-reviewer is right that the
+residual was overstated and could not be validated.
+
+**The gap in my original claim.** I asserted deletion of the catch at
+`DashboardViewModel.kt:188-191` "leaves both assertions green while the failure is no longer handled"
+as fact. That is a claim about the two *assertions* — but the open question is narrower and more
+important: **whether the test method completes at all.** `loadDashboardData` launches into
+`viewModelScope` (`:85`) then `coroutineScope` (`:89`), and the fetch jobs are joined by `awaitAll` at
+`:194`. Deleting the catch makes the `testCountJob` `async` child **fail**, which in structured
+concurrency **cancels the enclosing scope and rethrows at `awaitAll`**. Whether that surfaces as a
+JUnit failure or escapes to the uncaught-exception handler — and thus whether `runTest` fails the test
+or merely records it — depends on the interaction with `setMain(StandardTestDispatcher)` in this suite's
+`setUp`. **Untested and unverified.**
+
+The record now says only what is established: `verify` and `assertNull` would *individually* be
+satisfied by the deletion, and the test *outcome* is genuinely unknown and **may well be red**. The
+underlying structural point stands and is not in doubt: the production code makes "handled" and "never
+ran" observationally identical **at the level of the state flow**, which is why `atLeastOnce()` and a
+mock interaction were the only available precondition.
+
+**Not run** — I may not edit production outside a transient mutant, and this is out of Task 1's scope.
+**Task 7 must record it as a hypothesis about an unproven residual, not as a demonstrated gap**, unless
+someone constructs the mutation and executes it.
+
+## Commit
+
+```
+docs(audit): close the task-1 repair record
+```
+
+Report-only. The only file changed in this round is this report. No `.kt` file, no Gradle run, no other
+task's section.
