@@ -1042,6 +1042,305 @@ def test_eb_expression_body_stops_at_an_unlisted_declaration():
               "and `private inline fun`, so a helper's assertions are never attributed to a test.")
 
 
+# The expression-body upper bound must recognise every Kotlin class modifier, not only the ones
+# somebody happened to enumerate. `inner` and `value` are class modifiers, and the terminator
+# read only the FIRST word of the line, so `inner class Helper` and `value class Wrapper` were
+# not recognised as new declarations: the walk ran on into them and the scanner invented an F2
+# and an F7 on tests that are neither tautological nor vacuous.
+#
+# The two followers are LEXICAL fixtures. `inner class` is only legal inside another `inner
+# class`, and a `value class` may carry no members, so neither can hold the tautology / F7 shape
+# inside compiling Kotlin. The recogniser under test is lexical, so these are written for the
+# recogniser; `test_every_kotlin_modifier_is_recognised_as_a_declaration` is what pins the whole
+# modifier set, and it needs no such contortion.
+EXPRESSION_BODY_MODIFIER_FOLLOWER_FIXTURE = '''
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class ModifierFollowerTest {
+
+    @Test
+    fun test_before_inner_class_is_not_tautological() = runBlocking {
+        val total = 1 + 1
+        assertEquals(2, total)
+    }
+
+    inner class HelperWithTautology {
+        fun check() { assertEquals(2, 2) }
+    }
+
+    @Test
+    fun test_before_value_class_is_not_vacuous_path() = runBlocking {
+        var status = "pending"
+        assertEquals("pending", status)
+    }
+
+    value class ReassigningWrapper(val a: Int) {
+        fun check() {
+            var other = "x"
+            assertEquals("x", other)
+            other = compute()
+        }
+    }
+}
+'''
+
+# A declaration-led line that is only an ANNOTATION must be skipped, not treated as "not a
+# declaration". Returning False there made the expression-body walk run one line past its own
+# test, so the following test's `@Test` annotation ended up inside the previous test's range -
+# measured on the real suite at 498 of 798 blocks. Inert for every rule, but it made the
+# scanner's own docstring untrue.
+EXPRESSION_BODY_ANNOTATION_BOUNDARY_FIXTURE = '''
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class AnnotationBoundaryTest {
+
+    @Test
+    fun a_expression_body_ends_before_the_next_tests_annotation() = runBlocking {
+        val total = 1 + 1
+        assertEquals(2, total)
+    }
+
+    @Test
+    fun b_brace_bodied_neighbour() {
+        assertEquals(1, 1)
+    }
+}
+'''
+
+# The block-bound fallback. `_FUN_NAME_RES` requires an identifier after `fun`, so a Kotlin
+# backtick-quoted test name (`fun \`a name between backticks\``) cannot be located and the block
+# falls back to the next `@Test`. That is the real trigger: 7 of the suite's 798 tests, all in
+# core/ledger/NoteCleanerTest.kt. It is ordinary compiling Kotlin, so it is representable as a
+# fixture - the previous claim that it was not was wrong.
+BACKTICK_NAMED_FALLBACK_FIXTURE = '''
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class BacktickNamedTest {
+
+    @Test
+    fun `a name written between backticks`() {
+        assertEquals(250, computeDebt())
+    }
+}
+'''
+
+# Every keyword that can head a Kotlin declaration. This list is the INDEPENDENT ORACLE for
+# "the terminator sees every modifier": it is transcribed from the Kotlin grammar's hard
+# keywords, not read out of the scanner, so the two can disagree and the test fails when they
+# do. It replaces the previous unfalsifiable claim that a keyword list "cannot be defeated by
+# adding a modifier" - a token enumeration IS a list, and only this equality is checkable.
+KOTLIN_DECLARATION_STARTERS = (
+    "class", "companion", "constructor", "enum", "fun", "init", "interface",
+    "object", "typealias", "val", "var",
+)
+KOTLIN_MODIFIERS = (
+    "abstract", "actual", "annotation", "const", "crossinline", "data", "enum",
+    "expect", "external", "final", "infix", "inline", "inner", "internal",
+    "lateinit", "noinline", "open", "operator", "override", "private", "protected",
+    "public", "reified", "sealed", "suspend", "tailrec", "value", "vararg",
+)
+KOTLIN_DECLARATION_WORDS = frozenset(KOTLIN_DECLARATION_STARTERS) | frozenset(KOTLIN_MODIFIERS)
+
+
+def test_eb_expression_body_stops_at_a_class_modifier_follower():
+    """
+    The terminator must see EVERY Kotlin class modifier, not a hand-picked subset.
+
+    `inner` and `value` are the two class modifiers missing from the scanner's keyword set, and
+    because the terminator read only the first word of the line, `inner class Helper` and
+    `value class Wrapper` were not recognised as new declarations. The walk ran on into them and
+    the scanner invented an F2 and an F7. That is the direction the brief forbids: it may
+    under-report a rule, never invent one.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        findings, tests = scan_fixture(
+            tmpdir, "ModifierFollowerTest.kt", EXPRESSION_BODY_MODIFIER_FOLLOWER_FIXTURE
+        )
+
+        expected = {
+            "test_before_inner_class_is_not_tautological": 1,
+            "test_before_value_class_is_not_vacuous_path": 1,
+        }
+        counts = {t["name"]: t["assertion_count"] for t in tests}
+        for name, count in expected.items():
+            assert_resolved(tests, name)
+            assert_classified(findings, name, set())
+            assert counts[name] == count, (
+                f"An expression body must stop at an `inner class` or a `value class` exactly as "
+                f"it stops at any other declaration. '{name}' reported {counts.get(name)} "
+                f"assertions, expected {count}; a larger count means the follower's assertions "
+                f"were attributed to this test. Counts: {counts}"
+            )
+
+        print("PASS EB (class-modifier follower): an expression body stops at `inner class` and "
+              "`value class`, so neither an F2 nor an F7 is invented.")
+
+
+def test_eb_expression_body_stops_before_the_next_tests_annotation():
+    """
+    A line that is only an annotation is a DECLARATION LEAD-IN, not a continuation.
+
+    The annotation branch consumed the annotation to end-of-line, then read words at the newline
+    and found none, so it returned False. The walk then stopped one line late and the following
+    test's `@Test` annotation landed inside the previous test's range - 498 of the 798 real
+    blocks. No rule reads `@Test`, so every count was unaffected; what it broke was the
+    scanner's own stated guarantee that such a line is outside both ranges.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        findings, tests = scan_fixture(
+            tmpdir, "AnnotationBoundaryTest.kt", EXPRESSION_BODY_ANNOTATION_BOUNDARY_FIXTURE
+        )
+
+        first = "a_expression_body_ends_before_the_next_tests_annotation"
+        second = "b_brace_bodied_neighbour"
+        assert_resolved(tests, first)
+        assert_resolved(tests, second)
+        assert_classified(findings, first, set())
+        assert_classified(findings, second, {"F2"})
+
+        by_name = {t["name"]: t for t in tests}
+        assert by_name[first]["end_line"] < by_name[second]["line"], (
+            "The previous test's @Test annotation belongs to NEITHER test and must be outside "
+            "both ranges. The expression body ran on to the line after its own, so it reported "
+            f"end_line {by_name[first]['end_line']} while the next @Test starts at "
+            f"{by_name[second]['line']}."
+        )
+
+        counts = {t["name"]: t["assertion_count"] for t in tests}
+        assert counts[first] == 1, (
+            f"The expression body must stop before the next @Test annotation. Counts: {counts}"
+        )
+
+        print("PASS EB (annotation boundary): a lone @Test line is skipped, so the following "
+              "test's annotation is outside both blocks.")
+
+
+def test_every_kotlin_modifier_is_recognised_as_a_declaration():
+    """
+    The checkable version of "the terminator cannot be defeated by adding a modifier".
+
+    A keyword set IS a list, so a comment cannot honestly promise completeness. This test can:
+    the oracle is `KOTLIN_DECLARATION_WORDS`, transcribed from the Kotlin grammar's hard
+    keywords, and the assertion is a two-way set equality against the scanner's own set. If a
+    modifier is missing from the scanner, or the scanner has drifted to a word that is not a
+    Kotlin declaration word at all, this fails.
+
+    The behavioural half drives `_starts_new_declaration` with a line whose SECOND word is not a
+    keyword (`<modifier> helper() { }`), so only the modifier itself can satisfy the test. That
+    is the exact shape that failed for `inner class` and `value class`.
+    """
+    scanner_set = scan_test_evidence._DECLARATION_KEYWORDS
+
+    missing = sorted(KOTLIN_DECLARATION_WORDS - scanner_set)
+    assert not missing, (
+        f"Every Kotlin declaration starter and modifier must be in the scanner's keyword set; "
+        f"missing: {missing}. A declaration led by one of these would not be recognised, so an "
+        f"expression body would run past it and invent an F2/F3/F7."
+    )
+
+    extra = sorted(scanner_set - KOTLIN_DECLARATION_WORDS)
+    assert not extra, (
+        f"The scanner's keyword set holds words that are not Kotlin declaration starters or "
+        f"modifiers: {extra}. A stray entry makes a continuation line look like a declaration "
+        f"and truncates the expression body, which invents an F1."
+    )
+
+    unrecognised = [m for m in KOTLIN_MODIFIERS
+                    if not scan_test_evidence._starts_new_declaration(
+                        "    %s helper() { }" % m, 0)]
+    assert not unrecognised, (
+        f"These modifiers do not read as a declaration on a line whose second word is not a "
+        f"keyword, which is the shape that invented an F2 for `inner class`: {unrecognised}"
+    )
+
+    # The SECOND word. `inner class` and `value class` are already covered by the set-equality
+    # half above, so nothing else reaches the `words[1]` test - which is exactly how the
+    # two-word path stayed dead code through three rounds with a comment claiming it worked.
+    # This asserts it directly.
+    #
+    # Stated plainly: there is NO compiling Kotlin line whose first word is not a declaration
+    # word and whose second word is, so this is a DEFENSIVE path, not a real case. It is kept
+    # because it is one line of code that would otherwise be untested, and it is pinned here
+    # rather than left to a comment. The input is lexical, not compiled.
+    defensive = [
+        "    notAKeyword fun helper() { }",
+        "    someReceiver value = 1",
+        "    leading inner class Helper",
+    ]
+    missed = [line for line in defensive
+              if not scan_test_evidence._starts_new_declaration(line, 0)]
+    assert not missed, (
+        f"The second word must be read, with the whitespace before it skipped. These lines are "
+        f"led by a non-keyword and are not recognised as declarations: {missed}. Without the "
+        f"skip the second word was never read at all and this test path was dead code."
+    )
+
+    # The same recogniser must still say NO to a continuation line, or a tightened bound would
+    # truncate a body and invent an F1. A multi-line argument list begins with a bare
+    # identifier, and a chained call begins with a dot; neither is a declaration.
+    continuations = [
+        "    leading, trailing fun helper() { }",
+        "    .also { assertEquals(1, it) }",
+        "    it is not null",
+    ]
+    wrongly = [line for line in continuations
+               if scan_test_evidence._starts_new_declaration(line, 0)]
+    assert not wrongly, (
+        f"These lines continue an expression and must not read as a declaration; treating one "
+        f"as a declaration truncates the expression body and invents an F1: {wrongly}"
+    )
+
+    print(f"PASS MODIFIERS: all {len(KOTLIN_MODIFIERS)} Kotlin modifiers and "
+          f"{len(KOTLIN_DECLARATION_STARTERS)} declaration starters are recognised, in both "
+          f"directions (none missing, none stray), and the second word is read.")
+
+
+def test_fallback_resolves_a_test_whose_fun_cannot_be_located():
+    """
+    The block-bound fallback is reachable by ordinary compiling Kotlin, so it is pinned.
+
+    The trigger is a `fun` the identifier pattern cannot match - a backtick-quoted test name.
+    7 of the suite's 798 tests are in this state, all in core/ledger/NoteCleanerTest.kt. The
+    previous report gave "a file that does not balance is not representable as a fixture" as
+    the reason the fallback had no pin; that was wrong, and this is the pin.
+
+    What this proves: the test is DISCOVERED, not skipped, and its own assertions are counted
+    through the fallback path. What it does NOT prove: that the fallback bounds the block. It
+    does not - it runs to the next `@Test`, so a following test's assertions are inside the
+    range. Pinning that would enshrine the over-report rather than close it, so it is stated
+    here instead of asserted.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        findings, tests = scan_fixture(
+            tmpdir, "BacktickNamedTest.kt", BACKTICK_NAMED_FALLBACK_FIXTURE
+        )
+
+        assert len(tests) == 1, (
+            f"The backtick-named test must still be discovered through the fallback, got "
+            f"{[(t['name'], t['line']) for t in tests]}"
+        )
+        found = tests[0]
+        unresolved = [t for t in tests if t["name"].startswith("<unnamed@test@")]
+        assert unresolved, (
+            "This fixture exists to exercise the fallback. The test name resolved to "
+            f"{found['name']!r}, which means `fun` was located and the fallback was NOT taken."
+        )
+        assert found["assertion_count"] == 1, (
+            "The fallback must still count the test's own assertion, got "
+            f"{found['assertion_count']} for {found['name']}"
+        )
+        assert rules_for(findings, found["name"]) == set(), (
+            f"The fallback must not invent a rule here; got "
+            f"{[(f.rule, f.detail) for f in findings if f.test_name == found['name']]}"
+        )
+
+        print("PASS FALLBACK: a backtick-named test whose `fun` cannot be located is still "
+              "discovered and its own assertion is counted.")
+
+
 # --------------------------------------------------------------------------------------------
 # CLI contract: --rule, --single-assertion, and always-exit-0
 # --------------------------------------------------------------------------------------------
@@ -1170,6 +1469,10 @@ TESTS = [
     test_eb_expression_bodies_are_scanned,
     test_eb_expression_body_tail_is_not_truncated,
     test_eb_expression_body_stops_at_an_unlisted_declaration,
+    test_eb_expression_body_stops_at_a_class_modifier_follower,
+    test_eb_expression_body_stops_before_the_next_tests_annotation,
+    test_every_kotlin_modifier_is_recognised_as_a_declaration,
+    test_fallback_resolves_a_test_whose_fun_cannot_be_located,
     test_cli_rule_filter_and_exit_zero,
     test_cli_single_assertion_selector,
     test_cli_real_process_exit_code_is_zero_even_with_findings,

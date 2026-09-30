@@ -51,32 +51,46 @@ Rules
       The expression ends at a newline that begins a new declaration, and only at brace depth
       zero relative to the `=`, so a `val` line inside the block is not mistaken for the end.
 
-  What the resolution guarantees, precisely: the block never stops early, so it cannot hide
-  an assertion and invent a vacuity finding. It also never over-runs into the following
-  declaration, so it cannot borrow another function's assertion pattern and invent an F2, F3
-  or F7: a private helper declared between two `@Test`s, or after the last one, belongs to
-  NEITHER test and is outside both ranges. What it does NOT do is bound itself from running
-  past the test's own end in the other direction — a helper that is genuinely part of the
-  test's verification is inside the test's own closing brace and so is inside the range, and
-  a test that delegates to a helper declared elsewhere in the file is resolved by the
-  file-wide, name-resolved helper walk rather than by the range.
+  What the resolution guarantees, precisely. It is a bound, so it can be wrong in two
+  directions, and both matter:
+    * It does not stop EARLY on the resolved shapes, so it cannot hide an assertion and invent
+      a vacuity finding. `test_eb_expression_body_tail_is_not_truncated` and the 4285
+      in-test-body assertion count are the evidence.
+    * It does not OVER-RUN into the next declaration, so it cannot borrow another function's
+      assertion pattern and invent an F2, F3 or F7. A helper declared between two `@Test`s, or
+      after the last one, belongs to NEITHER test and is outside both ranges;
+      `test_eb_expression_body_stops_at_an_unlisted_declaration`,
+      `test_eb_expression_body_stops_at_a_class_modifier_follower` and
+      `test_eb_expression_body_stops_before_the_next_tests_annotation` are the evidence. The
+      last of those exists because a lone `@Test` line was once read as a continuation rather
+      than as a declaration lead-in, which put 498 of the 798 real blocks' next annotation line
+      inside the previous block; it is 0 now.
+  What it does NOT bound: the fallback path below, which has no upper bound at all. A helper
+  that is genuinely part of the test's verification is inside the test's own closing brace and
+  so is inside the range, and a test that delegates to a helper declared elsewhere in the file
+  is resolved by the file-wide, name-resolved helper walk rather than by the range.
 
   The direction of error is deliberate and applies to every rule: the scanner may
-  under-report, and must never invent a finding. Two guards enforce it, and each was added
-  after the corresponding class was demonstrated to be violated on real input — the
-  expression-body bound stopping at a `private suspend fun` (which produced an invented F2
-  and F7), and the tail truncation that produced an invented F1.
+  under-report, and must never invent a finding. Four guards enforce it, and each was added
+  after the corresponding class was demonstrated to be violated on real input or on a fixture:
+  the expression-body bound stopping at a `private suspend fun` (an invented F2 and F7), the
+  tail truncation (an invented F1), the terminator reading only the first word of a line so
+  that `inner class` and `value class` were not declarations (an invented F2 and F7), and a
+  lone annotation line being read as a continuation (498 blocks, no rule affected).
 
-  The fallback, stated accurately: when no `fun` can be located at all, the block falls back
-  to the next `@Test` or end of file. In this suite that fallback is reached by 7 of 798
-  tests, all in `core/ledger/NoteCleanerTest.kt`, whose test names are Kotlin backtick-quoted
-  strings (for example: a fun declaration whose name is wrapped in backticks) that the
-  identifier pattern does not match. Expression bodies are NOT a fallback case; they are
-  resolved. The self-test pins both resolved shapes, including the expression-body tail and
-  the unlisted-declaration stop. It does NOT pin the fallback: no fixture exercises it,
-  because doing so needs a file whose braces do not balance, and a fixture that deliberately
-  does not compile would test the scrubber rather than the block bound. The fallback is
-  therefore the one path with no direct pin, and that limit is stated rather than implied.
+  The fallback, stated accurately: when no `fun` can be located at all, the block falls back to
+  the next `@Test` or end of file, and that fallback has NO upper bound, so a following test's
+  assertions are inside the range. The trigger is a `fun` the identifier pattern cannot match -
+  a Kotlin backtick-quoted test name - and not unbalanced braces. In this suite it is reached
+  by 7 of 798 tests, all in `core/ledger/NoteCleanerTest.kt`. Expression bodies are NOT a
+  fallback case; they are resolved. The self-test pins both resolved shapes and the fallback:
+  `test_fallback_resolves_a_test_whose_fun_cannot_be_located` writes ordinary compiling Kotlin
+  with a backtick-quoted name and proves the test is discovered rather than skipped and its own
+  assertions are counted. It does NOT prove the fallback bounds the block, because it does not;
+  pinning that would enshrine the over-report rather than close it, so it is stated here
+  instead of asserted. (The earlier claim that the fallback had no pin because "a file that
+  does not balance is not representable as a fixture" was wrong on both counts: the trigger is
+  an unlocatable `fun`, and such a file is ordinary compiling Kotlin.)
 
 Body text handling
   Comments and string literals are blanked before the structural scan, so an `assertEquals`
@@ -475,13 +489,19 @@ def _function_body_end(code, mask, fun_start):
             # stopping at the first brace block truncates it, hiding the tail's assertions and
             # manufacturing an F1.
             #
-            # The expression ends at the first top-level DECLARATION that follows it, decided
-            # structurally by `_declaration_offset` rather than by a list of keywords. A keyword
-            # list was the previous approach and it was wrong: it omitted `suspend` and
-            # `inline`, so a following `private suspend fun helper()` was not recognised, its
-            # assertions were attributed to the test, and the scanner invented an F2 and an F7
-            # on a test that was neither tautological nor vacuous. Any list can be incomplete;
-            # this cannot be, because a declaration is recognised by its keywords, not its text.
+            # The expression ends at the first top-level DECLARATION that follows it, decided by
+            # `_starts_new_declaration` over a keyword set rather than by a list of literal
+            # prefixes. The prefix list was the previous approach and it was wrong: it omitted
+            # `suspend` and `inline`, so a following `private suspend fun helper()` was not
+            # recognised, its assertions were attributed to the test, and the scanner invented
+            # an F2 and an F7 on a test that was neither tautological nor vacuous.
+            #
+            # The keyword set is still a list, so this comment does not claim it is complete -
+            # completeness is a property only a test can establish, and
+            # `test_every_kotlin_modifier_is_recognised_as_a_declaration` in the self-test does
+            # exactly that, in both directions. What is guaranteed here is only the DIRECTION:
+            # the bound may stop early, never late, because stopping late is what invents a
+            # finding by borrowing the next declaration's assertions.
             j = i
             expr_depth = 0
             while j < n:
@@ -499,28 +519,44 @@ def _function_body_end(code, mask, fun_start):
 
 
 # Kotlin declaration keywords. A line beginning with any of these (after modifiers) starts a new
-# declaration, so an expression body ends there. This is a keyword set, not a prefix list: a
-# declaration is recognised by the words it is made of, in any modifier order, so it cannot be
-# defeated by a modifier nobody thought to enumerate.
+# declaration, so an expression body ends there. Every Kotlin declaration starter and modifier
+# is present, `inner` and `value` included; both were missing, and a declaration led by one of
+# them was not recognised, so the expression body ran past it and invented an F2 and an F7.
+#
+# Completeness is asserted by `test_every_kotlin_modifier_is_recognised_as_a_declaration`, which
+# compares this set against `KOTLIN_DECLARATION_WORDS` transcribed from the Kotlin grammar in
+# both directions - a missing word and a stray word both fail. A keyword set IS a list, so the
+# set cannot honestly describe itself as undefeatable; the test is what makes the claim true,
+# and a new Kotlin keyword would have to be added to both.
 _DECLARATION_KEYWORDS = frozenset({
-    "fun", "class", "object", "interface", "val", "var", "typealias", "init",
-    "constructor", "companion", "enum", "annotation", "data", "sealed", "open",
+    # declaration starters
+    "fun", "class", "object", "interface", "val", "var", "typealias", "init", "constructor",
+    # modifiers
+    "companion", "enum", "annotation", "data", "sealed", "inner", "value", "open",
     "abstract", "override", "private", "public", "internal", "protected", "lateinit",
     "const", "inline", "suspend", "operator", "infix", "tailrec", "external", "final",
-    "expect", "actual", "crossinline", "noinline", "reified", "vararg", "companion",
+    "expect", "actual", "crossinline", "noinline", "reified", "vararg",
 })
 
 
 def _starts_new_declaration(code, index):
     """
-    True when the next non-blank line begins a top-level declaration.
+    True when the line beginning at `index` begins a top-level declaration.
 
     A line is a declaration when, after its indentation and any leading annotations, its first
-    one or two words are declaration keywords. Two words are enough to see through every
-    modifier combination (`private suspend fun`, `internal inline val`, `override suspend fun`)
-    without depending on a list of literal prefixes, and it cannot be defeated by adding a
-    modifier: a body line is `val x = ...` inside a block, which is already excluded by the
-    depth check, and a continuation line never starts with a keyword.
+    one or two words are declaration keywords. Two words are enough to see through any modifier
+    combination (`private suspend fun`, `internal inline val`, `inner class`, `override
+    suspend fun`) without depending on a list of literal prefixes.
+
+    Two details are load-bearing and were both defects:
+      * the whitespace BETWEEN the two words is skipped. Without it the second iteration never
+        advanced past the separator, `words` was always length 1, and the `words[1]` test was
+        dead code - the recogniser was a single-first-word test, which `inner` and `value`
+        defeat.
+      * an annotation that stands alone on its line leads the declaration on the NEXT line.
+        The walk continues there rather than reading words at the newline it just consumed.
+        Returning False there put the following test's `@Test` line inside this test's range,
+        measured at 498 of the 798 real blocks.
     """
     k = index
     n = len(code)
@@ -544,9 +580,17 @@ def _starts_new_declaration(code, index):
             k += 1
         while k < n and code[k] in " \t":
             k += 1
+        if k < n and code[k] == "\n":
+            # The annotation occupied the whole line, so the declaration it leads is the next
+            # line. Another annotation there re-enters this loop.
+            k += 1
+            while k < n and code[k] in " \t":
+                k += 1
     # The first one or two words must be declaration keywords.
     words = []
     for _ in range(2):
+        while k < n and code[k] in " \t":
+            k += 1
         start = k
         while k < n and (code[k].isalnum() or code[k] == "_"):
             k += 1
