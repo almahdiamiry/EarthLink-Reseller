@@ -18,6 +18,7 @@ import com.example.core.sync.RemoteEvent
 import com.example.core.sync.RemoteEventSource
 import com.example.core.sync.RemoteSyncCoordinator
 import com.example.core.sync.SyncRepositoryImpl
+import com.example.data.repository.LocalLedgerRepositoryImpl
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
@@ -602,14 +603,26 @@ class DataIntegrityReleaseGateTest {
         )
     }
 
+    /**
+     * CLAIM: INV-02 / RED Invariant 2 — a user-level financial "deletion" of a ledger row is
+     *        expressed as an additive contra-entry, never as a physical DELETE on
+     *        `local_ledger_entries`.
+     * SEAM: ROBOLECTRIC — `LocalLedgerRepositoryImpl.deleteTransaction` → `correctTransaction(0.0)`
+     *       over a real Room SQLite database (not a transcribed local copy of the rule).
+     * ORACLE: The account is seeded with exactly one 40,000 IQD "took" row. A full reversal must
+     *         therefore leave exactly two rows — the untouched original plus one contra-entry whose
+     *         `correctsEntryId` names the original and whose `typeRaw` is the opposite financial type
+     *         ("gave" reverses a debt-increasing "took"). A physical row DELETE leaves 0 rows; a
+     *         silent no-op leaves 1; neither can satisfy the count of 2.
+     */
     @Test
     fun invariant_INV02_historicalSourceImmutability_ledgerDeleteUsesContraEntry() = runBlocking {
-        // INV-02: Imported historical records are immutable.
-        // Financial "deletion" must use contra-entries via correctsEntryId, not physical row DELETE.
-        // Evidence: AppDatabase.kt:100-108 — "MUST NOT be exposed as user-level domain financial actions"
-        // Evidence: Repositories.kt:2358-2362 — deleteTransaction calls correctTransaction, not physical delete
+        // Evidence: AppDatabase.kt:147-152 — the DAO's physical DELETE queries are batch
+        // import/restore/reset infrastructure and "MUST NOT be exposed as user-level domain
+        // financial actions"; corrections use contra-entries via correctsEntryId.
+        // Evidence: Repositories.kt:2693-2697 — deleteTransaction is a FULL REVERSAL
+        // (correctTransaction with intendedAmount = 0.0), not a physical delete.
 
-        // Insert original entry
         val account = LocalAccount(id = "inv02_acc", displayName = "INV-02 Test", debtIqd = 40000.0)
         db.localAccountDao().insert(account)
         val originalEntry = LocalLedgerEntry(
@@ -619,9 +632,44 @@ class DataIntegrityReleaseGateTest {
         )
         db.localLedgerEntryDao().insert(originalEntry)
 
-        // Verify the original entry exists
-        val beforeDelete = db.localLedgerEntryDao().getByIdOneShot("inv02_tx1")
-        assertNotNull("INV-02 SETUP | Original entry must exist before correction", beforeDelete)
+        val ledgerRepository = LocalLedgerRepositoryImpl(
+            database = db,
+            ledgerDao = db.localLedgerEntryDao(),
+            accountDao = db.localAccountDao(),
+            outboxDao = outboxDao
+        )
+
+        // EXERCISE THE DELETION SEAM. Everything below is a claim about what this call did.
+        ledgerRepository.deleteTransaction(originalEntry.id)
+
+        val originalAfterDelete = db.localLedgerEntryDao().getByIdOneShot("inv02_tx1")
+        assertNotNull(
+            "INV-02 VIOLATED | The original ledger row must survive a financial 'deletion'; " +
+                "RED Invariant 2 forbids physical DELETE on local_ledger_entries. " +
+                "Evidence: Repositories.kt:2693-2697",
+            originalAfterDelete
+        )
+
+        val allEntries = db.localLedgerEntryDao().getByAccountIdOneShot(account.id)
+        assertEquals(
+            "INV-02 VIOLATED | A full reversal must be ADDITIVE: exactly 2 rows " +
+                "(original + contra-entry). A physical delete leaves 0; a no-op leaves 1. " +
+                "Actual: ${allEntries.size} rows = ${allEntries.map { it.id to it.typeRaw }}",
+            2, allEntries.size
+        )
+
+        val contraEntry = allEntries.find { it.correctsEntryId == "inv02_tx1" }
+        assertNotNull(
+            "INV-02 VIOLATED | A contra-entry with correctsEntryId=\"inv02_tx1\" must exist. " +
+                "Actual rows: ${allEntries.map { it.id to (it.typeRaw to it.correctsEntryId) }}",
+            contraEntry
+        )
+        assertEquals(
+            "INV-02 VIOLATED | Reversing a 40,000 'took' must be recorded as a 'gave' contra-entry, " +
+                "never as a copy of the original type. " +
+                "Evidence: Repositories.kt:2628-2640",
+            "gave", contraEntry!!.typeRaw
+        )
     }
 
     @Test
