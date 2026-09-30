@@ -757,7 +757,15 @@ all. No mutation of `Repositories.kt` can change its outcome, because the mutate
 not in its input set. That is the strongest form of `F5` — not *tolerating* a stub, but being
 *incapable* of observing the change.
 
-#### The invariant is not undefended — this is a finding about *this test*, not about Invariant 2
+#### 1a. `Workstream9AFinancialCorrectionTest.kt:262` — the working guard this finding is *not* about
+
+> **Correction, added after re-review.** This subsection was previously an unnumbered `####`
+> sitting at the same level as the 15 numbered candidate entries, so a reader scanning §3.4
+> could not tell a candidate verdict from a note about one. It is numbered `1a` to mark it as
+> belonging to candidate #1, and it is **not** a sixteenth adjudicated candidate: no verdict
+> is claimed for this test and no run of it was performed by me.
+
+**The invariant is not undefended — this is a finding about *this test*, not about Invariant 2**
 
 **Correction, added after review.** Everything above is true, and a reader would still finish
 this section with a false impression: that RED Invariant 2 has no working guard. **It has
@@ -782,8 +790,9 @@ elsewhere in the suite.
 structurally blind; RED Invariant 2 is defended.** The consequence for Task 5 is a repair,
 not an addition — see the carry-forward in §3.10. I did not adjudicate
 `Workstream9AFinancialCorrectionTest.kt:262` in this task; it is **not** in the
-single-assertion cohort (it carries four assertions), so no verdict is claimed for it beyond
-the one measured fact above.
+single-assertion cohort (it carries **seven** assertion calls — `:289`, `:293`, `:294`, `:298`,
+`:300`, `:301`, `:302`, counted mechanically rather than estimated), so no verdict is claimed
+for it beyond the one measured fact above.
 
 **F5 CONFIRMED**, scoped to the gate test. Task 5 owns the repair (call the real
 `deleteTransaction`, assert the original row survives and a `correctsEntryId` contra-entry
@@ -1286,28 +1295,51 @@ after every one of the ten mutations.
 > **Correction, added after review — read this before the transcript below.** An earlier
 > version of this section presented a single unqualified transcript as end-state proof, and
 > **two of its lines were false at `HEAD`**: `git diff --stat c09918d` and
-> `git diff c09918d --name-only` were shown as empty / `Count: 0`. They are not empty at
-> `HEAD` and never were after the commit step — the worktree at that moment still held the
-> uncommitted 900-line addition to *this* document, so those two commands were reporting a
-> *pre-commit* tree state while being read as a final one. Only the `*.kt`-scoped lines were
-> and are true. For a section whose thesis is *"a green barrier is not evidence that the
-> barrier works"*, a transcript that is green for the wrong reason is the single least
-> tolerable error available, and this was one. The commands are now split by the tree state
-> they were actually run against, and the end-state figures are re-derived as they are at
-> `HEAD`.
+> `git diff c09918d --name-only` were shown as empty / `Count: 0`. Only the `*.kt`-scoped
+> lines were and are true. For a section whose thesis is *"a green barrier is not evidence
+> that the barrier works"*, a transcript that is green for the wrong reason is the single
+> least tolerable error available, and this was one.
+>
+> **The cause, corrected after re-review — my first account of it was arithmetically
+> impossible.** I originally wrote that the empty output came from a tree state that *"still
+> held the uncommitted 900-line addition"*. It cannot have. A worktree holding that addition
+> makes `git diff --stat c09918d` return 900 insertions and `--name-only` return `Count: 1` —
+> the same figures the end state below shows, which would also have made my own sentence
+> "they differ from the pre-commit figures above" self-contradictory.
+>
+> **The only tree state that yields empty output is one identical to `c09918d`** — that is,
+> before §3 was written at all. And that is exactly when the check was run: after the last
+> post-revert execution and **before** the document was edited, when the working tree
+> genuinely was at `c09918d` and the figures were **true**. The recorded output at that moment
+> was:
+>
+> ```console
+> PS> git status --porcelain
+> PS> [clean]
+> PS> diff-vs-base files: 0
+> ```
+>
+> **So nothing was fabricated, and that is not exculpatory.** The defect is sharper than
+> invention: a *valid* measurement was carried into §3.7 and there presented as the end-state
+> proof, where it is false. It is the same class as the thesis of this document — a real
+> result, in the wrong place, doing duty it cannot do. A gate that was checked and passed is
+> not evidence that the gate is green *now*; a diff measured before the edit is not evidence
+> of the diff after it. Both are true statements about the wrong moment.
+>
+> The commands are now split by the tree state each was run against, and the end-state
+> figures are labelled as the commit state they describe.
 
-**The gate, during the mutation phase — every one of these was run after each of the ten
-reverts, before the next mutation began, with the worktree clean and nothing staged:**
+**The gate, during the mutation phase.** The first, third and fourth commands below were run
+after each of the ten reverts, before the next mutation began, with the worktree clean and
+nothing staged. **The `*.kt`-scoped diff is attested at the end state only** — see the note
+after the block:
 
 ```console
 PS> git status --porcelain
-PS> [empty -- this empty output IS the evidence]
+PS> [empty -- this empty output IS the evidence, and it was checked 10 times]
 
 PS> git diff --stat
 PS> [empty]
-
-PS> git diff c09918d --name-only -- "*.kt" | Measure-Object
-Count: 0
 
 PS> Get-ChildItem app\src -Recurse -Include *.kt |
       Select-String -Pattern "R13-T3 TRANSIENT MUTATION"
@@ -1315,11 +1347,21 @@ Count: 0
 ```
 
 Every mutation carried an `R13-T3 TRANSIENT MUTATION` marker comment so a missed revert would
-be greppable rather than invisible. The marker count is `0` repo-wide.
+be greppable rather than invisible. The marker count is `0` across the whole of `app\src` —
+which is the tree the marker scan covered, not the entire repository, and the distinction is
+stated rather than rounded away.
 
-**The end state, re-derived at `HEAD` = `8832454`, with the worktree clean.** These are the
-figures as they actually are, and they differ from the pre-commit figures above in exactly
-the way the commit step explains:
+> **Correction, added after re-review.** This block previously carried
+> `git diff c09918d --name-only -- "*.kt" | Measure-Object` → `Count: 0` and asserted that
+> *all four* commands *"was run after each of the ten reverts"*. The per-revert evidence
+> attests `git status --porcelain`, `git diff --stat` and the marker count; the `*.kt`-scoped
+> figure was checked once, at the end. `git diff --stat` being empty is in fact equivalent to
+> the `*.kt` claim at that point in the task, because the document had not been written yet —
+> but the honest statement is that the byte-identity check is an **end-state** measurement, not
+> a per-revert one, and it is presented below as such.
+
+**The end state, as at commit `8832454`** (the Task 3 commit; the worktree was clean at that
+commit). These are the figures for *that* commit state, not a rolling `HEAD`:
 
 ```console
 PS> git status --porcelain
@@ -1335,6 +1377,13 @@ Count: 1                       <-- the document itself; expected, not leakage
 PS> git diff c09918d --name-only -- "*.kt" | Measure-Object
 Count: 0                       <-- the claim that matters: no production file differs
 ```
+
+> **Correction, added after re-review — this label decays.** The heading previously read
+> *"re-derived at `HEAD` = `8832454`"*, which is a label that stops being true at the next
+> commit: each subsequent commit to this document adds lines, so the same command returns a
+> larger insertion count while `Count: 1` and the `*.kt` `Count: 0` hold. It is now labelled as
+> the commit state it describes. The `*.kt` figure is the one that is supposed to be
+> invariant, and it is.
 
 **The one figure that carries the Ruling 1 guarantee is the last one: `Count: 0` for
 `*.kt`.** Every `.kt` file in the repository is byte-identical to `c09918d`. The single
@@ -1367,11 +1416,49 @@ post-revert run, recorded as such in §3.8 rather than back-filled.
 >
 > Consequence, stated plainly: **M9's revert rests on the `git status --porcelain` gate, on
 > the `*.kt` byte-identity check against `c09918d`, and on the zero-marker count — not on a
-> post-revert test run.** M1–M8 and M10 *are* covered by re-execution: M1/M3/M4/M5/M7 mutate
-> files exercised by PC, M6/M10 by PB, and M8 by PA. The reviewer independently confirmed no
-> leakage resulted. The lesson is procedural and is recorded in the fix round of the task
-> report: **a post-revert re-execution only covers mutations applied before it ran, and an
-> ordering claim needs a timestamp to back it.**
+> post-revert test run.**
+>
+> **Correction, added after re-review — the coverage count is six of ten, not nine and not
+> eight.** The earlier text here claimed *"M1–M8 and M10 are covered by re-execution: M1/M3/M4/
+> M5/M7 mutate files exercised by PC"*. That silently credited M1 and M3 to PC, and **both are
+> wrong**: the only occurrences of `deleteTransaction` and `MIGRATION_8_9` anywhere in
+> `DataIntegrityReleaseGateTest.kt` are inside **comments** (`:610`, and `:925/:932/:937-941/
+> :972`). There is no call to either. A fresh Robolectric database is created at the current
+> schema version, so `MIGRATION_8_9` does not execute either. PC therefore exercises neither
+> M1's nor M3's mutation, whatever else it runs.
+>
+> Re-derived by counting call sites, not by recalling the previous sentence:
+
+> | Mutation | Mutated symbol | Executed by a post-revert run? |
+> |:---|:---|:---|
+> | M4 | `BalanceCalculator.reconstructCurrentPosition` | **yes** — 14 call sites in the class PC re-ran |
+> | M5 | `SyncRepositoryImpl.buildOutboxPayloadMap` | **yes** — 5 real calls in the class PC re-ran |
+> | M7 | `TransactionTypeNormalizer.normalizeTransactionType` | **yes** — 1 real call (`:1226`) in the class PC re-ran |
+> | M6 | `PdfStatementGenerator.balanceTextFor` | **yes** — 3 calls in the class PB re-ran |
+> | M10 | `PdfStatementGenerator.balanceTextFor` | **yes** — same class PB re-ran |
+> | M8 | `UtowerDebtResolver.resolveDebtForAccount` | **yes** — 1 real call (`:84`) in the class PA re-ran |
+> | M1 | `Repositories.deleteTransaction` | **no** — comment-only reference in PC; no call |
+> | M2 | `EarthlinkSearchViewModel.getResellerBalance` | **no** — zero references in all three classes; no `postrevert-seambalance` log exists |
+> | M3 | `AppDatabase.MIGRATION_8_9` | **no** — comment-only references, and no migration runs on a fresh database |
+> | M9 | `RemoteSyncCoordinator.processEvent` | **no** — PC exercises it, but PC ran before M9 was applied |
+>
+> **Six of the ten reverts are backed by post-revert re-execution; four (M1, M2, M3, M9) rest on
+> the `git status` gate, the `*.kt` byte-identity check and the zero-marker count alone.** The
+> re-reviewer identified M2 as uncovered and put the figure at eight; counting the call sites
+> myself gives six, because M1 and M3 are uncovered for the same reason M2 is. I am recording
+> my count rather than the reviewer's, because the arithmetic is checkable and the reviewer's
+> figure credits PC with exercising two mutations it provably does not touch.
+>
+> **The reason those four are uncovered is the same fact as findings `#1` and `#2`.** PC cannot
+> confirm M1's revert because the gate class never calls `deleteTransaction`; PC cannot confirm
+> M3's revert because the gate class never runs a migration. **The blind spots in the evidence
+> and the blind spots in the tests are the same blind spots.** That is worth more than the
+> coverage number itself.
+>
+> The reviewer independently confirmed no leakage resulted. The lesson is procedural and is
+> recorded in the fix rounds of the task report: **a post-revert re-execution only covers
+> mutations whose mutated code that run actually calls, applied before it ran; an ordering
+> claim needs a timestamp, and a coverage claim needs a counted call site.**
 
 ---
 
@@ -1589,13 +1676,17 @@ The gates that mattered, and how each fared.
 - **The revert gate — held, with one coverage limit now disclosed.** §3.7. `git status
   --porcelain` was empty after each of the ten reverts and was re-checked, not assumed; zero
   mutation markers remain; `git diff c09918d --name-only -- "*.kt"` is `Count: 0`, so every
-  production file is byte-identical to the base. **Nine of the ten reverts are additionally
-  covered by post-revert re-execution; M9's is not** — the full-class re-execution ran before
-  M9 was applied (§3.7, ordering taken from log timestamps). M9's revert rests on the
-  `git status` gate, the `*.kt` byte-identity check and the zero-marker count. An earlier
-  version of this bullet claimed all three classes were re-executed post-revert under a
-  heading saying the reverts were *"proven by execution"*; that overstated M9's coverage and
-  is corrected here.
+  production file is byte-identical to the base. **Six of the ten reverts are additionally
+  covered by post-revert re-execution; M1, M2, M3 and M9 are not** (§3.7, which gives the
+  per-mutation table and the counted call sites behind that figure). M9 is uncovered because
+  the full-class re-execution ran before M9 was applied (§3.7, ordering taken from log
+  timestamps); M1 and M3 because the re-run class references the mutated symbols only in
+  comments; M2 because no re-run class references `getResellerBalance` at all. Those four rest
+  on the `git status` gate, the `*.kt` byte-identity check and the zero-marker count. Earlier
+  versions of this bullet claimed nine of ten, then (in the fix round) implied eight; both
+  overstated coverage, and both were corrected by counting call sites rather than by adjusting
+  the previous sentence. An even earlier version claimed all three classes were re-executed
+  post-revert under a heading saying the reverts were *"proven by execution"*.
 - **Ruling 2 (Gradle will lie) — held.** 16 runs, `--rerun-tasks` on every one, XML read
   after every one, `testDebugUnitTest UP-TO-DATE` observed zero times. The one discarded run
   is disclosed in §3.8 with its cause.
