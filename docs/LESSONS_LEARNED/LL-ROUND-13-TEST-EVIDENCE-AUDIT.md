@@ -2378,6 +2378,19 @@ landed rather than asserting it. All 11 classes re-run together:
 gradlew.bat :app:testDebugUnitTest --tests "*Workstream1StatementCorrelationTest*" --tests "*ApiErrorSemanticsRegressionTest.testApi03*" --tests "*BugOb01ExpiryAlertThrottleTest*" --tests "*DashboardViewModelForecastTest.testDefaultDaysIsSeven" --tests "*HistoricalSubscriberMatchingSafetyTest*" --tests "*Workstream7ImportMatchingCollisionTest*" --tests "*Phase1FirestoreDocumentIdentityTest.testScenarioI*" --tests "*Phase1FirestoreDocumentIdentityTest.testScenarioJ*" --tests "*DefectRemediationSeamTest.fix3_*" --tests "*DataIntegrityReleaseGateTest.oracle_*" --tests "*EarthlinkSearchViewModelSeamTest.testBalanceAfterMath*" --tests "*Step3DurableDispatchTest.test01*" --tests "*Step3DurableDispatchTest.test02*" --tests "*Step3DurableDispatchTest.test17*" --tests "*Step3DurableDispatchTest.test21*" --rerun-tasks --console=plain
 ```
 
+> **STALE AS A COMMAND, marked at Task 7 (2026-09-30).** The
+> `--tests "*Phase1FirestoreDocumentIdentityTest.testScenarioJ*"` filter **now matches nothing** —
+> repair A4 deleted that test at `d728902`. This block is the historical record of §4's post-revert
+> run, and the `38 / 0 / 0` figure below is the figure *that run* produced; **do not re-run it as
+> written.** Re-running it today would fail with "No tests found for given includes" for the deleted
+> filter, which is a different failure from the one this run recorded.
+>
+> **Scenario-J line labels are normalised here.** Four sources gave four labels for the same 16 lines:
+> plan `:818-833`, implementer `:819-833`, this document `:820`, body `:821-832`. **`:820` is used
+> throughout this document and is the `@Test`-annotation line under the scanner's own convention**
+> (`scripts/scan_test_evidence.py` keys each cohort member on its annotation line, `start_line`), which
+> is why `:605`/`:606` differed for `DataIntegrityReleaseGateTest` in §4.2 as well.
+
 **Post-revert: `tests=38 failures=0 errors=0` across 11 classes — identical to the forced baseline in
 §4.3.** Log: `r13-t4-postrevert-full.log`. `BUILD SUCCESSFUL in 1m 39s`,
 `35 actionable tasks: 35 executed`.
@@ -2593,6 +2606,24 @@ and a downstream exception standing in for a correlation that no longer rejects.
    it is 5 of 12 = 42%: 7 `CONFIRMED` / 5 `REFUTED`, and the five are the same five. Either way it
    would have said nothing about the 43 cohort members it screened without a match (§4.8). **The
    screen narrows the field; only the run decides.**
+   would have said nothing about the 43 cohort members it screened without a match (§4.8). **The
+   screen narrows the field; only the run decides.**
+
+   > **Correction applied at Task 7 (2026-09-30).** This bullet previously opened *"wrong about half
+   > the time"* and cited **20%** — twice. **The 20% figure was false.** Counted against this round's
+   > own ranked table (§4.2's match column read against §4.10's verdict rows, which agree), the ten
+   > pattern matches split **5 `CONFIRMED` / 5 `REFUTED` / 0 `LEAD`**, so the real misprediction rate
+   > is **50%**, not 20%. The false figure appeared at **three sites in this section** — here, at §4.1,
+   > and at the §4.4 #14 lead-in — and at **two sites in the audit report**
+   > (`.superpowers/sdd/2026-09-30-test-suite-evidence-audit/task-4-report.md:401,404`). All five now
+   > read as **counts with the denominator stated** (5 of 10; 5 of 12), which is the form this document
+   > requires and the form that cannot drift: a bare percentage has no denominator to check it against.
+   > **The error ran in the flattering direction** — 20% would have licensed exactly the
+   > screening-without-execution shortcut this audit exists to forbid, on the ~86 files it never
+   > touched. Re-derived at Task 7 by reading §4.10's 17 rows directly: `CONFIRMED` = #1, #2, #3, #6,
+   > #7, #13, #14 (7); `REFUTED` = #4, #5, #8, #9, #10, #11, #15, #16, #17 (9); `LEAD` = #12 (1);
+   > 7 + 9 + 1 = 17. **Pattern-shaped subset of those 17** = #1-#10, #13, #14 = 12 items →
+   > 7 `CONFIRMED` / 5 `REFUTED` → **5 mispredicted of 12 = 42%**.
 2. **The refuted half carries the round.** #8 and #9 are the positive control for #6 and #7: four
    tests, one production file, the same `assertNull` shape, the same family of mutant — and two went
    red where two stayed green. That contrast is the only reason #6/#7 can be trusted, and it is
@@ -2626,3 +2657,505 @@ five caught their mutation.** **Breaking the code and watching the test fail, or
 measurement this section is built on — and it is not claimed to be infallible either: several of this
 section's own recorded figures were wrong and are corrected above, each time by counting against a
 table rather than by substituting a plausible figure.**
+
+---
+
+## Task 5 — The repairs, as executed
+
+Fourteen CONFIRMED findings, thirteen repaired and one deleted, across six commits. Every repair was
+proven by a faithful mutant that leaves the test **green before** the repair — that green *is* the
+defect — then **red after**, then **green on clean code**. All three states are recorded per repair
+below with the log that carries them. Logs live outside the repository
+(`%LOCALAPPDATA%\Temp\opencode\r13-t5-t{1..6}\`) because `*.log` is not gitignored and writing into
+the worktree would have broken the revert gate.
+
+**The method constraint the repair plan's own Global Constraints got wrong, stated once here because
+it governs every row below.** The plan demanded a mutant *"faithful to the test's own name"* that
+leaves the test green. That is **unsatisfiable by construction for a Tier-B finding**, because Tier B
+*means* the assertion is already sound — so every name-faithful mutant turns it red. **The working
+rule, which every Tier-B row below follows: for a Tier-B repair, the faithful mutant is the one that
+breaks the awaited state, not the named behaviour.** The plan's Global Constraints are superseded by
+the outcome recorded here.
+
+### 5.1 Tier B — four preconditions, one line each (`6a53357`)
+
+| # | Test (line at `6a53357`) | Faithful mutant | Green under mutant, **before** | Red **after** | Green on clean | Log(s) |
+|:--|:--|:--|:--|:--|:--|:--|
+| B1 | `LocalAccountsViewModelTgzSyncTriggerTest.kt:197` `testFailedTgzImport_corruptArchive_doesNotTriggerSync` | `LocalAccountsViewModel.kt:330` — the `!result.success` branch stops assigning `_error.value` | **3 / 0 / 0** | **3 / 1 / 0** | **3 / 0 / 0** | `r13-t5-t1-fixr1-rep1-state{A,B,C}-*.log` |
+| B2 | `DataIntegrityReleaseGateTest.kt:776` `invariant_INV12_noOutboxLoopsOnRemoteApply` | **A** (name-faithful): an `outboxDao.insert(...)` added into `applyAccountUpsert`'s `APPLY_UPSERT` arm. **B** (awaited-state): that arm returns `SKIPPED_DUPLICATE` instead of applying — the audit's M9 narrowed to one branch | A: **red before and after** (1/1/0 both) — the existing assertion was already live. **B: 2 / 0 / 0 green before**, **1 / 1 / 0 red after** (`expected:<APPLIED> but was:<SKIPPED_DUPLICATE>`) | see B | **2 / 0 / 0** | `m1-pre-repair`, `m1-post-repair`, `m2-pre-repair`, `m2-post-repair`, `rep23-clean` |
+| B3 | `DataIntegrityReleaseGateTest.kt:819` `idempotency_duplicateSyncEvent_zeroNewEntries` | `RemoteSyncCoordinator.applyLedgerUpsert` — `ledgerDao.upsert(entry)` removed, so the coordinator reports `APPLIED` and advances the cursor while inserting nothing | **1 / 0 / 0** (`0 == 0` with nothing inserted) | **1 / 1 / 0** (`Count after first: 0 expected:<1> but was:<0>`) | **2 / 0 / 0** | `m3-pre-repair`, `m3-post-repair`, `rep23-clean` |
+| B4 | `ApiErrorSemanticsRegressionTest.kt:343` `testApi03_dashboard_networkFailureYieldsNullUnavailable` | `DashboardViewModel.kt:184` — the `testCountJob` body no longer calls `gateway.getTestUsersCount()` | **11 / 1 / 0 — and the one failure is the *sound sibling* `:315`; the blind target PASSES** | **11 / 2 / 0** (`WantedButNotInvoked: getTestUsersCount`) | **11 / 0 / 0** | `m4b-pre-repair`, `m4b-post-repair`, `allfour-clean` |
+
+**`:776`'s earlier audit mutant was unfaithful and was replaced.** The audit's own mutant suppressed
+every remote event (`if (true || …)`), which breaks the **precondition**, not the assertion — it tests
+whether the apply happened, which is what the repair *adds*. Controller Ruling 3 forbade its reuse.
+The replacement is mutant **A**, an outbox write inside the account-upsert path: that is the actual
+echo loop `invariant_INV12_noOutboxLoopsOnRemoteApply` names. **Mutant A is red both before and after
+the repair**, which is a result worth keeping: the existing `assertEquals(outboxBefore, outboxAfter, …)`
+was never unguarded against a real INV-12 violation. The repair closes a *binding* gap; it does not
+newly arm an assertion. Because A cannot produce the mandated "green before repair" state, mutant B
+was added to establish the defect. **Both are kept, and the A/B distinction is the point: A tests the
+assertion, B tests the binding.**
+
+**B4 deviates from its brief, deliberately, and the deviation is correct.** The plan directed the
+sibling `:315`'s state-assertion shape. That shape is unsatisfiable here: `_testCount` initialises to
+`MutableStateFlow<Int?>(null)` at `DashboardViewModel.kt:40` **and** the catch assigns `null` at `:190`,
+so the awaited value and the asserted value are the *same observable with the same value* and no state
+assertion can distinguish "attempted and failed" from "never ran". The repair uses the gateway
+interaction — `verify(mockGateway, atLeastOnce()).getTestUsersCount()` — the only non-proxy observable.
+`atLeastOnce()` rather than `times(1)`, because `DashboardViewModel.kt:63-65` calls
+`loadDashboardData()` from `init` *and* the test calls it explicitly, so two fetches are correct
+(`times(1)` failed on clean code and was corrected).
+
+### 5.2 Tier A — four bound to production, one deleted
+
+| # | Test (line at its commit) | Tier | Faithful mutant | Green **before** | Red **after** | Green clean | Commit | Log(s) |
+|:--|:--|:--|:--|:--|:--|:--|:--|:--|
+| A1 | `DataIntegrityReleaseGateTest.kt:606` → `:623` `invariant_INV02_…ledgerDeleteUsesContraEntry` | A | `Repositories.kt:2693` `deleteTransaction` replaced by `ledgerDao.deleteById(id)` — the physical-DELETE violation of RED Invariant 2 | **36 / 0 / 0**, with the INV-02 case a **self-closing passing `testcase`** | **36 / 1 / 0**, `INV-02 VIOLATED \| The original ledger row must survive a financial 'deletion'` | **36 / 0 / 0** | `ff5b485` | `r13-t5-t2-mutant-{prerepair,postrepair}`, `clean-postrepair`, `fullsuite` (798/0/0) |
+| A2 | `EarthlinkSearchViewModelSeamTest.kt:1214` and `:1223` → `:1250` and `:1269` `testBalanceAfterMath_*` | A | `UserDetailScreenV2.kt:410` `resellerBalance→.let { it - packageCost }` → `(resellerBalance →: 0.0) - packageCost` | **40 / 0 / 0**, **both** target cases self-closing | **40 / 2 / 0** — exactly the two target tests, at `:1258` and `:1276` | **40 / 0 / 0** | `2d9ab99` | `r13-t5-t3-mutant-{prerepair,postrepair}`, `clean-postrepair`, `fullsuite` (798/0/0) |
+| A3 | `Workstream1StatementCorrelationTest.kt:46` → `:194` `testBaghdadTimezoneConversion` → `testStatementZoneIsFormatConditionalIsoUtcOtherwiseBaghdad` | A | `Repositories.kt:1643` — the `else` arm of the format-conditional branch forced to UTC, collapsing `"T"`-vs-not discrimination | **2 / 0 / 0**, the INV-05-named test self-closing | **2 / 1 / 0**, `CLAIM 2 … expected:<INCONCLUSIVE> but was:<VERIFIED_SUCCESS>` at `:223` | **2 / 0 / 0** | `b2026e2` | `r13-t5-t4-mutant-{prerepair,postrepair}`, `clean-postrepair`, `fullsuite` (798/0/0), plus `rev-both-baghdad` |
+| A4 | `Phase1FirestoreDocumentIdentityTest.kt:820` `testScenarioJ_counterfactualRawPayloadContainsRawJson` | A | `SyncRepositoryImpl.kt:719` — the ledger-path `dataMap.remove("rawJson")` **disabled**, so `rawJson` leaks to Firestore | **20 tests / 6 failures — and J is one of the 6 green** | *(deleted, not repaired)* | **19 / 0 / 0** | `d728902` | `r13-t5-t5-mutant-{prerepair,postdeletion}`, `clean-postdeletion`, `fullsuite` (**797/0/0**) |
+
+**A2 pins FORM, not VALUE, and the round must not read it as more.** `balanceAfter` is a `val` local
+inside a `@Composable` (`UserDetailScreenV2.kt:217` opens `UserDetailScreenV2`; `:410` is inside it)
+with no injectable seam, so no runtime binding is reachable from a JVM test. The repair reads the
+production **line** and compares it to a literal copy — content-matched, not line-pinned, with
+`require(matches.size == 1)` so a rename or duplicate fails loudly. **The gate is that the line keeps
+its null-guarded shape. It does not prove the rendered value is correct.** See §6.1 for the production
+of that null, which this repair does not touch.
+
+**A4's guard is SIX tests wide, not one.** The plan and the brief both named Scenario I alone.
+Disabling `:719` turned red **ScenarioI, ScenarioF, ScenarioD, ScenarioE, ScenarioH and
+LedgerPayloadBoundary** — six tests in one class. The deletion is therefore *safer* than planned, and
+the round's own record had been **understating surviving coverage in the same shape the audit
+understated findings**. The reviewer's independent trace established that `buildOutboxPayloadMap` is
+called in **production** at `SyncRepositoryImpl.kt:492`, so those six watch the live Firestore-push
+line, not a test-only helper.
+
+**A3 is the only task requiring a tier change, `JVM` → `ROBOLECTRIC`**, because
+`parseStatementTimestamp` is `private` (`Repositories.kt:1650`) and its only public route is
+`verifyAndResolvePendingOperation` (`:1747`). The repaired test asserts **no offset constant at all**:
+the zone production chose is read only out of production's own ±90 s correlation verdict, so no
+constant in the test can stand in for it. It catches a collapse in **both** directions.
+
+### 5.3 Tier C — three fixtures routed through the gates they name (`0b14755`)
+
+| # | Test (line at `0b14755`) | Faithful mutant | Green **before** | Red **after** | Green clean | Log(s) |
+|:--|:--|:--|:--|:--|:--|:--|
+| C1 | `DataIntegrityReleaseGateTest.kt:993` `backupRestore_migrationDefaults_safeForBalanceCalculator` | **A1** `AppDatabase.kt:832` `openingDebtIqd` `DEFAULT 0.0` → `25000.0`. **A2** `:835` `stateSource` `DEFAULT NULL` → `'UTOWER_SNAPSHOT_RESOLVED'` | A1: **36 / 0 / 0** | A1: **36 / 1 / 0**, `expected:<50000.0> but was:<75000.0>`. A2: **36 / 1 / 0**, `expected:<50000.0> but was:<20000.0>` | **36 / 0 / 0** | `t1-mutantA1-{prerepair,postrepair}`, `t1-mutantA2-postrepair`, `t1-clean` |
+| C2 | `HistoricalSubscriberMatchingSafetyTest.kt:238` `testPhoneMatching_cannotCrossHistoricalBoundary` | `SubscriberMatcher.kt:103` `if (acc.isHistoryOnlySubscriber) return@filter false` removed | **7 / 0 / 0** | **7 / 2 / 0** — both target tests and only those two | **7 / 0 / 0** | `t23-mutantB-{prerepair,postrepair}`, `t234-clean-first` |
+| C3 | `HistoricalSubscriberMatchingSafetyTest.kt:271` `testNameMatching_cannotCrossHistoricalBoundary` | `SubscriberMatcher.kt:119`, the same line in Stage 4 | (same run) | (same run) | (same run) | (same run) |
+| C4 | `Step3DurableDispatchTest.kt:593` `test17_statement4TupleRejectsDifferentUser…` | `Repositories.kt:1684` `matchesUser` → `!item.userID.isNullOrEmpty()` — "the statement names *some* user", the exact bug the 4-tuple exists to prevent | **23 / 0 / 0** | **23 / 1 / 0**, `expected:<…no single matching ledger transaction> but was:<…inspection inconclusive: MISSING_LOCAL_FINANCIAL_TARGET>` | **23 / 0 / 0** | `t4-mutantC-{prerepair,postrepair}`, `t4-clean-first` |
+
+**C2 and C3 needed a fixture change, not an assertion — and adding assertions would have produced a
+second blind test.** Their pre-repair fixtures were **double-guarded**. The repaired fixture
+(`isHistoryOnlySubscriber = true`, `sourceExternalId = null`, `earthlinkUsername = null`, `phone1 = P`
+against `extId = "e_22222"`, `username = null`, `phone = P`) was traced through `SubscriberMatcher`
+before reliance: `conflictingExtId` at `:105` evaluates `true && false` = **false**, and
+`conflictingUsername` at `:106` short-circuits on `cleanUsername == null` = **false** — leaving
+`SubscriberMatcher.kt:103` and `:119` as the *only* thing standing. **Zero assertions were added to
+C2 or C3**; the pre-existing `assertNull` lines are byte-identical. This is also where the audit's own
+repair recipe was wrong in **both** branches — see §6.7.
+
+**C1 needed two mutants, and the second is what makes it a real proof.** Running `MIGRATION_8_9` was
+not sufficient on its own: the fixture also needed a row with `isSnapshotHistory = true`, because
+`BalanceCalculator.kt:70-74` filters only when that flag is set and the pre-repair fixture had
+`false` on both entries. **Without it the branch the test names would have been unreachable even
+after the migration ran** — a plan-faithful implementation would have shipped a test that runs the
+right migration and still proves nothing. A2 is the mutant that proves the *branch* is no longer a
+copy: `20000.0` is exactly the non-snapshot row alone, filtered by **production** code on a branch
+the test no longer computes.
+
+**C4 asserts which guard rejected, not just that something did.** Both routes to `INCONCLUSIVE`
+(`Repositories.kt:2010` and `:2058`) construct the same enum, which is why the pre-existing
+`assertEquals(INCONCLUSIVE, resolution.result)` could not distinguish them. The repair pins the
+**diagnostic string** at `:2006`, which sits in the arm reachable only when the 4-tuple rejected and
+nothing threw; `:2055` exists only inside the `catch` at `:2042`. Pinning `:2006` exactly therefore
+pins *"the 4-tuple rejected and nothing threw"*, and cannot be satisfied by the route the test
+previously took.
+
+### 5.4 What the repairs changed in the shape of the suite
+
+**The single-assertion cohort shrank from 69 to 60, by exactly the nine tests the repairs bound.**
+Re-derived at Task 7 by re-running the scanner against the tree extracted at base `1b9fff7` and
+against `0b14755` and diffing the two lists by `(file, test-name)`: **nine cohort members left the
+cohort, and none entered it.**
+
+| Left the cohort | Left because |
+|:--|:--|
+| `LocalAccountsViewModelTgzSyncTriggerTest.kt:207` `testFailedTgzImport_…` | B1 added a precondition |
+| `DataIntegrityReleaseGateTest.kt:776` `invariant_INV12_noOutboxLoopsOnRemoteApply` | B2 added a precondition |
+| `DataIntegrityReleaseGateTest.kt:819` `idempotency_duplicateSyncEvent_zeroNewEntries` | B3 added a precondition |
+| `DataIntegrityReleaseGateTest.kt:606` `invariant_INV02_…ledgerDeleteUsesContraEntry` | A1 was rewritten; it now carries five assertions |
+| `DataIntegrityReleaseGateTest.kt:923` `backupRestore_migrationDefaults_safeForBalanceCalculator` | C1 added two assertions |
+| `ApiErrorSemanticsRegressionTest.kt:343` `testApi03_dashboard_networkFailureYieldsNullUnavailable` | B4 added a `verify` |
+| `EarthlinkSearchViewModelSeamTest.kt:1223` `testBalanceAfterMath_unknownBalance_isNull` | A2 added a source-scan assertion |
+| `Workstream1StatementCorrelationTest.kt:46` `testBaghdadTimezoneConversion` | A3 was rewritten and renamed |
+| `Phase1FirestoreDocumentIdentityTest.kt:820` `testScenarioJ_counterfactualRawPayloadContainsRawJson` | A4 **deleted** it |
+
+**Eight left by repair, one by deletion.** Two repairs touched cohort members and do **not** appear in
+this table, because the tests concerned were never in the cohort: A2's second target
+`testBalanceAfterMath_knownBalance_computesCorrectly` (`:1214`) carried **two** assertions at base, and
+C4's `Step3DurableDispatchTest.kt:593` carries **two** — §4.4 #13 and #14 were both multi-assertion, which
+is exactly why the single-assertion screen never surfaced them and §4 had to adjudicate them by hand.
+
+**`oracle_noteTransaction_zeroFinancialImpact` did *not* leave the cohort, and that is the point** — it
+is still there at `0b14755` (§6.8). The cohort is a *screening* surface, and a test can be repaired
+while its cohort membership is unchanged if the repair adds nothing; conversely a test can be confirmed
+fake and never leave the cohort if nobody repairs it. **"Left the cohort" and "repaired" are not the
+same fact.**
+
+**Two record figures the audit stated for `Step3DurableDispatchTest.kt` were re-measured and are
+corrected here, because Task 7 re-derived them rather than inheriting them.**
+
+- **Assertion call sites: 146, counted at base `d728902`** — `assertEquals` 84, `assertNotNull` 31,
+  `assertTrue` 12, `assertNull` 8, `assertFalse` 7, `assertNotEquals` 3, `fail` 1. Task 7's own count
+  over the same blob reproduces 146 exactly. **At `0b14755` the figure is 147**, because C4 added one
+  `assertEquals`. The audit's 146 is therefore correct *for the commit it was measured against* and
+  stale by one for HEAD; both numbers are recorded rather than one being quietly restated.
+- **Unexecuted Seam tests: 38 of 40.** The M9 selection was `testBalanceAfterMath*`, which ran **2**
+  (`:1214` and `:1222`), so 40 − 2 = **38**. The figure this bullet used to carry, 39, contradicted
+  the table directly above it.
+
+**The three off-by-two `Repositories.kt` citations are corrected at source and re-verified at Task 7
+by reading the file:** `:1963` (not `:1965`), `:1974` (not `:1976`), `:2042` (not `:2044`). All three
+now read as the line they name — `:1963` is `if (op.dispatchClaimCount == 0) {`, `:1974` is the
+`resolvePendingOperationVerifiedSuccess(…, "[VERIFIED RENEW]")` call, `:2042` is `catch (e: Exception) {`.
+
+### 5.5 The four record defects the Task 4 review found, and their disposition
+
+All four were **load-bearing** — each one, had it shipped, would have made this section assert
+something false — and all four are now closed. Each was closed by *counting against a table*, never
+by substituting a plausible figure.
+
+| Defect | Was | Now | How it was verified at Task 7 |
+|:--|:--|:--|:--|
+| **`20%` pattern misprediction** | §4 opened "wrong about half the time" and cited **20%**, at three sites in §4 and two in the audit report | **5 of 10 = 50%** over the ranked 10, and **5 of 12 = 42%** over the 12 pattern-shaped items — every site a **count with its denominator stated** | Re-derived twice, independently: (a) §4.2's match column read against §4.10's verdict rows, which agree; (b) §4.10's 17 rows read directly. `CONFIRMED` = #1,#2,#3,#6,#7,#13,#14 = 7; `REFUTED` = #4,#5,#8,#9,#10,#11,#15,#16,#17 = 9; `LEAD` = #12 = 1. Pattern-shaped subset = 12 → 7/5. **No bare percentage survives in this document.** |
+| **`:1738` verdict count** | Read **7 CONFIRMED, 10 REFUTED, 1 LEAD, 0 OPEN — across 17**, which sums to **18** | **7 / 9 / 1 / 0 = 17** | The §4.10 table has **17 rows**, counted. `REFUTED` is **9**, not 10. The correct line already existed at §4.10; the section header was carrying a stale copy of it. The self-correction had fixed `CONFIRMED` 6 → 7 and left `REFUTED` at 10 because it checked its own figure against the `CONFIRMED` rows only. |
+| **§4's `Step3DurableDispatchTest` match count** | §4.4 said the file has **0 pattern matches**; §4.4 #14 graded `:593` as a P2-family match and **confirmed** it; the report said "only one strict match across both files" | **Two pattern-shaped items were adjudicated in §4** — one **strict P3** at `EarthlinkSearchViewModelSeamTest.kt:1214`, one **P2-family** at `Step3DurableDispatchTest.kt:593` — with the P2-family grade labelled a **stretch** because `:593`'s two assertions are enum equalities against `UnknownOutcomeResolutionResult`, neither an `assertNull` nor a count-compare | Re-derived by locating each item in the base-cohort list: `:1214` is a cohort member at `1b9fff7`; `:593` is **not** (its two assertions make it multi-assertion), which is exactly why "0 strict matches" and "one P2-family on re-reading" were both true statements about different things. |
+| **"caught every mutation"** | Claimed `Step3DurableDispatchTest` *"caught every mutation thrown at it"* and was *"the strongest test file this audit has examined"* | Retracted in place: **three of the four probed tests caught their mutation; the fourth, `:593`, is in the same file and did not catch M12** | §4.10 row 14 is a `CONFIRMED` finding *inside the very file* the claim praised. The claim is contradicted by a table in its own section. |
+
+### 5.6 Constraint compliance, measured
+
+- **Thirteen repaired, one deleted, zero silently dropped.** The one deletion (A4) was the plan's
+  explicit exception and was gated on Scenario I being a real guard; the stop-gate passed before it
+  proceeded.
+- **No existing assertion was weakened anywhere.** The audit's own claim that "no assertion was
+  weakened" was *one* gloss that Task 2's review caught and the implementer corrected: the INV-02
+  rewrite **removed** the pre-existing `assertNotNull("INV-02 SETUP | …")` fixture precondition. The
+  removal is subsumed rather than a loosening — production `correctTransaction` throws
+  `IllegalArgumentException` at `Repositories.kt:2562-2563` if the original is absent, so the
+  precondition is now enforced by production and the post-call survival assertion is strictly stronger
+  — but the constraint language is absolute and the gloss was a defect of the same class this round
+  exists to correct. **Recorded rather than smoothed over.**
+- **No production file is in any of the six commits.** `git diff 1b9fff7 0b14755 -- app/src/main` is
+  empty; the diff is **8 commits, 5 bearing `.kt` changes, 3 report-only, 9 test files total**.
+- **Diffstat per commit:** `6a53357` +37/−1 · `ff5b485` +56/−8 · `2d9ab99` +57/−0 · `b2026e2`
+  +203/−21 · `d728902` −16 · `0b14755` +262/−56. **The single deletion in Task 1's +37/−1 is
+  `coordinator.processEvent(event)` becoming `val result = …`** — the discarded return value being
+  bound, exactly as prescribed.
+- **Every mutant was transient.** `git status --porcelain` was read empty after each revert, before
+  the next mutation began, and is empty at `0b14755` with `git diff --stat 0b14755 -- "*.kt"` empty.
+
+### 5.7 The measured baseline at close
+
+```text
+gradlew.bat :app:testDebugUnitTest --rerun-tasks --console=plain
+.prerun.txt : XML files remaining before run: 1   [all TEST-*.xml deleted before the run]
+log         : r13-t7-baseline.log (112,870 bytes, non-zero, counted)
+log names   : > Task :app:testDebugUnitTest        (testDebugUnitTest UP-TO-DATE: 0 occurrences)
+              BUILD SUCCESSFUL in 6m 31s
+XML         : 113 files
+              tests=797  skipped=0  failures=0  errors=0
+              <testcase> elements = 797
+              files containing zero <testcase> = none
+              <failure> elements = 0     <error> elements = 0
+              all 113 XML mtimes identical (10/01/2026 02:40:51) — one run, not an accumulation
+```
+
+**797 = 798 − Task 5's one sanctioned deletion.** The drop is fully accounted for:
+`Phase1FirestoreDocumentIdentityTest` moved **20 → 19** and the suite total moved **798 → 797**, with
+no other class changing and no offsetting test added. Task 7 measured this rather than inheriting it,
+and it matches Task 5's own measurement and Task 6's independently.
+
+**No gate script asserts a count, so 797 cannot break a release.**
+`scripts/production_gate.sh:76` and `:81-90` run named `--tests` selections;
+`scripts/collect_closure_evidence.py:214` computes its exit code from
+`failed_tests == 0 and error_tests == 0 and total_tests > 0`. **One consequence that must be
+recorded, because it runs the other way from the plan's expectation: `production_gate.sh:86` executes
+`com.example.Phase1FirestoreDocumentIdentityTest`, and that class now runs 19 tests, not 20.** The
+deletion removed a test from *inside the release gate*.
+
+---
+
+## Task 6 — What is still unproven
+
+Everything in this section is a **limit on the round**, stated so that no reader of §5 mistakes a
+repaired test for a proven behaviour. Nothing here is a claim that a defect exists; each item says
+what is not established and what it would take to establish it.
+
+### 6.1 `UserDetailScreenV2.kt:382` — the null's **production** is unguarded (highest consequence)
+
+> **Task 3 guarded the CONSUMPTION of the null. Nothing guards its PRODUCTION.**
+
+`resellerBalance = null` inside the screen's `catch` (`UserDetailScreenV2.kt:381-383`) is the **only**
+place the screen produces the null that `:410` consumes. Mutating it to fabricate `0.0` leaves the
+class `40 / 0 / 0` — green. That fabricates a **0 IQD "Balance After Renewal"** row (`:656`) on gateway
+failure, which is **the identical user-visible harm RED Invariant 1 exists to prevent**: a real-looking
+financial figure shown to the reseller in place of an honest "unknown". Pre-existing, outside Task 3's
+scope, and **the single most consequential unproven path found in the whole repair programme.**
+
+### 6.2 `Workstream1StatementCorrelationTest.kt:24` — a second unbound test, in the file just repaired
+
+A second instance of the **identical** defect Task 4 repaired, in the same file, **still unbound and
+unfixed**. A **case-sensitive** grep for `parseStatementTimestamp` over
+`Workstream1StatementCorrelationTest.kt` returns **0 hits**: the class never so much as *names* the
+production parser. `testContractStatementFieldsDeserialization` (`:171` at HEAD; `:24` at Task 4's
+base) asserts on `parsed!!.occurredAt` as a **raw `String`** (`Models.kt:327`,
+`@Json(name = "date") val occurredAt: String?`), which Moshi never interprets. The plan had designated
+this test as *"the model for what binding looks like"* — **exactly backwards.** It is a sound test of a
+different thing (Moshi field-name contract) and was correctly left untouched, but it does not guard
+the timezone branch.
+
+### 6.3 `Step3DurableDispatchTest.kt:48-67` — a dead transcription that hardcodes the bug
+
+```kotlin
+48:    private fun parseStatementTimestamp(dateStr: String?): Long {
+…
+61:                sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")   // for ALL FIVE patterns
+…
+67:    }
+```
+
+**Never called** — a repo-wide grep for `parseStatementTimestamp` in that file returns exactly one
+hit, the declaration. It is a transcription of the production parser that **hardcodes UTC for all
+five format patterns**, which *is* the collapsed-zone bug this repair programme exists to catch —
+sitting inside the file the suite treats as the statement-correlation model. Harmless today because
+nothing calls it. **A trap the moment someone wires it up**, because it looks like a working example
+of the thing it gets wrong.
+
+### 6.4 `conflictingExtId` (`SubscriberMatcher.kt:105` and `:121`) — no test, ever
+
+`conflictingExtId` has **no test exercising it in its rejecting role, and never has.** Precise blame,
+and it is **not a regression**: before *and* after the Tier-C repair the candidate is
+`isHistoryOnlySubscriber = true`, so `return@filter false` at `:103` / `:119` short-circuits before
+`:105` / `:121` are ever evaluated. The flag rejects **only** in the counterfactual world where
+`:103` / `:119` is removed. **Both repaired tests moved further away from it**, because a
+double-guarded fixture repair redirects the test that incidentally reached the second guard. The gap
+is invisible from the two repaired tests. **General lesson:** repairing a double-guarded fixture can
+leave the second guard with *less* coverage than before.
+
+### 6.5 `BalanceCalculator.deriveAccountBalance` (`:115`) — dead code, and the seam is missing
+
+One repo-wide grep hit: the declaration. **Zero callers** in `app/src/main` or `app/src/test`. It is
+the obvious seam for exactly this class of repair — it derives `isSnapshot` internally at `:120` — and
+binding to it would have bound the test to an unreachable line, which is why Task 6 used
+`rebuildAccountBalances` / `recalculateAccountHistoryInternal` (`Repositories.kt:3543`, live at
+`:2687` / `:3064` / `:3071` / `:3639`) instead. **The seam a test naturally wants is absent, and its
+absence is invisible until someone tries to bind to it.**
+
+### 6.6 `assets/com.example.core.database.AppDatabase/8.json` does not exist
+
+Versions **1–7 and 9–18** are exported. **8 is missing**, so the v8 schema `MIGRATION_8_9` migrates
+*from* is not an archived artefact but a **derivation**: `9.json`'s `createSql` minus exactly the six
+`MIGRATION_8_9` columns. Task 6 reconstructed it inside the test, and the reviewer independently
+verified the reconstruction **byte-for-byte against source** in the same column order, with
+`local_ledger_entries` matching `9.json` exactly and correctly retaining `ON DELETE CASCADE` (the
+genuine pre-migration-14 shape). **The reconstruction is sound; the gap in the migration evidence
+chain is real:** any future migration touching those six columns has **no canonical before-image** to
+test against. Fixing it means adding a schema artefact — scope beyond a repair plan.
+
+### 6.7 The P1–P3 pattern screen is **not validated for triage**
+
+**"No pattern match" is a screening result, not a clearance.** It is the absence of three shapes this
+round learned to look for, and nothing more. §4.8's "no match" column is a screen.
+
+**The screen mispredicted at 50% over the ranked 10 and 42% over all 12 pattern-shaped items, and the
+errors run in BOTH directions.** The over-accusation direction was measured and is the expensive one to
+see: **five false accusations**, two textbook P2 shapes whose expected value *is* a default and three
+`assertNull` P2-family shapes — **every one of which caught its mutation.**
+
+**The under-accusation direction is harder to see, because a missed test is invisible where a false
+accusation is loud.** The screen missed `testScenarioJ_counterfactualRawPayloadContainsRawJson`
+**because its name reads as a control in a file that has the thing it controls.** The name is entirely
+credible to a reader — the file really does contain a treatment arm at `:786-793` — and a
+shape-based screen is precisely the kind of reader the name defeats. A test named as a control, in a
+file that has the thing it controls, is the hardest case for any pattern reasoning about *shape* rather
+than *reachability*.
+
+**Therefore: the screen may not triage the ~86 unaudited files without execution.** It narrows the
+field. Only the run decides.
+
+### 6.8 The finding that no repair task covered
+
+`DataIntegrityReleaseGateTest.kt:1275` → **`:1515` at HEAD**,
+`oracle_noteTransaction_zeroFinancialImpact` — §3.10 finding **#3**, `CONFIRMED` by mutation M7
+(`TransactionTypeNormalizer.kt:25`, `"note"` → `"took"`, and the test **still passed**) — **is not
+among the fourteen the repair plan addressed, and is still unrepaired.** Its body builds a `note`
+entry with **`amountIqd = 0.0`**, so adding zero to a debt leaves it unchanged under *every* possible
+classification: the assertion is arithmetically independent of the type claim it names. It remains a
+member of the single-assertion cohort at `0b14755` (verified against the scanner's current output).
+**A note carrying a real amount, misclassified as `took`, would inflate debt and this test — inside the
+release gate's own barrier class — would stay green.** Out of scope for this plan, but it must not be
+lost, and the round must not be reported as having closed all fourteen.
+
+### 6.9 The cohort arithmetic, and the count that does not reconcile
+
+**Coverage, re-derived at Task 7 by extracting the test tree at base `1b9fff7` and re-running the
+scanner against it** (not by subtracting from memory):
+
+```text
+cohort size at base 1b9fff7:                      69      <- reproduced exactly
+cohort members carrying a verdict:                27      <- §3.10's 15 + §4.10's 12 cohort rows, all matched by (file, test-name) against the base list
+cohort members left as a LEAD:                     1      <- §4.10 #12
+cohort members never adjudicated:                 41      <- 69 - 27 - 1
+```
+
+**The plan and the controller's ledger both say "30 of 69 adjudicated, 39 remain." That is wrong by
+three.** Counted directly from the verdict tables, the cohort verdicts are **27**, not 30: §3.10
+contributes 15 and §4.10 contributes 12 cohort rows (its other five rows — #13, #14, #15, #16, #17 —
+are **not** cohort members: `:1214` and `:593` were multi-assertion and the three `Step3DurableDispatchTest`
+probes carry 2–12 assertions each). **41 remain unadjudicated, not 39.** The error was in the
+*flattering* direction on the adjudicated count and the *pessimistic* one on what remains, and it is
+recorded here rather than reproduced.
+
+**What the repairs changed:** the cohort is **60 at `0b14755`**, down from 69. **Nine left, none
+entered** (§5.4). **All 41 members that were never adjudicated are still in the cohort at `0b14755`** —
+verified by set-intersecting the base un-adjudicated list against the current list: 41 of 41, with
+**zero** leaving. That is the correct result and it is worth stating precisely, because it means
+**the repairs did not shrink the unproven surface at all**; they converted 28 adjudicated members into
+proven ones and left the 41 unadjudicated ones exactly where they were. `oracle_noteTransaction_zeroFinancialImpact`
+is among those 41 (§6.8).
+
+**"Adjudicated" and "still in the cohort" are different questions and the record must keep them
+separate.** A cohort member can be CONFIRMED and still single-assertion (`:1275`); a cohort member can
+be REFUTED and still single-assertion (most of §4.10's nine). Neither fact tells you whether the test
+guards what it names.
+
+**Files: 27 of 113 were adjudicated or screened. 86 were never touched at all** — counted as the union
+of §3's 14 verdict-bearing files and §4.2's 23-file screen table (which overlap in 10), plus
+`Step3DurableDispatchTest` and `core/ledger/NoteCleanerTest` inspected for other reasons. **The
+document's earlier "~90 files" was an approximation; 86 is the counted figure.**
+
+### 6.10 Four repairs that are narrower than their finding, stated plainly
+
+| Repair | What it actually establishes | What it does **not** |
+|:--|:--|:--|
+| **B4** (`ApiErrorSemanticsRegressionTest.kt:343`) | **ATTEMPTED, not HANDLED.** `verify(mockGateway, atLeastOnce()).getTestUsersCount()` establishes the fetch was *invoked*. | Whether the failure was **handled**. `_testCount.value = null` at `DashboardViewModel.kt:190` is unobservable — the flow is already `null` from `:40`. **Whether deleting the catch at `:188-191` leaves the test green is an UNEXECUTED HYPOTHESIS, not a finding**: `loadDashboardData` launches into `coroutineScope` (`:89`) and joins the four fetch jobs at `awaitAll` (`:194`), so a failed `async` child **may propagate and fail the test anyway** through structured concurrency. Whether that surfaces as a JUnit failure or escapes to the uncaught-exception handler is untested. **Recorded as a hypothesis about an unproven residual — explicitly not a demonstrated gap — per the implementer's own softening.** |
+| **A2** (`UserDetailScreenV2.kt:410`) | That the production line **keeps its null-guarded form**. | The **rendered value**. `balanceAfter` is a `val` local in a `@Composable` with no injectable seam, so no runtime binding is reachable from a JVM test. The assertion pins **form, not value**. And §6.1 is unguarded entirely. |
+| **C2 / C3** (`SubscriberMatcher.kt:103` / `:119`) | That each historical gate is **the only thing standing** for its stage. | `conflictingExtId` at `:105` / `:121` (§6.4). |
+| **C1** (`backupRestore_migrationDefaults_safeForBalanceCalculator`) | That a **real v8 database** migrated by the real chain produces the right position, with the snapshot branch decided by production. | `BalanceCalculator.deriveAccountBalance` (§6.5); and the v8 baseline is a **derivation**, not an archived artefact (§6.6). |
+
+### 6.11 One adjacent hole inside a repaired test
+
+`DataIntegrityReleaseGateTest.kt:926` — **the second `processEvent` return value is still discarded.**
+B3 bound the **first** apply's effect (`countBeforeFirst + 1`), so the test proves **no extra row**;
+it does **not** prove **no overwrite**. A same-ID silent overwrite on the duplicate apply keeps the
+count at 1 and stays green. Correctly out of scope — the test's name is `zeroNewEntries`, which is what
+is asserted — and recorded here so the gate's own idempotency coverage is not overstated.
+
+### 6.12 The gate's own shape-versus-amount gap
+
+The rewritten `INV-02` release-gate test asserts the contra-entry's **shape** (original survives, count
+is exactly 2, a `correctsEntryId` row exists, its `typeRaw` is `gave` not `took`) — **not its AMOUNT.**
+`Workstream9AFinancialCorrectionTest.kt:302` pins `assertEquals(50000.0, reversalEntry.amountIqd)`;
+the gate test does not. **A wrong-AMOUNT contra-entry therefore passes the release gate** and is caught
+only in the suite. A real residual hole in the gate's own Invariant-2 coverage, and the round must not
+imply otherwise.
+
+### 6.13 The reproducibility defect that is not a release-gate blocker
+
+`DatabaseMigration17To18Test` loads its golden-database fixture by **bare filename** —
+`File("earthlink_backup_1789281798680.zip")`, no path — and that fixture is **gitignored**
+(`.gitignore:40`), so it can never reach a fresh clone or CI. Ignoring it is **correct**: the fixture is
+real subscriber data and committing it would be worse. The consequence is that a gate test depends on
+an artefact outside version control, addressed by a name that resolves only against the working
+directory. It is **not** in `production_gate.sh`'s `--tests` whitelist, so it is **not** a release
+blocker — it is a **fresh-clone and CI reproducibility defect**, and it is why every "798/798 green"
+claim was measured in a worktree where the file happens to exist. **In a clean worktree the suite is
+797 tests with 1 failure.** Both are true and they are not the same claim. Task 7's baseline at §5.7
+was measured with the fixture provisioned.
+
+### 6.14 The evidence base, and how far it can be re-checked
+
+A limit of the mandated discipline, recorded so the numbers above are read at the right confidence:
+
+- **Red states are independently checkable.** Gradle's `.err` stream carries `N tests completed, M
+  failed` and stdout names the failing test, so a red claim can always be re-verified from a log.
+- **Green states are transcription-only.** Gradle prints **no** `N tests completed` line on a
+  **successful** run, and each run overwrites `app/build/test-results/testDebugUnitTest/*.xml`, so a
+  green `tests=N` figure survives only in whatever transcribed it at that moment. Deleting the target
+  XML before each run and cross-checking the log for `> Task :app:testDebugUnitTest` is the strongest
+  form obtainable under this harness — **it is not the same as a log-recheckable claim and is not
+  described as one.**
+- **Task 6's headline RED values (`75000.0`, `20000.0`, both diagnostic strings) survive in no
+  artefact**, because `--console=plain` logs carry only the exception *type* and line and the XMLs were
+  deleted by later runs. A reviewer today can verify **that** each repair failed, **in which test**,
+  and **the count** — but not the values. Inherent to the mandated discipline, recorded so the
+  evidence base is read with the right confidence.
+- **Two runs in this programme produced a green number from a run that did not execute**, and both were
+  caught rather than counted. See §7 of the methodology for the full account.
+
+### 6.15 What this section does NOT claim
+
+- **No product defect is asserted by this round.** Every mutation was reverted; where a mutation would
+  have caused real damage, that is a statement about *a test's blindness*, not about the shipped code,
+  which is correct as committed.
+- **No "no pattern match" is presented as a clearance**, and the ~86 unaudited files are named as a
+  gap, not as a clean bill.
+- **The fourteen findings are not all closed.** Thirteen were repaired, one deleted, and
+  `oracle_noteTransaction_zeroFinancialImpact` (§6.8) was never in scope and remains unrepaired.
+- **The scanner was not re-certified.** `scripts/scan_test_evidence.py` and its fixtures were not
+  edited; its hardcoded `798` strings (`:49,67,90,101,573`) and the fixtures' nine sites are now
+  **stale by one**, are not gate-invoked (`production_gate.sh:65` runs
+  `scan_forbidden_patterns.py`), and assert nothing executable. Correctly left untouched, recorded here
+  so no reader treats them as a live count.
+- **The repro command at `:2378` embeds `--tests "*Phase1FirestoreDocumentIdentityTest.testScenarioJ*"`,
+  which now matches nothing**, since A4 deleted that test. It is a historical record of §4's
+  post-revert run and its `38 / 0 / 0` figure is the figure that run produced; **it is stale as a
+  command and must not be re-run as written.** The four sources' differing Scenario-J line labels
+  (plan `:818-833`, implementer `:819-833`, this document `:820`, body `:821-832`) all describe the same
+  16 lines.
+- **No flakiness claim is made and none is supported.** Every verdict rests on a single decisive
+  execution, which answers *"does this mutation change the outcome"* and would not support a
+  repetition-batch claim.
+
+---
+
+## Task 7 — Closing verification
+
+```text
+Claim:                 14 CONFIRMED fake tests were adjudicated; 13 repaired and 1 deleted; the
+                        repaired set is 797/797 green on the exact committed bytes; the remaining
+                        unproven surface is enumerated rather than implied.
+Evidence:              One full-suite run (r13-t7-baseline.log, --rerun-tasks, all TEST-*.xml deleted
+                        first, log confirmed to name :app:testDebugUnitTest, 0 UP-TO-DATE
+                        occurrences); 113 JUnit XML summed from their own testsuite attributes with
+                        <testcase> elements counted separately (797 = 797); 6 `git cat-file -e`
+                        checkpoint/commit existence checks by $LASTEXITCODE; 43 log files named in
+                        §5 verified present on disk; scanner re-run against both the base-extracted
+                        tree and HEAD to re-derive the cohort (69 -> 60); per-test assertion counts
+                        re-measured in Step3DurableDispatchTest.kt at both d728902 and 0b14755;
+                        every Repositories.kt / AppDatabase.kt / SubscriberMatcher.kt /
+                        DashboardViewModel.kt / UserDetailScreenV2.kt / Step3DurableDispatchTest.kt /
+                        BalanceCalculator.kt line number cited in §5 and §6 re-read at source.
+Verification scope:    Broader (whole suite, 797 tests, 1 run) + Documentation (record-defect
+                        corrections, each verified by counting against a verdict table) + Structural
+                        (scanner re-run read-only, `git diff --name-only -- app/src/main` empty).
+Result:                PASS
+What this proves:      The baseline is 797/0/0 measured, not remembered. All 14 record figures §5.5
+                        corrects were re-derived and now read as counts against checkable tables. The
+                        four load-bearing record defects are closed. Six additional unproven paths are
+                        enumerated with their production citations verified at source, and the
+                        cohort and file-coverage arithmetic is reconciled — including that the plan's
+                        own "30 of 69 adjudicated, 39 remain" is wrong by three and the correct
+                        figures are 27 adjudicated / 1 LEAD / 41 never adjudicated.
+What this does NOT prove: Anything about the ~86 files never audited, or about the 41 cohort members
+                        never adjudicated, or that the P1-P3 screen is fit for triage (it is not, at
+                        50% misprediction in both directions). It does not prove `oracle_noteTransaction`
+                        is repaired — it is not. It does not convert Repair 4's ATTEMPTED into HANDLED.
+                        No product defect is asserted, and no mutant was left in the tree.
+Confidence:            HIGH for every figure in §5 and §6, each re-derived by counting or by reading
+                        the cited line at source. MEDIUM for Task 5's and Task 6's green-state XML
+                        figures, which are transcription-only by the limitation §6.14 records.
+```
