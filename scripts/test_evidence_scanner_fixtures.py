@@ -1046,11 +1046,21 @@ def test_eb_expression_body_stops_at_an_unlisted_declaration():
 # not recognised as new declarations: the walk ran on into them and the scanner invented an F2
 # and an F7 on tests that are neither tautological nor vacuous.
 #
-# The two followers are LEXICAL fixtures. `inner class` is only legal inside another `inner
-# class`, and a `value class` may carry no members, so neither can hold the tautology / F7 shape
-# inside compiling Kotlin. The recogniser under test is lexical, so these are written for the
-# recogniser; `test_every_kotlin_modifier_is_recognised_as_a_declaration` is what pins the whole
-# modifier set, and it needs no such contortion.
+# Both followers are ordinary compiling Kotlin. An earlier version of this comment claimed
+# otherwise - that `inner class` is "only legal inside another `inner class`" and that a
+# `value class` "may carry no members" - and BOTH CLAIMS ARE FALSE, which the two fixtures here
+# disprove by compiling:
+#   * an `inner class` is legal inside ANY class, not only inside another `inner class`. What
+#     `inner` requires is an enclosing class to take the outer instance from. This fixture nests
+#     `inner class HelperWithTautology` directly inside `class ModifierFollowerTest`, which is a
+#     plain, non-inner class - legal, and the reason the fixture needs no scaffolding.
+#   * a `value class` MAY carry member FUNCTIONS; what it may not carry is a second property,
+#     because it has exactly one backing field from its primary constructor. `ReassigningWrapper`
+#     carries `fun check()` and is legal for exactly that reason.
+# Because both are legal, the old "LEXICAL fixtures ... cannot hold the tautology / F7 shape inside
+# compiling Kotlin" caveat was wrong and is withdrawn: nothing here is written for the recogniser
+# rather than the language. `test_every_kotlin_modifier_is_recognised_as_a_declaration` is what
+# pins the whole modifier set.
 EXPRESSION_BODY_MODIFIER_FOLLOWER_FIXTURE = '''
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -1135,22 +1145,26 @@ class BacktickNamedTest {
 }
 '''
 
-# Every keyword that can head a Kotlin declaration. This list is the INDEPENDENT ORACLE for
-# "the terminator sees every modifier": it is transcribed from the Kotlin grammar's hard
-# keywords, not read out of the scanner, so the two can disagree and the test fails when they
-# do. It replaces the previous unfalsifiable claim that a keyword list "cannot be defeated by
-# adding a modifier" - a token enumeration IS a list, and only this equality is checkable.
-KOTLIN_DECLARATION_STARTERS = (
-    "class", "companion", "constructor", "enum", "fun", "init", "interface",
-    "object", "typealias", "val", "var",
-)
+# Every Kotlin MODIFIER, transcribed from the language reference and NOT read out of the scanner,
+# so the two can disagree and the behavioural check below fails when they do. It is a MODIFIER list
+# only. The previous header claimed it was "transcribed from the Kotlin grammar's HARD keywords",
+# which was false on two counts: `data`, `sealed`, `open`, `inner` and `annotation` are MODIFIERS in
+# the grammar rather than keywords, and `value` is a SOFT keyword, which is exactly why
+# `value = compute()` is ordinary Kotlin and must not read as a declaration.
+#
+# The two classes the recogniser treats differently, for reference:
+#   * STARTER - heads a declaration on its own: `fun`, `class`, `object`, `interface`, `val`,
+#     `var`, `typealias`, `init`, `constructor`.
+#   * MODIFIER - qualifies a declaration and is never one alone: this list.
+# The starter class is deliberately NOT transcribed here. The check that needs it - that the run
+# behind a modifier is read to its end - is behavioural and needs no second list to compare
+# against; a second transcription of the starters is what made this check tautological.
 KOTLIN_MODIFIERS = (
     "abstract", "actual", "annotation", "const", "crossinline", "data", "enum",
     "expect", "external", "final", "infix", "inline", "inner", "internal",
     "lateinit", "noinline", "open", "operator", "override", "private", "protected",
     "public", "reified", "sealed", "suspend", "tailrec", "value", "vararg",
 )
-KOTLIN_DECLARATION_WORDS = frozenset(KOTLIN_DECLARATION_STARTERS) | frozenset(KOTLIN_MODIFIERS)
 
 
 def test_eb_expression_body_stops_at_a_class_modifier_follower():
@@ -1310,47 +1324,104 @@ def test_eb_declaration_bound_separates_starters_from_modifiers():
 
 def test_every_kotlin_modifier_is_recognised_as_a_declaration():
     """
-    The checkable version of "the terminator cannot be defeated by adding a modifier".
+    Two PROPERTIES of the two word classes, not a list equality.
 
-    A keyword set IS a list, so a comment cannot honestly promise completeness. This test can:
-    the oracle is `KOTLIN_DECLARATION_WORDS`, transcribed from the Kotlin grammar's hard
-    keywords, and the assertion is a two-way set equality against the scanner's own set. If a
-    modifier is missing from the scanner, or the scanner has drifted to a word that is not a
-    Kotlin declaration word at all, this fails.
+    Claim: every word in `_DECLARATION_STARTERS` and `_DECLARATION_MODIFIERS` is a lowercase ASCII
+    token, and the two classes are disjoint. Independent oracle: the two properties are read off
+    the recogniser's own decision rule (`scan_test_evidence._starts_new_declaration`, which tests
+    `words[0] in _DECLARATION_STARTERS` BEFORE consulting the modifier run) and off Kotlin's own
+    lexical rules - its declaration keywords are lowercase, and a capitalised token is a different
+    token - not off either set's contents.
 
-    The behavioural half drives `_starts_new_declaration` with `<modifier> fun helper() { }`, so the
-    second word must be READ - the whitespace before it skipped - for the line to be recognised.
-    That is the exact shape that failed for `inner class` and `value class`. A second half drives it
-    with a line led by an ordinary identifier, which is not a declaration however it continues.
+    The previous version compared `_DECLARATION_STARTERS | _DECLARATION_MODIFIERS` against a
+    transcription written by the same author, in both directions. Two lists written by one author
+    catch DRIFT and not OMISSION: the author can satisfy every assertion by editing both sides, so
+    the test constrains nothing the author did not already intend. That is this branch's own
+    standing point - a token enumeration IS a list, so a claim about a list is not checkable.
+
+    What replaces it is a pair of properties that fail for reasons neither list's author chose:
+
+      * EVERY word in either class is a lowercase ASCII token. This is what makes the recogniser's
+        case-sensitivity load-bearing rather than decorative. The word reader preserves case, so a
+        capitalised entry cannot match the lowercase keyword it imitates - `Object` in the starter
+        set would not make `object` a declaration - while a capitalised TYPE admitted to either set
+        matches that type's own occurrences on every line, and `Data(1).also { }` becoming a
+        declaration truncates the expression body and manufactures an F1. The removed equality
+        caught neither, because it accepted whatever the transcription was edited to.
+      * THE TWO CLASSES ARE DISJOINT. A word in both is a latent early stop:
+        `_starts_new_declaration` returns True on `words[0] in _DECLARATION_STARTERS` before it ever
+        asks whether a starter follows a modifier, so such a word stops the expression body on a
+        line where a modifier alone must not. That is the defect this branch fixed - one set plus
+        `words[0] in set or words[1] in set` made `data = mapOf(` a declaration - reintroduced
+        through the class split rather than through the set.
+
+    NOT reinstated: a fixed two-word budget. The word reader deliberately consumes a MODIFIER RUN
+    rather than exactly two words, because `private suspend fun f()` puts the second MODIFIER, not
+    the starter, in `words[1]`. A two-word rule returns False for it, misses the declaration, and
+    the expression body runs past it and borrows the next declaration's assertions - the direction
+    that invents an F2 and an F7. A run that stopped short would stop LATE for the same reason, so
+    no fixture here encodes a word count; the behavioural half drives `<modifier> fun helper()`,
+    where the starter sits wherever the run puts it.
+
+    Seam: JVM (pure lexical recogniser, no filesystem, no Room, no Gradle).
+
+    What this does NOT pin: a stray lowercase non-Kotlin word added to either class is no longer
+    caught. The removed equality was the only thing that caught it, and it caught it by
+    transcription rather than by argument. What remains is behavioural, in
+    `test_eb_declaration_bound_separates_starters_from_modifiers` and in the halves below.
     """
-    scanner_set = (scan_test_evidence._DECLARATION_STARTERS
-                   | scan_test_evidence._DECLARATION_MODIFIERS)
+    starters = scan_test_evidence._DECLARATION_STARTERS
+    modifiers = scan_test_evidence._DECLARATION_MODIFIERS
 
-    missing = sorted(KOTLIN_DECLARATION_WORDS - scanner_set)
-    assert not missing, (
-        f"Every Kotlin declaration starter and modifier must be in the scanner's keyword set; "
-        f"missing: {missing}. A declaration led by one of these would not be recognised, so an "
-        f"expression body would run past it and invent an F2/F3/F7."
+    # Property 1. Every word in either class is a lowercase ASCII token.
+    non_conforming = sorted(
+        "%r in %s" % (word, name)
+        for name, words in (("_DECLARATION_STARTERS", starters),
+                            ("_DECLARATION_MODIFIERS", modifiers))
+        for word in words
+        if not (word and word.isascii() and word.isalpha() and word.islower())
+    )
+    assert not non_conforming, (
+        f"Every declaration starter and modifier must be a lowercase ASCII token, because the "
+        f"recogniser matches starters WITHOUT folding case; these are not: {non_conforming}. A "
+        f"capitalised entry cannot match the lowercase keyword it imitates, so detection is lost, "
+        f"and a capitalised TYPE admitted to either set matches its own occurrences and makes a "
+        f"continuation line a declaration, which truncates the expression body and invents an F1."
     )
 
-    extra = sorted(scanner_set - KOTLIN_DECLARATION_WORDS)
-    assert not extra, (
-        f"The scanner's keyword set holds words that are not Kotlin declaration starters or "
-        f"modifiers: {extra}. A stray entry makes a continuation line look like a declaration "
-        f"and truncates the expression body, which invents an F1."
+    # Property 2. The two classes are disjoint.
+    in_both = sorted(starters & modifiers)
+    assert not in_both, (
+        f"A word in BOTH classes is a latent early stop: the starter test fires first, so the word "
+        f"declares on its own and a line where a modifier alone must not stops the expression body; "
+        f"these are in both sets: {in_both}. This is the defect one set plus "
+        f"`words[0] in set or words[1] in set` produced - `data = mapOf(` read as a declaration."
     )
 
-    # The SECOND word. `inner class` and `value class` are already covered by the set-equality half
-    # above, so this asserts the `words[1]` path directly. The second word is a genuine STARTER,
-    # because after the class split a modifier alone is NOT a declaration - that was the defect:
-    # `words[1] in set` made `<modifier> helper() { }` a declaration, and the same rule made
-    # `data = mapOf(` one.
+    # The STARTER behind a modifier, wherever the run puts it. `inner class` and `value class` are
+    # the two shapes that failed when the terminator read only the first word, so this drives the
+    # real recogniser once per modifier rather than comparing lists. A modifier missing from the
+    # class, or a starter missing from the other, both turn this red - which is the omission check
+    # the removed set-equality did not actually provide. The starter in the input is a genuine
+    # STARTER, because after the class split a modifier alone is NOT a declaration: that was the
+    # defect, and `data = mapOf(` is the same rule on an ordinary assignment.
     unrecognised = [m for m in KOTLIN_MODIFIERS
                     if not scan_test_evidence._starts_new_declaration(
                         "    %s fun helper() { }" % m, 0)]
     assert not unrecognised, (
         f"A modifier followed by a starter must read as a declaration, whatever the modifier; these "
         f"do not: {unrecognised}. Missing one runs an expression body past it and invents an F2/F7."
+    )
+
+    # A modifier RUN, not two words: the starter is third here, so this fails under any fixed
+    # two-word budget. It is the shape whose failure direction is late, so it is pinned deliberately.
+    unrecognised_run = [m for m in ("private", "internal", "protected")
+                        if not scan_test_evidence._starts_new_declaration(
+                            "    %s suspend fun helper() { }" % m, 0)]
+    assert not unrecognised_run, (
+        f"A modifier run must be read through to its starter, not to a fixed two words: these do "
+        f"not read as declarations: {unrecognised_run}. A budget that stopped short would stop LATE "
+        f"here and borrow the following declaration's assertions, inventing an F2/F7."
     )
 
     # A line led by something that is NEITHER a starter nor a modifier is never a declaration lead-in,
@@ -1385,9 +1456,10 @@ def test_every_kotlin_modifier_is_recognised_as_a_declaration():
         f"as a declaration truncates the expression body and invents an F1: {wrongly}"
     )
 
-    print(f"PASS MODIFIERS: all {len(KOTLIN_MODIFIERS)} Kotlin modifiers and "
-          f"{len(KOTLIN_DECLARATION_STARTERS)} declaration starters are recognised, in both "
-          f"directions (none missing, none stray), and the second word is read.")
+    print(f"PASS MODIFIERS: the two word classes are disjoint and every one of their "
+          f"{len(starters) + len(modifiers)} words is a lowercase ASCII token; all "
+          f"{len(KOTLIN_MODIFIERS)} Kotlin modifiers are recognised ahead of a starter, through a "
+          f"modifier run rather than a two-word budget.")
 
 
 def test_fallback_bounds_the_block_at_the_next_test():
@@ -1397,7 +1469,7 @@ def test_fallback_bounds_the_block_at_the_next_test():
 
     What the fallback IS, and what it bounds - the trigger, the two arms in `_build_blocks`, and
     why the reported `end_line` naming the boundary line rather than the last line occupied is
-    inert - is disclosed once, in `scan_test_evidence.py:103-123`, and is deliberately not
+    inert - is disclosed once, in `scan_test_evidence.py:120-140`, and is deliberately not
     restated here: this fixture exists to exercise the arm, not to describe it. The previous
     report gave "a file that does not balance is not representable as a fixture" as the reason
     the fallback had no pin; that was wrong, and this is the pin.

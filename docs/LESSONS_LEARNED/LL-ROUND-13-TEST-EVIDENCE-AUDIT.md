@@ -61,7 +61,7 @@ Every figure matched the fact-check exactly; none was contradicted.
 > **Attribution note (corrected 2026-09-30).** The block below was previously captioned as
 > output of the single command above, but **`single-assertion cohort: 69` is not emitted by
 > that command.** It requires `python scripts/scan_test_evidence.py app/src/test
-> --rule single-assertion` (equivalently `--single-assertion`, per `:138-146`). Every other
+> --rule single-assertion` (equivalently `--single-assertion`, per `:155-163`). Every other
 > line is genuine output of the plain invocation. The value is correct; the attribution was
 > not, and it is corrected here rather than left in a document whose thesis is "verify the
 > verifier".
@@ -94,23 +94,26 @@ also **not** bounded at the next `@Test`.
 The next-`@Test` bound is the **fallback only**: it applies when no `fun` can be located at
 all, which the trigger is an unlocatable `fun` — a Kotlin backtick-quoted test name — and
 not unbalanced braces. In this suite it is reached by **7 of 798 tests, all in
-`core/ledger/NoteCleanerTest.kt`** (`:87-92`).
+`core/ledger/NoteCleanerTest.kt`** (`:120-125`).
 
 **On "can never invent a finding".** The scanner's own stated direction of error is that it
-"may under-report, and must never invent a finding" (`:82-83`), enforced by four guards, each
+"may under-report, and must never invent a finding" (`:82-83`), enforced by five guards, each
 added after the class was demonstrated to be violated. For the **791 resolved** blocks that
 guarantee is well-founded: the bound neither stops early (so it cannot hide an assertion and
 invent a vacuity finding) nor over-runs (so it cannot borrow another function's assertions and
 invent an `F2`/`F3`/`F7`).
 
-**It is not unconditional, and there are now THREE known latent exceptions, not one.** The
+**It is not unconditional, and there are now FOUR disclosed paths, not one.** The
 guarantee that a *helper between two tests* falls outside both ranges holds on resolved shapes
 but **not** on the fallback shape, where a helper sitting between two backtick-named tests
 **would** be inside the preceding range and can invent an `F2` on ordinary compiling Kotlin
 (`:75-80`). So the never-invent property is scoped to the resolved shapes; on the 7 fallback
 blocks it carries a known latent exception. The **third** exception is not a block-bounding
-problem at all and is **live** — see the class-attribution note below. A low count is the
-expected shape of a working scanner, not evidence of a broken one.
+problem at all and is **live** — see the class-attribution note below. The **fourth** is the
+declaration-bound word-class path: it was latent in exactly the same way until `b420232`, and it
+is now **closed**, with its direction measured over every line of the suite rather than argued —
+see the fourth-path note below. A low count is the expected shape of a working scanner, not
+evidence of a broken one.
 
 ### Ruling 2 note — `F2` on backtick-named blocks
 
@@ -124,11 +127,11 @@ remains a latent property of the scanner, not a demonstrated defect. (Both were 
 and executed* under this ruling — R2 produced block `[6..15]`, asserts `[8,12]`, invented `F2`
 at 12; R3 produced a block named after the helper, asserts `[8,12]`, invented `F2`. So the claim
 that such a case is "not representable as a fixture" is false, and was corrected at
-`test_evidence_scanner_fixtures.py:1324-1325`.)
+`test_evidence_scanner_fixtures.py:1470-1477`.)
 
 ### Third path — class attribution: the misattribution is live, its direction of error is measured
 
-`_class_name_for` (`scripts/scan_test_evidence.py:450-455`) returns the **nearest preceding**
+`_class_name_for` (`scripts/scan_test_evidence.py:467-472`) returns the **nearest preceding**
 class declaration, not the class that encloses the test. Where a file declares its test class and
 then a fixture/helper class **after** it, every `@Test` below that helper is attributed to the
 helper. **This is live at HEAD and it is measured, not hypothetical**: of 797 tests, **174 across
@@ -139,10 +142,17 @@ helper. **This is live at HEAD and it is measured, not hypothetical**: of 797 te
 labelled `[FakeSyncRepository]`. Measured by re-running the scanner read-only at Task 9.
 
 **The harm reaches the rules only through** `sut_names = _sut_names(block.class_name)` feeding `F3`
-(`:844`), so the misattribution **substitutes the set of names treated as the class under test**:
+(`:949`), so the misattribution **substitutes the set of names treated as the class under test**:
 `EarthlinkSearchViewModelSeamTest` reduces to the stem `earthlinkSearchViewModelSeam`, while the
-substituted `FakeSyncRepository` matches none of `_SUT_NAME_SUFFIXES` (`:206`) and contributes
-`fakeSyncRepository` alongside the fixed indicator names (`:752-762`, `:203`).
+substituted `FakeSyncRepository` matches none of `_SUT_NAME_SUFFIXES` (`:223`) and contributes
+`fakeSyncRepository` alongside the fixed indicator names (`:856`, `:220`).
+
+**(Three citations in this paragraph were wrong before this pass and are corrected here.)** The
+F3 site was cited as `:844` and the indicator-name span as `:752-762`; at the previous commit those
+lines held a bare `return False`, the `@Test`-start comprehension, and a closing `"""`, so neither
+citation pointed at the code it named. `_is_test_double` was cited as `:765-781`, which spanned
+`_build_blocks`. They are re-derived at source above. The remaining citations in this section were
+correct at that commit and moved only because the scanner's module docstring grew by 25 lines.
 
 **What was measured, in both directions.** Re-attributing all **797** real blocks to their enclosing
 top-level class and diffing the `F3` outcome: **0** under-reported and **0** invented. On this suite
@@ -157,9 +167,9 @@ So the two directions are: **0/0 on this suite, and 1 invented on a fixture that
 Kotlin reaches.**
 
 **The reason this section used to give for the guarantee was itself wrong.** It said `_is_test_double`
-(`:765-781`) "would suppress that anyway". `_is_test_double` is keyed on the local's **initializer**,
+(`:868-884`) "would suppress that anyway". `_is_test_double` is keyed on the local's **initializer**,
 not on `class_name` — as the same sentence concedes forty words later — and the initializer here is
-`RecordingChain()`, which carries none of `_TEST_DOUBLE_MARKERS` (`:209`), so it suppresses nothing.
+`RecordingChain()`, which carries none of `_TEST_DOUBLE_MARKERS` (`:226`), so it suppresses nothing.
 The suppression that does hold on this suite is a **coincidence of these 23 files all having
 double-marked helper names**, not a structural property of the rule. Per this branch's own wording
 standard (`progress.md:145-147`, a token enumeration IS a list and only a test can check it), the
@@ -173,7 +183,85 @@ compare literals, DAO results, and `testGateway` counters, and the two candidate
 rooted at `vm`, which is in neither the true nor the substituted name set. The harm is therefore
 recorded as **directional and latent**, on the same footing as the other two: a known property of
 the scanner, not a demonstrated defect. **Recorded, not fixed** — the scanner is at its cap
-(§6.15), and the path is disclosed here so a future adjudicator knows the count is **three**.
+(§6.15), and the path is disclosed here so a future adjudicator knows the count is **four**.
+
+### Fourth path — the declaration bound's word classes: closed at `b420232`, direction measured
+
+This is the path a reviewer of `scan_test_evidence.py`'s `_starts_new_declaration` found after the
+three above were disclosed, and it is recorded here because the disclosure is what the previous
+pass missed: the never-invent guarantee was corrected in the same function two commits earlier, and
+this input path was not probed. The plan and the controller ledger both called it the **fifth**
+disclosed path; **that count is wrong, and it is wrong in the same direction this record has
+repeatedly erred.** There are **three** disclosed paths above — two in the fallback arm and the
+class-attribution path — so this is the **fourth**. The ledger's own phrase "after the three
+fallback-arm paths and the class-attribution path" counts a fallback path that was never disclosed.
+
+**The mechanism, as it actually was.** One set for two word classes that behave differently, plus
+the rule `words[0] in set or words[1] in set`, made a **modifier alone** sufficient to declare a
+line; and the word reader called `.lower()`, so a capitalised **type** matched too. `data = mapOf(`
+and `value.also {` therefore read as declarations, the expression body stopped there, the test's
+own assertions fell outside its range, and the scanner reported **F1 on a test that is not
+vacuous** — an invented finding, the one thing this instrument exists never to do.
+
+**Why nothing is wrong today — measured, not assumed.** Five real lines in this suite have the
+shape, and the bound at `scripts/scan_test_evidence.py:570` is genuinely **not consulted** on any
+of them. The reason is **brace depth, not the test's body shape**, and the plan got that backwards
+as well: the five do **not** sit in brace-bodied tests. They sit inside `runBlocking { }` in
+**expression-bodied** tests, and at the newline preceding each one `expr_depth` is **2**, greater
+than zero relative to the `=`, so the bound's `expr_depth <= 0` guard skips it. Measured per line:
+
+| Line | Text | Containing test |
+|:---|:---|:---|
+| `Change5SingleItemFallbackReadbackRemovalRegressionTest.kt:359` | `data = mapOf(` | `test4_pullRecoversRemoteVersionAfterSuccessfulFallback` (`:352`–`:383`) |
+| `Change5SingleItemFallbackReadbackRemovalRegressionTest.kt:405` | `data = mapOf(` | `test5_realtimeRecoversRemoteVersionAfterSuccessfulFallback` (`:385`–`:428`) |
+| `Phase1FirestoreDocumentIdentityTest.kt:266` | `data = remoteAccountData,` | `testRemoteToLocalIdentityPreservation_inboundEvents` (`:250`–`:319`) |
+| `Phase1FirestoreDocumentIdentityTest.kt:300` | `data = remoteLedgerData,` | `testRemoteToLocalIdentityPreservation_inboundEvents` (`:250`–`:319`) |
+| `Phase1FirestoreDocumentIdentityTest.kt:412` | `data = remoteBatchData,` | `testNoRandomOrNonceGeneratedDocumentId_forExistingEntities` (`:371`–`:420`) |
+
+`data = …` in any shape occurs **5** times in the suite; the literal `data = mapOf(` occurs **2**
+times. The five lines sit in **four** distinct tests, not five, because `Phase1…:266` and `:300`
+are both inside `testRemoteToLocalIdentityPreservation_inboundEvents`. The plan's "occurs 5x" was
+right for the shape and wrong for the literal string.
+
+**What makes it live rather than latent.** `data = …` is an ordinary assignment shape occurring five
+times in this suite, so **one** brace-depth change makes it live: converting any enclosing
+`runBlocking {` body so the assignment sits at depth 0 relative to the `=` would put the bound on
+that line, and the bound would stop the test's body there.
+
+**The direction, measured across every line of the suite rather than asserted.** Task 1 compared
+the pre-fix and post-fix recognisers over **all 42,657 lines** of `app/src/test` and reported every
+changed verdict:
+
+- **14 verdicts changed `True` → `False`.** Every one begins with a word in `_DECLARATION_MODIFIERS`
+  — 13 with `data` (5 `data = …` and 8 `data: Map<String, Any?>`) and **1 with `actual:`**, at
+  `Bug02RestoreMergeHistoryLossTest.kt:113`, a named-argument line whose parameter happens to be
+  called `actual`. The defect was therefore never `data`-specific; it was "a modifier word in an
+  ordinary position", which is why `actual` fell to it too. (The ledger records all 14 as beginning
+  with `data`, which is off by one.)
+- **Exactly 1 verdict changed `False` → `True`:** `@Volatile var gateAwaited = false` at
+  `BugSrch02StaleSelectionOverwriteTest.kt:67` — the same-line-annotation case working as intended,
+  at a brace depth where no boundary actually moves.
+- **No genuine declaration flipped in either direction.** 0 of the changed lines begin with a
+  starter, and the 4 real `data class` declarations in the suite were already `True` and stayed so.
+
+That last line is the load-bearing one: it turns "detection was not weakened" from an assertion
+into a measurement. It is the first claim in this programme established that way for a **code**
+change rather than a document change.
+
+**The direction of the bound's own error, corrected.** The docstring said the bound "may stop
+early, never late, because stopping late is what invents a finding". Both directions were wrong
+and it admitted only one: **stopping EARLY invents an F1** (the assertions fall outside the range
+and a non-vacuous test is reported vacuous — this path, and the C1 defect), while **stopping LATE
+under-reports** (a genuinely vacuous test keeps its assertions inside the range). Corrected at
+`b420232` in `scripts/scan_test_evidence.py:546-561`.
+
+**Status.** Closed by `b420232`: starters and modifiers are separate sets, starters are matched
+without folding case, and a declaration sharing an annotation's line is read rather than consumed.
+The real-suite baseline held exactly across the change — **797 tests, 4305 assertion calls, 0
+findings across all seven rules**, before and after — and the self-test went from 27 to **28**
+groups. Recorded here rather than deleted because the disclosure is the deliverable: the three
+paths above are still latent, and a reader who has seen this one is told that "0 findings" was
+never by itself evidence that the bound was safe.
 
 ---
 

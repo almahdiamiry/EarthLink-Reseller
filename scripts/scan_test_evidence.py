@@ -92,13 +92,30 @@ than as a declaration lead-in, which put the next annotation line inside the pre
   because the nested class is the nearest preceding declaration, so `recordingChain` enters
   `sut_names`, and `_is_test_double` is keyed on the local's INITIALIZER (`RecordingChain()`,
   no double marker) rather than on `class_name`, so nothing suppresses it. That fixture is not
-  committed here; it is transcribed inline so the claim can be reconstructed. Four guards
+  committed here; it is transcribed inline so the claim can be reconstructed.
+
+  There is a FOURTH disclosed path, the declaration bound's word classes, and it is named here so
+  the sentence above is not read as covering it. It was latent, not live: `data = ...` is an
+  ordinary assignment shape occurring 5 times in this suite, and on all 5 the bound is not
+  consulted because `expr_depth` is 2 at that newline - greater than zero relative to the `=` - not
+  because those tests are brace-bodied, which is what the fix plan said and which is false. What
+  is MEASURED, in the direction that matters here: the real-suite scan reports 0 findings across
+  all seven rules on 797 tests, and across all 42,657 lines of the suite exactly 14 verdicts
+  changed `True`->`False` on the fix (13 beginning with `data`, 1 with `actual:`) and exactly 1
+  changed `False`->`True`, with no genuine declaration flipped either way. So the path is
+  UNREACHABLE where brace depth exceeds zero relative to the `=`, which is every one of its 5
+  occurrences here, and the direction that would have invented an F1 is measured rather than
+  argued. Full disclosure and the per-line table: LL-ROUND-13-TEST-EVIDENCE-AUDIT.md, "Fourth
+  path".
+
+  Four guards
   enforce the resolved-shape property, and each was added
   after the corresponding class was demonstrated to be violated on real input or on a fixture:
   the expression-body bound stopping at a `private suspend fun` (an invented F2 and F7), the
   tail truncation (an invented F1), the terminator reading only the first word of a line so
   that `inner class` and `value class` were not declarations (an invented F2 and F7), and a
-  lone annotation line being read as a continuation (498 blocks, no rule affected).
+  lone annotation line being read as a continuation (498 blocks, no rule affected). A fifth,
+  the word-class split at `:606-617`, is described with the fourth path above.
 
   The fallback, stated accurately: when no `fun` can be located at all, the block is bounded at
   the start of the next `@Test` line, or at end of file for the last test in its file. The
@@ -520,9 +537,11 @@ def _function_body_end(code, mask, fun_start):
             # an F2 and an F7 on a test that was neither tautological nor vacuous.
             #
             # The keyword set is still a list, so this comment does not claim it is complete -
-            # completeness is a property only a test can establish, and
-            # `test_every_kotlin_modifier_is_recognised_as_a_declaration` in the self-test does
-            # exactly that, in both directions. What the bound must get RIGHT is the DIRECTION of
+            # completeness is a property only a test can establish, and the self-test establishes
+            # two properties of the two word classes (lowercase ASCII, and disjointness) plus the
+            # behaviour of a modifier run, NOT a transcription of the grammar. See
+            # `test_every_kotlin_modifier_is_recognised_as_a_declaration` and the honesty note
+            # above the sets. What the bound must get RIGHT is the DIRECTION of
             # its own error, and an earlier version of this comment had it backwards - it said the
             # bound "may stop early, never late, because stopping late is what invents a finding".
             # Both directions produce a finding, and which one is which was reversed:
@@ -571,12 +590,18 @@ def _function_body_end(code, mask, fun_start):
 # reader therefore preserves case, and `Data(1).also {` is a constructor call on a value named
 # `Data`, not a declaration.
 #
-# Completeness is asserted by `test_every_kotlin_modifier_is_recognised_as_a_declaration`, which
-# compares the union of these two sets against `KOTLIN_DECLARATION_WORDS` in both directions - a
-# missing word and a stray word both fail. A keyword set IS a list, so the set cannot honestly
-# describe itself as undefeatable; the test is what makes the claim true, and a new Kotlin keyword
-# would have to be added to both. WHICH class a word belongs to is load-bearing as well, and is
-# pinned by `test_eb_declaration_bound_separates_starters_from_modifiers`: a word in the wrong class
+# Completeness is a property only a test can establish, and what the self-test can establish is
+# NARROWER than the previous version of this comment claimed. It used to assert that
+# `test_every_kotlin_modifier_is_recognised_as_a_declaration` compared the union of these two sets
+# against an independently transcribed list "in both directions". It does not, and that check was
+# tautological: two lists written by the same author catch drift and not omission, because the
+# author can satisfy both directions by editing both sides. That check has been replaced by two
+# PROPERTIES the author did not choose - every word in both sets is a lowercase ASCII token (which
+# is what makes the case-sensitive match above load-bearing rather than decorative), and the two
+# sets are DISJOINT (a word in both fires the starter test first and is a latent early stop). A
+# stray lowercase non-Kotlin word is therefore no longer caught at all. Which class a word belongs
+# to is load-bearing as well, and is pinned by
+# `test_eb_declaration_bound_separates_starters_from_modifiers`: a word in the wrong class
 # reintroduces one of the two defects above.
 _DECLARATION_STARTERS = frozenset({
     # declaration starters
