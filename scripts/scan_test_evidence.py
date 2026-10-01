@@ -670,10 +670,13 @@ def _starts_new_declaration(code, index):
             depth = 1
             k += 1
             while k < n and depth:
-                if code[k] == "\n":
-                    # Unterminated on this line: never consume past it.
-                    depth = 0
-                elif code[k] in "([":
+                # Balanced means balanced: the walk CROSSES newlines. An earlier version refused to,
+                # which broke `@Suppress(\n "a"\n)\nfun f()` - the annotation's arguments sit on
+                # their own lines, so the walk gave up at the first newline and the `fun` after the
+                # closing paren was never reached. The `k < n` bound above already makes an
+                # unterminated paren safe: the walk runs to end of input, the word reader then finds
+                # nothing, and the function returns False - under-report, which is the safe direction.
+                if code[k] in "([":
                     depth += 1
                 elif code[k] in ")]":
                     depth -= 1

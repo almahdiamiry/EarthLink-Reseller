@@ -1284,6 +1284,19 @@ EXPRESSION_BOUND_WORD_CLASS_CASES = (
     ("value class Inner", True),
     ("data class D", True),
     ("internal inline val x = 1", True),
+    # A modifier followed by a STARTER is a declaration even when the modifier is a soft keyword.
+    ("companion object {", True),
+    # An annotation with NO arguments followed by a declaration on the same line.
+    ("@Volatile var x = 0", True),
+    # A MULTI-LINE annotation: the arguments sit on their own lines, so the balanced-paren walk has to
+    # cross newlines or it gives up before the closing paren and never reaches the `fun` after it.
+    ('@Suppress(\n "a"\n)\nfun f()', True),
+    # A line that opens with no word at all.
+    (".also { }", False),
+    # An unterminated annotation argument: the walk runs to end of input, finds no word, and returns
+    # False. This is under-report, which is the safe direction - a runner-up would be to stop early and
+    # invent an F1.
+    ("@Unterminated(", False),
 )
 
 
