@@ -1511,31 +1511,149 @@ class DataIntegrityReleaseGateTest {
         )
     }
 
+    /**
+     * oracle_noteTransaction_zeroFinancialImpact — the "note" transaction type is a financial no-op.
+     *
+     * CLAIM (INV-01 / RED Invariant 1 — financial correctness, no silent inflation):
+     * A ledger entry whose canonical type is "note" moves NO leg of the financial position —
+     * debt, advance, or loan — even when it carries a NON-ZERO amount.
+     *
+     * WHY THE AMOUNT MUST BE NON-ZERO:
+     * BalanceCalculator.kt:26 (`else -> AccountBalances(currentDebt, currentAdvance, currentLoan)`)
+     * is the production decision that makes a note inert; TransactionTypeNormalizer.kt:25 routes
+     * "note"/"NOTE" into it. But the debt arm at BalanceCalculator.kt:12-18 is arithmetically
+     * blind at amount 0 (advanceUsed = minOf(advance, 0) = 0; debtAdded = 0 - 0 = 0), so a note
+     * carrying 0.0 is inert for a reason that has nothing to do with its TYPE. This fixture
+     * therefore gives the note 12000.0, and additionally runs a CONTROL with the identical
+     * baseline and the identical 12000.0 amount on a non-note type, proving the amount itself
+     * moves the balance. That contrast is what makes the claim about the TYPE and not the sum.
+     *
+     * SEAM / ENVIRONMENT: ROBOLECTRIC as executed — @RunWith(RobolectricTestRunner::class) is
+     * class-level at :62, so even though this test's arithmetic is pure-JVM deterministic, it
+     * runs under the Android simulation runtime.
+     *
+     * INDEPENDENT ORACLE: the arithmetic below is written out from the Product Contract's
+     * additive-ledger rule and from the Advance-First consumption rule. No expected value is
+     * read back from a production call; the production call is the thing under test.
+     *
+     *   Opening baseline (all three vectors explicit, all non-zero):
+     *       openingDebt = 10000.0, openingAdvance = 5000.0, openingLoan = 7000.0
+     *
+     *   CLAIM arm — entries in chronological order:
+     *     (a) note 12000.0  → signed effect 0 on all three legs, BY TYPE
+     *     (b) took 40000.0  → advanceUsed = minOf(5000.0, 40000.0) = 5000.0
+     *                         advance = 5000.0 - 5000.0 = 0.0
+     *                         debtAdded = 40000.0 - 5000.0 = 35000.0
+     *                         debt    = 10000.0 + 35000.0 = 45000.0
+     *                         loan    = 7000.0 (untouched)
+     *     ⇒ expected debt 45000.0, advance 0.0, loan 7000.0
+     *     ⇒ the note's OWN rolling debtAfterIqd must still read 10000.0, i.e. the note alone
+     *       moved nothing. This is the assertion that pins the type rather than the total.
+     *
+     *   CONTROL arm — same baseline, same amounts, only the first entry's TYPE differs:
+     *     (a) took 12000.0  → advanceUsed = minOf(5000.0, 12000.0) = 5000.0
+     *                         advance = 0.0
+     *                         debtAdded = 12000.0 - 5000.0 = 7000.0
+     *                         debt    = 10000.0 + 7000.0 = 17000.0
+     *     (b) took 40000.0  → advanceUsed = minOf(0.0, 40000.0) = 0.0
+     *                         debt    = 17000.0 + 40000.0 = 57000.0
+     *     ⇒ expected debt 57000.0, advance 0.0, loan 7000.0
+     *
+     *   The 12000.0 difference between the two arms (57000.0 - 45000.0 = 12000.0) is the whole
+     *   claim: identical amount, different type, different balance.
+     *
+     * FAITHFUL MUTANT (R13-T8 M1): route "note" into the debt arm at BalanceCalculator.kt:12.
+     * The claim arm then converges on the control arm's 57000.0 and both the final debt and
+     * the note's own debtAfterIqd assertions fail.
+     */
     @Test
     fun oracle_noteTransaction_zeroFinancialImpact() {
-        // "note" type transactions must have zero financial effect
-        val entries = listOf(
+        // ---------- CLAIM arm: the note carries a NON-ZERO amount ----------
+        val claimEntries = listOf(
             LocalLedgerEntry(
                 id = "oracle_note_1", accountId = "oracle_note_acc",
-                typeRaw = "took", amountIqd = 40000.0, debtAfterIqd = 0.0,
+                typeRaw = "note", amountIqd = 12000.0, debtAfterIqd = 0.0,
                 occurredAt = 1700000000000L
             ),
             LocalLedgerEntry(
                 id = "oracle_note_2", accountId = "oracle_note_acc",
-                typeRaw = "note", amountIqd = 0.0, debtAfterIqd = 0.0,
+                typeRaw = "took", amountIqd = 40000.0, debtAfterIqd = 0.0,
                 occurredAt = 1700100000000L
             )
         )
 
-        val (balances, _) = BalanceCalculator.reconstructCurrentPosition(
-            openingDebt = 0.0, openingAdvance = 0.0, openingLoan = 0.0,
-            transactions = entries, isSnapshotBaseline = false
+        val (claimBalances, claimUpdated) = BalanceCalculator.reconstructCurrentPosition(
+            openingDebt = 10000.0, openingAdvance = 5000.0, openingLoan = 7000.0,
+            transactions = claimEntries, isSnapshotBaseline = false
         )
 
         assertEquals(
-            "ORACLE | Note transaction must have zero financial impact. " +
-            "Expected: 40000.0 | Actual: ${balances.debtIqd}",
-            40000.0, balances.debtIqd, 0.001
+            "ORACLE | Note must not move the DEBT leg even though it carries 12000.0. " +
+            "Expected 10000.0 + (40000.0 - minOf(5000.0, 40000.0)=5000.0) = 45000.0 " +
+            "| Actual: ${claimBalances.debtIqd}. " +
+            "A note routed into the debt arm would give 57000.0 — the H-3 inflation shape.",
+            45000.0, claimBalances.debtIqd, 0.001
+        )
+        assertEquals(
+            "ORACLE | Note must not move the ADVANCE leg. " +
+            "Expected 5000.0 - minOf(5000.0, 40000.0)=5000.0 = 0.0 " +
+            "| Actual: ${claimBalances.advanceIqd}",
+            0.0, claimBalances.advanceIqd, 0.001
+        )
+        assertEquals(
+            "ORACLE | Note must not move the LOAN leg. Expected the untouched opening 7000.0 " +
+            "| Actual: ${claimBalances.loanIqd}",
+            7000.0, claimBalances.loanIqd, 0.001
+        )
+
+        // The note's OWN rolling position, read from the entry the production loop wrote back.
+        // Pins the note in isolation rather than pinning the sum of the two entries.
+        val noteEntryAfter = claimUpdated.first { it.id == "oracle_note_1" }
+        assertEquals(
+            "ORACLE | The note entry alone must leave debt at the opening 10000.0, " +
+            "proving inertness is the TYPE's doing and not the amount's. " +
+            "Expected: 10000.0 | Actual: ${noteEntryAfter.debtAfterIqd} " +
+            "(a note behaving as 'took' would read 17000.0)",
+            10000.0, noteEntryAfter.debtAfterIqd, 0.001
+        )
+
+        // ---------- CONTROL arm: the SAME 12000.0 on a non-note type ----------
+        // Without this, the claim above is satisfied by any implementation that is blind at
+        // amount 0 — which is the defect this repair exists to close.
+        val controlEntries = listOf(
+            LocalLedgerEntry(
+                id = "oracle_note_ctrl_1", accountId = "oracle_note_control_acc",
+                typeRaw = "took", amountIqd = 12000.0, debtAfterIqd = 0.0,
+                occurredAt = 1700000000000L
+            ),
+            LocalLedgerEntry(
+                id = "oracle_note_ctrl_2", accountId = "oracle_note_control_acc",
+                typeRaw = "took", amountIqd = 40000.0, debtAfterIqd = 0.0,
+                occurredAt = 1700100000000L
+            )
+        )
+
+        val (controlBalances, _) = BalanceCalculator.reconstructCurrentPosition(
+            openingDebt = 10000.0, openingAdvance = 5000.0, openingLoan = 7000.0,
+            transactions = controlEntries, isSnapshotBaseline = false
+        )
+
+        assertEquals(
+            "ORACLE CONTROL | The same 12000.0 on a non-note type MUST move debt, otherwise " +
+            "the claim arm above proves nothing about the type. " +
+            "Expected 10000.0 + (12000.0 - 5000.0) + (40000.0 - 0.0) = 57000.0 " +
+            "| Actual: ${controlBalances.debtIqd}",
+            57000.0, controlBalances.debtIqd, 0.001
+        )
+        assertEquals(
+            "ORACLE CONTROL | Expected advance 5000.0 - 5000.0 = 0.0 " +
+            "| Actual: ${controlBalances.advanceIqd}",
+            0.0, controlBalances.advanceIqd, 0.001
+        )
+        assertEquals(
+            "ORACLE CONTROL | Expected the untouched opening loan 7000.0 " +
+            "| Actual: ${controlBalances.loanIqd}",
+            7000.0, controlBalances.loanIqd, 0.001
         )
     }
 
