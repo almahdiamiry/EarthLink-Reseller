@@ -4,12 +4,21 @@ scripts/scan_test_evidence.py
 
 Static evidence scanner for the Earthlink Reseller App Kotlin test suite.
 
+WHAT THIS IS PROVEN ON, AND WHAT IT IS NOT
+  Measured recall: this scanner fired on **1 of the 14 defects** the audit confirmed by
+  execution - only `F4`, the missing precondition, which is the one rule that is static. The
+  other thirteen returned NOTHING on the pre-repair file. Its seven rules are therefore a
+  **triage instrument proven on its own fixtures**, not a defect finder. It did not find the
+  real defects; mutation plus an independent Skeptic pass did. Anything in this repository that
+  reads as though the scanner discovers test-evidence defects is wrong and should be corrected.
+
+  Statutory use is one thing and it is narrow: pointing a human at a file worth reading first.
+
 Purpose
-  Task 1 of the Round 13 test-suite evidence audit. This is the triage instrument the
-  rest of the audit depends on, so it is deliberately conservative: every rule is written to
-  under-report rather than over-report. That is a design bias, not a guarantee, and it is not
-  unconditional. Every finding it prints is a CANDIDATE that a human or a later task must
-  adjudicate. It is not a gate and it does not certify anything.
+  Task 1 of the Round 13 test-suite audit. Every rule is written to under-report rather than
+  over-report. That is a design bias, not a guarantee, and it is not unconditional. Every finding
+  it prints is a CANDIDATE that a human or a later task must adjudicate. It is not a gate, it
+  does not certify anything, and a clean scan is not evidence of a clean suite.
 
 Rules
   F1  Vacuous          A `@Test` body with no `assert*`, no `fail(`, no `verify*` call, and

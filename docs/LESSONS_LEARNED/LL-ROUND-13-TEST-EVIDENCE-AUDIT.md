@@ -3387,3 +3387,28 @@ Confidence:            HIGH for every figure in §5 and §6, each re-derived by 
                         the cited line at source. MEDIUM for Task 5's and Task 6's green-state XML
                         figures, which are transcription-only by the limitation §6.14 records.
 ```
+
+---
+
+## Coverage quotient — read this before any "the audit found nothing" statement
+
+Measured, not asserted:
+
+| Population | Adjudicated | Not adjudicated |
+|:--|--:|--:|
+| Single-assertion cohort **at HEAD** | **18 of 59** | **41** |
+| Test files | **27 of 113** | **86** |
+
+**Reconciles as:** the cohort was 69 when the audit ran. Ten of the 28 adjudicated members
+have since left it — nine repaired, one deleted — so `59 - 18 = 41`. The earlier figure of "41"
+was derived at base as `69 - 28`; it lands on the same number for a different reason. Both are
+correct in their own scope, and the coincidence is not evidence that the two agree.
+
+**"0 product defects" is a statement about what was looked at.** It is not a statement about the
+product. 41 cohort members and 86 files were never adjudicated, and the scanner that screened them
+fired on **1 of the 14** defects this audit confirmed — so a clean scan of those 86 files is not
+evidence about them.
+
+**The ~40% confirmed rate is a biased estimate.** The adjudicated cohort was ranked by financial
+risk, not sampled at random, so the rate is an upper bound on the unadjudicated pool, not a point
+estimate of it. Any projection from it is a **guess with a range, not a measurement**.

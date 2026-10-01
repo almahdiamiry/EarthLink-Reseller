@@ -73,3 +73,15 @@ balanced. Pinned by fixture, and by a mutation that restores the newline abort.
 **Not a defect, recorded because it looks like one.** `LL-ROUND-13-TEST-EVIDENCE-AUDIT.md:250` renders
 an em dash as `??` in PowerShell output. Codepoint enumeration gives `U+2014`; the file contains zero
 `U+FFFD`. This is console rendering, not corruption.
+
+## GAP-7 — the release gate does not assert a test count, and this branch proved it
+
+| | |
+|:--|:--|
+| **Location** | `scripts/production_gate.sh:86` (the `--tests` selection) and `scripts/collect_closure_evidence.py:214` |
+| **Mechanism** | The gate's exit code is `0 if (failed_tests == 0 and error_tests == 0 and total_tests > 0) else 1`. There is no lower bound on `total_tests`. |
+| **Live example — this branch** | Deleting `testScenarioJ_counterfactualRawPayloadContainsRawJson` changed `Phase1FirestoreDocumentIdentityTest` from **20 tests to 19**. The gate still passed. The deletion was correct and independently verified; the point is that **the gate could not have noticed**, and would equally not notice a test lost by accident, by a bad merge, or by a future deletion nobody reviewed. |
+| **Second live example** | `DatabaseMigration17To18Test` cannot pass outside this machine — it loads a gitignored golden backup by bare filename. In a clean worktree the suite is 797 tests with 1 failure, so the gate fails for an unrelated reason and the real cause is not surfaced. |
+| **What is checked today** | That nothing failed. Not that anything is still there. |
+| **Why not this branch** | Changing the gate is a release-process change, and this branch's charter was test repairs. Recording it is the correct action. |
+| **Suggested fix, not applied** | Add a committed **expected-count manifest** — a file listing, per gated class, the test count and the commit that established it — and have `collect_closure_evidence.py` compare the measured count against it, failing on a **decrease** while tolerating an increase. A decrease is the direction that loses protection; an increase is the normal result of adding a test. Pinning to an exact number instead would make every legitimate new test a gate failure and train the next person to update the number without reading why, which is how a count check becomes a rubber stamp. The manifest should carry the commit sha so a count change is reviewable rather than mechanical. |
