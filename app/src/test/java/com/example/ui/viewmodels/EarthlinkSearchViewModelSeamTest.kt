@@ -17,6 +17,7 @@ import com.example.domain.repository.SyncProgress
 import com.example.domain.repository.SyncReason
 import com.example.domain.repository.SyncRepository
 import com.example.domain.repository.SyncStatusState
+import com.example.findSourceFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -39,7 +40,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import java.io.File
 
 /**
  * MNT-09 / FW-01 Characterization Test Suite.
@@ -1222,22 +1222,14 @@ class EarthlinkSearchViewModelSeamTest {
      * invoke no production code, so a change to the production line was undetectable anywhere
      * in the repository. This helper is the binding that makes such a change observable.
      *
-     * Seam / Environment: STRUCTURAL — a source scan, modelled on the working pattern in
-     * Phase5DestructiveActionReleaseGateTest.findSourceFile, which this suite already uses.
+     * Seam / Environment: STRUCTURAL — a source scan, using the shared `findSourceFile` test
+     * utility that Phase5DestructiveActionReleaseGateTest also calls.
      * Independent Oracle: the expected string is a literal copy of the production expression,
      * not a value recomputed by the code under test.
      */
     private fun productionBalanceAfterLine(): String {
         val relPath = "app/src/main/java/com/example/ui/screens/UserDetailScreenV2.kt"
-        val candidates = listOf(
-            File(relPath),
-            File(relPath.removePrefix("app/")),
-            File("app", relPath),
-            File("..", relPath),
-            File("../..", relPath)
-        )
-        val source = candidates.firstOrNull { it.exists() }
-            ?: error("Source file not found for candidate paths $candidates (cwd: ${File(".").absolutePath})")
+        val source = findSourceFile(relPath)
         val matches = source.readLines().filter { it.trimStart().startsWith("val balanceAfter =") }
         require(matches.size == 1) {
             "UserDetailScreenV2.kt must declare exactly one 'val balanceAfter =' line; found " +

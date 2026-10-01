@@ -31,13 +31,12 @@ ANTI-REGRESSION FIXTURES
     Mockito assertion, so the test is not `F1`. It is `F6`.
 """
 
-import ast
-import inspect
+import io
 import os
 import subprocess
 import sys
 import tempfile
-import textwrap
+from contextlib import redirect_stdout
 
 if hasattr(sys.stdout, "reconfigure"):
     try:
@@ -75,13 +74,12 @@ def rules_for(findings, test_name):
     return {f.rule for f in findings if f.test_name == test_name}
 
 
-def lines_for(findings, test_name):
-    findings_for_test = [f for f in findings if f.test_name == test_name]
-    assert findings_for_test, (
-        f"Expected the scanner to resolve the fixture test '{test_name}' and report at "
-        f"least one rule for it. Findings seen: {sorted((f.rule, f.test_name) for f in findings)}"
-    )
-    return {f.line for f in findings_for_test}
+def _run_cli(argv):
+    """Run the scanner's CLI in-process and capture stdout: (exit code, output)."""
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        code = scan_test_evidence.main(argv)
+    return code, buffer.getvalue()
 
 
 def scan_fixture(tmpdir, name, text):
@@ -1313,22 +1311,12 @@ def test_fallback_bounds_the_block_at_the_next_test():
     The block-bound fallback is reachable by ordinary compiling Kotlin, so it is pinned, and the
     branch that is actually LIVE is the one pinned.
 
-    The trigger is a `fun` the identifier pattern cannot match - a backtick-quoted test name.
-    7 of the suite's 798 tests are in this state, all in core/ledger/NoteCleanerTest.kt. The
-    previous report gave "a file that does not balance is not representable as a fixture" as the
-    reason the fallback had no pin; that was wrong, and this is the pin.
-
-    Which branch. `_build_blocks` has two fallback arms: `elif next_test_idx is not None` takes
-    the bound at the start of the next `@Test` line, and `else` runs to end of file. The suite
-    only ever exercises the first - 6 of the 798 blocks, the 7th being the last test in its
-    file - so a one-test fixture pins the arm the suite never reaches. This fixture has two.
-
-    What the live arm guarantees, and it is a guarantee rather than a limitation: the bound is
-    the character offset of the START of the next `@Test` line, so the following test's body is
-    never inside this block's text. The block's *reported* `end_line` is that boundary line
-    rather than the last line it occupies, which is inert - no rule reads `@Test`. Measured on
-    the real suite: 0 of the 6 live fallback blocks contain any non-blank text after the test's
-    own closing brace, and 0 hold an assertion past the next `@Test` line.
+    What the fallback IS, and what it bounds - the trigger, the two arms in `_build_blocks`, and
+    why the reported `end_line` naming the boundary line rather than the last line occupied is
+    inert - is disclosed once, in `scan_test_evidence.py:103-123`, and is deliberately not
+    restated here: this fixture exists to exercise the arm, not to describe it. The previous
+    report gave "a file that does not balance is not representable as a fixture" as the reason
+    the fallback had no pin; that was wrong, and this is the pin.
 
     What this does not prove: that the fallback bounds a HELPER declared between two
     backtick-named tests. It does not - such a helper would be inside the range. No such case
@@ -1411,29 +1399,20 @@ def test_cli_rule_filter_and_exit_zero():
         write_fixture(tmpdir, "MixedEvidenceTest.kt", F1_FIXTURE + F2_FIXTURE)
         write_fixture(tmpdir, "CircularEvidenceTest.kt", F3_FIXTURE)
 
-        import io
-        from contextlib import redirect_stdout
-
-        def run_cli(argv):
-            buffer = io.StringIO()
-            with redirect_stdout(buffer):
-                code = scan_test_evidence.main(argv)
-            return code, buffer.getvalue()
-
-        code_all, out_all = run_cli([tmpdir])
+        code_all, out_all = _run_cli([tmpdir])
         assert code_all == 0, f"Scanner must exit 0 on success, got {code_all}"
         assert "[F1]" in out_all and "[F2]" in out_all and "[F3]" in out_all, (
             f"Unfiltered output must carry every rule that fired. Got:\n{out_all}"
         )
 
-        code_f1, out_f1 = run_cli([tmpdir, "--rule", "f1"])
+        code_f1, out_f1 = _run_cli([tmpdir, "--rule", "f1"])
         assert code_f1 == 0, f"Scanner must exit 0 when findings exist, got {code_f1}"
         assert "[F1]" in out_f1, f"F1 must be printed:\n{out_f1}"
         assert "[F2]" not in out_f1 and "[F3]" not in out_f1, (
             f"--rule f1 must filter the other rules out. Got:\n{out_f1}"
         )
 
-        code_upper, out_upper = run_cli([tmpdir, "--rule", "F3"])
+        code_upper, out_upper = _run_cli([tmpdir, "--rule", "F3"])
         assert code_upper == 0
         assert "[F3]" in out_upper and "[F1]" not in out_upper and "[F2]" not in out_upper, (
             f"--rule must be case-insensitive and must filter. Got:\n{out_upper}"
@@ -1457,16 +1436,7 @@ def test_cli_single_assertion_selector():
     with tempfile.TemporaryDirectory() as tmpdir:
         write_fixture(tmpdir, "SingleAssertionCohortTest.kt", SINGLE_ASSERTION_FIXTURE)
 
-        import io
-        from contextlib import redirect_stdout
-
-        def run_cli(argv):
-            buffer = io.StringIO()
-            with redirect_stdout(buffer):
-                code = scan_test_evidence.main(argv)
-            return code, buffer.getvalue()
-
-        code, out = run_cli([tmpdir, "--single-assertion"])
+        code, out = _run_cli([tmpdir, "--single-assertion"])
         assert code == 0
         assert "single_exactly_one" in out, f"got:\n{out}"
         assert "single_none" not in out, f"A zero-assertion test is not single-assertion:\n{out}"
@@ -1474,7 +1444,7 @@ def test_cli_single_assertion_selector():
         assert "SingleAssertionCohortTest.kt" in out, f"The file must be printed:\n{out}"
 
         # Task 3 of the plan invokes the rule name, not the flag. Both spellings must work.
-        code_alias, out_alias = run_cli([tmpdir, "--rule", "single-assertion"])
+        code_alias, out_alias = _run_cli([tmpdir, "--rule", "single-assertion"])
         assert code_alias == 0
         assert "single_exactly_one" in out_alias, f"--rule single-assertion must work:\n{out_alias}"
         assert "single_two_of_them" not in out_alias, f"--rule single-assertion must work:\n{out_alias}"
@@ -1540,34 +1510,6 @@ TESTS = [
 ]
 
 
-def count_assertion_calls():
-    """
-    Count of `assert` statements written literally in the functions named in TESTS.
-
-    This is a count of assert STATEMENTS IN SOURCE, not of assertions executed against the
-    scanner, and the printed label says so. Two things it deliberately does not claim:
-      * the assertions inside the `assert_classified` / `assert_resolved` helpers, which do
-        the classification work, are not counted here;
-      * a statement inside a loop executes once per iteration, so this is not an execution
-        count. `test_i3_f4_guards`, for example, writes two helper calls that run three times.
-
-    It is measured from this module's own AST rather than derived from a multiplication that
-    has no relationship to anything in the source.
-    """
-    import ast
-    import textwrap
-
-    source = textwrap.dedent(inspect.getsource(sys.modules[__name__]))
-    tree = ast.parse(source)
-    by_name = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
-    total = 0
-    for test_fn in TESTS:
-        node = by_name.get(test_fn.__name__)
-        assert node is not None, f"Test {test_fn.__name__} is not defined in this module"
-        total += sum(1 for child in ast.walk(node) if isinstance(child, ast.Assert))
-    return total
-
-
 def main():
     print("=" * 74)
     print("=== TEST EVIDENCE SCANNER SELF-TEST (fixtures against the real scanner) ===")
@@ -1576,8 +1518,8 @@ def main():
         test_fn()
     print("-" * 74)
     print(f"ALL {len(TESTS)} SCANNER FIXTURE GROUPS PASSED "
-          f"({count_assertion_calls()} assert statements written in those groups, not counting "
-          f"the assertions inside the classification helpers or loop re-executions).")
+          f"({len(TESTS)} groups, each running its own assertions plus those in the shared "
+          f"classification helpers).")
     print("=" * 74)
     return 0
 

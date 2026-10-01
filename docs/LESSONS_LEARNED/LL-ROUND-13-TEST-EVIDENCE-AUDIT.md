@@ -61,7 +61,7 @@ Every figure matched the fact-check exactly; none was contradicted.
 > **Attribution note (corrected 2026-09-30).** The block below was previously captioned as
 > output of the single command above, but **`single-assertion cohort: 69` is not emitted by
 > that command.** It requires `python scripts/scan_test_evidence.py app/src/test
-> --rule single-assertion` (equivalently `--single-assertion`, per `:122-130`). Every other
+> --rule single-assertion` (equivalently `--single-assertion`, per `:138-146`). Every other
 > line is genuine output of the plain invocation. The value is correct; the attribution was
 > not, and it is corrected here rather than left in a document whose thesis is "verify the
 > verifier".
@@ -97,7 +97,7 @@ not unbalanced braces. In this suite it is reached by **7 of 798 tests, all in
 `core/ledger/NoteCleanerTest.kt`** (`:87-92`).
 
 **On "can never invent a finding".** The scanner's own stated direction of error is that it
-"may under-report, and must never invent a finding" (`:79-81`), enforced by four guards, each
+"may under-report, and must never invent a finding" (`:82-83`), enforced by four guards, each
 added after the class was demonstrated to be violated. For the **791 resolved** blocks that
 guarantee is well-founded: the bound neither stops early (so it cannot hide an assertion and
 invent a vacuity finding) nor over-runs (so it cannot borrow another function's assertions and
@@ -107,7 +107,7 @@ invent an `F2`/`F3`/`F7`).
 guarantee that a *helper between two tests* falls outside both ranges holds on resolved shapes
 but **not** on the fallback shape, where a helper sitting between two backtick-named tests
 **would** be inside the preceding range and can invent an `F2` on ordinary compiling Kotlin
-(`:72-77`). So the never-invent property is scoped to the resolved shapes; on the 7 fallback
+(`:75-80`). So the never-invent property is scoped to the resolved shapes; on the 7 fallback
 blocks it carries a known latent exception. The **third** exception is not a block-bounding
 problem at all and is **live** — see the class-attribution note below. A low count is the
 expected shape of a working scanner, not evidence of a broken one.
@@ -124,11 +124,11 @@ remains a latent property of the scanner, not a demonstrated defect. (Both were 
 and executed* under this ruling — R2 produced block `[6..15]`, asserts `[8,12]`, invented `F2`
 at 12; R3 produced a block named after the helper, asserts `[8,12]`, invented `F2`. So the claim
 that such a case is "not representable as a fixture" is false, and was corrected at
-`test_evidence_scanner_fixtures.py:1115-1116`.)
+`test_evidence_scanner_fixtures.py:1324-1325`.)
 
-### Third latent path — class attribution, live, under-reported at Task 9
+### Third path — class attribution: the misattribution is live, its direction of error is measured
 
-`_class_name_for` (`scripts/scan_test_evidence.py:441-446`) returns the **nearest preceding**
+`_class_name_for` (`scripts/scan_test_evidence.py:450-455`) returns the **nearest preceding**
 class declaration, not the class that encloses the test. Where a file declares its test class and
 then a fixture/helper class **after** it, every `@Test` below that helper is attributed to the
 helper. **This is live at HEAD and it is measured, not hypothetical**: of 797 tests, **174 across
@@ -138,18 +138,32 @@ helper. **This is live at HEAD and it is measured, not hypothetical**: of 797 te
 `FakeSyncRepository` at `:162`, and the file's 40 `@Test`s run `:224`–`:1268`, so **40 of 40** are
 labelled `[FakeSyncRepository]`. Measured by re-running the scanner read-only at Task 9.
 
-**The harm is distinct from the two above and must not be counted as a third invented-finding
-path.** Those two invent an `F2`; this one cannot. It reaches the rules only through
-`sut_names = _sut_names(block.class_name)` feeding `F3` (`:843`), so the misattribution **substitutes
-the set of names treated as the class under test**: `EarthlinkSearchViewModelSeamTest` reduces to the
-stem `earthlinkSearchViewModelSeam`, while the substituted `FakeSyncRepository` matches none of
-`_SUT_NAME_SUFFIXES` and contributes `fakeSyncRepository` (`:749-759`, `:197`). Its two consequences
-are therefore **(a) an under-report — a genuine circular assertion rooted at the true SUT is not
-detected, since that name is no longer in the set; and (b) a cosmetic misattribution**, the
-triage listing's `[class]` column names the wrong class while the path and line stay correct. It
-**cannot** invent an `F3`, because a finding would need `fakeSyncRepository` to be the root of an
-asserted member call, and `_is_test_double` (`:762-778`, keyed on the root's *declared type*, not on
-`class_name`) would suppress that anyway.
+**The harm reaches the rules only through** `sut_names = _sut_names(block.class_name)` feeding `F3`
+(`:844`), so the misattribution **substitutes the set of names treated as the class under test**:
+`EarthlinkSearchViewModelSeamTest` reduces to the stem `earthlinkSearchViewModelSeam`, while the
+substituted `FakeSyncRepository` matches none of `_SUT_NAME_SUFFIXES` (`:206`) and contributes
+`fakeSyncRepository` alongside the fixed indicator names (`:752-762`, `:203`).
+
+**What was measured, in both directions.** Re-attributing all **797** real blocks to their enclosing
+top-level class and diffing the `F3` outcome: **0** under-reported and **0** invented. On this suite
+the path changes no finding. **That is a measurement of this suite, not a guarantee about the path,
+and an earlier version of this section claimed the guarantee — that the path "**cannot** invent an
+`F3`" — which is false.** A constructed fixture inverts it: `class FooTest` containing a nested
+`class RecordingChain { fun snapshot(): Int }`, then `val recordingChain = RecordingChain()`,
+`val observed = recordingChain.snapshot()`, `assertEquals(observed, 7)` emits an **invented `F3`**,
+because the nested class is the nearest preceding declaration, so `recordingChain` enters
+`sut_names`, and the bare-identifier argument `observed` is then bound to a member call rooted on it.
+So the two directions are: **0/0 on this suite, and 1 invented on a fixture that ordinary compiling
+Kotlin reaches.**
+
+**The reason this section used to give for the guarantee was itself wrong.** It said `_is_test_double`
+(`:765-781`) "would suppress that anyway". `_is_test_double` is keyed on the local's **initializer**,
+not on `class_name` — as the same sentence concedes forty words later — and the initializer here is
+`RecordingChain()`, which carries none of `_TEST_DOUBLE_MARKERS` (`:209`), so it suppresses nothing.
+The suppression that does hold on this suite is a **coincidence of these 23 files all having
+double-marked helper names**, not a structural property of the rule. Per this branch's own wording
+standard (`progress.md:145-147`, a token enumeration IS a list and only a test can check it), the
+unfalsifiable guarantee sentence is replaced by the measurement above.
 
 **No live `F3` false negative was demonstrated, and none is claimed.** Reading the 40 tests at
 `EarthlinkSearchViewModelSeamTest.kt` for the shape `F3` requires — a two-argument `assertEquals`
@@ -3044,7 +3058,8 @@ field. Only the run decides.
 
 ### 6.8 The finding no repair task covered — repaired at `bbc4cb1`
 
-`DataIntegrityReleaseGateTest.kt:1275` → **`:1515` at HEAD**,
+`DataIntegrityReleaseGateTest.kt:1275` → **`:1570` at HEAD** (`:1515` is the KDoc's first prose
+line, not the declaration),
 `oracle_noteTransaction_zeroFinancialImpact` — §3.10 finding **#3**, `CONFIRMED` by mutation M7
 (`TransactionTypeNormalizer.kt:25`, `"note"` → `"took"`, and the test **still passed**) — **was not
 addressed by any task in the repair plan, and stood unrepaired through `0b14755`. It is repaired at
@@ -3099,9 +3114,22 @@ be REFUTED and still single-assertion (most of §4.10's nine). Neither fact tell
 guards what it names.
 
 **Files: 27 of 113 were adjudicated or screened. 86 were never touched at all** — counted as the union
-of §3's 14 verdict-bearing files and §4.2's 23-file screen table (which overlap in 10), plus
-`Step3DurableDispatchTest` and `core/ledger/NoteCleanerTest` inspected for other reasons. **The
-document's earlier "~90 files" was an approximation; 86 is the counted figure.**
+of §3.10's **5** verdict-bearing files and §4.2's 23-file screen table, which overlap in **2**
+(`DataIntegrityReleaseGateTest.kt` and `Phase5DestructiveActionReleaseGateTest.kt`): **5 + 23 − 2 = 26**,
+plus `Step3DurableDispatchTest`, which is in neither section's list: **26 + 1 = 27**, and
+**113 − 27 = 86**. `core/ledger/NoteCleanerTest` was read for the fallback-bound discussion above but is
+in **neither** set and is **not** one of the 27; counting it would give 28 and 85. **The document's
+earlier "~90 files" was an approximation; 86 is the counted figure.**
+
+**The sentence this replaces gave a derivation that was arithmetically impossible, and the correction
+is larger than a word.** It read "§3's **14** verdict-bearing files and §4.2's 23-file screen table
+(which overlap in **10**), **plus** `Step3DurableDispatchTest` and `core/ledger/NoteCleanerTest`".
+14 + 23 − 10 = 27 already, so the two "plus" files could not be additional without the total becoming
+29 and 84 — contradicting the 27 and 86 in the same sentence. Both premises were also wrong against the
+record's own tables: **§3.10 carries 15 verdicts across 5 distinct files, not 14**, and the true
+overlap with §4.2's table is **2, not 10**. The totals 27 and 86 were right; the route stated to reach
+them was not. **Reported rather than silently reworded**, because a reader who checks the arithmetic
+would find the old sentence impossible.
 
 ### 6.10 Four repairs that are narrower than their finding, stated plainly
 
@@ -3173,20 +3201,32 @@ A limit of the mandated discipline, recorded so the numbers above are read at th
   `oracle_noteTransaction_zeroFinancialImpact` (§6.8), was unrepaired when this section was first
   written and was repaired at `bbc4cb1`; its measured chain is in Task 7's closing verification.
   **No finding is open.**
-- **The scanner was not re-certified, and at Task 9 only its prose was touched.** Its **executable
-  logic is unedited**: no rule, guard, regex or bound was changed at Task 9, and no fixture's
-  classification or expected value was changed. Two claims in the scanner's own documentation were
-  corrected at Task 9 — the unconditional "must never invent a finding" at `scan_test_evidence.py`
-  `:79-81`, which now names its three known exceptions, and the false non-representability claim in
-  `test_evidence_scanner_fixtures.py`. Both are docstring edits; the 27 fixtures pass unchanged
-  (`python -m pytest scripts/test_evidence_scanner_fixtures.py -q` → 27 passed). **The stale figures
-  remain stale and were deliberately not "fixed":** the scanner's hardcoded `798` strings sit at
-  `:49,67,93,104,502,576` — **6** sites — and the fixtures carry **8** sites, both now
-  **stale by one**. (An earlier version of this bullet cited five sites at `:49,67,90,101,573` and
-  "the fixtures' nine sites"; the line numbers moved when the Task-9 prose edits landed above them,
-  and the counts were re-measured by grep rather than carried forward.) Neither is gate-invoked
-  (`production_gate.sh:65` runs `scan_forbidden_patterns.py`), and neither asserts anything
-  executable. Recorded here so no reader treats them as a live count.
+- **The scanner's executable logic was unedited through Task 9 and IS edited by Task 10.** At Task 9
+  only prose was touched: no rule, guard, regex or bound was changed, and no fixture's classification
+  or expected value was changed. **Task 10 then removed dead complexity from the scanner itself** —
+  the `RULE_ALIASES` dict, an unused `Finding.format` parameter, a duplicated rule-set literal, a
+  synthetic nested `_TestBlock` in the helper walk, and the `single_assertion_tests` wrapper — so
+  **"executable logic is unedited" no longer describes the branch as it stands.** None of those edits
+  touches a rule's classification: the scan is unchanged at **797 tests / 4305 assertion calls / 0
+  findings**, and the self-test still reports **`ALL 27 SCANNER FIXTURE GROUPS PASSED`**, both measured
+  before and after. Two documentation claims were corrected at Task 9 — the unconditional "must never
+  invent a finding" at `scan_test_evidence.py` `:82-83`, which names its three known exceptions, and the
+  false non-representability claim in `test_evidence_scanner_fixtures.py`. **Task 10 then corrected the
+  class-attribution guarantee at those same lines, which claimed the path "cannot invent an F3"; §3's
+  third path now carries the measured direction instead (0/0 on this suite, 1 invented on a fixture).**
+
+- **The `798` figures are now reconciled on the scanner side and still stale on the fixtures side.**
+  Task 9 left the scanner's six sites at `:49,67,93,104,502,576` stale deliberately. **Task 10 fixed
+  them against measurement:** `main` is **798 blocks / 577 expression-bodied / 214 brace / 7
+  fallback / 4285 assertion calls** and the branch head is **797 / 578 / 212 / 7 / 4305** (both
+  measured, 577 + 214 + 7 = 798 and 578 + 212 + 7 = 797). Each scanner site now states the head figure
+  with the `main` figure bracketed, and every remaining `798` in that file is explicitly labelled "on
+  `main`" — so none reads as a live count. **`test_evidence_scanner_fixtures.py` still carries 6 stale
+  `798`/577 sites, at `:505,952,1089,1112,1118,1196`** (it held 8 before Task 10; two fell out when the
+  fallback fixture's docstring was replaced by a cross-reference to the scanner's own disclosure). They
+  are comments only, they assert nothing executable, and they are **not gate-invoked**
+  (`production_gate.sh:65` runs `scan_forbidden_patterns.py`) — so they are left for a later pass and
+  **recorded here rather than left to be discovered.** Neither set asserts anything a rule reads.
 - **The repro command at `:2378` embeds `--tests "*Phase1FirestoreDocumentIdentityTest.testScenarioJ*"`,
   which now matches nothing**, since A4 deleted that test. It is a historical record of §4's
   post-revert run and its `38 / 0 / 0` figure is the figure that run produced; **it is stale as a

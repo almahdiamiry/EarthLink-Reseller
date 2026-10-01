@@ -44,9 +44,11 @@ Rules
   next `@Test`, because a test that delegates its only assertion to a helper declared after
   the next `@Test` is still verified, and bounding there reported it as vacuous.
 
-  Two body shapes are resolved, and they cover every test in this suite:
-    * Brace-bodied, `fun x() { ... }` - matched to the closing `}`.
-    * Expression-bodied, `fun x() = runBlocking { ... }` - 577 of the 798 tests. The body is
+  Two body shapes are resolved, and they cover every test in this suite. Counts are given as
+  measured at this commit, with the `main` value in brackets where the two differ:
+    * Brace-bodied, `fun x() { ... }` - matched to the closing `}`. 212 at this commit [214].
+    * Expression-bodied, `fun x() = runBlocking { ... }` - 578 of the 797 tests at this commit
+      [577 of 798 on `main`]. The body is
       the WHOLE expression, so a trailing `.also { ... }` / `.let { ... }` stays inside it.
       The expression ends at a newline that begins a new declaration, and only at brace depth
       zero relative to the `=`, so a `val` line inside the block is not mistaken for the end.
@@ -54,7 +56,7 @@ Rules
   What the resolution guarantees, precisely. It is a bound, so it can be wrong in two
   directions, and both matter:
     * It does not stop EARLY on the resolved shapes, so it cannot hide an assertion and invent
-      a vacuity finding. `test_eb_expression_body_tail_is_not_truncated` and the 4285
+      a vacuity finding. `test_eb_expression_body_tail_is_not_truncated` and the 4305
       in-test-body assertion count are the evidence.
     * It does not OVER-RUN into the next declaration, so it cannot borrow another function's
       assertion pattern and invent an F2, F3 or F7. A helper declared between two `@Test`s, or
@@ -63,12 +65,13 @@ Rules
       `test_eb_expression_body_stops_at_a_class_modifier_follower` and
       `test_eb_expression_body_stops_before_the_next_tests_annotation` are the evidence. The
       last of those exists because a lone `@Test` line was once read as a continuation rather
-      than as a declaration lead-in, which put the next annotation line inside the previous
-      block for 498 of the 798 real tests. That count is now 0. The neighbouring measure is not:
-      a block whose REPORTED `end_line` equals the next test's `@Test` line is 6 file-wide, and
-      all 6 are fallback blocks (below) reporting the boundary they stop at. Among the 679
-      resolved blocks that have a following `@Test` it is 0. Neither number reaches a rule -
-      no rule reads `@Test`.
+than as a declaration lead-in, which put the next annotation line inside the previous
+       block for 498 of the 798 real tests on `main` - a `main` measurement, and 0 at this
+       commit. The neighbouring measure is not 0:
+       a block whose REPORTED `end_line` equals the next test's `@Test` line is 6 file-wide, and
+       all 6 are fallback blocks (below) reporting the boundary they stop at. Among the 678
+       resolved blocks that have a following `@Test` it is 0. Neither number reaches a rule -
+       no rule reads `@Test`.
   What it does NOT bound: a HELPER declared between two tests. On the resolved shapes the bound
   is the test's own closing brace, so such a helper is outside both ranges; on the fallback
   shape the bound is the next `@Test` line, so a helper sitting between two backtick-named tests
@@ -79,8 +82,18 @@ Rules
   The direction of error is deliberate and applies to every rule: the scanner may
   under-report, and must never invent a finding - EXCEPT on the two fallback shapes disclosed
   above, which are known to be able to, and except for the class-attribution path disclosed in
-  LL-ROUND-13, which can only under-report and mislabel. Four guards enforce the resolved-shape
-  property, and each was added
+  LL-ROUND-13. That path's direction is NOT established in the never-invent direction and is
+  not claimed to be. What is measured, in both directions, over all 797 real blocks with the
+  enclosing top-level class name substituted for the nearest preceding one: 0 F3 under-reported
+  and 0 F3 invented, so on this suite the path changes no finding. A constructed fixture shows
+  it is not a guarantee in that direction: `class FooTest` holding a nested
+  `class RecordingChain { fun snapshot(): Int }`, then `val recordingChain = RecordingChain()`,
+  `val observed = recordingChain.snapshot()`, `assertEquals(observed, 7)` emits an INVENTED F3,
+  because the nested class is the nearest preceding declaration, so `recordingChain` enters
+  `sut_names`, and `_is_test_double` is keyed on the local's INITIALIZER (`RecordingChain()`,
+  no double marker) rather than on `class_name`, so nothing suppresses it. That fixture is not
+  committed here; it is transcribed inline so the claim can be reconstructed. Four guards
+  enforce the resolved-shape property, and each was added
   after the corresponding class was demonstrated to be violated on real input or on a fixture:
   the expression-body bound stopping at a `private suspend fun` (an invented F2 and F7), the
   tail truncation (an invented F1), the terminator reading only the first word of a line so
@@ -90,7 +103,7 @@ Rules
   The fallback, stated accurately: when no `fun` can be located at all, the block is bounded at
   the start of the next `@Test` line, or at end of file for the last test in its file. The
   trigger is a `fun` the identifier pattern cannot match - a Kotlin backtick-quoted test name -
-  and not unbalanced braces. In this suite it is reached by 7 of 798 tests, all in
+  and not unbalanced braces. In this suite it is reached by 7 of 797 tests, all in
   `core/ledger/NoteCleanerTest.kt`. Expression bodies are NOT a fallback case; they are
   resolved.
 
@@ -101,7 +114,7 @@ Rules
   test's BODY is never inside the block - the first block of a two-test backtick fixture holds
   its own assertion at line 9 and not the second test's at line 14. Only the reported
   `end_line` names the boundary line rather than the last line the text occupies, and that is
-  inert. The live arm - `elif next_test_idx is not None`, 6 of the 798 blocks - is pinned by
+  inert. The live arm - `elif next_test_idx is not None`, 6 of the 797 blocks - is pinned by
   `test_fallback_bounds_the_block_at_the_next_test`; the end-of-file arm is not, because the
   suite never reaches it. On the real suite, 0 of the 6 live fallback blocks contain any
   non-blank text after the test's own closing brace, and 0 hold an assertion past the next
@@ -163,13 +176,6 @@ RULE_TITLES = {
 # here as always-false and never emitted as a finding.
 ALWAYS_FALSE_RULES = frozenset({"F5"})
 
-RULE_ALIASES = {
-    "single-assertion": "single-assertion",
-    "single_assertion": "single-assertion",
-    "singleassertion": "single-assertion",
-    "1-assertion": "single-assertion",
-}
-
 # An assertion call: assert*, fail(, verify*. verify* also covers verifyNoInteractions*.
 _ASSERT_CALL_RE = re.compile(r"\b(assert[A-Za-z0-9_]*|fail|verify[A-Za-z0-9_]*)\s*\(")
 _TEST_ANNOTATION_RE = re.compile(r"^[ \t]*@Test\b")
@@ -214,8 +220,8 @@ class Finding:
     detail: str
     path: str = ""
 
-    def format(self, path=None):
-        shown = (path or self.path or "?").replace("\\", "/")
+    def format(self):
+        shown = (self.path or "?").replace("\\", "/")
         return f"[{self.rule}] {shown}:{self.line} :: {self.test_name} :: {self.detail}"
 
 
@@ -499,7 +505,7 @@ def _function_body_end(code, mask, fun_start):
             return None
         elif ch == "=" and depth == 0:
             # Expression body. `fun x() = runBlocking { ... }` is the dominant shape in this
-            # suite (577 of 798 tests), so this branch carries most of the scan.
+            # suite (578 of 797 tests at this commit), so this branch carries most of the scan.
             #
             # The body is the WHOLE expression, not just the first `{ ... }`. A body may carry
             # a tail - `.also { assertEquals(1, it) }`, `.let { ... }`, `.map { ... }` - and
@@ -573,7 +579,7 @@ def _starts_new_declaration(code, index):
       * an annotation that stands alone on its line leads the declaration on the NEXT line.
         The walk continues there rather than reading words at the newline it just consumed.
         Returning False there put the following test's `@Test` line inside this test's range,
-        measured at 498 of the 798 real blocks.
+        measured at 498 of the 798 real blocks on `main`.
     """
     k = index
     n = len(code)
@@ -644,32 +650,26 @@ def _assertion_calls_in(text):
     return [m.group(1) for m in _ASSERT_CALL_RE.finditer(text)]
 
 
-def _verifies_via_helper(block, depth=0):
+def _verifies_via_helper(code, test_name, helpers, depth=0):
     """
-    True when the test body calls a helper in this file that itself asserts or throws
+    True when `code` calls a helper in this file that itself asserts or throws
     AssertionError. Depth-limited to keep the walk bounded; a helper chain deeper than this is
     reported as delegating anyway, which can only suppress an F1, never invent one.
+
+    Only three inputs are carried, because only three are read: the text being searched, the
+    test's own name, and the file-wide helper table. A nested helper is therefore walked as a
+    string rather than wrapped in a synthetic block. `test_name` stays the TEST's name at every
+    depth, so the self-exclusion is unchanged by the nesting.
     """
     if depth > 2:
         return False
-    called = set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", block.code))
-    for name in called:
-        body = block.helpers.get(name)
-        if not body or name == block.name:
+    for name in set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", code)):
+        body = helpers.get(name)
+        if not body or name == test_name:
             continue
         if _assertion_calls_in(body) or "AssertionError" in body:
             return True
-        nested = _TestBlock(
-            class_name=block.class_name,
-            name=block.name,
-            start_line=block.start_line,
-            end_line=block.end_line,
-            code=body,
-            args_text=body,
-            string_mask=[False] * len(body),
-            helpers=block.helpers,
-        )
-        if _verifies_via_helper(nested, depth + 1):
+        if _verifies_via_helper(body, test_name, helpers, depth + 1):
             return True
     return False
 
@@ -809,7 +809,7 @@ def _check_f1(block, calls, path):
     # helper may assert directly or throw AssertionError; both are real verification. Without
     # this, any test whose only assertion lives in a helper is reported F1, which is the one
     # finding this scanner must never invent.
-    if _verifies_via_helper(block):
+    if _verifies_via_helper(block.code, block.name, block.helpers):
         return []
     return [Finding(
         rule="F1",
@@ -1035,8 +1035,8 @@ def scan_file(path):
     findings = []
     for block in blocks:
         calls = _assertion_calls(block)
-        for rule in ("F1", "F2", "F3", "F4", "F6", "F7"):
-            findings.extend(_RULE_CHECKS[rule](block, calls, path))
+        for check in _RULE_CHECKS.values():
+            findings.extend(check(block, calls, path))
     findings.sort(key=lambda f: (f.line, f.rule))
     return findings
 
@@ -1075,22 +1075,6 @@ def scan_tree(root):
         findings.extend(scan_file(path))
     findings.sort(key=lambda f: (f.path, f.line, f.rule))
     return findings
-
-
-def single_assertion_tests(root):
-    """Every @Test whose body holds exactly one assertion call: {path, line, name}."""
-    rows = []
-    for path in _kotlin_files(root):
-        for test in list_tests(path):
-            if test["assertion_count"] == 1:
-                rows.append({
-                    "path": path,
-                    "line": test["line"],
-                    "name": test["name"],
-                    "class_name": test["class_name"],
-                })
-    rows.sort(key=lambda r: (r["path"], r["line"]))
-    return rows
 
 
 def rule_counts(findings):
@@ -1149,8 +1133,8 @@ def main(argv=None):
     selector = None
     if args.rule:
         key = args.rule.strip().lower()
-        if key in RULE_ALIASES:
-            selector = RULE_ALIASES[key]
+        if key == "single-assertion":
+            selector = key
         elif key.upper() in RULES:
             selector = key.upper()
         else:
@@ -1159,27 +1143,44 @@ def main(argv=None):
             return 2
 
     files = _kotlin_files(args.root)
+    want_single = args.single_assertion or selector == "single-assertion"
     tests_total = 0
     assertions_total = 0
+    single_rows = []
+    findings = []
+    # One pass over the file list, because the discovery totals, the single-assertion cohort and
+    # the findings all come from the same per-file block set. The cohort sort is kept because
+    # `_kotlin_files` returns os.walk order, which is not a lexicographic order of the joined
+    # path, so the printed order is not the traversal order.
     for path in files:
         for test in list_tests(path):
             tests_total += 1
             assertions_total += test["assertion_count"]
+            if test["assertion_count"] == 1:
+                single_rows.append({
+                    "path": path,
+                    "line": test["line"],
+                    "name": test["name"],
+                    "class_name": test["class_name"],
+                })
+        if not want_single:
+            findings.extend(scan_file(path))
 
-    if args.single_assertion or selector == "single-assertion":
-        rows = single_assertion_tests(args.root)
+    if want_single:
+        single_rows.sort(key=lambda r: (r["path"], r["line"]))
         print("=" * 78)
         print("=== Single-assertion @Test cohort (exactly one assert*/fail(/verify* call) ===")
         print("=" * 78)
-        for row in rows:
+        for row in single_rows:
             print(f"{row['path']}:{row['line']}  {row['name']}  [{row['class_name']}]")
         print("-" * 78)
-        print(f"Total: {len(rows)} single-assertion tests out of {tests_total} discovered.")
+        print(f"Total: {len(single_rows)} single-assertion tests out of {tests_total} discovered.")
         print("=" * 78)
         return 0
 
-    all_findings = scan_tree(args.root)
-    findings = [f for f in all_findings if f.rule == selector] if selector else all_findings
+    findings.sort(key=lambda f: (f.path, f.line, f.rule))
+    if selector:
+        findings = [f for f in findings if f.rule == selector]
     counts = rule_counts(findings)
 
     if findings:

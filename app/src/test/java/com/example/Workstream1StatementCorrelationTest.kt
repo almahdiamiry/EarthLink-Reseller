@@ -36,7 +36,9 @@ import org.robolectric.annotation.Config
  *     it is load-bearing for the ±90 s correlation window that consumes it — a 3-hour error
  *     there is a wrong-correlation window, which is a wrong-charge window.
  *
- * Seam: (a) is JVM headless. (b) is ROBOLECTRIC, because the only route to the production
+ * Seam: ROBOLECTRIC for both (a) and (b). `@RunWith(RobolectricTestRunner::class)` is
+ * class-level, so (a) executes under Robolectric as well, even though it needs no Android runtime.
+ * (b) is under Robolectric because the only route to the production
  * statement timestamp parser is the private `verifyRenewalViaStatement`, reachable only through
  * the public `verifyAndResolvePendingOperation` (`Repositories.kt:1747`), which needs a Room
  * database, a recorded `PendingExternalOperation` and a gateway.
