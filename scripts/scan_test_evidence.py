@@ -502,6 +502,20 @@ def _function_body_end(code, mask, fun_start):
     closing brace and not merely the next `@Test`: a test that delegates its only assertion to a
     helper declared after the next `@Test` is still verified, and bounding at the next `@Test`
     reports it as vacuous.
+
+    Both failure directions are live, and each manufactures a different finding. Neither direction
+    is safe in general, so the rule here is not "always stop early" or "always stop late":
+
+    | bound | what it does | what it invents or hides |
+    |--|:--|:--|
+    | **early stop** | cuts the body before an assertion that lives past the cut | **invents an F1** on a test that does assert something, and may hide an F2 or F7 that sit beyond the cut |
+    | **late stop**  | runs past the real `}` into the next declaration and borrows its assertions | **invents an F2 or F7** by reading someone else's assertion, and **hides a vacuous F1** by crediting the next test's assertion to this one |
+
+    The two are not symmetric in cost but they are not symmetric in kind either, which is why no
+    one-sided phrasing is used here: an early stop manufactures absence, a late stop manufactures
+    presence, and the scanner reports both as findings. The implementation below bounds at the
+    function's own brace and, where that cannot be located, falls back to the next `@Test` - a
+    fallback whose direction is disclosed rather than claimed safe.
     """
     depth = 0
     i = fun_start
@@ -625,6 +639,12 @@ _DECLARATION_MODIFIERS = frozenset({
     "expect", "actual", "crossinline", "noinline", "reified", "vararg",
 })
 
+# A lone starter followed by one of these, after the whitespace, is an expression rather than a
+# declaration. `=`, `.`, `:` and `(` cannot continue a declaration in that position: `typealias X = Y`
+# puts the `=` after the NAME, and `val x: T` puts the `:` after the name. `(` is the genuinely
+# ambiguous one, because a secondary constructor is written `constructor(args)`.
+_EXPRESSION_FOLLOWERS = frozenset("=.:(")
+
 
 def _starts_new_declaration(code, index):
     """
@@ -733,6 +753,27 @@ def _starts_new_declaration(code, index):
             break
     if not words:
         return False
+    if len(words) == 1 and words[0] in _DECLARATION_STARTERS:
+        # A LONE starter must be followed by something that can continue a declaration. Probe past
+        # the whitespace for the next significant character and require it to be one that can begin
+        # a declaration - an identifier, `{`, `<`, or a modifier word. A starter followed instead by
+        # `=`, `.`, `:` or `(` is an EXPRESSION, not a declaration:
+        #     init(1)                  a call
+        #     init = 3                 an assignment
+        #     constructor.newInstance() a field access
+        #     object : Runnable {      a supertype list
+        # Kept to len(words) == 1 ON PURPOSE. Applying it to later words would reject `var y: Int`,
+        # where the `:` follows the NAME - exactly the shape the comment at the walk above describes.
+        # Restricting it also leaves multi-word modifier runs untouched, so `data class D(...)` and
+        # `companion object {` are never second-guessed.
+        p = k
+        while p < n and code[p] in " \t":
+            p += 1
+        if p < n and code[p] in _EXPRESSION_FOLLOWERS:
+            # The one starter that legitimately takes a paren is `constructor`, for a secondary
+            # constructor such as `constructor(x: Int)`. `constructor.` is still a field access.
+            if not (words[0] == "constructor" and code[p] == "("):
+                return False
     # A starter declares on its own. A modifier only ever qualifies, so it must be followed by a
     # starter somewhere in the run - never nothing, and never after a word that is neither.
     if words[0] in _DECLARATION_STARTERS:

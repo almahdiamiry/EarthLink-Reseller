@@ -1648,6 +1648,74 @@ def test_cli_real_process_exit_code_is_zero_even_with_findings():
         print("PASS CLI: the real process exits 0 with findings and non-zero only on bad usage.")
 
 
+def test_lone_starter_followed_by_an_expression_character():
+    """
+    Claim: a LONE declaration starter must be followed by something that can continue a
+    declaration. When the next significant character after the starter is `=`, `.`, `:` or `(`,
+    the line is an EXPRESSION and `_starts_new_declaration` must return False.
+
+    Seam: STRUCTURAL - the pure recogniser is called directly, no file is scanned and no test is
+    resolved, because the claim is about the word-and-follower rule alone.
+
+    Independent oracle: the Kotlin grammar, not the implementation. A declaration continues with a
+    name, a brace, or a type parameter - `fun helper(`, `class Foo(`, `object {`, `typealias X = Y`.
+    In that list the `=` follows the NAME and the `:` follows the name, so neither can appear
+    immediately after the keyword. `(` after `constructor` is the single legal exception, because a
+    secondary constructor is written `constructor(args)`. The four inputs below are therefore False
+    by grammar, independent of how the recogniser is written.
+
+    What this does NOT prove: that the recogniser parses Kotlin. It reads leading words and their
+    immediate follower. It says nothing about `@Suppress` on a following line, nor about a starter
+    whose name is on the next line, nor about any construct not listed here.
+    """
+    # Each entry is (line, expected). False is asserted, never merely "not True".
+    false_cases = [
+        ("object : Runnable {", "a supertype list, read as an expression rather than a new lead-in"),
+        ("init(1)", "a call on a variable named init"),
+        ("init = 3", "an assignment to a property named init"),
+        ("constructor.newInstance()", "a field access on a member named constructor"),
+    ]
+    for line, why in false_cases:
+        got = scan_test_evidence._starts_new_declaration(line, 0)
+        print(f"    got={str(got):5} (expected False)  {line!r:<30} {why}")
+        assert got is False, (
+            f"{line!r} is {why}, so the recogniser must return False, but it returned {got}. "
+            f"A True here truncates the expression body at this line and invents an F1."
+        )
+
+    # The guard must not over-reach. Each of these is a real declaration by the same grammar, and
+    # each was measured True before the rule existed, so a False here would be a NEW regression.
+    true_cases = [
+        "fun helper(",
+        "class Foo(",
+        "class Foo : Bar()",
+        "val x = 1",
+        "var y: Int = 0",
+        "val x: Int = 0",
+        "typealias X = Y",
+        "constructor(x: Int)",
+        "init {",
+        "interface Runnable",
+        "object {",
+        "private suspend fun f() {",
+        "internal inline val x = 1",
+        "data class D(val a: Int)",
+        "value class W(val a: Int)",
+        "companion object {",
+        "private val x = 1",
+        "enum class E {",
+    ]
+    for line in true_cases:
+        got = scan_test_evidence._starts_new_declaration(line, 0)
+        assert got is True, (
+            f"{line!r} is a declaration and must read as one, but the follower rule returned "
+            f"{got}. The rule is deliberately confined to len(words) == 1 so that a `:` after a "
+            f"NAME - `var y: Int` - is never mistaken for the one after a starter."
+        )
+    print(f"PASS LONE-STARTER-FOLLOWER: {len(false_cases)}/{len(false_cases)} expressions read "
+          f"False, and all {len(true_cases)}/{len(true_cases)} real declarations still read True.")
+
+
 TESTS = [
     test_f1_vacuous,
     test_f2_tautological,
@@ -1677,6 +1745,7 @@ TESTS = [
     test_cli_rule_filter_and_exit_zero,
     test_cli_single_assertion_selector,
     test_cli_real_process_exit_code_is_zero_even_with_findings,
+    test_lone_starter_followed_by_an_expression_character,
 ]
 
 

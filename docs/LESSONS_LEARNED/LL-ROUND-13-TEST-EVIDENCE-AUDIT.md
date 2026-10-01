@@ -2941,6 +2941,39 @@ extracted at base `1b9fff7` and against `0b14755` and diffing the two lists by `
 | `Workstream1StatementCorrelationTest.kt:46` `testBaghdadTimezoneConversion` | A3 was rewritten and renamed |
 | `Phase1FirestoreDocumentIdentityTest.kt:820` `testScenarioJ_counterfactualRawPayloadContainsRawJson` | A4 **deleted** it |
 
+### Repair classification - a tripwire is not an execution repair
+
+The tally "thirteen repaired and one deleted" mixes two different kinds of repair. Separated by what
+the repaired test actually DOES when it runs:
+
+| kind | count | which | what it proves at run time |
+|:--|--:|:--|:--|
+| **repaired by execution** | **12** | all repairs except the one below | a real production call is made and its result observed |
+| **repaired by structural tripwire** | **1** | `EarthlinkSearchViewModelSeamTest.kt:1223` `testBalanceAfterMath_unknownBalance_isNull` (A2) | only that the production SOURCE TEXT still reads `val balanceAfter = resellerBalance?.let { it - packageCost }` |
+| **deleted** | **1** | `Phase1FirestoreDocumentIdentityTest.kt:820` `testScenarioJ_counterfactualRawPayloadContainsRawJson` (A4) | nothing - the claim is covered elsewhere |
+| | **14** | | = the fourteen CONFIRMED findings |
+
+**The single tripwire is A2, and it is the one repair in this branch that does not execute
+production.** Its `assertEquals` compares two strings: a literal in the test, and a line read out of
+`UserDetailScreenV2.kt` by `productionBalanceAfterLine()`. The arithmetic beside it
+(`100,000 - 40,000`) runs on a LOCAL replica, not on the screen.
+
+So the honest statement of what A2 achieves:
+
+* It **does** pin the spelling of the null-guarded consumption. Replacing `?.let { it - packageCost }`
+  with `(resellerBalance ?: 0.0) - packageCost` fails the assertion.
+* It **does not** prove the screen renders an em dash. Nothing in the test path constructs the
+  Composable or observes it.
+* It **would go green** if the expression were extracted into a pure helper and the helper ignored
+  the null guard, as long as the extracted line kept the same text.
+
+That last point is why GAP-1 stays open rather than being closed by A2, and why its strongest fix -
+extracting the balance computation into an injectable pure function, which is a `app/src/main`
+change - is out of scope for this branch.
+
+**Corrected reading of the branch headline:** twelve execution repairs, one structural tripwire, one
+deletion. Any statement that this branch produced "13 execution repairs" is wrong by one.
+
 **Eight left by repair, one by deletion.** Two repairs touched cohort members and do **not** appear in
 this table, because the tests concerned were never in the cohort: A2's second target
 `testBalanceAfterMath_knownBalance_computesCorrectly` (`:1214`) carried **two** assertions at base, and
@@ -3412,3 +3445,53 @@ evidence about them.
 **The ~40% confirmed rate is a biased estimate.** The adjudicated cohort was ranked by financial
 risk, not sampled at random, so the rate is an upper bound on the unadjudicated pool, not a point
 estimate of it. Any projection from it is a **guess with a range, not a measurement**.
+
+### M-J1 - deleting Scenario J left its claim covered, and that is now PROVEN, not argued
+
+Earlier rounds asserted that `:513-514` covers Scenario J's `rawJson` claim. That was an argument
+from reading. It is now a mutation with an execution record.
+
+The three surviving rawJson assertions belong to three DIFFERENT tests, so they are not
+interchangeable and a mutation must be attributed to the right one:
+
+| line | owning test | reads |
+|--|:--|:--|
+| `:484` | `testScenarioA_localStoragePreservesRawJson` | `assertEquals(rawJson, fetched[0].rawJson)` - a direct DAO round-trip |
+| `:513-514` | `testScenarioB_outboxPreservesRawJsonInLocalState` | `JSONObject(found!!.payloadJson).has("rawJson")` then `getString("rawJson")` |
+| `:776` | `testScenarioH_uTowerImportFlowStoresRawJsonLocallyStripsOnEgress` | `assertEquals(rawImportJson, storedLocal.rawJson)` on the stored row, and `assertFalse(cloudMap.containsKey("rawJson"))` on the CLOUD map |
+
+**The mutation.** In `testScenarioB` only, the line `put("rawJson", rawJson)` was removed from the
+`JSONObject` handed to `OutboxManager.enqueue`. `enqueue` itself was not touched, so the payload
+genuinely flows through the real manager; the other two `put("rawJson", ...)` sites in the file were
+left alone.
+
+**The execution record.**
+
+```
+Phase1FirestoreDocumentIdentityTest > testScenarioB_outboxPreservesRawJsonInLocalState FAILED
+    java.lang.AssertionError at Phase1FirestoreDocumentIdentityTest.kt:490
+19 tests completed, 1 failed
+```
+
+**The test that failed, by name: `testScenarioB_outboxPerservesRawJsonInLocalState`** (correct
+spelling: `...PreservesRawJsonInLocalState`). Exactly one test failed, and it is the one whose
+assertion the mutation reached. `:484` and `:776` did not fail, which is correct - they do not read
+the enqueued payload - and that asymmetry is itself the evidence that the coverage is real rather
+than incidental.
+
+The mutation was reverted and the full suite re-run: `BUILD SUCCESSFUL`, `113 XML, 797 tests,
+0 failures, 0 errors, 0 skipped`.
+
+**A tooling fact this uncovered, which had been carried as unverified for many rounds:** the Gradle
+suite does NOT require WSL. `gradlew` is committed with CRLF line endings, which breaks WSL's
+`exec` (`cannot execute: required file not found`) and then `sh` (each line gains a stray `\r`), and
+WSL has no JDK on PATH anyway. It runs natively on Windows:
+
+```
+$env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
+.\gradlew.bat :app:testDebugUnitTest --offline
+```
+
+JBR is OpenJDK 25.0.2. Every execution claim in this document that had been marked unverified
+because "gradle cannot run here" is now executable in this environment. This also means the suite
+can be re-run at will rather than being carried forward as a remembered result.

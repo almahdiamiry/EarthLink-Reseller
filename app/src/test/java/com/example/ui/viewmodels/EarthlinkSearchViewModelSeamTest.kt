@@ -1249,7 +1249,9 @@ class EarthlinkSearchViewModelSeamTest {
         val productionLine = productionBalanceAfterLine()
         assertEquals(
             "BALANCE-AFTER | UserDetailScreenV2.kt must keep the null-guarded consumption this " +
-                "test transcribes: 100,000 - 40,000 is computed by production, not here. An " +
+                "test transcribes. 100,000 - 40,000 is arithmetic on a LOCAL replica of the " +
+                "line; the production method is NOT executed here. This is a textual tripwire on " +
+                "the source, so it proves the expression's spelling, not its runtime result. An " +
                 "unguarded form such as '(resellerBalance ?: 0.0) - packageCost' no longer " +
                 "computes anything for an unknown balance, it fabricates a 0. Got: $productionLine",
             "val balanceAfter = resellerBalance?.let { it - packageCost }",
@@ -1264,6 +1266,11 @@ class EarthlinkSearchViewModelSeamTest {
         val balanceAfter = resellerBalance?.let { it - packageCost }
         assertNull(balanceAfter)
 
+        // `balanceAfter` above is a LOCAL replica of the production line, not a call into it. The
+        // assertion that guards the product is the string equality below: it pins the production
+        // source to the same null-guarded shape. Changing `?.let { }` to `?: 0.0` in production
+        // fails THIS assertion. Refactoring the line into an extracted helper would leave both
+        // assertions green while the guard was removed - which is why GAP-8 stays open.
         val productionLine = productionBalanceAfterLine()
         assertEquals(
             "BALANCE-AFTER | UserDetailScreenV2.kt must keep the null-guarded consumption this " +
