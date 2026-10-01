@@ -103,13 +103,14 @@ guarantee is well-founded: the bound neither stops early (so it cannot hide an a
 invent a vacuity finding) nor over-runs (so it cannot borrow another function's assertions and
 invent an `F2`/`F3`/`F7`).
 
-**It is not unconditional, and the exception is this document's own Ruling 2 note below.** The
+**It is not unconditional, and there are now THREE known latent exceptions, not one.** The
 guarantee that a *helper between two tests* falls outside both ranges holds on resolved shapes
 but **not** on the fallback shape, where a helper sitting between two backtick-named tests
 **would** be inside the preceding range and can invent an `F2` on ordinary compiling Kotlin
 (`:72-77`). So the never-invent property is scoped to the resolved shapes; on the 7 fallback
-blocks it carries a known latent exception. No such case exists in this suite's data. A low
-count is the expected shape of a working scanner, not evidence of a broken one.
+blocks it carries a known latent exception. The **third** exception is not a block-bounding
+problem at all and is **live** — see the class-attribution note below. A low count is the
+expected shape of a working scanner, not evidence of a broken one.
 
 ### Ruling 2 note — `F2` on backtick-named blocks
 
@@ -119,7 +120,46 @@ ordinary compiling Kotlin: a helper declared between two backtick-named tests, a
 in this suite's data (0 of the 7 `NoteCleanerTest` fallback blocks have any text after their
 closing brace). **Task 2 produced no `F2` on any block, backtick-named or otherwise**, so
 this latent path was not triggered and nothing was settled by execution on this point. It
-remains a latent property of the scanner, not a demonstrated defect.
+remains a latent property of the scanner, not a demonstrated defect. (Both were *constructed
+and executed* under this ruling — R2 produced block `[6..15]`, asserts `[8,12]`, invented `F2`
+at 12; R3 produced a block named after the helper, asserts `[8,12]`, invented `F2`. So the claim
+that such a case is "not representable as a fixture" is false, and was corrected at
+`test_evidence_scanner_fixtures.py:1115-1116`.)
+
+### Third latent path — class attribution, live, under-reported at Task 9
+
+`_class_name_for` (`scripts/scan_test_evidence.py:441-446`) returns the **nearest preceding**
+class declaration, not the class that encloses the test. Where a file declares its test class and
+then a fixture/helper class **after** it, every `@Test` below that helper is attributed to the
+helper. **This is live at HEAD and it is measured, not hypothetical**: of 797 tests, **174 across
+23 files** are attributed to something other than the class first declared in their file, and in
+**every** one of the 23 the substituted name is a fixture or test-double helper. The
+`EarthlinkSearchViewModelSeamTest.kt` case is the largest — the test class is at `:64`, the helper
+`FakeSyncRepository` at `:162`, and the file's 40 `@Test`s run `:224`–`:1268`, so **40 of 40** are
+labelled `[FakeSyncRepository]`. Measured by re-running the scanner read-only at Task 9.
+
+**The harm is distinct from the two above and must not be counted as a third invented-finding
+path.** Those two invent an `F2`; this one cannot. It reaches the rules only through
+`sut_names = _sut_names(block.class_name)` feeding `F3` (`:843`), so the misattribution **substitutes
+the set of names treated as the class under test**: `EarthlinkSearchViewModelSeamTest` reduces to the
+stem `earthlinkSearchViewModelSeam`, while the substituted `FakeSyncRepository` matches none of
+`_SUT_NAME_SUFFIXES` and contributes `fakeSyncRepository` (`:749-759`, `:197`). Its two consequences
+are therefore **(a) an under-report — a genuine circular assertion rooted at the true SUT is not
+detected, since that name is no longer in the set; and (b) a cosmetic misattribution**, the
+triage listing's `[class]` column names the wrong class while the path and line stay correct. It
+**cannot** invent an `F3`, because a finding would need `fakeSyncRepository` to be the root of an
+asserted member call, and `_is_test_double` (`:762-778`, keyed on the root's *declared type*, not on
+`class_name`) would suppress that anyway.
+
+**No live `F3` false negative was demonstrated, and none is claimed.** Reading the 40 tests at
+`EarthlinkSearchViewModelSeamTest.kt` for the shape `F3` requires — a two-argument `assertEquals`
+whose argument is a bare identifier bound to a member call on the SUT — the file's assertions
+compare literals, DAO results, and `testGateway` counters, and the two candidate bindings
+(`bal = vm.getResellerBalance()`, `result = runCatching { … }`) are either three-argument asserts or
+rooted at `vm`, which is in neither the true nor the substituted name set. The harm is therefore
+recorded as **directional and latent**, on the same footing as the other two: a known property of
+the scanner, not a demonstrated defect. **Recorded, not fixed** — the scanner is at its cap
+(§6.15), and the path is disclosed here so a future adjudicator knows the count is **three**.
 
 ---
 
@@ -2662,7 +2702,12 @@ table rather than by substituting a plausible figure.**
 
 ## Task 5 — The repairs, as executed
 
-Fourteen CONFIRMED findings, thirteen repaired and one deleted, across six commits. Every repair was
+Fourteen CONFIRMED findings, **thirteen repaired and one deleted**, across **seven** commits. The
+fourteen are 1 from Task 2 (`F4`) + 6 from §3.10 + 7 from §4.10, counted from those three verdict
+tables rather than carried forward. Twelve of the thirteen repairs were made by the repair plan's six
+commits; the **thirteenth is `oracle_noteTransaction_zeroFinancialImpact` at `bbc4cb1`**, which no
+task in the plan covered and which §6.8 records as found-and-unrepaired until that commit. The one
+deletion is `A4`. **No test was left unrepaired and none was silently dropped.** Every repair was
 proven by a faithful mutant that leaves the test **green before** the repair — that green *is* the
 defect — then **red after**, then **green on clean code**. All three states are recorded per repair
 below with the log that carries them. Logs live outside the repository
@@ -2776,10 +2821,11 @@ previously took.
 
 ### 5.4 What the repairs changed in the shape of the suite
 
-**The single-assertion cohort shrank from 69 to 60, by exactly the nine tests the repairs bound.**
-Re-derived at Task 7 by re-running the scanner against the tree extracted at base `1b9fff7` and
-against `0b14755` and diffing the two lists by `(file, test-name)`: **nine cohort members left the
-cohort, and none entered it.**
+**The single-assertion cohort shrank from 69 to 60 across the six repair-plan commits, by exactly the
+nine tests those repairs bound.** Re-derived at Task 7 by re-running the scanner against the tree
+extracted at base `1b9fff7` and against `0b14755` and diffing the two lists by `(file, test-name)`:
+**nine cohort members left the cohort, and none entered it.** At HEAD it is **59** — see the
+`oracle_noteTransaction` paragraph below.
 
 | Left the cohort | Left because |
 |:--|:--|
@@ -2799,11 +2845,15 @@ this table, because the tests concerned were never in the cohort: A2's second ta
 C4's `Step3DurableDispatchTest.kt:593` carries **two** — §4.4 #13 and #14 were both multi-assertion, which
 is exactly why the single-assertion screen never surfaced them and §4 had to adjudicate them by hand.
 
-**`oracle_noteTransaction_zeroFinancialImpact` did *not* leave the cohort, and that is the point** — it
-is still there at `0b14755` (§6.8). The cohort is a *screening* surface, and a test can be repaired
-while its cohort membership is unchanged if the repair adds nothing; conversely a test can be confirmed
-fake and never leave the cohort if nobody repairs it. **"Left the cohort" and "repaired" are not the
-same fact.**
+**`oracle_noteTransaction_zeroFinancialImpact` did *not* leave the cohort at `0b14755`, and that was
+the point** — it was still there (§6.8), because nothing had repaired it. **It left at `bbc4cb1`**, so
+the two figures above are scoped to the six repair-plan commits and the **HEAD** cohort is **59**, not
+60: measured by re-running the scanner's `--single-assertion` listing, **10** members have now left and
+none entered. The repaired test carries **7** assertion calls (`list_tests` at HEAD) against 1 before.
+The lesson the earlier wording drew still holds and is now demonstrated in both directions: the cohort
+is a *screening* surface, a test can be repaired while its cohort membership is unchanged if the repair
+adds nothing, and a test can be confirmed fake and never leave the cohort if nobody repairs it.
+**"Left the cohort" and "repaired" are not the same fact.**
 
 **Two record figures the audit stated for `Step3DurableDispatchTest.kt` were re-measured and are
 corrected here, because Task 7 re-derived them rather than inheriting them.**
@@ -2848,8 +2898,14 @@ by substituting a plausible figure.
   precondition is now enforced by production and the post-call survival assertion is strictly stronger
   — but the constraint language is absolute and the gloss was a defect of the same class this round
   exists to correct. **Recorded rather than smoothed over.**
-- **No production file is in any of the six commits.** `git diff 1b9fff7 0b14755 -- app/src/main` is
-  empty; the diff is **8 commits, 5 bearing `.kt` changes, 3 report-only, 9 test files total**.
+- **No production file is in any of the six commits** covering `1b9fff7..0b14755`.
+  `git diff 1b9fff7 0b14755 -- app/src/main` is empty; that diff is **8 commits, 6 bearing `.kt`
+  changes, 2 report-only, and 9 changed files total — 8 `.kt` test files plus 1 repair report**
+  (`.superpowers/sdd/2026-09-30-test-evidence-repairs/task-1-report.md`). Counted per commit by
+  `git show --name-only`: `6a53357` `ff5b485` `2d9ab99` `b2026e2` `d728902` `0b14755` carry `.kt`;
+  `ccb2d15` and `2f1c177` are report-only. **The seventh repair commit, `bbc4cb1`, is also
+  test-only** — `git show --name-only bbc4cb1` names one file, a test file — so the constraint holds
+  across all seven.
 - **Diffstat per commit:** `6a53357` +37/−1 · `ff5b485` +56/−8 · `2d9ab99` +57/−0 · `b2026e2`
   +203/−21 · `d728902` −16 · `0b14755` +262/−56. **The single deletion in Task 1's +37/−1 is
   `coordinator.processEvent(event)` becoming `val result = …`** — the discarded return value being
@@ -2986,18 +3042,28 @@ than *reachability*.
 **Therefore: the screen may not triage the ~86 unaudited files without execution.** It narrows the
 field. Only the run decides.
 
-### 6.8 The finding that no repair task covered
+### 6.8 The finding no repair task covered — repaired at `bbc4cb1`
 
 `DataIntegrityReleaseGateTest.kt:1275` → **`:1515` at HEAD**,
 `oracle_noteTransaction_zeroFinancialImpact` — §3.10 finding **#3**, `CONFIRMED` by mutation M7
-(`TransactionTypeNormalizer.kt:25`, `"note"` → `"took"`, and the test **still passed**) — **is not
-among the fourteen the repair plan addressed, and is still unrepaired.** Its body builds a `note`
-entry with **`amountIqd = 0.0`**, so adding zero to a debt leaves it unchanged under *every* possible
-classification: the assertion is arithmetically independent of the type claim it names. It remains a
-member of the single-assertion cohort at `0b14755` (verified against the scanner's current output).
-**A note carrying a real amount, misclassified as `took`, would inflate debt and this test — inside the
-release gate's own barrier class — would stay green.** Out of scope for this plan, but it must not be
-lost, and the round must not be reported as having closed all fourteen.
+(`TransactionTypeNormalizer.kt:25`, `"note"` → `"took"`, and the test **still passed**) — **was not
+addressed by any task in the repair plan, and stood unrepaired through `0b14755`. It is repaired at
+`bbc4cb1`.** Its pre-repair body built a `note` entry with **`amountIqd = 0.0`**, so adding zero to a
+debt left it unchanged under *every* possible classification: the assertion was arithmetically
+independent of the type claim it named. The repair gives the note a real amount and adds a control
+arm on a non-note type with the identical baseline and amount, so the claim is now about the **type**
+and not the sum.
+
+**It was always one of the fourteen.** It is row 3 of §3.10's verdict table, and §3.10 counts
+`6 CONFIRMED`; §4.10 counts `7 CONFIRMED`; Task 2's `F4` is `1`. **6 + 7 + 1 = 14**, which is the
+whole population — so the plan addressed **thirteen of fourteen**, not thirteen plus a fifteenth.
+The earlier reading of this section, which treated the note test as a fifteenth item outside the
+fourteen while also reporting "thirteen repaired and one deleted" (= 14), was arithmetically
+impossible: those two statements cannot both be true of the same fourteen.
+
+**A note carrying a real amount, misclassified as `took`, would inflate debt, and before this repair
+the test — inside the release gate's own barrier class — would have stayed green.** That is now
+closed, and its measured chain is in Task 7's closing verification.
 
 ### 6.9 The cohort arithmetic, and the count that does not reconcile
 
@@ -3103,13 +3169,24 @@ A limit of the mandated discipline, recorded so the numbers above are read at th
   which is correct as committed.
 - **No "no pattern match" is presented as a clearance**, and the ~86 unaudited files are named as a
   gap, not as a clean bill.
-- **The fourteen findings are not all closed.** Thirteen were repaired, one deleted, and
-  `oracle_noteTransaction_zeroFinancialImpact` (§6.8) was never in scope and remains unrepaired.
-- **The scanner was not re-certified.** `scripts/scan_test_evidence.py` and its fixtures were not
-  edited; its hardcoded `798` strings (`:49,67,90,101,573`) and the fixtures' nine sites are now
-  **stale by one**, are not gate-invoked (`production_gate.sh:65` runs
-  `scan_forbidden_patterns.py`), and assert nothing executable. Correctly left untouched, recorded here
-  so no reader treats them as a live count.
+- **All fourteen findings are closed: thirteen repaired, one deleted.** The fourteenth,
+  `oracle_noteTransaction_zeroFinancialImpact` (§6.8), was unrepaired when this section was first
+  written and was repaired at `bbc4cb1`; its measured chain is in Task 7's closing verification.
+  **No finding is open.**
+- **The scanner was not re-certified, and at Task 9 only its prose was touched.** Its **executable
+  logic is unedited**: no rule, guard, regex or bound was changed at Task 9, and no fixture's
+  classification or expected value was changed. Two claims in the scanner's own documentation were
+  corrected at Task 9 — the unconditional "must never invent a finding" at `scan_test_evidence.py`
+  `:79-81`, which now names its three known exceptions, and the false non-representability claim in
+  `test_evidence_scanner_fixtures.py`. Both are docstring edits; the 27 fixtures pass unchanged
+  (`python -m pytest scripts/test_evidence_scanner_fixtures.py -q` → 27 passed). **The stale figures
+  remain stale and were deliberately not "fixed":** the scanner's hardcoded `798` strings sit at
+  `:49,67,93,104,502,576` — **6** sites — and the fixtures carry **8** sites, both now
+  **stale by one**. (An earlier version of this bullet cited five sites at `:49,67,90,101,573` and
+  "the fixtures' nine sites"; the line numbers moved when the Task-9 prose edits landed above them,
+  and the counts were re-measured by grep rather than carried forward.) Neither is gate-invoked
+  (`production_gate.sh:65` runs `scan_forbidden_patterns.py`), and neither asserts anything
+  executable. Recorded here so no reader treats them as a live count.
 - **The repro command at `:2378` embeds `--tests "*Phase1FirestoreDocumentIdentityTest.testScenarioJ*"`,
   which now matches nothing**, since A4 deleted that test. It is a historical record of §4's
   post-revert run and its `38 / 0 / 0` figure is the figure that run produced; **it is stale as a
@@ -3127,7 +3204,9 @@ A limit of the mandated discipline, recorded so the numbers above are read at th
 ```text
 Claim:                 14 CONFIRMED fake tests were adjudicated; 13 repaired and 1 deleted; the
                         repaired set is 797/797 green on the exact committed bytes; the remaining
-                        unproven surface is enumerated rather than implied.
+                        unproven surface is enumerated rather than implied. **Extended at Task 9 to
+                        cover `bbc4cb1`, the branch's last commit, which this block previously did
+                        not name at all.**
 Evidence:              One full-suite run (r13-t7-baseline.log, --rerun-tasks, all TEST-*.xml deleted
                         first, log confirmed to name :app:testDebugUnitTest, 0 UP-TO-DATE
                         occurrences); 113 JUnit XML summed from their own testsuite attributes with
@@ -3139,9 +3218,28 @@ Evidence:              One full-suite run (r13-t7-baseline.log, --rerun-tasks, a
                         every Repositories.kt / AppDatabase.kt / SubscriberMatcher.kt /
                         DashboardViewModel.kt / UserDetailScreenV2.kt / Step3DurableDispatchTest.kt /
                         BalanceCalculator.kt line number cited in §5 and §6 re-read at source.
+
+                        **`bbc4cb1` (Task 8), added at Task 9.** The repair of
+                        `oracle_noteTransaction_zeroFinancialImpact` on the exact committed bytes,
+                        from `task-8-report.md:431-438`, every run with its XML figures and
+                        <testcase> elements:
+                          r13-t5-t8-note-baseline.log    clean, before M1    36 / 0 / 0  36 testcases
+                          r13-t5-t8-note-m1-prerepair.log M1, BEFORE repair   36 / 0 / 0  36 testcases  <- the defect: green
+                          r13-t5-t8-note-m1-postrepair.log M1, AFTER repair   36 / 1 / 0  36 testcases  expected:<45000.0> but was:<57000.0>
+                          r13-t5-t8-note-clean.log       clean, after revert 36 / 0 / 0  36 testcases
+                          r13-t5-t8-fullsuite.log        clean, whole suite 797 / 0 / 0  797 testcases over 113 XML
+                        `bbc4cb1` existence confirmed by `git cat-file -e "bbc4cb1"` with
+                        `$LASTEXITCODE` = 0. **The 36 / 797 / 113 figures were independently
+                        re-derived at Task 9 by counting, not inherited**: 36 `@Test` annotations in
+                        `DataIntegrityReleaseGateTest.kt`, 797 `@Test` annotations under
+                        `app/src/test`, and 113 `*Test.kt` files — matching the XML counts. **Not
+                        re-executed at Task 9** (no Gradle was run), so the green figures remain
+                        transcription-only in the sense §6.14 defines, while the test-count figures
+                        are countable from the tree.
 Verification scope:    Broader (whole suite, 797 tests, 1 run) + Documentation (record-defect
                         corrections, each verified by counting against a verdict table) + Structural
-                        (scanner re-run read-only, `git diff --name-only -- app/src/main` empty).
+                        (scanner re-run read-only, `git diff --name-only -- app/src/main` empty;
+                        commit-level `.kt` vs report-only split counted per commit).
 Result:                PASS
 What this proves:      The baseline is 797/0/0 measured, not remembered. All 14 record figures §5.5
                         corrects were re-derived and now read as counts against checkable tables. The
@@ -3152,8 +3250,10 @@ What this proves:      The baseline is 797/0/0 measured, not remembered. All 14 
                         figures are 27 adjudicated / 1 LEAD / 41 never adjudicated.
 What this does NOT prove: Anything about the ~86 files never audited, or about the 41 cohort members
                         never adjudicated, or that the P1-P3 screen is fit for triage (it is not, at
-                        50% misprediction in both directions). It does not prove `oracle_noteTransaction`
-                        is repaired — it is not. It does not convert Repair 4's ATTEMPTED into HANDLED.
+                        50% misprediction in both directions). **It does not prove the repaired
+                        `oracle_noteTransaction` binds correctly to a *live* seam in the way the
+                        barrier's other tests do** — see §6.10 and the ATTEMPTED/HANDLED distinction.
+                        It does not convert Repair 4's ATTEMPTED into HANDLED.
                         No product defect is asserted, and no mutant was left in the tree.
 Confidence:            HIGH for every figure in §5 and §6, each re-derived by counting or by reading
                         the cited line at source. MEDIUM for Task 5's and Task 6's green-state XML

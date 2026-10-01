@@ -1332,8 +1332,12 @@ def test_fallback_bounds_the_block_at_the_next_test():
 
     What this does not prove: that the fallback bounds a HELPER declared between two
     backtick-named tests. It does not - such a helper would be inside the range. No such case
-    exists in the suite and none is representable without inventing Kotlin, so the limit is
-    stated here rather than asserted.
+    exists in the suite (0 of the 7 `NoteCleanerTest` fallback blocks hold text after their
+    closing brace), and - contrary to the sentence this one used to carry - the case IS
+    representable as a fixture on ordinary compiling Kotlin: Ruling 2 in
+    LL-ROUND-13-TEST-EVIDENCE-AUDIT.md constructed and executed it, producing block [6..15],
+    asserts [8,12] and an invented F2 at 12. So the limit is stated here rather than asserted,
+    and the non-representability claim is withdrawn as false.
     """
     with tempfile.TemporaryDirectory() as tmpdir:
         findings, tests = scan_fixture(

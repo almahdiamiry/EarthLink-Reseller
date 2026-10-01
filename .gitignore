@@ -41,3 +41,10 @@ earthlink_backup_1789281798680.zip
 .forensic-bug02/
 # Bug Hunter pipeline artifacts
 .bug-hunter/
+# Agent working directories. Same class as .bug-hunter/ and .forensic-bug02/: transient
+# tool scratch whose durable conclusions belong in docs/LESSONS_LEARNED/ and evidence/,
+# which is where AGENTS.md section 3 routes a reader. This also resolves a half-tracked
+# state: one per-task agent report had been force-added under here while the 30+ sibling
+# workflow files (including the Round-13 decision ledger) were untracked. The per-task
+# report is superseded by the Round-13 record and remains in history; nothing is lost.
+.superpowers/

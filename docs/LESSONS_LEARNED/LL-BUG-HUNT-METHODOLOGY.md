@@ -237,7 +237,7 @@ re-read at `:241` (`FAILED_RETRYABLE`, no cursor advance), and the cursor-save g
 Round 13 inverted this document's subject. Rounds 4–12 asked *what bugs exist in the product*; Round 13
 asked *how many tests prove what they claim to prove*. Its full record is
 [`LL-ROUND-13-TEST-EVIDENCE-AUDIT.md`](LL-ROUND-13-TEST-EVIDENCE-AUDIT.md) — 14 CONFIRMED fake tests,
-13 repaired and 1 deleted. The seven lessons below are the generalisable ones, and each is traceable
+13 repaired and 1 deleted. The nine lessons below are the generalisable ones, and each is traceable
 to a measured result in that round.
 
 **1. A green test proves its assertions pass, not that the behaviour is guarded.**
@@ -290,18 +290,28 @@ contain a treatment arm. That is the hardest case for any pattern reasoning abou
 graduate to "cleared".**
 
 **6. Verify the verifier, including yourself. This is not a lesson about other people.**
-Five instances of the same class — a self-inflicted evidence error — occurred in this one programme:
-1. A PowerShell `$?` test reported a real commit as missing (§7.1, Claim 3).
-2. An ad-hoc detector reported a live assertion absent, because of an operator-precedence bug in the
-   detector.
-3. Line numbers re-derived with hand-added `Get-Content | Select-Object -Skip` offsets came back
-   wrong; re-probing with `Select-String`'s `.LineNumber` reproduced the reviewer's citations exactly.
-4. `git show > file` under PowerShell wrote a **BOM**. The compile failed, **the test task never ran**,
+Five instances of the same class — a self-inflicted evidence error — are listed below, but **only four
+occurred in this one programme.** Item 1 belongs to the Round-12 `BUG-RSC-1` review and is carried in
+here only because it is the same class; it is *not* evidence about this round, and counting it as such
+is exactly the error this lesson is about.
+1. *(prior session, §7.1 Claim 3 — **not** this programme)* A PowerShell `$?` test reported a real
+   commit as missing.
+2. *(this programme)* An ad-hoc detector reported a live assertion absent, because of an
+   operator-precedence bug in the detector.
+3. *(this programme)* Line numbers re-derived with hand-added `Get-Content | Select-Object -Skip`
+   offsets came back wrong; re-probing with `Select-String`'s `.LineNumber` reproduced the reviewer's
+   citations exactly.
+4. *(this programme)* `git show > file` under PowerShell wrote a **BOM**. The compile failed, **the
+   test task never ran**,
    and a **stale JUnit XML read as `tests=3 failures=0`** — a green state that no run produced. Caught
    only by reading the `.err` log. The sibling artefact `rep1c` was a *real* green run whose XML was
    the live stale candidate, so this class of error can also be a genuine green from the wrong setup.
-5. A second, later run was launched concurrently with another; `.log` said `BUILD SUCCESSFUL` while
-   `.err` said `BUILD FAILED`.
+5. *(this programme)* A second, later run was launched concurrently with another; `.log` said
+   `BUILD SUCCESSFUL` while `.err` said `BUILD FAILED`.
+
+Items 4 and 5 are the narrower sub-class §6.14 of the Round-13 record counts separately — "two runs
+in this programme produced a green number from a run that did not execute" — which agrees with **four
+here plus one inherited, not five**.
 
 **A green number from a run that did not execute is not evidence.** Three disciplines, all used in the
 round and all load-bearing: **delete the target JUnit XML before every run**; **confirm the log names
@@ -312,7 +322,12 @@ figure is otherwise transcription-only.
 **7. A release gate is only as good as the tests guarding it, and a test can sit *inside* the gate
 while being structurally incapable of detecting the violation it names.**
 `production_gate.sh` runs `DataIntegrityReleaseGateTest` as the gate. One of its five named invariants
-passed while physical deletion of financial history was live in production. The gate also cannot see a
+passed while a **transient mutant** of the deletion path was live in the working tree — the physical
+deletion of ledger history, the exact RED Invariant 2 violation, was *in the tree while the test
+stayed green*. **It was not in production: the mutant was reverted and the shipped code never carried
+it**, and `LL-ROUND-13:3167-3169` §6.15 states "No product defect is asserted by this round." The
+blindness is real and is what the gate could not see; the *exposure* was bounded to one worktree for
+the length of one run. The gate also cannot see a
 wrong-*amount* contra-entry (its sibling in the suite pins the amount; the gate pins only the shape), and
 a same-ID silent overwrite on a duplicate apply (the second `processEvent` return value is still
 discarded). **Auditing the gate means auditing each test in it against the mutation that would break
@@ -320,23 +335,30 @@ the invariant — not counting the tests and trusting the total.**
 
 **8. Trace a repair recipe before you write it, or expect to inherit the finding's error.**
 Round 13's own findings document carried **recipes that would have produced still-blind tests**, and the
-repair plan — written from that document — inherited them. Counted and recorded:
+repair plan — written from that document — inherited them. **The list is the source of truth; it sums
+to six, and the six are: five wrong or misleading recipes and one missing requirement.**
 - **Two** would have produced still-blind tests: both branches of the `SubscriberMatcher` fixture recipe
   (one matches at `:89-92` and returns `Unique` before Stage 3; the other leaves `conflictingUsername`
   `true`, so the candidate stays double-guarded).
 - **One** tested the precondition rather than the assertion — `:776`'s mutant suppressed every remote
   event, which breaks what the repair *adds*, not what it guards.
 - **One** mutated the thing it claimed to mutate **at a no-op** (`:719` *is* the strip).
-- **One** cited a stale line. Plus a **missing requirement**, not a wrong citation: running the migration
+- **One** cited a stale line.
+- **One** was a **missing requirement**, not a wrong citation: running the migration
   was not sufficient, because the fixture also needed a row with `isSnapshotHistory = true` — otherwise
   the branch was unreachable even after the migration ran.
 
-**Seven defects were inherited into the repair plan, and every one was caught by the implementer
-reading the source rather than by a reviewer checking the arithmetic.** The root cause is constant:
-**briefs and plans written *from a findings document* instead of *from the source*.** Two of them
-surfaced twice independently — the same false claim in the plan and in the brief derived from it. The
-standing countermeasure, used from Task 4 onward: **no brief asserts what a test or a sibling does; it
-says what to read, and the implementer reads.**
+**2 + 1 + 1 + 1 + 1 = six defects were inherited into the repair plan, and every one was caught by the
+implementer reading the source rather than by a reviewer checking the arithmetic.** (This paragraph
+said *seven*. The list and the figure were committed together in `15b5381` — `git log -S` finds
+neither string in any other commit — so the count was **wrong from the moment it was written**, not
+drifted later, and no later edit can explain it away. Count the list.) The root cause is constant:
+**briefs and plans written *from a findings document* instead of *from the source*.** On the
+"surfaced twice" point, be careful what is being counted: **both branches of the first bullet appeared
+twice independently** — the same false claim in the plan and again in the brief derived from it — so
+that one bullet contributes two *defects* and four *artifacts*. It does not make the list sum to
+seven. The standing countermeasure, used from Task 4 onward: **no brief asserts what a test or a
+sibling does; it says what to read, and the implementer reads.**
 
 **9. The repair plan's own method constraint was internally contradictory, and the outcome supersedes
 it.** Global Constraint #1 demanded a mutant *"faithful to the test's own name"* that leaves the test

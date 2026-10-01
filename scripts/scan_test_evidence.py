@@ -77,7 +77,10 @@ Rules
   elsewhere in the file is resolved by the file-wide, name-resolved helper walk, not the range.
 
   The direction of error is deliberate and applies to every rule: the scanner may
-  under-report, and must never invent a finding. Four guards enforce it, and each was added
+  under-report, and must never invent a finding - EXCEPT on the two fallback shapes disclosed
+  above, which are known to be able to, and except for the class-attribution path disclosed in
+  LL-ROUND-13, which can only under-report and mislabel. Four guards enforce the resolved-shape
+  property, and each was added
   after the corresponding class was demonstrated to be violated on real input or on a fixture:
   the expression-body bound stopping at a `private suspend fun` (an invented F2 and F7), the
   tail truncation (an invented F1), the terminator reading only the first word of a line so
