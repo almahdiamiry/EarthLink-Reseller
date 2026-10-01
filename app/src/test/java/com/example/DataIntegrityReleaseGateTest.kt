@@ -1017,6 +1017,14 @@ class DataIntegrityReleaseGateTest {
                     // local_accounts exactly as Room v8 emitted it: the exported v9 schema
                     // (assets/com.example.core.database.AppDatabase/9.json) minus the six columns
                     // MIGRATION_8_9 adds.
+                    //
+                    // There is NO 8.json in this repository. The exported assets run 1-7 then 9-18,
+                    // and `git log -- .../AppDatabase/8.json` returns nothing: version 8 was never
+                    // exported. So the v8 table below is RECONSTRUCTED from 9.json by removing the
+                    // six columns named in AppDatabase.kt:832-837 - openingDebtIqd, openingAdvanceIqd,
+                    // openingLoanIqd, stateSource, stateConfidence, snapshotCapturedAt - which is why
+                    // the reconstruction is a maintenance liability: if MIGRATION_8_9 ever changes,
+                    // this CREATE TABLE must change with it, and nothing at compile time ties the two.
                     sqliteDb.execSQL("""
                         CREATE TABLE IF NOT EXISTS `local_accounts` (
                             `id` TEXT NOT NULL,

@@ -3473,8 +3473,8 @@ Phase1FirestoreDocumentIdentityTest > testScenarioB_outboxPreservesRawJsonInLoca
 19 tests completed, 1 failed
 ```
 
-**The test that failed, by name: `testScenarioB_outboxPerservesRawJsonInLocalState`** (correct
-spelling: `...PreservesRawJsonInLocalState`). Exactly one test failed, and it is the one whose
+**The test that failed, by name: `testScenarioB_outboxPreservesRawJsonInLocalState`.** Exactly
+one test failed, and it is the one whose
 assertion the mutation reached. `:484` and `:776` did not fail, which is correct - they do not read
 the enqueued payload - and that asymmetry is itself the evidence that the coverage is real rather
 than incidental.
@@ -3493,5 +3493,7 @@ $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
 ```
 
 JBR is OpenJDK 25.0.2. Every execution claim in this document that had been marked unverified
-because "gradle cannot run here" is now executable in this environment. This also means the suite
-can be re-run at will rather than being carried forward as a remembered result.
+and the suite runs from it. What that retires is narrower than it looks: the SUITE is executable
+here, which is measured. It does NOT retroactively verify the individual execution claims earlier
+rounds marked unverified - each would have to be re-run and re-attributed on its own, and most
+predate this branch. Those remain **unverified** until someone does that work.

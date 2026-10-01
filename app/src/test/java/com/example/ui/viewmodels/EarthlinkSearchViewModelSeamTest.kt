@@ -1270,7 +1270,7 @@ class EarthlinkSearchViewModelSeamTest {
         // assertion that guards the product is the string equality below: it pins the production
         // source to the same null-guarded shape. Changing `?.let { }` to `?: 0.0` in production
         // fails THIS assertion. Refactoring the line into an extracted helper would leave both
-        // assertions green while the guard was removed - which is why GAP-8 stays open.
+        // assertions green while the guard was removed - which is why GAP-1 stays open.
         val productionLine = productionBalanceAfterLine()
         assertEquals(
             "BALANCE-AFTER | UserDetailScreenV2.kt must keep the null-guarded consumption this " +
