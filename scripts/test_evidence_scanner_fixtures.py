@@ -1226,6 +1226,88 @@ def test_eb_expression_body_stops_before_the_next_tests_annotation():
               "test's annotation is outside both blocks.")
 
 
+# --------------------------------------------------------------------------------------------
+# The expression-body terminator: two word CLASSES, matched by CASE
+# --------------------------------------------------------------------------------------------
+#
+# One keyword set plus `words[0] in set or words[1] in set` held two classes that behave
+# differently and gave them one rule:
+#   * a STARTER (`fun`, `class`, `val`, ...) makes a line a declaration by itself;
+#   * a MODIFIER (`data`, `value`, `inner`, `private`, ...) makes a line a declaration only when
+#     a starter follows it.
+# Because a modifier was sufficient alone, `data = mapOf(` and `value.also {` read as
+# declarations; and because the word reader called `.lower()`, the TYPES `Data` and `Object`
+# matched the starters `data` and `object`.
+#
+# A `True` on a continuation line is not a harmless over-match. It truncates the expression body
+# there, so the test's OWN assertions fall outside its range and the scanner reports F1 for a test
+# that is not vacuous - an invented finding, the one thing this instrument exists never to do. And
+# `data = ...` is an ordinary assignment shape that occurs in the real suite, so the path is live
+# wherever a brace-bodied test is converted to an expression body.
+#
+# The same walk also MISSED a declaration sharing its line with an annotation: the annotation branch
+# consumed to end of line, so `@Test fun b() {` lost its `fun` and read as a continuation - the
+# opposite error, an over-run that borrows the next declaration's assertions. The lone-annotation
+# lead-in to the NEXT line, which is the behaviour the C1 fix added, must survive the change; it is
+# pinned by `test_eb_expression_body_stops_before_the_next_tests_annotation`, and the two branches
+# the annotation walk must keep are pinned here.
+EXPRESSION_BOUND_WORD_CLASS_CASES = (
+    # A continuation line is not a declaration.
+    ("value.also { }", False),        # a chain tail: `value` is a modifier with no starter after it
+    ("data.also { }", False),
+    ("Data(1).also { }", False),      # case-sensitive: `Data` is a TYPE, not the starter `data`
+    ("Object.foo()", False),          # case-sensitive: `Object` is a TYPE, not the starter `object`
+    ("data = mapOf(", False),         # an ordinary assignment shape, present in the real suite
+    ("value = compute()", False),
+    # A declaration sharing its line with an annotation is a declaration.
+    ("@Test fun b() {", True),
+    ('@Suppress("x") private fun helper() {', True),
+    # Genuine declarations, unchanged by the class split. `private suspend fun` and
+    # `internal inline val` carry TWO modifiers before the starter, so the rule has to read past a
+    # modifier run rather than test exactly two words.
+    ("private suspend fun f() {", True),
+    ("inner class I", True),
+    ("value class Inner", True),
+    ("data class D", True),
+    ("internal inline val x = 1", True),
+)
+
+
+def test_eb_declaration_bound_separates_starters_from_modifiers():
+    """
+    Claim: `_starts_new_declaration` reads a MODIFIER as a declaration only when a STARTER follows
+    it, matches a starter by CASE, and stops walking an annotation at the annotation so a
+    declaration sharing its line is seen. This is the expression-body upper bound at
+    `scan_test_evidence._function_body_end`, so a `True` on a continuation line truncates the body
+    and manufactures an F1, and a `False` on a declaration over-runs it and manufactures an F2/F7.
+
+    Seam: JVM (pure lexical recogniser, no filesystem, no Room, no Gradle).
+
+    Independent oracle: the expected value of each case is read off the Kotlin grammar, not off the
+    scanner. A STARTER (`fun`, `class`, `object`, `interface`, `val`, `var`, `typealias`, `init`,
+    `constructor`) heads a declaration on its own; a MODIFIER (`data`, `value`, `inner`, `private`,
+    ...) does not. `Data` and `Object` are types, and a capitalised token is a different token from
+    `data` and `object`. `@Test fun b() {` is the JUnit idiom for declaring `b` on the annotation's
+    own line, so the declaration is present and the bound must stop there.
+
+    Every one of the six continuation cases and both same-line cases was executed against the
+    unfixed scanner and returned the opposite value, so each one constrains the fix rather than
+    restating it.
+    """
+    for line, expected in EXPRESSION_BOUND_WORD_CLASS_CASES:
+        got = scan_test_evidence._starts_new_declaration(line, 0)
+        assert got is expected, (
+            f"The expression-body bound misread {line!r}: expected a declaration={expected}, got "
+            f"{got}. A modifier alone is never a declaration, and a starter is a lowercase Kotlin "
+            f"keyword - `Data` and `Object` are types. Stopping early here truncates the test's own "
+            f"body and invents an F1; missing the declaration borrows the next one's assertions."
+        )
+
+    print(f"PASS EB (word classes): {len(EXPRESSION_BOUND_WORD_CLASS_CASES)} lines - a modifier "
+          "alone is not a declaration, a type is not a starter, and a declaration sharing a line "
+          "with its annotation is recognised.")
+
+
 def test_every_kotlin_modifier_is_recognised_as_a_declaration():
     """
     The checkable version of "the terminator cannot be defeated by adding a modifier".
@@ -1236,11 +1318,13 @@ def test_every_kotlin_modifier_is_recognised_as_a_declaration():
     modifier is missing from the scanner, or the scanner has drifted to a word that is not a
     Kotlin declaration word at all, this fails.
 
-    The behavioural half drives `_starts_new_declaration` with a line whose SECOND word is not a
-    keyword (`<modifier> helper() { }`), so only the modifier itself can satisfy the test. That
-    is the exact shape that failed for `inner class` and `value class`.
+    The behavioural half drives `_starts_new_declaration` with `<modifier> fun helper() { }`, so the
+    second word must be READ - the whitespace before it skipped - for the line to be recognised.
+    That is the exact shape that failed for `inner class` and `value class`. A second half drives it
+    with a line led by an ordinary identifier, which is not a declaration however it continues.
     """
-    scanner_set = scan_test_evidence._DECLARATION_KEYWORDS
+    scanner_set = (scan_test_evidence._DECLARATION_STARTERS
+                   | scan_test_evidence._DECLARATION_MODIFIERS)
 
     missing = sorted(KOTLIN_DECLARATION_WORDS - scanner_set)
     assert not missing, (
@@ -1256,34 +1340,34 @@ def test_every_kotlin_modifier_is_recognised_as_a_declaration():
         f"and truncates the expression body, which invents an F1."
     )
 
+    # The SECOND word. `inner class` and `value class` are already covered by the set-equality half
+    # above, so this asserts the `words[1]` path directly. The second word is a genuine STARTER,
+    # because after the class split a modifier alone is NOT a declaration - that was the defect:
+    # `words[1] in set` made `<modifier> helper() { }` a declaration, and the same rule made
+    # `data = mapOf(` one.
     unrecognised = [m for m in KOTLIN_MODIFIERS
                     if not scan_test_evidence._starts_new_declaration(
-                        "    %s helper() { }" % m, 0)]
+                        "    %s fun helper() { }" % m, 0)]
     assert not unrecognised, (
-        f"These modifiers do not read as a declaration on a line whose second word is not a "
-        f"keyword, which is the shape that invented an F2 for `inner class`: {unrecognised}"
+        f"A modifier followed by a starter must read as a declaration, whatever the modifier; these "
+        f"do not: {unrecognised}. Missing one runs an expression body past it and invents an F2/F7."
     )
 
-    # The SECOND word. `inner class` and `value class` are already covered by the set-equality
-    # half above, so nothing else reaches the `words[1]` test - which is exactly how the
-    # two-word path stayed dead code through three rounds with a comment claiming it worked.
-    # This asserts it directly.
-    #
-    # Stated plainly: there is NO compiling Kotlin line whose first word is not a declaration
-    # word and whose second word is, so this is a DEFENSIVE path, not a real case. It is kept
-    # because it is one line of code that would otherwise be untested, and it is pinned here
-    # rather than left to a comment. The input is lexical, not compiled.
+    # A line led by something that is NEITHER a starter nor a modifier is never a declaration lead-in,
+    # whatever follows it. Under the removed single-set rule the second word alone could satisfy the
+    # test and these three were True. They are kept as inputs because they are the exact shapes the
+    # removed rule accepted, and they now pin the narrowing.
     defensive = [
         "    notAKeyword fun helper() { }",
         "    someReceiver value = 1",
         "    leading inner class Helper",
     ]
-    missed = [line for line in defensive
-              if not scan_test_evidence._starts_new_declaration(line, 0)]
-    assert not missed, (
-        f"The second word must be read, with the whitespace before it skipped. These lines are "
-        f"led by a non-keyword and are not recognised as declarations: {missed}. Without the "
-        f"skip the second word was never read at all and this test path was dead code."
+    wrongly_read = [line for line in defensive
+                    if scan_test_evidence._starts_new_declaration(line, 0)]
+    assert not wrongly_read, (
+        f"The second word is consulted only behind a modifier, so a line led by an ordinary "
+        f"identifier is not a declaration however it continues; these read as declarations: "
+        f"{wrongly_read}. A `True` here truncates the expression body and invents an F1."
     )
 
     # The same recogniser must still say NO to a continuation line, or a tightened bound would
@@ -1502,6 +1586,7 @@ TESTS = [
     test_eb_expression_body_stops_at_an_unlisted_declaration,
     test_eb_expression_body_stops_at_a_class_modifier_follower,
     test_eb_expression_body_stops_before_the_next_tests_annotation,
+    test_eb_declaration_bound_separates_starters_from_modifiers,
     test_every_kotlin_modifier_is_recognised_as_a_declaration,
     test_fallback_bounds_the_block_at_the_next_test,
     test_cli_rule_filter_and_exit_zero,

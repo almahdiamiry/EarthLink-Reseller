@@ -522,9 +522,24 @@ def _function_body_end(code, mask, fun_start):
             # The keyword set is still a list, so this comment does not claim it is complete -
             # completeness is a property only a test can establish, and
             # `test_every_kotlin_modifier_is_recognised_as_a_declaration` in the self-test does
-            # exactly that, in both directions. What is guaranteed here is only the DIRECTION:
-            # the bound may stop early, never late, because stopping late is what invents a
-            # finding by borrowing the next declaration's assertions.
+            # exactly that, in both directions. What the bound must get RIGHT is the DIRECTION of
+            # its own error, and an earlier version of this comment had it backwards - it said the
+            # bound "may stop early, never late, because stopping late is what invents a finding".
+            # Both directions produce a finding, and which one is which was reversed:
+            #   * stopping EARLY invents an F1 - the test's own assertions fall outside the range
+            #     and a test that is not vacuous is reported vacuous. That was the C1 defect: a
+            #     lone `@Test` line returned False, the walk stopped early, and 498 of 798 real
+            #     blocks ran one line past their own test. This comment denied it could happen.
+            #   * stopping LATE under-reports - a genuinely vacuous test keeps its assertions
+            #     inside the range and is not reported. The F2 and F7 in the history above came
+            #     from the LATE direction, which is why the earlier wording claimed it was the
+            #     inventing one.
+            # The recogniser therefore avoids both by construction for the shapes pinned in
+            # `test_eb_declaration_bound_separates_starters_from_modifiers`: a modifier is read as a
+            # declaration only when a starter follows it, starters are matched without folding case,
+            # and an annotation stops being walked at its own arguments so a declaration sharing
+            # its line is seen. That is a construction argument about the recogniser, not a
+            # measurement of the bound's behaviour on arbitrary input, and it is not a guarantee.
             j = i
             expr_depth = 0
             while j < n:
@@ -541,19 +556,34 @@ def _function_body_end(code, mask, fun_start):
     return None
 
 
-# Kotlin declaration keywords. A line beginning with any of these (after modifiers) starts a new
-# declaration, so an expression body ends there. Every Kotlin declaration starter and modifier
-# is present, `inner` and `value` included; both were missing, and a declaration led by one of
-# them was not recognised, so the expression body ran past it and invented an F2 and an F7.
+# Kotlin declaration words, in the two CLASSES the decision rule treats differently.
+#
+# A STARTER heads a declaration on its own: `fun f()`, `class C`, `val x = 1`.
+# A MODIFIER qualifies a declaration and is never one alone: `data class C`, `private fun f()`.
+# One set for both, plus `words[0] in set or words[1] in set`, made a modifier sufficient alone, so
+# `data = mapOf(` and `value.also {` - ordinary continuation lines - read as declarations and the
+# expression body stopped there. Stopping there truncates the test's own body, so the scanner then
+# reported F1 for a test that is not vacuous.
+#
+# Both sets are lowercase ASCII on purpose. Kotlin's declaration keywords are lowercase and a
+# capitalised token is a DIFFERENT token, so matching starters must not fold case: `object` is a
+# declaration keyword and `Object` is a type; `data` is a modifier and `Data` is a type. The word
+# reader therefore preserves case, and `Data(1).also {` is a constructor call on a value named
+# `Data`, not a declaration.
 #
 # Completeness is asserted by `test_every_kotlin_modifier_is_recognised_as_a_declaration`, which
-# compares this set against `KOTLIN_DECLARATION_WORDS` transcribed from the Kotlin grammar in
-# both directions - a missing word and a stray word both fail. A keyword set IS a list, so the
-# set cannot honestly describe itself as undefeatable; the test is what makes the claim true,
-# and a new Kotlin keyword would have to be added to both.
-_DECLARATION_KEYWORDS = frozenset({
+# compares the union of these two sets against `KOTLIN_DECLARATION_WORDS` in both directions - a
+# missing word and a stray word both fail. A keyword set IS a list, so the set cannot honestly
+# describe itself as undefeatable; the test is what makes the claim true, and a new Kotlin keyword
+# would have to be added to both. WHICH class a word belongs to is load-bearing as well, and is
+# pinned by `test_eb_declaration_bound_separates_starters_from_modifiers`: a word in the wrong class
+# reintroduces one of the two defects above.
+_DECLARATION_STARTERS = frozenset({
     # declaration starters
     "fun", "class", "object", "interface", "val", "var", "typealias", "init", "constructor",
+})
+
+_DECLARATION_MODIFIERS = frozenset({
     # modifiers
     "companion", "enum", "annotation", "data", "sealed", "inner", "value", "open",
     "abstract", "override", "private", "public", "internal", "protected", "lateinit",
@@ -566,20 +596,29 @@ def _starts_new_declaration(code, index):
     """
     True when the line beginning at `index` begins a top-level declaration.
 
-    A line is a declaration when, after its indentation and any leading annotations, its first
-    one or two words are declaration keywords. Two words are enough to see through any modifier
-    combination (`private suspend fun`, `internal inline val`, `inner class`, `override
-    suspend fun`) without depending on a list of literal prefixes.
+    A line is a declaration when, after its indentation and any leading annotations, it opens with
+    a declaration STARTER, or with a run of MODIFIERS that a starter follows. A starter declares on
+    its own (`fun f()`, `class C`, `val x = 1`); a modifier only ever qualifies one (`data class C`,
+    `private fun f()`), so `data = mapOf(` and `value.also {` are continuation lines and return
+    False. Starters are matched WITHOUT folding case, so `object` matches and `Object` does not -
+    `Object` is a type.
 
-    Two details are load-bearing and were both defects:
-      * the whitespace BETWEEN the two words is skipped. Without it the second iteration never
-        advanced past the separator, `words` was always length 1, and the `words[1]` test was
-        dead code - the recogniser was a single-first-word test, which `inner` and `value`
-        defeat.
-      * an annotation that stands alone on its line leads the declaration on the NEXT line.
-        The walk continues there rather than reading words at the newline it just consumed.
-        Returning False there put the following test's `@Test` line inside this test's range,
-        measured at 498 of the 798 real blocks on `main`.
+    Three details are load-bearing, and each was a measured defect:
+      * the whitespace BETWEEN words is skipped, and the run is read to its end rather than to a
+        fixed two words. Without the skip the second word was never read at all and the recogniser
+        was a single-first-word test, which `inner` and `value` defeat; without reading the run,
+        `private suspend fun f()` read `suspend` as its second word and missed the `fun`, running
+        an expression body past a real declaration.
+      * a modifier alone is NOT a declaration. It was sufficient under the old single-set rule,
+        which truncated an expression body on an ordinary continuation line and so manufactured an
+        F1 on a test that was not vacuous.
+      * an annotation is walked as an annotation, not to the end of its line. A lone `@Test` still
+        leads the declaration on the NEXT line - returning False there put the following test's
+        `@Test` line inside this test's range, measured at 498 of the 798 real blocks on `main` -
+        while a declaration sharing the annotation's line, `@Test fun b() {`, is now read instead of
+        being consumed. Both branches are pinned by
+        `test_eb_expression_body_stops_before_the_next_tests_annotation` and
+        `test_eb_declaration_bound_separates_starters_from_modifiers`.
     """
     k = index
     n = len(code)
@@ -587,31 +626,64 @@ def _starts_new_declaration(code, index):
         k += 1
     if k >= n:
         return False
-    # Skip annotations such as `@Test` or `@Suppress("...")`.
+    # Skip annotations such as `@Test` or `@Suppress("...")`, one at a time, and after each one ask
+    # what follows it ON THE SAME LINE. Two branches, and both are load-bearing:
+    #   * blank, or a `//` comment -> the annotation occupied the line alone, so the declaration it
+    #     leads is on the NEXT line: advance and re-enter this loop. This is the C1 fix.
+    #   * content -> stop walking annotations and let the word reader read that content. Consuming
+    #     to end of line instead lost the declaration on `@Test fun b() {`, and a lost declaration
+    #     is an over-run that borrows the following declaration's assertions.
     while k < n and code[k] == "@":
-        while k < n and code[k] != "\n":
-            if code[k] in "([":
-                depth = 1
-                k += 1
-                while k < n and depth and code[k] != "\n":
-                    if code[k] in "([":
-                        depth += 1
-                    elif code[k] in ")]":
-                        depth -= 1
-                    k += 1
-                continue
+        k += 1
+        # The annotation's name, including a use-site target such as `@field:Suppress`.
+        while k < n and (code[k].isalnum() or code[k] in "_:"):
             k += 1
+        # Its balanced `(`/`[` arguments, which may be empty.
         while k < n and code[k] in " \t":
             k += 1
+        while k < n and code[k] in "([":
+            depth = 1
+            k += 1
+            while k < n and depth:
+                if code[k] == "\n":
+                    # Unterminated on this line: never consume past it.
+                    depth = 0
+                elif code[k] in "([":
+                    depth += 1
+                elif code[k] in ")]":
+                    depth -= 1
+                k += 1
+            while k < n and code[k] in " \t":
+                k += 1
+        # What follows the annotation on this line?
         if k < n and code[k] == "\n":
-            # The annotation occupied the whole line, so the declaration it leads is the next
-            # line. Another annotation there re-enters this loop.
+            # The annotation occupied the whole line, so the declaration it leads is the next line.
+            # Another annotation there re-enters this loop.
             k += 1
             while k < n and code[k] in " \t":
                 k += 1
-    # The first one or two words must be declaration keywords.
+            continue
+        if k < n and code[k] == "/":
+            # A trailing `//` comment is not content: the annotation still stood alone.
+            while k < n and code[k] != "\n":
+                k += 1
+            if k < n:
+                k += 1
+            while k < n and code[k] in " \t":
+                k += 1
+            continue
+        break
+    # Read the leading words, continuing across a RUN of modifiers. Reading exactly two words read
+    # `suspend` as the second word of `private suspend fun f()` and missed the `fun`, which is the
+    # shape that invented an F2 and an F7 on real input; the run has to be read through to its end.
+    # The walk stops at the first character that is not part of a word, so a chain tail
+    # (`value.also {`) or an assignment (`data = mapOf(`) yields a single word.
+    #
+    # CASE IS PRESERVED. `object` is a declaration starter and `Object` is a type; `data` is a
+    # modifier and `Data` is a type. Folding case here made `Data(1).also {` and `Object.foo()`
+    # read as declarations, which stopped the expression body early and manufactured an F1.
     words = []
-    for _ in range(2):
+    while True:
         while k < n and code[k] in " \t":
             k += 1
         start = k
@@ -619,12 +691,18 @@ def _starts_new_declaration(code, index):
             k += 1
         if k == start:
             break
-        words.append(code[start:k].lower())
+        words.append(code[start:k])
+        if len(words) > 1 and words[-1] not in _DECLARATION_MODIFIERS:
+            break
     if not words:
         return False
-    return words[0] in _DECLARATION_KEYWORDS or (
-        len(words) > 1 and words[1] in _DECLARATION_KEYWORDS
-    )
+    # A starter declares on its own. A modifier only ever qualifies, so it must be followed by a
+    # starter somewhere in the run - never nothing, and never after a word that is neither.
+    if words[0] in _DECLARATION_STARTERS:
+        return True
+    if words[0] not in _DECLARATION_MODIFIERS:
+        return False
+    return any(word in _DECLARATION_STARTERS for word in words[1:])
 
 
 def _index_helper_functions(code, mask):
