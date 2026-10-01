@@ -2752,7 +2752,7 @@ interaction — `verify(mockGateway, atLeastOnce()).getTestUsersCount()` — the
 `loadDashboardData()` from `init` *and* the test calls it explicitly, so two fetches are correct
 (`times(1)` failed on clean code and was corrected).
 
-### 5.2 Tier A — four bound to production, one deleted
+### 5.2 Tier A — four *findings* bound to production across three bound rows, plus one deleted
 
 | # | Test (line at its commit) | Tier | Faithful mutant | Green **before** | Red **after** | Green clean | Commit | Log(s) |
 |:--|:--|:--|:--|:--|:--|:--|:--|:--|
@@ -2783,7 +2783,7 @@ line, not a test-only helper.
 the zone production chose is read only out of production's own ±90 s correlation verdict, so no
 constant in the test can stand in for it. It catches a collapse in **both** directions.
 
-### 5.3 Tier C — three fixtures routed through the gates they name (`0b14755`)
+### 5.3 Tier C — four repairs: three fixtures routed through the gates they name, one diagnostic anchor added (`0b14755`)
 
 | # | Test (line at `0b14755`) | Faithful mutant | Green **before** | Red **after** | Green clean | Log(s) |
 |:--|:--|:--|:--|:--|:--|:--|

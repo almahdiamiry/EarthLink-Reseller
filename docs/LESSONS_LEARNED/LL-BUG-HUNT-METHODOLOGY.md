@@ -257,7 +257,10 @@ fail — *or pass* — tells you which one you are holding.
 - **Tier C — the rule is real but not load-bearing for the fixture.** A fixture or anchor change, never
   an added assertion.
 
-Nine of the fourteen fell in Tier B or C. Labelling all fourteen with one phrase — *"passes without
+Eight of the fourteen fell in Tier B or C — four in B, four in C. The fourteenth, the note-transaction oracle, carries
+no tier at all: the repair plan addressed thirteen of the fourteen and missed it, which is why its row is absent from
+§5.3 and its repair landed after the round was nominally closed. **A taxonomy that silently drops an item is worse
+than one that never had it.** Labelling all fourteen with one phrase — *"passes without
 proving what they name"* — **conflates two opposite defects and invites deleting working tests**: a
 controller reading the flat list would have deleted the four Tier-B tests, which work. **Never label a
 test by its symptom; classify it by which repair it needs.** Corollary for the repair phase: **adding an
