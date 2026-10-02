@@ -133,6 +133,28 @@ def get_toolchain_info() -> dict:
     }
 
 
+def evaluate_test_count_floors(measured: dict) -> tuple:
+    """
+    GAP-7. Compare measured per-class counts against scripts/test_count_manifest.yaml.
+
+    Kept as a thin, exception-free wrapper so a missing or malformed manifest degrades to a
+    reported FAILURE rather than a crash: a gate that raises on its own bookkeeping is a gate
+    nobody trusts. Returns (ok, detail_lines).
+    """
+    try:
+        import test_count_manifest as tcm
+        manifest = tcm.load()
+        ok, lines = tcm.check(measured, manifest)
+        return ok, lines
+    except FileNotFoundError:
+        return False, [
+            "  [MISSING]   scripts/test_count_manifest.yaml not found. The gate cannot prove any "
+            "test is still present, which is the GAP-7 condition itself."
+        ]
+    except Exception as exc:
+        return False, [f"  [ERROR]     could not evaluate the test-count manifest: {exc}"]
+
+
 def parse_junit_xmls(results_dir: str) -> dict:
     suites = []
     total_tests = 0
@@ -209,9 +231,19 @@ def parse_junit_xmls(results_dir: str) -> dict:
         except Exception as e:
             print(f"[WARN] Error parsing {xf}: {e}")
 
+    # ---- GAP-7: expected test-count manifest ---------------------------------------------
+    # Factored out of parse_junit_xmls so it can be exercised against a synthetic results
+    # directory without touching a real one. A DECREASE in a class that production_gate.sh governs
+    # is a gate failure; an INCREASE is allowed. See scripts/test_count_manifest.py for why the
+    # asymmetry is deliberate - pinning to an exact number would make every legitimate new test a
+    # failure and turn the manifest into a rubber stamp.
+    floor_ok, floor_lines = evaluate_test_count_floors({s["name"]: s["tests"] for s in suites})
+
     return {
         "command": "./gradlew :app:testDebugUnitTest --no-daemon",
-        "exit_code": 0 if (failed_tests == 0 and error_tests == 0 and total_tests > 0) else 1,
+        "exit_code": 0 if (failed_tests == 0 and error_tests == 0 and total_tests > 0 and floor_ok) else 1,
+        "test_count_floor_ok": floor_ok,
+        "test_count_floor_detail": floor_lines,
         "total_tests": total_tests,
         "passed_tests": passed_tests,
         "failed_tests": failed_tests,

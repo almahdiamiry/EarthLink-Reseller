@@ -170,8 +170,29 @@ class Workstream1StatementCorrelationTest {
     }
 
     @Test
-    fun testContractStatementFieldsDeserialization() {
-        val ispJson = """
+    fun testContractStatementFieldsDeserialization() = runTest {
+        // GAP-2 CLOSED. This test used to deserialize the ISP payload and then assert the RAW
+        // `occurredAt` STRING, so it never reached `parseStatementTimestamp` at all: collapsing the
+        // format-conditional zone branch left it green. It now routes the DESERIALIZED date through
+        // the same production correlator its sibling uses, so the wire value and the parsed instant
+        // are asserted together.
+        //
+        // Independent oracle: the ISP time convention itself. [opInstant] is 2026-01-15T11:30:00Z,
+        // which reads as "2026-01-15 11:30:00" in UTC and "2026-01-15 14:30:00" in Asia/Baghdad
+        // (UTC+3). Both literals are written by hand below. The correlation verdict is the only
+        // observation channel: no offset constant and no SimpleDateFormat appears in this file, so
+        // a hardcoded +03:00 cannot satisfy these cases.
+        db.localAccountDao().insert(
+            LocalAccount(
+                id = accountId,
+                earthlinkUsername = accountId,
+                displayName = "Deserialization Branch",
+                currentPriceIqd = amountIqd.toDouble(),
+                debtIqd = 0.0
+            )
+        )
+
+        val spaceFormatJson = """
             {
                 "date": "2026-01-15 14:30:00",
                 "operation": "Deposit",
@@ -183,13 +204,88 @@ class Workstream1StatementCorrelationTest {
             }
         """.trimIndent()
 
-        val parsed = adapter.fromJson(ispJson)
-        assertNotNull(parsed)
+        val isoFormatJson = """
+            {
+                "date": "2026-01-15T11:30:00",
+                "operation": "Deposit",
+                "deposit": 25000.0,
+                "withdrawal": 0.0,
+                "balance": 150000.0,
+                "userID": "test_user_01",
+                "description": "Deposit to reseller"
+            }
+        """.trimIndent()
 
+        val utcDigitsInSpaceFormatJson = """
+            {
+                "date": "2026-01-15 11:30:00",
+                "operation": "Deposit",
+                "deposit": 25000.0,
+                "withdrawal": 0.0,
+                "balance": 150000.0,
+                "userID": "test_user_01",
+                "description": "Deposit to reseller"
+            }
+        """.trimIndent()
+
+        // (a) The four contract-proven fields still deserialize per API v0.7.0 lines 1200-1215.
+        val parsed = adapter.fromJson(spaceFormatJson)
+        assertNotNull(parsed)
         assertEquals("2026-01-15 14:30:00", parsed!!.occurredAt)
         assertEquals(25000.0, parsed.depositAmount ?: 0.0, 0.001)
         assertEquals(0.0, parsed.withdrawalAmount ?: 0.0, 0.001)
         assertEquals(150000.0, parsed.balanceAfter ?: 0.0, 0.001)
+
+        // (b) NEGATIVE CONTROL. The SAME digits that (c) will correlate, read here as an operation
+        // three hours away. Production must resolve the space format in Asia/Baghdad, which places
+        // "2026-01-15 11:30:00" at 08:30Z - three hours before the operation's own instant, far
+        // outside the +/-90 s window - so it must NOT correlate. A parser pinned to UTC would
+        // correlate it and wrongly resolve the operation.
+        assertEquals(
+            "NEGATIVE CONTROL | A non-ISO statement carrying the UTC wall clock of the operation's " +
+                "instant must NOT correlate, because production resolves the non-ISO format in " +
+                "Asia/Baghdad and therefore reads those digits three hours earlier. It correlated, " +
+                "so the parser is resolving the space format in UTC.",
+            UnknownOutcomeResolutionResult.INCONCLUSIVE,
+            correlate(
+                requireNotNull(adapter.fromJson(utcDigitsInSpaceFormatJson)!!.occurredAt) {
+                    "ISP payload carried no `date`, so nothing reached the production parser."
+                },
+                "tx_gap2_neg"
+            )
+        )
+
+        // (c) POSITIVE CONTROL, ISO format. The "T" carries the UTC wall clock of the operation's
+        // own instant, so the "T" -> UTC branch must be in force and the statement must correlate.
+        assertEquals(
+            "POSITIVE CONTROL ISO | An ISO-8601 \"T\" statement carrying the operation's own UTC " +
+                "instant must correlate. Production resolved it in some other zone, so the " +
+                "\"T\" -> UTC branch is not in force.",
+            UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
+            correlate(
+                requireNotNull(adapter.fromJson(isoFormatJson)!!.occurredAt) {
+                    "ISP payload carried no `date`, so nothing reached the production parser."
+                },
+                "tx_gap2_iso"
+            )
+        )
+
+        // (d) POSITIVE CONTROL, non-ISO format. Identical instant to (c) but written in Asia/Baghdad
+        // wall clock, so the else -> Baghdad branch must be in force and it must also correlate.
+        // Together (c) and (d) pin BOTH directions of the branch: collapsing every statement into
+        // one zone turns exactly one of them red.
+        assertEquals(
+            "POSITIVE CONTROL BAGHDAD | The same instant written in Asia/Baghdad wall clock must " +
+                "correlate through the else -> Baghdad branch. Production resolved it in some " +
+                "other zone, so the non-ISO branch is not in force.",
+            UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
+            correlate(
+                requireNotNull(parsed.occurredAt) {
+                    "ISP payload carried no `date`, so nothing reached the production parser."
+                },
+                "tx_gap2_baghdad"
+            )
+        )
     }
 
     @Test

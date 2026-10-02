@@ -361,4 +361,166 @@ class HistoricalSubscriberMatchingSafetyTest {
         )
         assertNull("Historical account must NOT be matched by username when incoming extId is null", matched.accountOrNull)
     }
+
+    // =========================================================================
+    // GAP-3 CLOSED - `conflictingExtId` in its REJECTING role, on both lines.
+    //
+    // The two existing phone/name tests above make `conflictingExtId` FALSE by construction:
+    // their candidate has `sourceExternalId = null`, so the `!acc.sourceExternalId.isNullOrEmpty()`
+    // term short-circuits before the mismatch term is ever evaluated. Nothing in the suite ever
+    // drove that flag to TRUE, on either :105 or :121.
+    //
+    // FIXTURE CONTRACT for the four cases below - the incoming subscriber is a different person who
+    // has recycled this phone number and this display name:
+    //   candidate.isHistoryOnlySubscriber = FALSE   so :103 / :119 do NOT short-circuit first,
+    //                                               which is what makes :105 / :121 reachable.
+    //   candidate.id                != extId       so Stage 2 (:89-91) misses on `acc.id == cleanExtId`
+    //   candidate.sourceExternalId  != extId       so Stage 2 also misses on sourceExternalId
+    //   username = null                           so Stage 1 (:71) is skipped entirely
+    // That leaves Stage 3 / Stage 4 and, with it, `conflictingExtId` as the only thing that can
+    // reject the candidate. A mutant that removes or inverts :105 / :121 turns the two negative
+    // cases red; the two positive cases prove the guard is not simply rejecting everything.
+    // =========================================================================
+
+    /**
+     * An ACTIVE candidate whose external id is already taken by a different subscriber. Reusing
+     * this row by phone or by display name must be refused, because the ISP is telling us the
+     * incoming subscriber is somebody else.
+     */
+    private fun activeCandidateWithOccupiedExtId(phone: String, displayName: String) = LocalAccount(
+        id = "acc_active_occupied",
+        sourceExternalId = "e_belongs_to_someone_else",
+        displayName = displayName,
+        earthlinkUsername = null,
+        phone1 = phone,
+        debtIqd = 12000.0,
+        isHistoryOnlySubscriber = false
+    )
+
+    @Test
+    fun testPhoneMatching_conflictingExtId_rejectsActiveCandidate() {
+        val sharedPhone = "07705555555"
+        val candidate = activeCandidateWithOccupiedExtId(sharedPhone, "Recycled Phone Holder")
+
+        val matched = SubscriberMatcher.matchSubscriber(
+            candidates = listOf(candidate),
+            extId = "e_the_incoming_subscriber",
+            username = null,
+            phone = sharedPhone
+        )
+
+        assertNull(
+            "A candidate whose sourceExternalId belongs to another subscriber must be REJECTED by " +
+                "conflictingExtId at SubscriberMatcher.kt:105, even though it is ACTIVE and its " +
+                "phone matches exactly. Matching here would merge two different subscribers' " +
+                "financial history.",
+            matched.accountOrNull
+        )
+        assertTrue(
+            "Expected NoMatch after :105 rejected the only candidate, but the matcher returned " +
+                "${matched::class.simpleName}. A Unique here means the caller merged a stranger's " +
+                "account; an Ambiguous here means the rejection was recorded as a quarantine, " +
+                "which is a different and separately reviewable behaviour.",
+            matched is SubscriberMatchResult.NoMatch
+        )
+    }
+
+    @Test
+    fun testNameMatching_conflictingExtId_rejectsActiveCandidate() {
+        val sharedName = "Recycled Common Name"
+        val candidate = activeCandidateWithOccupiedExtId("07706666666", sharedName)
+
+        val matched = SubscriberMatcher.matchSubscriber(
+            candidates = listOf(candidate),
+            extId = "e_the_incoming_subscriber",
+            username = null,
+            name = sharedName
+        )
+
+        assertNull(
+            "The same rejection is owed on the display-name path: conflictingExtId at " +
+                "SubscriberMatcher.kt:121 must refuse a candidate whose sourceExternalId belongs " +
+                "to a different subscriber, or the name fallback becomes a merge hole.",
+            matched.accountOrNull
+        )
+        assertTrue(
+            "Expected NoMatch after :121 rejected the only candidate, but the matcher returned " +
+                "${matched::class.simpleName}.",
+            matched is SubscriberMatchResult.NoMatch
+        )
+    }
+
+    /**
+     * POSITIVE CONTROL for :105. Identical to the negative phone case except that the candidate has
+     * no external id of its own, so there is nothing to conflict with. The guard must let this
+     * through - which is what proves the negative case is caused by the MISMATCH and not by the
+     * mere presence of an `extId` argument.
+     */
+    @Test
+    fun testPhoneMatching_noConflictingExtId_stillMatchesActiveCandidate() {
+        val sharedPhone = "07707777777"
+        val candidate = LocalAccount(
+            id = "acc_active_no_ext",
+            sourceExternalId = null,
+            displayName = "No External Id Holder",
+            earthlinkUsername = null,
+            phone1 = sharedPhone,
+            debtIqd = 5000.0,
+            isHistoryOnlySubscriber = false
+        )
+
+        val matched = SubscriberMatcher.matchSubscriber(
+            candidates = listOf(candidate),
+            extId = "e_the_incoming_subscriber",
+            username = null,
+            phone = sharedPhone
+        )
+
+        assertNotNull(
+            "POSITIVE CONTROL | A candidate with NO sourceExternalId cannot conflict with anything, " +
+                "so :105 must accept it. A null here means the guard rejects on the mere presence " +
+                "of the extId argument, which would break every first-time ISP subscriber.",
+            matched.accountOrNull
+        )
+        assertEquals(
+            "POSITIVE CONTROL | The accepted candidate must be the one we supplied.",
+            "acc_active_no_ext",
+            matched.accountOrNull!!.id
+        )
+    }
+
+    /**
+     * POSITIVE CONTROL for :121, for the display-name path.
+     */
+    @Test
+    fun testNameMatching_noConflictingExtId_stillMatchesActiveCandidate() {
+        val sharedName = "Uncontested Common Name"
+        val candidate = LocalAccount(
+            id = "acc_active_no_ext_name",
+            sourceExternalId = null,
+            displayName = sharedName,
+            earthlinkUsername = null,
+            phone1 = "07708888888",
+            debtIqd = 5000.0,
+            isHistoryOnlySubscriber = false
+        )
+
+        val matched = SubscriberMatcher.matchSubscriber(
+            candidates = listOf(candidate),
+            extId = "e_the_incoming_subscriber",
+            username = null,
+            name = sharedName
+        )
+
+        assertNotNull(
+            "POSITIVE CONTROL | A candidate with NO sourceExternalId cannot conflict with anything, " +
+                "so :121 must accept it.",
+            matched.accountOrNull
+        )
+        assertEquals(
+            "POSITIVE CONTROL | The accepted candidate must be the one we supplied.",
+            "acc_active_no_ext_name",
+            matched.accountOrNull!!.id
+        )
+    }
 }

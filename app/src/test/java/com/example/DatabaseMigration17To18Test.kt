@@ -25,19 +25,48 @@ import java.util.zip.ZipFile
  * 2. Seam / Environment: ROBOLECTRIC (FrameworkSQLiteOpenHelperFactory over disposable SQLite database file).
  * 3. Independent Oracle: Real production golden database backup (earthlink_backup_1789281798680.zip)
  *    evaluated independently before and after migration.
+ *
+ *    LIMITATION, and it is a real one: that fixture is UNTRACKED, by design - it wraps a 4 MB
+ *    SQLite database of real subscriber history (216 accounts, 2761 ledger rows) and must never be
+ *    committed. So on a clean clone this class SKIPS rather than runs, and the 17 -> 18 migration is
+ *    UNVERIFIED there. A skip is not a pass. To run it, put the zip at the repository root.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(manifest = Config.NONE)
 class DatabaseMigration17To18Test {
 
-    private fun findGoldenZip(): File {
+private fun findGoldenZip(): File {
         val candidates = listOf(
             File("earthlink_backup_1789281798680.zip"),
             File("..", "earthlink_backup_1789281798680.zip"),
             File("../..", "earthlink_backup_1789281798680.zip")
         )
-        return candidates.firstOrNull { it.exists() }
-            ?: error("Golden backup zip earthlink_backup_1789281798680.zip not found in candidate paths: ${candidates.map { it.absolutePath }}")
+        val found = candidates.firstOrNull { it.exists() }
+        if (found == null) {
+            // SKIP, do not fail. This fixture is deliberately untracked, and it has to stay that way.
+            //
+            // `earthlink_backup_1789281798680.zip` is a 0.92 MB archive around a 4 MB SQLite
+            // database holding REAL production history - the accounts and ledger rows this test
+            // counts (216 and 2761). Committing it would publish subscriber financial history to
+            // the repository, so `.gitignore:40` excludes it and it will never be tracked.
+            //
+            // The consequence has to be stated rather than hidden: on a clean clone this test does
+            // NOT run, which means the 17 -> 18 migration is UNVERIFIED outside the machine that
+            // holds the fixture. Skipping is still the right behaviour, because the alternative -
+            // failing - makes `clean clone` permanently red for a reason that has nothing to do with
+            // the code under test, and a permanently red suite is one people learn to ignore.
+            //
+            // To run it: place the zip at the repository root, or one or two levels up. Nothing
+            // else about the test changes.
+            org.junit.Assume.assumeTrue(
+                "SKIPPED, NOT PASSED. The 17 -> 18 migration is unverified without its golden " +
+                    "fixture. earthlink_backup_1789281798680.zip is untracked by design because it " +
+                    "contains real subscriber financial history, so a clean clone cannot run this " +
+                    "test. Searched: ${candidates.map { it.absolutePath }}",
+                false
+            )
+        }
+        return found!!
     }
 
     private fun extractDisposableDatabase(zipFile: File, targetFile: File) {

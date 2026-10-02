@@ -10,6 +10,8 @@ column. `AGENTS.md` §7.4 forbids the "while we're here" expansion that fixing t
 ---
 
 ## GAP-1 — `UserDetailScreenV2.kt:382` fabricates a 0-IQD balance on gateway failure
+> **OPEN - untouched by r13b. Its fix is an app/src/main extraction and is PR 2.**
+
 
 | | |
 |:--|:--|
@@ -21,6 +23,12 @@ column. `AGENTS.md` §7.4 forbids the "while we're here" expansion that fixing t
 | **Severity** | **Highest of the four.** It is a financial display value, and it is the only one of the four where a wrong value reaches the screen. |
 
 ## GAP-2 — `Workstream1StatementCorrelationTest.kt:24` never reaches the production parser
+> **CLOSED in r13b. Rewritten to route the DESERIALIZED date through the production 
+parser, with a negative control and two positive controls. Proven by M-G2 (collapse the 
+format-conditional zone branch to UTC): 797 tests completed, 3 failed, and the failing 
+name included testContractStatementFieldsDeserialization - the test that had been green 
+against this exact mutation.**
+
 
 | | |
 |:--|:--|
@@ -31,6 +39,11 @@ column. `AGENTS.md` §7.4 forbids the "while we're here" expansion that fixing t
 | **Why not this branch** | It is not among the fourteen adjudicated findings — it surfaced during repair, after the audit's scope was fixed. Repairing it is a new adjudication, not a repair. |
 
 ## GAP-3 — `conflictingExtId` (`SubscriberMatcher.kt:105`, `:121`) has never been covered in its rejecting role
+> **CLOSED in r13b. Four fixtures added: negative and positive controls on both 
+conflictingExtId lines. Proven twice, one mutation per line:
+  M-G3a (:105 forced false): 801 tests completed, 1 failed - testPhoneMatching_conflictingExtId_rejectsActiveCandidate
+  M-G3b (:121 forced false): 801 tests completed, 1 failed - testNameMatching_conflictingExtId_rejectsActiveCandidate**
+
 
 | | |
 |:--|:--|
@@ -42,6 +55,10 @@ column. `AGENTS.md` §7.4 forbids the "while we're here" expansion that fixing t
 | **Lesson** | Repairing a double-guarded fixture can leave the second guard with **less** coverage than before, because the test that incidentally reached it has just been redirected. |
 
 ## GAP-4 — `Step3DurableDispatchTest.kt:48-67` is dead code carrying the collapsed-zone bug
+> **CLOSED in r13b. The dead parseStatementTimestamp was deleted after grep proved it had 
+exactly one hit in the file - its own declaration - and zero call sites. Step3DurableDispatchTest 
+still runs 23 tests, unchanged.**
+
 
 | | |
 |:--|:--|
@@ -75,6 +92,13 @@ an em dash as `??` in PowerShell output. Codepoint enumeration gives `U+2014`; t
 `U+FFFD`. This is console rendering, not corruption.
 
 ## GAP-7 — the release gate does not assert a test count, and this branch proved it
+> **CLOSED in r13b. scripts/test_count_manifest.yaml records a per-class FLOOR for the 16 
+classes production_gate.sh governs, each carrying the establishing commit; 
+scripts/test_count_manifest.py fails on a DECREASE and allows an INCREASE; 
+collect_closure_evidence.py now folds that verdict into its exit_code. Proven by deleting 
+testScenarioI_financialSemanticsPreservedWithoutRawJson: Phase1FirestoreDocumentIdentityTest fell 
+19 -> 18 and the gate returned exit 1, which is the condition r13 could not catch.**
+
 
 | | |
 |:--|:--|
@@ -85,3 +109,15 @@ an em dash as `??` in PowerShell output. Codepoint enumeration gives `U+2014`; t
 | **What is checked today** | That nothing failed. Not that anything is still there. |
 | **Why not this branch** | Changing the gate is a release-process change, and this branch's charter was test repairs. Recording it is the correct action. |
 | **Suggested fix, not applied** | Add a committed **expected-count manifest** — a file listing, per gated class, the test count and the commit that established it — and have `collect_closure_evidence.py` compare the measured count against it, failing on a **decrease** while tolerating an increase. A decrease is the direction that loses protection; an increase is the normal result of adding a test. Pinning to an exact number instead would make every legitimate new test a gate failure and train the next person to update the number without reading why, which is how a count check becomes a rubber stamp. The manifest should carry the commit sha so a count change is reviewable rather than mechanical. |
+
+---
+
+## GAP-7 addendum - DatabaseMigration17To18Test now SKIPS on a clean clone
+
+| | |
+|:--|:--|
+| **Problem** | `earthlink_backup_1789281798680.zip` is untracked by design (`.gitignore:40`) because it wraps a 4 MB SQLite database of real subscriber history - 216 accounts, 2761 ledger rows. On a clean clone the test had no fixture, called `error(...)`, and FAILED, so the suite was permanently red for a reason unrelated to the code under test. |
+| **Fix chosen** | **Skip, not track.** Committing the archive would publish subscriber financial history to the repository, so that option is excluded on privacy grounds, not convenience. `findGoldenZip()` now uses `org.junit.Assume.assumeTrue(..., false)` with the searched paths in the message. |
+| **What this costs** | On a clean clone the 17 -> 18 migration is **UNVERIFIED**. A skip is not a pass. The class KDoc and the skip message both say so. |
+| **How to run it** | Put the zip at the repository root, or one or two levels up. Nothing else changes. |
+

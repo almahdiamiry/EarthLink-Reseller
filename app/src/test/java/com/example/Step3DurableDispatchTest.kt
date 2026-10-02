@@ -45,27 +45,6 @@ class Step3DurableDispatchTest {
         )
     }
 
-    private fun parseStatementTimestamp(dateStr: String?): Long {
-        if (dateStr.isNullOrBlank()) return 0L
-        val trimmed = dateStr.trim()
-        val formats = arrayOf(
-            "yyyy-MM-dd'T'HH:mm:ss.SSSSSSS",
-            "yyyy-MM-dd'T'HH:mm:ss.SSS",
-            "yyyy-MM-dd'T'HH:mm:ss",
-            "yyyy-MM-dd HH:mm:ss",
-            "yyyy-MM-dd"
-        )
-        for (pattern in formats) {
-            try {
-                val sdf = java.text.SimpleDateFormat(pattern, java.util.Locale.US)
-                sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
-                val d = sdf.parse(trimmed)
-                if (d != null) return d.time
-            } catch (_: Exception) {}
-        }
-        return 0L
-    }
-
     private open class FakeGateway(
         var checkUsernameAvailableResult: Boolean = true,
         var userDetailResult: UserDetail = UserDetail(userIndexLower = 101, userIDLower = "user1", accountStatusLower = "Active", activeDaysLeftLower = 30.0),
