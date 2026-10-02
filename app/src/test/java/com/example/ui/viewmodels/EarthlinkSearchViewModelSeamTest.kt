@@ -1198,4 +1198,16 @@ class EarthlinkSearchViewModelSeamTest {
         assertEquals("Gateway balance API error", result.exceptionOrNull()?.message)
     }
 
+    @Test
+    fun testGetResellerBalance_apiFailure_resultsInNullNotZero() = runBlocking {
+        testGateway.balanceException = RuntimeException("Gateway balance API error")
+        val vm = createViewModel()
+        var resellerBalance: Double? = 0.0
+        try {
+            resellerBalance = vm.getResellerBalance()
+        } catch (e: Exception) {
+            resellerBalance = null
+        }
+        assertNull(resellerBalance)
+    }
 }

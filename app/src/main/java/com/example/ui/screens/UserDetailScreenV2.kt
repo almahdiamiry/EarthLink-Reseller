@@ -376,11 +376,11 @@ fun UserDetailScreenV2(
             
             val currentPackages by viewModel.packages.collectAsStateWithLifecycle()
             LaunchedEffect(user.userIndex, currentPackages) {
-                try {
-                    resellerBalance = viewModel.getResellerBalance()
-                } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                    resellerBalance = null
-                }
+                // GAP-1: the read and its catch are now one testable call, so the failure branch
+                // is reachable from a JVM test instead of being locked inside a LaunchedEffect.
+                // Behaviour is unchanged: CancellationException is still rethrown, because
+                // BalanceAfterRenewal.readBalance rethrows it exactly as the inline catch did.
+                resellerBalance = com.example.core.ledger.BalanceAfterRenewal.readBalance { viewModel.getResellerBalance() }
                 try {
                     val name = user.packageName?.trim()?.lowercase() ?: ""
                     val foundPackage = currentPackages.find { it.accountName.trim().lowercase() == name }
@@ -662,9 +662,17 @@ fun UserDetailScreenV2(
                                             color = Color(0xFF9CA3AF),
                                             fontSize = 13.sp
                                         )
-                                        val balanceColor = if (balanceAfter is com.example.core.ledger.BalanceAfterRenewal.Result.Unknown) Color.White.copy(alpha = 0.5f) else if ((balanceAfter as com.example.core.ledger.BalanceAfterRenewal.Result.Known).amount >= 0) Color(0xFF34D399) else Color(0xFFF87171)
+                                        val balanceColor = when (balanceAfter) {
+                                            is com.example.core.ledger.BalanceAfterRenewal.Result.Unknown -> Color.White.copy(alpha = 0.5f)
+                                            is com.example.core.ledger.BalanceAfterRenewal.Result.Known -> if (balanceAfter.amount >= 0) Color(0xFF34D399) else Color(0xFFF87171)
+                                        }
                                         Text(
-                                            text = if (isLoadingApiData) "..." else if (balanceAfter is com.example.core.ledger.BalanceAfterRenewal.Result.Known) "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay((balanceAfter as com.example.core.ledger.BalanceAfterRenewal.Result.Known).amount)} د.ع" else "—",
+                                            text = when {
+                                                isLoadingApiData -> "..."
+                                                balanceAfter is com.example.core.ledger.BalanceAfterRenewal.Result.Known ->
+                                                    "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(balanceAfter.amount)} د.ع"
+                                                else -> "—"
+                                            },
                                             color = balanceColor,
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.Bold

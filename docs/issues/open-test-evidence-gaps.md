@@ -10,43 +10,68 @@ column. `AGENTS.md` §7.4 forbids the "while we're here" expansion that fixing t
 ---
 
 ## GAP-1 — `UserDetailScreenV2.kt:382` fabricates a 0-IQD balance on gateway failure
-> **CLOSED in fix/gap1-balance-after.** The balance computation was extracted out of the
-> `@Composable` into `com.example.core.ledger.BalanceAfterRenewal` — a pure object with no
-> Compose, no Android and no I/O — so it is finally reachable from a JVM test. The failure case
-> is no longer an absence but a distinct value: `Result.Unknown`, which carries no number and
-> cannot be collapsed into one by accident.
+> **CLOSED in fix/gap1-balance-after.** Both halves of GAP-1 are now closed by execution, not by a
+> tripwire: the COMPUTATION and the READ-AND-CATCH that feeds it were both extracted out of the
+> `@Composable` into `com.example.core.ledger.BalanceAfterRenewal` — a pure object with no Compose,
+> no Android and no I/O — so each is directly reachable from a JVM test.
 >
-> The result type is a sealed interface rather than `Double?` on purpose. `null` and `0.0` are
-> both "no money", and the original harm was a caller unable to tell them apart. Making UNKNOWN
-> a type the compiler forces you to handle removes the ambiguity at the call site.
+> `compute(resellerBalance, packageCost)` returns a sealed `Result` — `Known(amount)` or `Unknown` —
+> rather than `Double?`. `null` and `0.0` are both "no money", and the original harm was a caller
+> unable to tell them apart, so making UNKNOWN a type the compiler forces you to handle removes the
+> ambiguity at the call site rather than documenting it. `Unknown` carries no number at all.
 >
-> **PROVEN by mutation.** `BalanceAfterRenewal.compute` was changed to return `Result.Known(0.0)`
-> on the failure path — precisely the r13 hazard:
+> `readBalance(fetch)` is GAP-1's actual defect at the line that caused it. The screen used to hold
+> the gateway read and its `catch` inline inside a `LaunchedEffect`, where nothing could reach them.
+> It **preserves** the screen's pre-existing cancellation behaviour rather than changing it: the
+> inline catch already rethrew `CancellationException`
+> (`catch (e: Exception) { if (e is CancellationException) throw e; ... }`), so `readBalance`
+> rethrows it the same way. The screen did NOT silently swallow cancellation, and the extraction did
+> not introduce it. A test pins this so nobody can later "simplify" the function into a bare
+> `catch (e: Exception) { null }`.
+>
+> **PROVEN BY MUTATION — the real `:382` defect.** `readBalance`'s catch was changed to return
+> `0.0`, which is exactly what GAP-1 described happening at that line:
 >
 > ```
-> 4 tests completed, 1 failed
-> BalanceAfterRenewalTest > unknownBalance_yieldsExplicitUnknown_notZero FAILED
+> 8 tests completed, 2 failed
+> BalanceAfterRenewalTest > readBalance_gatewayFailure_yieldsNullNotZero FAILED
+> BalanceAfterRenewalTest > readBalance_otherExceptionsStillBecomeNull FAILED
 > ```
 >
-> Four tests now exercise the function directly, all JVM: an unreadable balance yields Unknown
-> with no reachable amount; 100,000 - 40,000 = 60,000 (both literals written by hand); a balance
-> genuinely spent down stays `Known(0.0)` rather than becoming Unknown, because refusing to answer
-> when the honest answer is zero is a DIFFERENT lie; and a negative position stays Known.
+> An earlier mutation on the `compute` failure branch (`Result.Known(0.0)`) gave
+> `4 tests completed, 1 failed` — `unknownBalance_yieldsExplicitUnknown_notZero`.
 >
-> **The two old tripwires were DELETED, not kept** — both pinned the literal text
-> `val balanceAfter = resellerBalance?.let { it - packageCost }`, a line the extraction
-> legitimately changed. Keeping them would have meant pinning the shape of code that no longer
-> exists, and their actual claim is now proven by EXECUTION, which is strictly stronger than a
-> source-text match. `productionBalanceAfterLine()` became dead with them and was removed.
+> Seven tests now cover the object, all JVM: an unreadable balance yields `Unknown` with no
+> reachable amount; 100,000 - 40,000 = 60,000 (both literals by hand); a balance genuinely spent
+> down stays `Known(0.0)` rather than becoming `Unknown`, because refusing to answer when the honest
+> answer is zero is a DIFFERENT lie; a negative position stays Known; a throwing fetch yields null;
+> a successful fetch passes 100,000 through; and `CancellationException` propagates.
 >
-> Visible behaviour on success is unchanged; the unknown case renders the same em dash as before.
+> **TWO OLD TRIPWIRES DELETED, ONE TEST WRONGLY DELETED AND RESTORED.**
 >
-> **NOT proven:** that the Composable actually calls this function, and that it renders Unknown as
+> `testBalanceAfterMath_knownBalance_computesCorrectly` and `testBalanceAfterMath_unknownBalance_isNull`
+> were tripwires: both pinned the literal text
+> `val balanceAfter = resellerBalance?.let { it - packageCost }`, a line the extraction legitimately
+> changed. They were deleted, and their claim is now proven by EXECUTION — strictly stronger, since
+> a source-text pin would have stayed green if the expression were extracted into a helper that then
+> ignored the null, which is the precise failure it was meant to catch.
+`productionBalanceAfterLine()` became dead with them and went too.
+>
+> `testGetResellerBalance_apiFailure_resultsInNullNotZero` was ALSO removed in that same commit and
+> that removal was WRONG. It is not a tripwire: it calls the real `vm.getResellerBalance()`, which is
+> declared `: Double` with no catch of its own, so a gateway error propagates as an exception and the
+> test asserts the consumer's catch turns it into null rather than 0.0. It is restored verbatim.
+>
+> Counts, corrected: **three** tests were deleted, not two —
+> `EarthlinkSearchViewModelSeamTest` went **40 -> 37**, and is **38** again after the restore. The
+> earlier claim of "41 tests -> 37" was wrong on both numbers.
+>
+> Visible behaviour on success is unchanged; the unknown case still renders the same em dash.
+>
+> **NOT proven:** that the Composable actually calls these functions, and that it renders `Unknown` as
 > an em dash. Both are Compose concerns a JVM test cannot observe. What is proven is that the
-> arithmetic and the failure branch now have one definition and that the failure branch is
-> reachable and testable — which is exactly what the tripwire could not do.
-
-
+> arithmetic, the read, and the failure branch each have one definition and are reachable and
+> testable — which is exactly what the tripwire could not do.
 | | |
 |:--|:--|
 | **Location** | `app/src/main/java/com/example/ui/viewmodels/UserDetailScreenV2.kt:382` |

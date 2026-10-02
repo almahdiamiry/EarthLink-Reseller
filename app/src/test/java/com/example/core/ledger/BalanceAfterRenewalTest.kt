@@ -1,6 +1,9 @@
 package com.example.core.ledger
 
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -108,6 +111,78 @@ class BalanceAfterRenewalTest {
             -30_000.0,
             (result as BalanceAfterRenewal.Result.Known).amount,
             0.001
+        )
+    }
+
+    // =========================================================================
+    // readBalance - GAP-1's actual defect, at the line that caused it.
+    //
+    // The screen used to hold the gateway read and its `catch` inline inside a LaunchedEffect,
+    // where no JVM test could reach either. readBalance is that whole read-and-catch as one function.
+    // =========================================================================
+
+    @Test
+    fun readBalance_gatewayFailure_yieldsNullNotZero() = runTest {
+        val result = BalanceAfterRenewal.readBalance { throw RuntimeException("Gateway balance API error") }
+
+        assertNull(
+            "CLAIM 5 | A gateway failure must yield null, never 0.0. It yielded $result. A zero " +
+                "here is exactly the r13 harm: the screen renders it as a real-looking 0 IQD that " +
+                "cannot be told apart from a genuine zero balance.",
+            result
+        )
+    }
+
+    @Test
+    fun readBalance_success_yieldsTheFetchedBalance() = runTest {
+        val result = BalanceAfterRenewal.readBalance { 100_000.0 }
+
+        assertEquals(
+            "CLAIM 6 | A successful read must pass the balance through untouched.",
+            100_000.0,
+            result ?: -1.0,
+            0.001
+        )
+    }
+
+    /**
+     * Cancellation is not a gateway failure. Reporting a cancelled screen load as "balance unknown"
+     * would be a false statement about the ISP, and in a Compose scope it would leave the coroutine
+     * in an inconsistent state. This is the one path that must NOT produce a null.
+     */
+    @Test
+    fun readBalance_cancellationException_isNotSwallowed() = runTest {
+        val thrown = try {
+            BalanceAfterRenewal.readBalance { throw kotlinx.coroutines.CancellationException("cancelled") }
+            null
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            e
+        }
+
+        assertNotNull(
+            "CLAIM 7 | CancellationException must PROPAGATE. Swallowing it would report a cancelled " +
+                "screen load as a gateway failure - a false statement about the ISP - and would " +
+                "leave the coroutine's cancellation state inconsistent.",
+            thrown
+        )
+        assertEquals(
+            "CLAIM 7 | The propagated exception must be the original one, not a wrapper.",
+            "cancelled",
+            thrown?.message
+        )
+    }
+
+    /**
+     * The screen's inline catch already rethrew CancellationException
+     * (`catch (e: Exception) { if (e is CancellationException) throw e; ... }`), so extracting
+     * readBalance PRESERVED that behaviour rather than changing it. This test exists to stop anyone
+     * "simplifying" readBalance into a bare `catch (e: Exception) { null }`.
+     */
+    @Test
+    fun readBalance_otherExceptionsStillBecomeNull() = runTest {
+        assertNull(
+            "CLAIM 8 | A non-cancellation failure must still become null.",
+            BalanceAfterRenewal.readBalance { throw IllegalStateException("not a cancellation") }
         )
     }
 

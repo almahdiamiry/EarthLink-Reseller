@@ -46,4 +46,34 @@ object BalanceAfterRenewal {
     fun compute(resellerBalance: Double?, packageCost: Double): Result =
         if (resellerBalance == null) Result.Unknown
         else Result.Known(resellerBalance - packageCost)
+
+    /**
+     * Reads the reseller balance, turning a gateway failure into `null` rather than into a number.
+     *
+     * This is GAP-1's actual defect, at the line that caused it. The screen used to hold the read and
+     * its `catch` inline inside a `LaunchedEffect`, where nothing could reach them. Here the whole
+     * read-and-catch is a function, so the failure branch is callable from a JVM test.
+     *
+     * [fetch] must propagate its failure. `EarthlinkSearchViewModel.getResellerBalance()` is declared
+     * `: Double` with no catch of its own, so a gateway error does reach here as an exception - that
+     * is the property this function relies on, and one that must not be "improved" by adding a
+     * default to the ViewModel.
+     *
+     * `CancellationException` is rethrown, never converted to `null`. Swallowing it would report a
+     * cancelled screen-load as a gateway failure, and in a Compose scope it would also leave the
+     * coroutine's cancellation state inconsistent. The screen's own inline catch already rethrew it
+     * (`catch (e: Exception) { if (e is CancellationException) throw e; ... }`), so this function
+     * PRESERVES that behaviour rather than changing it - see the GAP-1 note in
+     * docs/issues/open-test-evidence-gaps.md.
+     *
+     * @return the balance, or `null` when [fetch] failed for any reason other than cancellation.
+     */
+    suspend fun readBalance(fetch: suspend () -> Double): Double? =
+        try {
+            fetch()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
 }
