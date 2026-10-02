@@ -113,10 +113,24 @@ an em dash as `??` in PowerShell output. Codepoint enumeration gives `U+2014`; t
 > On a clean full run (113 XML, 801 tests, 0 failures) all three return 0 and the verdict is
 > `READY_FOR_CLOSURE`.
 >
-> **NOT PROVEN: `production_gate.sh` itself.** It is a bash script and WSL is unavailable on this
-> machine, so it was never executed. What is proven is the two Python stages it invokes, and that
-> its own `--tests` selection is what defines the governed set. Whether the shell wrapper propagates
-> a non-zero exit from those stages into its own exit code is **unverified**.
+> **Link by link.** The verdict travels through four hops, three measured and one a guarantee:
+>
+> | # | link | status |
+> |--|:--|:--|
+> | 1 | `test_count_manifest.check()` returns False on a decrease | **measured** |
+> | 2 | `collect_closure_evidence.py` process exits 1 | **measured** — exit 1 |
+> | 3 | `run_verified_command.py` propagates the child's code | **measured** — 1→1, 0→0, 3→3 |
+> | 4 | `production_gate.sh` `set -e` aborts the script | **NOT EXECUTED** — bash semantics only |
+>
+> Hop 4 is the one still resting on a language guarantee rather than a run, and WSL is
+> unavailable on this machine, so the bash script itself was never executed.
+>
+> Because a guarantee is exactly what a later edit breaks quietly, hop 4's preconditions are now
+> asserted on every run by `gate_chain_intact()`: `set -euo pipefail` must be present, both
+> evidence stages must actually be invoked, and neither invocation may swallow its status with
+> `|| true`, `|| exit 0` or a trailing `;`. Appending `|| true` to line 114 would restore the
+> exact failure r13 had — a gate that exits 0 while looking perfectly healthy — and the check
+> now says so instead of passing quietly. Four fixtures pin it.
 
 
 | | |

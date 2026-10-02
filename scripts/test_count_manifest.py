@@ -113,6 +113,10 @@ def check(measured: dict, manifest: dict, gate_path: str = GATE_PATH) -> tuple[b
     governed = gate_selections(gate_path)
     lines, ok = [], True
 
+    chain_ok, chain_lines = gate_chain_intact(gate_path)
+    ok = ok and chain_ok
+    lines.extend(chain_lines)
+
     # --- the governed set must match production_gate.sh, in both directions -------------
     if not governed:
         lines.append(
@@ -201,6 +205,67 @@ def write(measured: dict) -> int:
     return 0
 
 
+def gate_chain_intact(gate_path: str = GATE_PATH) -> tuple[bool, list]:
+    """
+    GAP-7, second half: prove the verdict can REACH production_gate.sh's own exit code.
+
+    The floor verdict travels through four links, and each was checked or measured separately:
+
+      1. test_count_manifest.check()      -> False on a decrease          (this module, measured)
+      2. collect_closure_evidence.py      -> process exit 1               (measured)
+      3. run_verified_command.py          -> propagates the child's code  (measured: 1->1, 3->3)
+      4. production_gate.sh `set -e`      -> aborts the script            (bash semantics, NOT executed
+                                             here - WSL is unavailable on this machine)
+
+    Link 4 is the one still resting on a language guarantee rather than a run, and a guarantee is
+    exactly the kind of thing a later edit quietly breaks. So the structural preconditions for it
+    are asserted here, on every run: `set -euo pipefail` must be present, both evidence stages must
+    actually be invoked, and neither invocation may be followed by anything that swallows a non-zero
+    status (`|| true`, `|| exit 0`, a trailing `;`). If somebody later appends `|| true` to one of
+    those lines, the gate goes back to exiting 0 while looking perfectly healthy - which is the
+    precise failure mode r13 had.
+
+    Returns (ok, lines).
+    """
+    lines, ok = [], True
+    try:
+        with open(gate_path, "r", encoding="utf-8", errors="replace") as fh:
+            lines_src = fh.read().splitlines()
+    except FileNotFoundError:
+        return False, ["  [NO-GATE]    scripts/production_gate.sh not found"]
+
+    if not any(l.strip().startswith("set -e") for l in lines_src):
+        lines.append(
+            "  [NO-SET-E]   production_gate.sh has no `set -e`. Without it a non-zero exit from "
+            "the evidence stages is ignored and the script runs on to `exit 0`."
+        )
+        ok = False
+
+    for stage in ("collect_closure_evidence.py", "verify_closure_evidence.py"):
+        hits = [l for l in lines_src if stage in l and not l.strip().startswith("#")]
+        if not hits:
+            lines.append(
+                f"  [NOT-INVOKED] production_gate.sh never invokes {stage}. The floor verdict "
+                f"cannot reach the gate if the stage is not called."
+            )
+            ok = False
+            continue
+        for l in hits:
+            if "|| true" in l or "|| exit 0" in l or "|| : " in l or l.rstrip().endswith(";"):
+                lines.append(
+                    f"  [SWALLOWED]  the {stage} line swallows a non-zero status: {l.strip()!r}. "
+                    f"The gate would keep going and exit 0."
+                )
+                ok = False
+
+    if ok:
+        lines.append(
+            f"  [ok]        gate chain intact: `set -e` present, both evidence stages invoked, "
+            f"no swallowed status."
+        )
+    return ok, lines
+
+
 def self_test(tmpdir: str) -> int:
     """
     Fixtures for the floor logic and for the governed-set agreement.
@@ -216,9 +281,24 @@ def self_test(tmpdir: str) -> int:
     """
     import tempfile
 
+    NL = chr(10)
+
     def gate_with(classes):
+        # A REALISTIC gate, not a bare --tests list: check() also asserts the chain, so a
+        # fixture gate missing `set -e` or the evidence stages would fail for a reason that
+        # has nothing to do with the floor rule under test. Realism here is what makes the
+        # floor cases isolate the floor.
         body = "".join(f'    --tests "{c}" \\\n' for c in classes)
-        return '#!/bin/sh\ngradlew.bat :app:testDebugUnitTest \\\n' + body + '    --no-daemon\n'
+        return (
+            "#!/usr/bin/env bash" + NL + "set -euo pipefail" + NL + NL +
+            "gradlew.bat :app:testDebugUnitTest " + chr(92) + NL + body +
+            "    --no-daemon" + NL + NL +
+            "$PYTHON_CMD scripts/run_verified_command.py --timeout 60 -- "
+            "$PYTHON_CMD scripts/collect_closure_evidence.py" + NL +
+            "$PYTHON_CMD scripts/run_verified_command.py --timeout 60 -- "
+            "$PYTHON_CMD scripts/verify_closure_evidence.py" + NL + NL +
+            "exit 0" + NL
+        )
 
     def write_gate(path, classes):
         with open(path, "w", encoding="utf-8", newline="") as fh:
@@ -269,6 +349,46 @@ def self_test(tmpdir: str) -> int:
 
     # 7. An empty gate selection must not read as "nothing to check, therefore pass".
     case("an unreadable gate does not pass vacuously", [], {A: 10}, {A: 10}, False, "[NO-GATE]")
+
+    # --- gate-chain fixtures: the floor verdict must be able to REACH the gate's exit code ----
+    GOOD_GATE = (
+        "#!/usr/bin/env bash" + NL + "set -euo pipefail" + NL + NL +
+        '$PYTHON_CMD scripts/run_verified_command.py --timeout 60 -- '
+        '$PYTHON_CMD scripts/collect_closure_evidence.py' + NL +
+        '$PYTHON_CMD scripts/run_verified_command.py --timeout 60 -- '
+        '$PYTHON_CMD scripts/verify_closure_evidence.py' + NL +
+        "exit 0" + NL
+    )
+
+    def chain_case(name, gate_src, expect_ok, expect_marker):
+        nonlocal passed, failed
+        gp = os.path.join(tmpdir, "chain_gate.sh")
+        with open(gp, "w", encoding="utf-8", newline="") as fh:
+            fh.write(gate_src)
+        ok2, cls = gate_chain_intact(gp)
+        hit = any(expect_marker in l for l in cls)
+        good = (ok2 is expect_ok) and hit
+        print(f"    {'PASS' if good else 'FAIL'}  {name}  (ok={ok2}, saw {expect_marker!r}={hit})")
+        if not good:
+            for l in cls:
+                print(f"           {l}")
+            failed += 1
+        else:
+            passed += 1
+
+    chain_case("an intact chain passes", GOOD_GATE, True, "[ok]")
+    chain_case("a chain without set -e fails", GOOD_GATE.replace("set -euo pipefail", "# none"),
+               False, "[NO-SET-E]")
+    chain_case("a chain that never invokes verify fails",
+               GOOD_GATE.replace("scripts/verify_closure_evidence.py", "scripts/something_else.py"),
+               False, "[NOT-INVOKED]")
+    chain_case("a chain that swallows the status fails",
+               GOOD_GATE.replace(
+                   "$PYTHON_CMD scripts/collect_closure_evidence.py",
+                   "$PYTHON_CMD scripts/collect_closure_evidence.py || true"),
+               False, "[SWALLOWED]")
+
+
 
     print(f"\n  {passed} passed, {failed} failed")
     return 1 if failed else 0
