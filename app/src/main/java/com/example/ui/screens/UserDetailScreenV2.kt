@@ -407,7 +407,12 @@ fun UserDetailScreenV2(
                 isLoadingApiData = false
             }
 
-            val balanceAfter = resellerBalance?.let { it - packageCost }
+            // GAP-1 CLOSED. The arithmetic now lives in com.example.core.ledger.BalanceAfterRenewal,
+            // which has no Compose or Android dependency and is therefore directly testable. This
+            // is the whole point: the previous inline `resellerBalance?.let { it - packageCost }`
+            // could only be guarded by pinning its source TEXT, and a helper that then ignored the
+            // null would have kept that tripwire green.
+            val balanceAfter = com.example.core.ledger.BalanceAfterRenewal.compute(resellerBalance, packageCost)
 
             val performRefill: () -> Unit = {
                 if (!viewModel.hasDepositPassword()) {
@@ -657,9 +662,9 @@ fun UserDetailScreenV2(
                                             color = Color(0xFF9CA3AF),
                                             fontSize = 13.sp
                                         )
-                                        val balanceColor = if (balanceAfter == null) Color.White.copy(alpha = 0.5f) else if (balanceAfter >= 0) Color(0xFF34D399) else Color(0xFFF87171)
+                                        val balanceColor = if (balanceAfter is com.example.core.ledger.BalanceAfterRenewal.Result.Unknown) Color.White.copy(alpha = 0.5f) else if ((balanceAfter as com.example.core.ledger.BalanceAfterRenewal.Result.Known).amount >= 0) Color(0xFF34D399) else Color(0xFFF87171)
                                         Text(
-                                            text = if (isLoadingApiData) "..." else if (balanceAfter != null) "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(balanceAfter.toDouble())} د.ع" else "—",
+                                            text = if (isLoadingApiData) "..." else if (balanceAfter is com.example.core.ledger.BalanceAfterRenewal.Result.Known) "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay((balanceAfter as com.example.core.ledger.BalanceAfterRenewal.Result.Known).amount)} د.ع" else "—",
                                             color = balanceColor,
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.Bold

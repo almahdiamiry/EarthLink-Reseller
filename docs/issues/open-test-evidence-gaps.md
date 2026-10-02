@@ -10,7 +10,41 @@ column. `AGENTS.md` §7.4 forbids the "while we're here" expansion that fixing t
 ---
 
 ## GAP-1 — `UserDetailScreenV2.kt:382` fabricates a 0-IQD balance on gateway failure
-> **OPEN - untouched by r13b. Its fix is an app/src/main extraction and is PR 2.**
+> **CLOSED in fix/gap1-balance-after.** The balance computation was extracted out of the
+> `@Composable` into `com.example.core.ledger.BalanceAfterRenewal` — a pure object with no
+> Compose, no Android and no I/O — so it is finally reachable from a JVM test. The failure case
+> is no longer an absence but a distinct value: `Result.Unknown`, which carries no number and
+> cannot be collapsed into one by accident.
+>
+> The result type is a sealed interface rather than `Double?` on purpose. `null` and `0.0` are
+> both "no money", and the original harm was a caller unable to tell them apart. Making UNKNOWN
+> a type the compiler forces you to handle removes the ambiguity at the call site.
+>
+> **PROVEN by mutation.** `BalanceAfterRenewal.compute` was changed to return `Result.Known(0.0)`
+> on the failure path — precisely the r13 hazard:
+>
+> ```
+> 4 tests completed, 1 failed
+> BalanceAfterRenewalTest > unknownBalance_yieldsExplicitUnknown_notZero FAILED
+> ```
+>
+> Four tests now exercise the function directly, all JVM: an unreadable balance yields Unknown
+> with no reachable amount; 100,000 - 40,000 = 60,000 (both literals written by hand); a balance
+> genuinely spent down stays `Known(0.0)` rather than becoming Unknown, because refusing to answer
+> when the honest answer is zero is a DIFFERENT lie; and a negative position stays Known.
+>
+> **The two old tripwires were DELETED, not kept** — both pinned the literal text
+> `val balanceAfter = resellerBalance?.let { it - packageCost }`, a line the extraction
+> legitimately changed. Keeping them would have meant pinning the shape of code that no longer
+> exists, and their actual claim is now proven by EXECUTION, which is strictly stronger than a
+> source-text match. `productionBalanceAfterLine()` became dead with them and was removed.
+>
+> Visible behaviour on success is unchanged; the unknown case renders the same em dash as before.
+>
+> **NOT proven:** that the Composable actually calls this function, and that it renders Unknown as
+> an em dash. Both are Compose concerns a JVM test cannot observe. What is proven is that the
+> arithmetic and the failure branch now have one definition and that the failure branch is
+> reachable and testable — which is exactly what the tripwire could not do.
 
 
 | | |
