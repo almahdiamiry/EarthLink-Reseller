@@ -113,7 +113,7 @@ an em dash as `??` in PowerShell output. Codepoint enumeration gives `U+2014`; t
 > On a clean full run (113 XML, 801 tests, 0 failures) all three return 0 and the verdict is
 > `READY_FOR_CLOSURE`.
 >
-> **Link by link.** The verdict travels through four hops, three measured and one a guarantee:
+> **Link by link.** The verdict travels through four hops, all measured - hop 4 via an equivalent script:
 >
 > | # | link | status |
 > |--|:--|:--|
@@ -136,22 +136,19 @@ an em dash as `??` in PowerShell output. Codepoint enumeration gives `U+2014`; t
 > and `render_certification_report.py`) that were not exercised. What is proven is the errexit
 > propagation mechanism; the rest of the script is unverified.
 >
-> Because hop 4 now rests on a run rather than a promise, its preconditions are asserted on every
-> run by `gate_chain_intact()`: `set -euo pipefail` must be present, both evidence stages must be>
-> The gate now runs the fixtures itself, as step 5b in `production_gate.sh`, through the same
-> `run_verified_command.py --timeout 60 --` wrapper as every other stage - and deliberately
-> BEFORE evidence collection, because there is no point collecting a bundle that will carry a
-> verdict produced by broken logic.
-> invoked, neither invocation may swallow its status with `|| true` / `|| exit 0` / a trailing `;`,
-> and **no line may re-disable errexit with `set +e`**. That last one is the cheapest possible
-> rot - a single word that makes everything after it ignore a failure, with no other symptom.
+> Because a guarantee is exactly what a later edit breaks quietly, hop 4's preconditions
+> are also asserted on every run by `gate_chain_intact()`: `set -euo pipefail` must be present,
+> both evidence stages must be invoked, neither invocation may swallow its status with
+> `|| true` / `|| exit 0` / a trailing `;`, and no line may re-disable errexit with `set +e`.
+> That last one is the cheapest possible rot - a single word that makes everything after it
+> ignore a failure, with no other symptom. Appending `|| true` to line 114 would restore the
+> exact failure r13 had - a gate that exits 0 while looking perfectly healthy - and the check
+> now says so instead of passing quietly. Five fixtures pin it.
 >
-> Because a guarantee is exactly what a later edit breaks quietly, hop 4's preconditions are now
-> asserted on every run by `gate_chain_intact()`: `set -euo pipefail` must be present, both
-> evidence stages must actually be invoked, and neither invocation may swallow its status with
-> `|| true`, `|| exit 0` or a trailing `;`. Appending `|| true` to line 114 would restore the
-> exact failure r13 had — a gate that exits 0 while looking perfectly healthy — and the check
-> now says so instead of passing quietly. Four fixtures pin it.
+> The gate also runs the floor fixtures itself, as step 5b in `production_gate.sh`, through the
+> same `run_verified_command.py --timeout 60 --` wrapper as every other stage - and
+> deliberately BEFORE evidence collection, because there is no point collecting a bundle that
+> will carry a verdict produced by broken logic.
 
 
 | | |
@@ -160,7 +157,7 @@ an em dash as `??` in PowerShell output. Codepoint enumeration gives `U+2014`; t
 | **Mechanism** | The gate's exit code is `0 if (failed_tests == 0 and error_tests == 0 and total_tests > 0) else 1`. There is no lower bound on `total_tests`. |
 | **Live example — this branch** | Deleting `testScenarioJ_counterfactualRawPayloadContainsRawJson` changed `Phase1FirestoreDocumentIdentityTest` from **20 tests to 19**. The gate still passed. The deletion was correct and independently verified; the point is that **the gate could not have noticed**, and would equally not notice a test lost by accident, by a bad merge, or by a future deletion nobody reviewed. |
 | **Second live example** | `DatabaseMigration17To18Test` cannot pass outside this machine — it loads a gitignored golden backup by bare filename. In a clean worktree the suite is 797 tests with 1 failure, so the gate fails for an unrelated reason and the real cause is not surfaced. |
-| **What is checked today** | That nothing failed, and — since r13b — that no class the gate selects has lost tests. Still not checked: whether the bash wrapper propagates a non-zero exit. |
+| **What is checked today** | That nothing failed; that no class the gate selects has lost tests; and that the verdict can actually REACH the gate - `collect_closure_evidence.py` propagates it as a process exit, `verify_closure_evidence.py` requires it, and `run_verified_command.py` hands the child's code upward unchanged (1->1, 0->0, 3->3). The whole chain depends on `set -euo pipefail` at `production_gate.sh:2`, so that is asserted too, along with the absence of any `|| true` and any `set +e` that would silently disable it. |
 | **Why not this branch** | Changing the gate is a release-process change, and this branch's charter was test repairs. Recording it is the correct action. |
 | **Suggested fix** (APPLIED in r13b) | Add a committed **expected-count manifest** — a file listing, per gated class, the test count and the commit that established it — and have `collect_closure_evidence.py` compare the measured count against it, failing on a **decrease** while tolerating an increase. A decrease is the direction that loses protection; an increase is the normal result of adding a test. Pinning to an exact number instead would make every legitimate new test a gate failure and train the next person to update the number without reading why, which is how a count check becomes a rubber stamp. The manifest should carry the commit sha so a count change is reviewable rather than mechanical. |
 
