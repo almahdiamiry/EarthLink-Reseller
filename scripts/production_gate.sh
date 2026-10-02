@@ -109,6 +109,14 @@ if [ -d "$TEST_RESULTS_DIR" ]; then
     echo "✅ Verified JUnit test result XMLs: 0 failures, 0 errors."
 fi
 
+# 5b. Verify the GAP-7 test-count floor logic itself
+# The fixtures are synthetic - a temporary gate script and a temporary manifest - so this needs
+# neither gradle nor a JUnit run. It runs BEFORE the evidence collection on purpose: if the floor
+# logic is broken, there is no point collecting a bundle that will carry a wrong verdict, and a
+# broken fixture set should stop the gate on its own logic rather than on something downstream.
+echo ">>> Verifying GAP-7 test-count floor fixtures..."
+$PYTHON_CMD scripts/run_verified_command.py --timeout 60 -- $PYTHON_CMD scripts/test_count_manifest.py --self-test
+
 # 6. Collect Machine Closure Evidence
 echo ">>> Collecting machine-derived closure evidence..."
 $PYTHON_CMD scripts/run_verified_command.py --timeout 60 -- $PYTHON_CMD scripts/collect_closure_evidence.py

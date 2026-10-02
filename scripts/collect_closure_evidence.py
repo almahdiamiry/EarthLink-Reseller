@@ -26,7 +26,15 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
 import xml.etree.ElementTree as ET
-import yaml
+
+try:
+    import yaml
+except ModuleNotFoundError as _exc:  # pragma: no cover - environment diagnostic
+    raise SystemExit(
+        "[FAIL] PyYAML is required by this script (it parses contract/closure_contract.yaml) but is "
+        "not installed. Install it with:  pip install -r scripts/requirements.txt\n"
+        f"       original error: {_exc}"
+    ) from _exc
 
 if hasattr(sys.stdout, "reconfigure"):
     try:
@@ -133,6 +141,28 @@ def get_toolchain_info() -> dict:
     }
 
 
+def evaluate_test_count_floors(measured: dict) -> tuple:
+    """
+    GAP-7. Compare measured per-class counts against scripts/test_count_manifest.yaml.
+
+    Kept as a thin, exception-free wrapper so a missing or malformed manifest degrades to a
+    reported FAILURE rather than a crash: a gate that raises on its own bookkeeping is a gate
+    nobody trusts. Returns (ok, detail_lines).
+    """
+    try:
+        import test_count_manifest as tcm
+        manifest = tcm.load()
+        ok, lines = tcm.check(measured, manifest)
+        return ok, lines
+    except FileNotFoundError:
+        return False, [
+            "  [MISSING]   scripts/test_count_manifest.yaml not found. The gate cannot prove any "
+            "test is still present, which is the GAP-7 condition itself."
+        ]
+    except Exception as exc:
+        return False, [f"  [ERROR]     could not evaluate the test-count manifest: {exc}"]
+
+
 def parse_junit_xmls(results_dir: str) -> dict:
     suites = []
     total_tests = 0
@@ -209,9 +239,19 @@ def parse_junit_xmls(results_dir: str) -> dict:
         except Exception as e:
             print(f"[WARN] Error parsing {xf}: {e}")
 
+    # ---- GAP-7: expected test-count manifest ---------------------------------------------
+    # Factored out of parse_junit_xmls so it can be exercised against a synthetic results
+    # directory without touching a real one. A DECREASE in a class that production_gate.sh governs
+    # is a gate failure; an INCREASE is allowed. See scripts/test_count_manifest.py for why the
+    # asymmetry is deliberate - pinning to an exact number would make every legitimate new test a
+    # failure and turn the manifest into a rubber stamp.
+    floor_ok, floor_lines = evaluate_test_count_floors({s["name"]: s["tests"] for s in suites})
+
     return {
         "command": "./gradlew :app:testDebugUnitTest --no-daemon",
-        "exit_code": 0 if (failed_tests == 0 and error_tests == 0 and total_tests > 0) else 1,
+        "exit_code": 0 if (failed_tests == 0 and error_tests == 0 and total_tests > 0 and floor_ok) else 1,
+        "test_count_floor_ok": floor_ok,
+        "test_count_floor_detail": floor_lines,
         "total_tests": total_tests,
         "passed_tests": passed_tests,
         "failed_tests": failed_tests,
@@ -423,8 +463,33 @@ def main():
     parser.add_argument("--run-tests", action="store_true", help="Execute gradle unit tests before collecting evidence")
     args = parser.parse_args()
 
-    collect_all_evidence(run_tests=args.run_tests)
+    bundle = collect_all_evidence(run_tests=args.run_tests)
+
+    # GAP-7, second half. collect_all_evidence() used to be called for its side effect and its
+    # return value thrown away, so this process ALWAYS exited 0 - including when
+    # test_execution["exit_code"] said otherwise. A verdict written into a bundle nobody reads is
+    # not a gate. The floor verdict and the test verdict are now propagated to the exit code.
+    te = bundle.get("test_execution", {})
+    floor_ok = te.get("test_count_floor_ok")
+    te_ok = te.get("exit_code") == 0
+    if floor_ok is False:
+        print("[FAIL] GAP-7 test-count floor: at least one governed class is BELOW its floor.")
+        for line in te.get("test_count_floor_detail", []):
+            print(line)
+        print(
+            "[FAIL] A decrease in a governed class loses protection that nothing else in this "
+            "gate pipeline can observe. If the removal was intended, re-baseline with "
+            "`python scripts/test_count_manifest.py --write` in the SAME commit as the removal."
+        )
+    elif floor_ok is None:
+        print(
+            "[FAIL] GAP-7 floor verdict is absent from the bundle - the check did not run. "
+            "Treating an absent check as a pass is how a gate silently stops gating."
+        )
+    if not te_ok:
+        print(f"[FAIL] test_execution.exit_code is {te.get('exit_code')}, not 0.")
+    return 0 if (floor_ok and te_ok) else 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -1,0 +1,12 @@
+# Third-party dependencies of the release-gate scripts (scripts/*.py, scripts/*.sh).
+#
+# Declared rather than left implicit: until this file existed, PyYAML was a hard import of
+# collect_closure_evidence.py and verify_closure_evidence.py with nothing recording that, so a
+# machine without it failed with a bare ModuleNotFoundError instead of a statement of what is
+# missing.
+#
+# Note what is NOT here: scripts/test_count_manifest.py is deliberately stdlib-only, and the
+# manifest it reads is JSON. The GAP-7 floor check must not add a second reason for the gate to
+# fail before it has said anything.
+
+PyYAML>=6.0

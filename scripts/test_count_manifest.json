@@ -1,0 +1,37 @@
+{
+  "_comment": [
+    "GAP-7 expected test-count manifest.",
+    "A DECREASE below the floor fails the gate. An INCREASE is allowed: adding a test is",
+    "how this suite normally grows, and pinning to an exact number would make every",
+    "legitimate addition a failure - which trains the next person to bump the number",
+    "without reading why. A count check that becomes a rubber stamp is worse than none.",
+    "ONE commit is recorded for the whole manifest below, not one per class: the floors",
+    "were all established by a single run of a single commit. Re-baselining rewrites that",
+    "one field.",
+    "The governed set is NOT stored here as the source of truth - it is parsed from",
+    "scripts/production_gate.sh on every run, and a mismatch fails the check.",
+    "Regenerate: python scripts/test_count_manifest.py --write",
+    "Verify:     python scripts/test_count_manifest.py"
+  ],
+  "schema_version": 1,
+  "established_at_commit": "78d52d3",
+  "governed_source": "scripts/production_gate.sh (--tests selections, parsed at run time)",
+  "classes": {
+    "com.example.DataIntegrityReleaseGateTest": 36,
+    "com.example.Phase1AtomicityAndLostAckTest": 13,
+    "com.example.Phase1DuplicateInitiationProtectionTest": 10,
+    "com.example.Phase1FirestoreDocumentIdentityTest": 19,
+    "com.example.Phase1G1PendingOperationDurabilityTest": 7,
+    "com.example.Phase1ItemIsolationTest": 7,
+    "com.example.Phase1OrphanHandlingTest": 8,
+    "com.example.Phase1OutboxDurabilityTest": 8,
+    "com.example.Phase1TwoDeviceConvergenceTest": 8,
+    "com.example.Phase2RemoteVersionAdversarialTest": 6,
+    "com.example.Phase2RestoreReplaceHardeningTest": 9,
+    "com.example.Phase2ServerConfirmedLifecycleTest": 16,
+    "com.example.Phase2UtowerImportHardeningTest": 9,
+    "com.example.Phase3CoordinatorMutexTokenTest": 5,
+    "com.example.Phase3PersistedGenerationTest": 9,
+    "com.example.ResolveLocalVersionTest": 9
+  }
+}
