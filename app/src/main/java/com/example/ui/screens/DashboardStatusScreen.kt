@@ -28,6 +28,7 @@ fun DashboardStatusScreen(
     onCardClick: (DashboardStatusFilter) -> Unit
 ) {
     val currentLang by viewModel.prefs.languageFlow.collectAsStateWithLifecycle(initialValue = viewModel.prefs.getLanguage())
+    val isAr = currentLang == "ar"
     val balance by viewModel.balance.collectAsStateWithLifecycle()
     val subscribers by viewModel.subscribersList.collectAsStateWithLifecycle()
     val localAccounts by viewModel.localAccounts.collectAsStateWithLifecycle(emptyList())
@@ -63,7 +64,7 @@ fun DashboardStatusScreen(
 
     val formattedBalance = formatIqd(balance)
 
-    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+    CompositionLocalProvider(LocalLayoutDirection provides (if (isAr) LayoutDirection.Rtl else LayoutDirection.Ltr)) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -88,13 +89,13 @@ fun DashboardStatusScreen(
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = if (currentLang == "ar") "رجوع" else "Back",
+                            contentDescription = if (isAr) "رجوع" else "Back",
                             tint = Color.White
                         )
                     }
 
                     Text(
-                        text = "الحالة واللوحات",
+                        text = if (isAr) "الحالة واللوحات" else "Status & Dashboards",
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp,
                         color = Color.White
@@ -123,7 +124,7 @@ fun DashboardStatusScreen(
                         ) {
                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text(
-                                    text = "رصيد الصندوق المتاح",
+                                    text = if (isAr) "رصيد الصندوق المتاح" else "Available Box Balance",
                                     fontSize = 12.sp,
                                     color = Color(0xFF8E8E93),
                                     fontWeight = FontWeight.Medium
@@ -166,7 +167,7 @@ fun DashboardStatusScreen(
                     ) {
                         Box(modifier = Modifier.weight(1f)) {
                             StatGridCard(
-                                title = DashboardStatusFilter.ACTIVE.titleAr,
+                                title = if (isAr) DashboardStatusFilter.ACTIVE.titleAr else DashboardStatusFilter.ACTIVE.titleEn,
                                 value = activeCount.toString(),
                                 icon = Icons.Default.CheckCircle,
                                 iconBg = Color(0xFF30D158),
@@ -177,7 +178,7 @@ fun DashboardStatusScreen(
 
                         Box(modifier = Modifier.weight(1f)) {
                             StatGridCard(
-                                title = DashboardStatusFilter.ONLINE.titleAr,
+                                title = if (isAr) DashboardStatusFilter.ONLINE.titleAr else DashboardStatusFilter.ONLINE.titleEn,
                                 value = onlineCount.toString(),
                                 icon = Icons.Default.Wifi,
                                 iconBg = Color(0xFF0A84FF),
@@ -194,7 +195,7 @@ fun DashboardStatusScreen(
                     ) {
                         Box(modifier = Modifier.weight(1f)) {
                             StatGridCard(
-                                title = DashboardStatusFilter.OFFLINE.titleAr,
+                                title = if (isAr) DashboardStatusFilter.OFFLINE.titleAr else DashboardStatusFilter.OFFLINE.titleEn,
                                 value = offlineCount.toString(),
                                 icon = Icons.Default.WifiOff,
                                 iconBg = Color(0xFFFF9F0A),
@@ -205,7 +206,7 @@ fun DashboardStatusScreen(
 
                         Box(modifier = Modifier.weight(1f)) {
                             StatGridCard(
-                                title = DashboardStatusFilter.EXPIRING_SOON.titleAr,
+                                title = if (isAr) DashboardStatusFilter.EXPIRING_SOON.titleAr else DashboardStatusFilter.EXPIRING_SOON.titleEn,
                                 value = expiringSoonCount.toString(),
                                 icon = Icons.Default.HourglassBottom,
                                 iconBg = Color(0xFFFFD60A),
@@ -222,7 +223,7 @@ fun DashboardStatusScreen(
                     ) {
                         Box(modifier = Modifier.weight(1f)) {
                             StatGridCard(
-                                title = DashboardStatusFilter.RECENTLY_EXPIRED.titleAr,
+                                title = if (isAr) DashboardStatusFilter.RECENTLY_EXPIRED.titleAr else DashboardStatusFilter.RECENTLY_EXPIRED.titleEn,
                                 value = recentlyExpiredCount.toString(),
                                 icon = Icons.Default.History,
                                 iconBg = Color(0xFFFF9F0A),
@@ -233,7 +234,7 @@ fun DashboardStatusScreen(
 
                         Box(modifier = Modifier.weight(1f)) {
                             StatGridCard(
-                                title = DashboardStatusFilter.EXPIRED.titleAr,
+                                title = if (isAr) DashboardStatusFilter.EXPIRED.titleAr else DashboardStatusFilter.EXPIRED.titleEn,
                                 value = expiredCount.toString(),
                                 icon = Icons.Default.Cancel,
                                 iconBg = Color(0xFFFF453A),
