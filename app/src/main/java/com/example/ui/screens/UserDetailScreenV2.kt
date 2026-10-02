@@ -376,11 +376,11 @@ fun UserDetailScreenV2(
             
             val currentPackages by viewModel.packages.collectAsStateWithLifecycle()
             LaunchedEffect(user.userIndex, currentPackages) {
-                try {
-                    resellerBalance = viewModel.getResellerBalance()
-                } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                    resellerBalance = null
-                }
+                // GAP-1: the read and its catch are now one testable call, so the failure branch
+                // is reachable from a JVM test instead of being locked inside a LaunchedEffect.
+                // Behaviour is unchanged: CancellationException is still rethrown, because
+                // BalanceAfterRenewal.readBalance rethrows it exactly as the inline catch did.
+                resellerBalance = com.example.core.ledger.BalanceAfterRenewal.readBalance { viewModel.getResellerBalance() }
                 try {
                     val name = user.packageName?.trim()?.lowercase() ?: ""
                     val foundPackage = currentPackages.find { it.accountName.trim().lowercase() == name }
@@ -407,7 +407,12 @@ fun UserDetailScreenV2(
                 isLoadingApiData = false
             }
 
-            val balanceAfter = resellerBalance?.let { it - packageCost }
+            // GAP-1 CLOSED. The arithmetic now lives in com.example.core.ledger.BalanceAfterRenewal,
+            // which has no Compose or Android dependency and is therefore directly testable. This
+            // is the whole point: the previous inline `resellerBalance?.let { it - packageCost }`
+            // could only be guarded by pinning its source TEXT, and a helper that then ignored the
+            // null would have kept that tripwire green.
+            val balanceAfter = com.example.core.ledger.BalanceAfterRenewal.compute(resellerBalance, packageCost)
 
             val performRefill: () -> Unit = {
                 if (!viewModel.hasDepositPassword()) {
@@ -657,9 +662,17 @@ fun UserDetailScreenV2(
                                             color = Color(0xFF9CA3AF),
                                             fontSize = 13.sp
                                         )
-                                        val balanceColor = if (balanceAfter == null) Color.White.copy(alpha = 0.5f) else if (balanceAfter >= 0) Color(0xFF34D399) else Color(0xFFF87171)
+                                        val balanceColor = when (balanceAfter) {
+                                            is com.example.core.ledger.BalanceAfterRenewal.Result.Unknown -> Color.White.copy(alpha = 0.5f)
+                                            is com.example.core.ledger.BalanceAfterRenewal.Result.Known -> if (balanceAfter.amount >= 0) Color(0xFF34D399) else Color(0xFFF87171)
+                                        }
                                         Text(
-                                            text = if (isLoadingApiData) "..." else if (balanceAfter != null) "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(balanceAfter.toDouble())} د.ع" else "—",
+                                            text = when {
+                                                isLoadingApiData -> "..."
+                                                balanceAfter is com.example.core.ledger.BalanceAfterRenewal.Result.Known ->
+                                                    "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(balanceAfter.amount)} د.ع"
+                                                else -> "—"
+                                            },
                                             color = balanceColor,
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.Bold
