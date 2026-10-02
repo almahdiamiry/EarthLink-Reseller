@@ -2,12 +2,15 @@
 
 **Identifier:** `LL-BUG-HUNT-METHODOLOGY`
 **Status:** Historical/operational engineering knowledge; non-authoritative practical note.
-**Rounds:** 4-12 (Rounds 4-7 initial; extended through 12)
+**Rounds:** 4-12 (Rounds 4-7 initial; extended through 12); §7.2 added by Round 13
 **Outcome:** 12 confirmed bugs, 0 false positives shipped. ~127 candidates rejected on evidence.
 
 > For the twelve defects themselves — what each one was, its RED proof, its fix, and its
 > commit — see [`LL-ROUND-4-12-RESULTS`](LL-ROUND-4-12-RESULTS.md). This document covers the
 > *method* only.
+>
+> **§7.2 covers a different subject**: Round 13 audited *the tests themselves* rather than the
+> product. Read it before writing or repairing any test, not only before hunting bugs.
 
 ---
 
@@ -229,6 +232,146 @@ re-read at `:241` (`FAILED_RETRYABLE`, no cursor advance), and the cursor-save g
    commit `ff574cc` nonexistent; the PowerShell `$?` test was invalid and the commit exists. The
    stale-value conclusion survived, the stated reason did not. Verify the verifier.
 
+### 7.2 Testing the tests — Round 13 (2026-09-30)
+
+Round 13 inverted this document's subject. Rounds 4–12 asked *what bugs exist in the product*; Round 13
+asked *how many tests prove what they claim to prove*. Its full record is
+[`LL-ROUND-13-TEST-EVIDENCE-AUDIT.md`](LL-ROUND-13-TEST-EVIDENCE-AUDIT.md) — 14 CONFIRMED fake tests,
+13 repaired and 1 deleted. The nine lessons below are the generalisable ones, and each is traceable
+to a measured result in that round.
+
+**1. A green test proves its assertions pass, not that the behaviour is guarded.**
+The silent-corruption barrier (`DataIntegrityReleaseGateTest`, `scripts/production_gate.sh:76`) held
+**five** tests that could not observe the behaviour they named. One passed while
+`LocalLedgerRepositoryImpl.deleteTransaction` was physically deleting ledger rows — the exact RED
+Invariant 2 violation — and printed `BUILD SUCCESSFUL in 57s` while doing it. The other four compared
+counts without establishing the operation ran, asserted a hardcoded copy of a migration's defaults,
+asserted something arithmetically independent of its type claim, and transcribed a production line.
+**A green barrier is not evidence that the barrier works.** Only breaking the code and watching the gate
+fail — *or pass* — tells you which one you are holding.
+
+**2. Three tiers, and the single label is dangerous.**
+- **Tier A — proves nothing about the product.** The assertion is satisfied by a literal, by the
+  language, or by a line transcribed from production. *Repair or delete.*
+- **Tier B — the assertion is sound; the awaited state is unestablished.** One precondition line each.
+- **Tier C — the rule is real but not load-bearing for the fixture.** A fixture or anchor change, never
+  an added assertion.
+
+Eight of the fourteen fell in Tier B or C — four in B, four in C. The fourteenth, the note-transaction oracle, carries
+no tier at all: the repair plan addressed thirteen of the fourteen and missed it, which is why its row is absent from
+§5.3 and its repair landed after the round was nominally closed. **A taxonomy that silently drops an item is worse
+than one that never had it.** Labelling all fourteen with one phrase — *"passes without
+proving what they name"* — **conflates two opposite defects and invites deleting working tests**: a
+controller reading the flat list would have deleted the four Tier-B tests, which work. **Never label a
+test by its symptom; classify it by which repair it needs.** Corollary for the repair phase: **adding an
+assertion to a Tier-C finding produces a second blind test.**
+
+**3. Blindness is set by which production line the fixture routes through — not by assertion count.**
+The round's cleanest contrast is three tests, one production file, one `assertNull` shape: two blind and
+one sound, separated **only** by which line the fixture routed through. `:237` and `:259` were
+double-guarded and `:330` was not; all three look identical. A fourth pair sits ~20 lines apart in the
+barrier file and splits the same way. **Count assertions to prioritise a review; determine blindness by
+tracing the routed line.**
+
+**4. Assertion count is a bad proxy for evidence.**
+`Step3DurableDispatchTest.test19_refillCreatesLocalAccountWhenMissingAndMaterializesLedgerSuccessfully`
+carries **12** assertion sites; `ApiErrorSemanticsRegressionTest.testApi03_dashboard_networkFailureYieldsNullUnavailable`
+carries **1** and is the more valuable of the two after repair. A 12-assertion test that transcribes
+production is worth less than a 1-assertion test bound to a live seam. **A file can hold 146 assertion
+call sites across 23 tests and still contain a test that cannot observe what it names.**
+
+**5. A pattern screen measured at 50% misprediction cannot triage without execution — and its errors
+run in both directions.**
+The P1–P3 screen predicted the wrong verdict on **5 of 10** pattern matches (**50%**). Over-accusation
+is the loud, expensive direction: **five false accusations**, every one of which was a sound test that
+caught its mutation — two textbook P2 shapes whose expected value *is* a framework default, three
+`assertNull` shapes. **Under-accusation is the quiet one: a missed test is invisible where a false
+accusation is loud.** The screen missed `testScenarioJ_counterfactualRawPayloadContainsRawJson`
+**because its name reads as a control in a file that has the thing it controls** — the file really does
+contain a treatment arm. That is the hardest case for any pattern reasoning about *shape* rather than
+*reachability*. **The screen narrows the field; only the run decides. Never let "no pattern match"
+graduate to "cleared".**
+
+**6. Verify the verifier, including yourself. This is not a lesson about other people.**
+Five instances of the same class — a self-inflicted evidence error — are listed below, but **only four
+occurred in this one programme.** Item 1 belongs to the Round-12 `BUG-RSC-1` review and is carried in
+here only because it is the same class; it is *not* evidence about this round, and counting it as such
+is exactly the error this lesson is about.
+1. *(prior session, §7.1 Claim 3 — **not** this programme)* A PowerShell `$?` test reported a real
+   commit as missing.
+2. *(this programme)* An ad-hoc detector reported a live assertion absent, because of an
+   operator-precedence bug in the detector.
+3. *(this programme)* Line numbers re-derived with hand-added `Get-Content | Select-Object -Skip`
+   offsets came back wrong; re-probing with `Select-String`'s `.LineNumber` reproduced the reviewer's
+   citations exactly.
+4. *(this programme)* `git show > file` under PowerShell wrote a **BOM**. The compile failed, **the
+   test task never ran**,
+   and a **stale JUnit XML read as `tests=3 failures=0`** — a green state that no run produced. Caught
+   only by reading the `.err` log. The sibling artefact `rep1c` was a *real* green run whose XML was
+   the live stale candidate, so this class of error can also be a genuine green from the wrong setup.
+5. *(this programme)* A second, later run was launched concurrently with another; `.log` said
+   `BUILD SUCCESSFUL` while `.err` said `BUILD FAILED`.
+
+Items 4 and 5 are the narrower sub-class §6.14 of the Round-13 record counts separately — "two runs
+in this programme produced a green number from a run that did not execute" — which agrees with **four
+here plus one inherited, not five**.
+
+**A green number from a run that did not execute is not evidence.** Three disciplines, all used in the
+round and all load-bearing: **delete the target JUnit XML before every run**; **confirm the log names
+the test task** (`> Task :app:testDebugUnitTest`, and zero `UP-TO-DATE` occurrences); and **read the
+`.err` stream**, because Gradle prints no `N tests completed` line on success and a green `tests=N`
+figure is otherwise transcription-only.
+
+**7. A release gate is only as good as the tests guarding it, and a test can sit *inside* the gate
+while being structurally incapable of detecting the violation it names.**
+`production_gate.sh` runs `DataIntegrityReleaseGateTest` as the gate. One of its five named invariants
+passed while a **transient mutant** of the deletion path was live in the working tree — the physical
+deletion of ledger history, the exact RED Invariant 2 violation, was *in the tree while the test
+stayed green*. **It was not in production: the mutant was reverted and the shipped code never carried
+it**, and `LL-ROUND-13:3167-3169` §6.15 states "No product defect is asserted by this round." The
+blindness is real and is what the gate could not see; the *exposure* was bounded to one worktree for
+the length of one run. The gate also cannot see a
+wrong-*amount* contra-entry (its sibling in the suite pins the amount; the gate pins only the shape), and
+a same-ID silent overwrite on a duplicate apply (the second `processEvent` return value is still
+discarded). **Auditing the gate means auditing each test in it against the mutation that would break
+the invariant — not counting the tests and trusting the total.**
+
+**8. Trace a repair recipe before you write it, or expect to inherit the finding's error.**
+Round 13's own findings document carried **recipes that would have produced still-blind tests**, and the
+repair plan — written from that document — inherited them. **The list is the source of truth; it sums
+to six, and the six are: five wrong or misleading recipes and one missing requirement.**
+- **Two** would have produced still-blind tests: both branches of the `SubscriberMatcher` fixture recipe
+  (one matches at `:89-92` and returns `Unique` before Stage 3; the other leaves `conflictingUsername`
+  `true`, so the candidate stays double-guarded).
+- **One** tested the precondition rather than the assertion — `:776`'s mutant suppressed every remote
+  event, which breaks what the repair *adds*, not what it guards.
+- **One** mutated the thing it claimed to mutate **at a no-op** (`:719` *is* the strip).
+- **One** cited a stale line.
+- **One** was a **missing requirement**, not a wrong citation: running the migration
+  was not sufficient, because the fixture also needed a row with `isSnapshotHistory = true` — otherwise
+  the branch was unreachable even after the migration ran.
+
+**2 + 1 + 1 + 1 + 1 = six defects were inherited into the repair plan, and every one was caught by the
+implementer reading the source rather than by a reviewer checking the arithmetic.** (This paragraph
+said *seven*. The list and the figure were committed together in `15b5381` — `git log -S` finds
+neither string in any other commit — so the count was **wrong from the moment it was written**, not
+drifted later, and no later edit can explain it away. Count the list.) The root cause is constant:
+**briefs and plans written *from a findings document* instead of *from the source*.** On the
+"surfaced twice" point, be careful what is being counted: **both branches of the first bullet appeared
+twice independently** — the same false claim in the plan and again in the brief derived from it — so
+that one bullet contributes two *defects* and four *artifacts*. It does not make the list sum to
+seven. The standing countermeasure, used from Task 4 onward: **no brief asserts what a test or a
+sibling does; it says what to read, and the implementer reads.**
+
+**9. The repair plan's own method constraint was internally contradictory, and the outcome supersedes
+it.** Global Constraint #1 demanded a mutant *"faithful to the test's own name"* that leaves the test
+green. **Unsatisfiable by construction for a Tier-B finding**, because Tier B means the assertion is
+already sound — so every name-faithful mutant turns it red. **The working rule: for a Tier-B repair, the
+faithful mutant is the one that breaks the awaited state.** Two consequences worth keeping: a Tier-B
+repair may need **two** mutants (the name-faithful one proves the assertion was already live; the
+awaited-state one proves the defect), and **the distinction between them is the result** — one tests the
+assertion, the other tests the binding.
+
 ---
 
 ## 8. Severities Assigned, With the Harm Named
@@ -261,6 +404,12 @@ Note the distribution: **the two HIGH-severity bugs both destroy or mis-route mo
 10. Full suite after every fix.
 11. Report dropped candidates and weakest gates as prominently as the findings.
 12. Distinguish **triggered** from **latent hardening** in the write-up.
+13. **When auditing or writing a test** (§7.2): delete the target JUnit XML before every run, confirm
+    the log names the test task, read the `.err` stream, and never treat "no pattern match" as a
+    clearance.
+14. **When repairing a test** (§7.2): classify it Tier A / B / C first, trace the recipe at source
+    before writing it, and never delete a test that is the only record of an intent for an unguarded
+    production line.
 
 ---
 

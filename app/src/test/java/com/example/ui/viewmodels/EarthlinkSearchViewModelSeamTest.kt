@@ -17,6 +17,7 @@ import com.example.domain.repository.SyncProgress
 import com.example.domain.repository.SyncReason
 import com.example.domain.repository.SyncRepository
 import com.example.domain.repository.SyncStatusState
+import com.example.findSourceFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -1210,6 +1211,33 @@ class EarthlinkSearchViewModelSeamTest {
         assertNull(resellerBalance)
     }
 
+    /**
+     * Reads the production `val balanceAfter = ...` line that the two `testBalanceAfterMath_*`
+     * tests transcribe into themselves.
+     *
+     * Claim: those two tests encode one contract — an unknown reseller balance must yield a
+     * null result, never a fabricated zero — and that contract lives only in
+     * `UserDetailScreenV2.kt`, whose consumer at `UserDetailScreenV2.kt:660-662` renders an
+     * em dash for a null balance. Run against locals, the two tests assert Kotlin semantics and
+     * invoke no production code, so a change to the production line was undetectable anywhere
+     * in the repository. This helper is the binding that makes such a change observable.
+     *
+     * Seam / Environment: STRUCTURAL — a source scan, using the shared `findSourceFile` test
+     * utility that Phase5DestructiveActionReleaseGateTest also calls.
+     * Independent Oracle: the expected string is a literal copy of the production expression,
+     * not a value recomputed by the code under test.
+     */
+    private fun productionBalanceAfterLine(): String {
+        val relPath = "app/src/main/java/com/example/ui/screens/UserDetailScreenV2.kt"
+        val source = findSourceFile(relPath)
+        val matches = source.readLines().filter { it.trimStart().startsWith("val balanceAfter =") }
+        require(matches.size == 1) {
+            "UserDetailScreenV2.kt must declare exactly one 'val balanceAfter =' line; found " +
+                "${matches.size}: $matches"
+        }
+        return matches.single().trim()
+    }
+
     @Test
     fun testBalanceAfterMath_knownBalance_computesCorrectly() {
         val resellerBalance: Double? = 100000.0
@@ -1217,6 +1245,18 @@ class EarthlinkSearchViewModelSeamTest {
         val balanceAfter = resellerBalance?.let { it - packageCost }
         assertNotNull(balanceAfter)
         assertEquals(60000.0, balanceAfter!!, 0.001)
+
+        val productionLine = productionBalanceAfterLine()
+        assertEquals(
+            "BALANCE-AFTER | UserDetailScreenV2.kt must keep the null-guarded consumption this " +
+                "test transcribes. 100,000 - 40,000 is arithmetic on a LOCAL replica of the " +
+                "line; the production method is NOT executed here. This is a textual tripwire on " +
+                "the source, so it proves the expression's spelling, not its runtime result. An " +
+                "unguarded form such as '(resellerBalance ?: 0.0) - packageCost' no longer " +
+                "computes anything for an unknown balance, it fabricates a 0. Got: $productionLine",
+            "val balanceAfter = resellerBalance?.let { it - packageCost }",
+            productionLine
+        )
     }
 
     @Test
@@ -1225,5 +1265,21 @@ class EarthlinkSearchViewModelSeamTest {
         val packageCost = 40000.0
         val balanceAfter = resellerBalance?.let { it - packageCost }
         assertNull(balanceAfter)
+
+        // `balanceAfter` above is a LOCAL replica of the production line, not a call into it. The
+        // assertion that guards the product is the string equality below: it pins the production
+        // source to the same null-guarded shape. Changing `?.let { }` to `?: 0.0` in production
+        // fails THIS assertion. Refactoring the line into an extracted helper would leave both
+        // assertions green while the guard was removed - which is why GAP-1 stays open.
+        val productionLine = productionBalanceAfterLine()
+        assertEquals(
+            "BALANCE-AFTER | UserDetailScreenV2.kt must keep the null-guarded consumption this " +
+                "test transcribes. An unknown reseller balance must yield a null result, never a " +
+                "fabricated zero: with the null guard the screen renders an em dash, whereas " +
+                "'(resellerBalance ?: 0.0) - packageCost' renders a real-looking 0 IQD. " +
+                "Got: $productionLine",
+            "val balanceAfter = resellerBalance?.let { it - packageCost }",
+            productionLine
+        )
     }
 }

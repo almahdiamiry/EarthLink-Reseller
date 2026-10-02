@@ -9,6 +9,25 @@ import org.robolectric.annotation.Config
 import java.io.File
 
 /**
+ * Shared STRUCTURAL test utility: resolve a repository-relative source path from whichever
+ * working directory Gradle happens to launch a JVM test in.
+ *
+ * Top-level and `internal` rather than a private member, so a second suite that has to bind to a
+ * production source line reuses this instead of re-transcribing the same five candidates.
+ */
+internal fun findSourceFile(relPath: String): File {
+    val candidates = listOf(
+        File(relPath),
+        File(relPath.removePrefix("app/")),
+        File("app", relPath),
+        File("..", relPath),
+        File("../..", relPath)
+    )
+    return candidates.firstOrNull { it.exists() }
+        ?: error("Source file not found for candidate paths $candidates (cwd: ${File(".").absolutePath})")
+}
+
+/**
  * Phase 5 Workstream 3 (RC-07): Destructive Action Release Gate Certification Test Suite.
  *
  * Verifies:
@@ -19,18 +38,6 @@ import java.io.File
 @RunWith(RobolectricTestRunner::class)
 @Config(manifest = Config.NONE)
 class Phase5DestructiveActionReleaseGateTest {
-
-    private fun findSourceFile(relPath: String): File {
-        val candidates = listOf(
-            File(relPath),
-            File(relPath.removePrefix("app/")),
-            File("app", relPath),
-            File("..", relPath),
-            File("../..", relPath)
-        )
-        return candidates.firstOrNull { it.exists() }
-            ?: error("Source file not found for candidate paths $candidates (cwd: ${File(".").absolutePath})")
-    }
 
     private fun findSourceDir(dirPath: String): File {
         val candidates = listOf(

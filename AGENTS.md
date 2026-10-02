@@ -249,7 +249,7 @@ Confidence:            [HIGH / MEDIUM / LOW]
 * Future agents and maintainers **must NOT** run G8 certification, require G8 artifacts for routine changes, recreate G8, or reopen G8 scope. The Testing Playbook above governs all ongoing development.
 
 ### 9.10 Test Baseline & Evidence Evolution Rule (From 535 Onward)
-* **Evidence Baseline, Not Target Count:** 535/535 is the current certified evidence baseline, not a target test count. The baseline is fixed in terms of **evidence completeness**, not numerical size.
+* **Evidence Baseline, Not Target Count:** **797/797** is the current certified evidence baseline (measured at Round 13: 113 JUnit XML, 797 `testcase` elements, 0 failures / 0 errors), not a target test count. The authoritative figure lives in [`PROJECT_ROADMAP.md`](PROJECT_ROADMAP.md) §1 `CURRENT VERIFIED TEST BASELINE` and **this line is a mirror of it — if the two ever disagree, the GPS is right and this line is the defect.** The baseline is fixed in terms of **evidence completeness**, not numerical size. **797 green does not mean 797 behaviours are guarded** — see the Round-13 record before citing it as coverage.
 * **Dual Protection (Anti-Bloat & Anti-Starvation):**
   - **No Test Bloat:** Never add redundant tests for coverage appearance or testing implementation details. Never duplicate assertions already proven by surviving invariant suites.
   - **No Test Starvation:** Always add new permanent or supporting tests whenever introducing genuinely new behavioral claims, uncovered failure modes, or newly exposed regression risks.

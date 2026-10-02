@@ -1,6 +1,9 @@
 package com.example
 
 import android.content.Context
+import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.sqlite.db.SupportSQLiteOpenHelper
+import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.core.app.ApplicationProvider
 import com.example.core.database.AppDatabase
 import com.example.core.database.SyncOutboxDao
@@ -18,6 +21,8 @@ import com.example.core.sync.RemoteEvent
 import com.example.core.sync.RemoteEventSource
 import com.example.core.sync.RemoteSyncCoordinator
 import com.example.core.sync.SyncRepositoryImpl
+import com.example.data.repository.LocalLedgerRepositoryImpl
+import com.example.data.repository.rebuildAccountBalances
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
@@ -602,14 +607,26 @@ class DataIntegrityReleaseGateTest {
         )
     }
 
+    /**
+     * CLAIM: INV-02 / RED Invariant 2 — a user-level financial "deletion" of a ledger row is
+     *        expressed as an additive contra-entry, never as a physical DELETE on
+     *        `local_ledger_entries`.
+     * SEAM: ROBOLECTRIC — `LocalLedgerRepositoryImpl.deleteTransaction` → `correctTransaction(0.0)`
+     *       over a real Room SQLite database (not a transcribed local copy of the rule).
+     * ORACLE: The account is seeded with exactly one 40,000 IQD "took" row. A full reversal must
+     *         therefore leave exactly two rows — the untouched original plus one contra-entry whose
+     *         `correctsEntryId` names the original and whose `typeRaw` is the opposite financial type
+     *         ("gave" reverses a debt-increasing "took"). A physical row DELETE leaves 0 rows; a
+     *         silent no-op leaves 1; neither can satisfy the count of 2.
+     */
     @Test
     fun invariant_INV02_historicalSourceImmutability_ledgerDeleteUsesContraEntry() = runBlocking {
-        // INV-02: Imported historical records are immutable.
-        // Financial "deletion" must use contra-entries via correctsEntryId, not physical row DELETE.
-        // Evidence: AppDatabase.kt:100-108 — "MUST NOT be exposed as user-level domain financial actions"
-        // Evidence: Repositories.kt:2358-2362 — deleteTransaction calls correctTransaction, not physical delete
+        // Evidence: AppDatabase.kt:147-152 — the DAO's physical DELETE queries are batch
+        // import/restore/reset infrastructure and "MUST NOT be exposed as user-level domain
+        // financial actions"; corrections use contra-entries via correctsEntryId.
+        // Evidence: Repositories.kt:2693-2697 — deleteTransaction is a FULL REVERSAL
+        // (correctTransaction with intendedAmount = 0.0), not a physical delete.
 
-        // Insert original entry
         val account = LocalAccount(id = "inv02_acc", displayName = "INV-02 Test", debtIqd = 40000.0)
         db.localAccountDao().insert(account)
         val originalEntry = LocalLedgerEntry(
@@ -619,9 +636,44 @@ class DataIntegrityReleaseGateTest {
         )
         db.localLedgerEntryDao().insert(originalEntry)
 
-        // Verify the original entry exists
-        val beforeDelete = db.localLedgerEntryDao().getByIdOneShot("inv02_tx1")
-        assertNotNull("INV-02 SETUP | Original entry must exist before correction", beforeDelete)
+        val ledgerRepository = LocalLedgerRepositoryImpl(
+            database = db,
+            ledgerDao = db.localLedgerEntryDao(),
+            accountDao = db.localAccountDao(),
+            outboxDao = outboxDao
+        )
+
+        // EXERCISE THE DELETION SEAM. Everything below is a claim about what this call did.
+        ledgerRepository.deleteTransaction(originalEntry.id)
+
+        val originalAfterDelete = db.localLedgerEntryDao().getByIdOneShot("inv02_tx1")
+        assertNotNull(
+            "INV-02 VIOLATED | The original ledger row must survive a financial 'deletion'; " +
+                "RED Invariant 2 forbids physical DELETE on local_ledger_entries. " +
+                "Evidence: Repositories.kt:2693-2697",
+            originalAfterDelete
+        )
+
+        val allEntries = db.localLedgerEntryDao().getByAccountIdOneShot(account.id)
+        assertEquals(
+            "INV-02 VIOLATED | A full reversal must be ADDITIVE: exactly 2 rows " +
+                "(original + contra-entry). A physical delete leaves 0; a no-op leaves 1. " +
+                "Actual: ${allEntries.size} rows = ${allEntries.map { it.id to it.typeRaw }}",
+            2, allEntries.size
+        )
+
+        val contraEntry = allEntries.find { it.correctsEntryId == "inv02_tx1" }
+        assertNotNull(
+            "INV-02 VIOLATED | A contra-entry with correctsEntryId=\"inv02_tx1\" must exist. " +
+                "Actual rows: ${allEntries.map { it.id to (it.typeRaw to it.correctsEntryId) }}",
+            contraEntry
+        )
+        assertEquals(
+            "INV-02 VIOLATED | Reversing a 40,000 'took' must be recorded as a 'gave' contra-entry, " +
+                "never as a copy of the original type. " +
+                "Evidence: Repositories.kt:2628-2640",
+            "gave", contraEntry!!.typeRaw
+        )
     }
 
     @Test
@@ -799,7 +851,15 @@ class DataIntegrityReleaseGateTest {
             remoteVersion = 1000L, source = RemoteEventSource.MANUAL
         )
 
-        coordinator.processEvent(event)
+        val result = coordinator.processEvent(event)
+        // PRECONDITION: the awaited state is that the remote AccountUpsert was actually APPLIED.
+        // Without it, "no outbox records on remote apply" is satisfied by nothing having been applied.
+        assertEquals(
+            "PRECONDITION | The remote AccountUpsert must be APPLIED for this invariant to be meaningful. " +
+                "Got $result instead.",
+            EventSyncResult.APPLIED,
+            result
+        )
 
         val outboxAfter = outboxDao.getAllOneShot().size
         assertEquals(
@@ -850,8 +910,17 @@ class DataIntegrityReleaseGateTest {
         )
 
         // Apply once
+        val countBeforeFirst = db.localLedgerEntryDao().getByAccountIdOneShot(parentAccount.id).size
         coordinator.processEvent(ledgerEvent)
         val countAfterFirst = db.localLedgerEntryDao().getByAccountIdOneShot(parentAccount.id).size
+        // PRECONDITION: the awaited state is that the first apply actually created a ledger entry.
+        // Without it, "no duplicate entries" is satisfied by neither apply having inserted anything.
+        assertEquals(
+            "PRECONDITION | The first apply must create exactly one ledger entry, otherwise " +
+                "'no duplicates' is satisfied by nothing happening. Count after first: $countAfterFirst",
+            countBeforeFirst + 1,
+            countAfterFirst
+        )
 
         // Apply again (duplicate)
         coordinator.processEvent(ledgerEvent)
@@ -922,55 +991,233 @@ class DataIntegrityReleaseGateTest {
 
     @Test
     fun backupRestore_migrationDefaults_safeForBalanceCalculator() = runBlocking {
-        // Evidence: AppDatabase.kt:768-776 (MIGRATION_8_9)
-        // openingDebtIqd DEFAULT 0.0 → BalanceCalculator uses 0 as starting point → safe
-        // openingAdvanceIqd DEFAULT 0.0 → safe
-        // openingLoanIqd DEFAULT 0.0 → safe
-        // stateSource DEFAULT NULL → isSnapshotBaseline = false → safe (no filtering occurs)
-        // isSnapshotHistory DEFAULT 0 (false) → won't be filtered → safe for non-snapshot accounts
+        // CLAIM: the column DEFAULTs written by MIGRATION_8_9 are safe input for BalanceCalculator.
+        //
+        // Nothing in this test restates those DEFAULTs. The fixture is a REAL pre-migration SQLite
+        // database created at Room schema version 8, where the six MIGRATION_8_9 columns do not
+        // exist at all. Every value the derivation consumes is read back OUT of that database AFTER
+        // AppDatabase.MIGRATION_8_9 has run, and the isSnapshotBaseline branch is derived by
+        // production (Repositories.kt:3561) — never by this test.
+        //
+        // Evidence: AppDatabase.kt:830-839 (MIGRATION_8_9), :841-847 (MIGRATION_9_10),
+        //           :849-854 (MIGRATION_10_11), Repositories.kt:3560-3573 (the derivation),
+        //           BalanceCalculator.kt:70-74 (isSnapshotBaseline filters isSnapshotHistory).
+        //
+        // Independent oracle: a pre-migration account whose opening baseline defaults to 0.0 must
+        // derive 0.0 + 30,000 + 20,000 = 50,000 IQD from its two charges. The pre-migration cached
+        // debtIqd is seeded to 0.0 so that only a real recalculation can satisfy the assertion.
+        val legacyDbFile = context.getDatabasePath("t6_pre_migration_v8.db")
+        legacyDbFile.parentFile?.mkdirs()
+        if (legacyDbFile.exists()) legacyDbFile.delete()
 
-        // Simulate a "legacy" account that existed before MIGRATION_8_9
-        // (i.e., all snapshot fields at their DEFAULT values)
-        val legacyAccount = LocalAccount(
-            id = "legacy_acc_001", displayName = "Pre-Migration Account",
-            debtIqd = 50000.0,
-            openingDebtIqd = 0.0,     // MIGRATION_8_9 DEFAULT
-            openingAdvanceIqd = 0.0,  // MIGRATION_8_9 DEFAULT
-            openingLoanIqd = 0.0,     // MIGRATION_8_9 DEFAULT
-            stateSource = null,       // MIGRATION_8_9 DEFAULT NULL
-            stateConfidence = null    // MIGRATION_8_9 DEFAULT NULL
+        val legacyConfig = SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name(legacyDbFile.name)
+            .callback(object : SupportSQLiteOpenHelper.Callback(8) {
+                override fun onCreate(sqliteDb: SupportSQLiteDatabase) {
+                    // local_accounts exactly as Room v8 emitted it: the exported v9 schema
+                    // (assets/com.example.core.database.AppDatabase/9.json) minus the six columns
+                    // MIGRATION_8_9 adds.
+                    //
+                    // There is NO 8.json in this repository. The exported assets run 1-7 then 9-18,
+                    // and `git log -- .../AppDatabase/8.json` returns nothing: version 8 was never
+                    // exported. So the v8 table below is RECONSTRUCTED from 9.json by removing the
+                    // six columns named in AppDatabase.kt:832-837 - openingDebtIqd, openingAdvanceIqd,
+                    // openingLoanIqd, stateSource, stateConfidence, snapshotCapturedAt - which is why
+                    // the reconstruction is a maintenance liability: if MIGRATION_8_9 ever changes,
+                    // this CREATE TABLE must change with it, and nothing at compile time ties the two.
+                    sqliteDb.execSQL("""
+                        CREATE TABLE IF NOT EXISTS `local_accounts` (
+                            `id` TEXT NOT NULL,
+                            `sourceExternalId` TEXT,
+                            `sourceBatchId` TEXT,
+                            `displayName` TEXT NOT NULL,
+                            `earthlinkUsername` TEXT,
+                            `phone1` TEXT,
+                            `phone2` TEXT,
+                            `packageName` TEXT,
+                            `currentPriceIqd` REAL NOT NULL,
+                            `debtIqd` REAL NOT NULL,
+                            `loanIqd` REAL NOT NULL,
+                            `advanceIqd` REAL NOT NULL,
+                            `towerName` TEXT,
+                            `zoneName` TEXT,
+                            `address` TEXT,
+                            `nanoIp` TEXT,
+                            `latitude` REAL,
+                            `longitude` REAL,
+                            `note` TEXT,
+                            `expiresAt` TEXT,
+                            `lastPaymentAt` INTEGER,
+                            `rawJson` TEXT,
+                            `isLegacy` INTEGER NOT NULL,
+                            `createdAt` INTEGER NOT NULL,
+                            `updatedAt` INTEGER NOT NULL,
+                            PRIMARY KEY(`id`)
+                        )
+                    """.trimIndent())
+
+                    // local_ledger_entries as of v9; isSnapshotHistory does not exist yet.
+                    sqliteDb.execSQL("""
+                        CREATE TABLE IF NOT EXISTS `local_ledger_entries` (
+                            `id` TEXT NOT NULL,
+                            `accountId` TEXT NOT NULL,
+                            `sourceExternalId` TEXT,
+                            `sourceBatchId` TEXT,
+                            `typeRaw` TEXT NOT NULL,
+                            `amountIqd` REAL NOT NULL,
+                            `debtAfterIqd` REAL NOT NULL,
+                            `note` TEXT,
+                            `occurredAt` INTEGER NOT NULL,
+                            `rawJson` TEXT,
+                            `createdAt` INTEGER NOT NULL,
+                            PRIMARY KEY(`id`),
+                            FOREIGN KEY(`accountId`) REFERENCES `local_accounts`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                        )
+                    """.trimIndent())
+
+                    // import_batches as of v9 minus the two columns MIGRATION_9_10 adds.
+                    sqliteDb.execSQL("""
+                        CREATE TABLE IF NOT EXISTS `import_batches` (
+                            `id` TEXT NOT NULL,
+                            `fileName` TEXT NOT NULL,
+                            `fileHash` TEXT NOT NULL,
+                            `accountsImported` INTEGER NOT NULL,
+                            `transactionsImported` INTEGER NOT NULL,
+                            `totalDebtIqd` REAL NOT NULL,
+                            `warningsJson` TEXT,
+                            `createdAt` INTEGER NOT NULL,
+                            `status` TEXT NOT NULL,
+                            PRIMARY KEY(`id`)
+                        )
+                    """.trimIndent())
+
+                    // A subscriber that existed BEFORE MIGRATION_8_9: the opening*/state* columns
+                    // are absent, and the cached debtIqd is stale so it cannot satisfy the oracle.
+                    sqliteDb.execSQL("""
+                        INSERT INTO `local_accounts` (
+                            `id`, `displayName`, `currentPriceIqd`, `debtIqd`, `loanIqd`, `advanceIqd`,
+                            `isLegacy`, `createdAt`, `updatedAt`
+                        ) VALUES (
+                            'legacy_acc_001', 'Pre-Migration Account', 35000.0, 0.0, 0.0, 0.0,
+                            0, 1600000000000, 1600000000000
+                        )
+                    """.trimIndent())
+
+                    // Two pre-MIGRATION_8_9 charges. legacy_tx1 carries an ISP external id, so
+                    // MIGRATION_10_11 backfills isSnapshotHistory = 1 for it; legacy_tx2 does not,
+                    // so it stays 0. That asymmetry is what makes the isSnapshotBaseline branch
+                    // observable for this account.
+                    sqliteDb.execSQL("""
+                        INSERT INTO `local_ledger_entries` (
+                            `id`, `accountId`, `sourceExternalId`, `typeRaw`, `amountIqd`,
+                            `debtAfterIqd`, `occurredAt`, `createdAt`
+                        ) VALUES (
+                            'legacy_tx1', 'legacy_acc_001', 'utower_legacy_tx1', 'took', 30000.0,
+                            30000.0, 1600000000000, 1600000000000
+                        )
+                    """.trimIndent())
+                    sqliteDb.execSQL("""
+                        INSERT INTO `local_ledger_entries` (
+                            `id`, `accountId`, `sourceExternalId`, `typeRaw`, `amountIqd`,
+                            `debtAfterIqd`, `occurredAt`, `createdAt`
+                        ) VALUES (
+                            'legacy_tx2', 'legacy_acc_001', NULL, 'took', 20000.0,
+                            50000.0, 1600100000000, 1600100000000
+                        )
+                    """.trimIndent())
+                }
+
+                override fun onUpgrade(sqliteDb: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {}
+            })
+            .build()
+
+        val legacyHelper = FrameworkSQLiteOpenHelperFactory().create(legacyConfig)
+        val legacyDb = legacyHelper.writableDatabase
+
+        // Run the REAL migrations. The account's opening*/state* values are produced here and
+        // nowhere else in this test.
+        AppDatabase.MIGRATION_8_9.migrate(legacyDb)
+        AppDatabase.MIGRATION_9_10.migrate(legacyDb)
+        AppDatabase.MIGRATION_10_11.migrate(legacyDb)
+
+        val accountCursor = legacyDb.query(
+            "SELECT id, displayName, currentPriceIqd, debtIqd, loanIqd, advanceIqd, isLegacy, " +
+                "openingDebtIqd, openingAdvanceIqd, openingLoanIqd, stateSource, stateConfidence, " +
+                "snapshotCapturedAt, createdAt, updatedAt FROM local_accounts WHERE id = 'legacy_acc_001'"
         )
-        val legacyEntries = listOf(
-            LocalLedgerEntry(
-                id = "legacy_tx1", accountId = legacyAccount.id,
-                typeRaw = "took", amountIqd = 30000.0, debtAfterIqd = 30000.0,
-                occurredAt = 1600000000000L,
-                isSnapshotHistory = false  // MIGRATION_9_10 DEFAULT = 0
-            ),
-            LocalLedgerEntry(
-                id = "legacy_tx2", accountId = legacyAccount.id,
-                typeRaw = "took", amountIqd = 20000.0, debtAfterIqd = 50000.0,
-                occurredAt = 1600100000000L,
-                isSnapshotHistory = false
+        assertTrue("MIGRATION_8_9 must preserve the pre-existing account row", accountCursor.moveToFirst())
+        val migratedAccount = LocalAccount(
+            id = accountCursor.getString(0),
+            displayName = accountCursor.getString(1),
+            currentPriceIqd = accountCursor.getDouble(2),
+            debtIqd = accountCursor.getDouble(3),
+            loanIqd = accountCursor.getDouble(4),
+            advanceIqd = accountCursor.getDouble(5),
+            isLegacy = accountCursor.getInt(6) == 1,
+            openingDebtIqd = accountCursor.getDouble(7),
+            openingAdvanceIqd = accountCursor.getDouble(8),
+            openingLoanIqd = accountCursor.getDouble(9),
+            stateSource = if (accountCursor.isNull(10)) null else accountCursor.getString(10),
+            stateConfidence = if (accountCursor.isNull(11)) null else accountCursor.getString(11),
+            snapshotCapturedAt = if (accountCursor.isNull(12)) null else accountCursor.getLong(12),
+            createdAt = accountCursor.getLong(13),
+            updatedAt = accountCursor.getLong(14)
+        )
+        accountCursor.close()
+
+        val ledgerCursor = legacyDb.query(
+            "SELECT id, accountId, sourceExternalId, typeRaw, amountIqd, debtAfterIqd, occurredAt, " +
+                "createdAt, isSnapshotHistory FROM local_ledger_entries ORDER BY occurredAt ASC"
+        )
+        val migratedLedger = mutableListOf<LocalLedgerEntry>()
+        while (ledgerCursor.moveToNext()) {
+            migratedLedger.add(
+                LocalLedgerEntry(
+                    id = ledgerCursor.getString(0),
+                    accountId = ledgerCursor.getString(1),
+                    sourceExternalId = if (ledgerCursor.isNull(2)) null else ledgerCursor.getString(2),
+                    typeRaw = ledgerCursor.getString(3),
+                    amountIqd = ledgerCursor.getDouble(4),
+                    debtAfterIqd = ledgerCursor.getDouble(5),
+                    occurredAt = ledgerCursor.getLong(6),
+                    createdAt = ledgerCursor.getLong(7),
+                    isSnapshotHistory = ledgerCursor.getInt(8) == 1
+                )
             )
-        )
+        }
+        ledgerCursor.close()
 
-        // BalanceCalculator with migration DEFAULT values must produce correct results
-        val isSnapshot = legacyAccount.stateSource != null  // false (DEFAULT NULL)
-        val (balances, _) = BalanceCalculator.reconstructCurrentPosition(
-            openingDebt = legacyAccount.openingDebtIqd,
-            openingAdvance = legacyAccount.openingAdvanceIqd,
-            openingLoan = legacyAccount.openingLoanIqd,
-            transactions = legacyEntries,
-            isSnapshotBaseline = isSnapshot
-        )
+        legacyDb.close()
+        legacyHelper.close()
+        if (legacyDbFile.exists()) legacyDbFile.delete()
 
+        assertEquals("The migration chain must preserve both pre-existing charges", 2, migratedLedger.size)
         assertEquals(
-            "MIGRATION DEFAULT SAFETY | Pre-migration account with DEFAULT opening values (0.0) " +
-            "and stateSource=null must calculate correctly. " +
-            "Expected: 50000.0 (0 + 30k + 20k) | Actual: ${balances.debtIqd} | " +
-            "Evidence: AppDatabase.kt MIGRATION_8_9 (L770-773)",
-            50000.0, balances.debtIqd, 0.001
+            "PRECONDITION | MIGRATION_10_11 must mark the ISP-sourced charge as snapshot history. " +
+                "Without one filtered row the isSnapshotBaseline branch has nothing to filter and " +
+                "this fixture would not observe MIGRATION_8_9's stateSource DEFAULT at all.",
+            true,
+            migratedLedger.first { it.id == "legacy_tx1" }.isSnapshotHistory
+        )
+
+        // Hand the migrated rows to production and let production derive the position.
+        db.localAccountDao().insert(migratedAccount)
+        db.localLedgerEntryDao().insertAll(migratedLedger)
+
+        rebuildAccountBalances(db)
+
+        val persisted = db.localAccountDao().getByIdOneShot(migratedAccount.id)!!
+        assertEquals(
+            "MIGRATION DEFAULT SAFETY | A pre-migration account whose opening* and state* columns " +
+                "were written by MIGRATION_8_9 DEFAULTs must derive 50,000 IQD (0.0 opening baseline " +
+                "+ 30,000 + 20,000) with no snapshot filtering. " +
+                "Actual debtIqd: ${persisted.debtIqd} | " +
+                "openingDebtIqd read back from the migrated DB: ${migratedAccount.openingDebtIqd} | " +
+                "openingAdvanceIqd read back: ${migratedAccount.openingAdvanceIqd} | " +
+                "openingLoanIqd read back: ${migratedAccount.openingLoanIqd} | " +
+                "stateSource read back from the migrated DB: ${migratedAccount.stateSource} | " +
+                "Evidence: AppDatabase.kt:830-839",
+            50000.0, persisted.debtIqd, 0.001
         )
     }
 
@@ -1272,31 +1519,149 @@ class DataIntegrityReleaseGateTest {
         )
     }
 
+    /**
+     * oracle_noteTransaction_zeroFinancialImpact — the "note" transaction type is a financial no-op.
+     *
+     * CLAIM (INV-01 / RED Invariant 1 — financial correctness, no silent inflation):
+     * A ledger entry whose canonical type is "note" moves NO leg of the financial position —
+     * debt, advance, or loan — even when it carries a NON-ZERO amount.
+     *
+     * WHY THE AMOUNT MUST BE NON-ZERO:
+     * BalanceCalculator.kt:26 (`else -> AccountBalances(currentDebt, currentAdvance, currentLoan)`)
+     * is the production decision that makes a note inert; TransactionTypeNormalizer.kt:25 routes
+     * "note"/"NOTE" into it. But the debt arm at BalanceCalculator.kt:12-18 is arithmetically
+     * blind at amount 0 (advanceUsed = minOf(advance, 0) = 0; debtAdded = 0 - 0 = 0), so a note
+     * carrying 0.0 is inert for a reason that has nothing to do with its TYPE. This fixture
+     * therefore gives the note 12000.0, and additionally runs a CONTROL with the identical
+     * baseline and the identical 12000.0 amount on a non-note type, proving the amount itself
+     * moves the balance. That contrast is what makes the claim about the TYPE and not the sum.
+     *
+     * SEAM / ENVIRONMENT: ROBOLECTRIC as executed — @RunWith(RobolectricTestRunner::class) is
+     * class-level at :62, so even though this test's arithmetic is pure-JVM deterministic, it
+     * runs under the Android simulation runtime.
+     *
+     * INDEPENDENT ORACLE: the arithmetic below is written out from the Product Contract's
+     * additive-ledger rule and from the Advance-First consumption rule. No expected value is
+     * read back from a production call; the production call is the thing under test.
+     *
+     *   Opening baseline (all three vectors explicit, all non-zero):
+     *       openingDebt = 10000.0, openingAdvance = 5000.0, openingLoan = 7000.0
+     *
+     *   CLAIM arm — entries in chronological order:
+     *     (a) note 12000.0  → signed effect 0 on all three legs, BY TYPE
+     *     (b) took 40000.0  → advanceUsed = minOf(5000.0, 40000.0) = 5000.0
+     *                         advance = 5000.0 - 5000.0 = 0.0
+     *                         debtAdded = 40000.0 - 5000.0 = 35000.0
+     *                         debt    = 10000.0 + 35000.0 = 45000.0
+     *                         loan    = 7000.0 (untouched)
+     *     ⇒ expected debt 45000.0, advance 0.0, loan 7000.0
+     *     ⇒ the note's OWN rolling debtAfterIqd must still read 10000.0, i.e. the note alone
+     *       moved nothing. This is the assertion that pins the type rather than the total.
+     *
+     *   CONTROL arm — same baseline, same amounts, only the first entry's TYPE differs:
+     *     (a) took 12000.0  → advanceUsed = minOf(5000.0, 12000.0) = 5000.0
+     *                         advance = 0.0
+     *                         debtAdded = 12000.0 - 5000.0 = 7000.0
+     *                         debt    = 10000.0 + 7000.0 = 17000.0
+     *     (b) took 40000.0  → advanceUsed = minOf(0.0, 40000.0) = 0.0
+     *                         debt    = 17000.0 + 40000.0 = 57000.0
+     *     ⇒ expected debt 57000.0, advance 0.0, loan 7000.0
+     *
+     *   The 12000.0 difference between the two arms (57000.0 - 45000.0 = 12000.0) is the whole
+     *   claim: identical amount, different type, different balance.
+     *
+     * FAITHFUL MUTANT (R13-T8 M1): route "note" into the debt arm at BalanceCalculator.kt:12.
+     * The claim arm then converges on the control arm's 57000.0 and both the final debt and
+     * the note's own debtAfterIqd assertions fail.
+     */
     @Test
     fun oracle_noteTransaction_zeroFinancialImpact() {
-        // "note" type transactions must have zero financial effect
-        val entries = listOf(
+        // ---------- CLAIM arm: the note carries a NON-ZERO amount ----------
+        val claimEntries = listOf(
             LocalLedgerEntry(
                 id = "oracle_note_1", accountId = "oracle_note_acc",
-                typeRaw = "took", amountIqd = 40000.0, debtAfterIqd = 0.0,
+                typeRaw = "note", amountIqd = 12000.0, debtAfterIqd = 0.0,
                 occurredAt = 1700000000000L
             ),
             LocalLedgerEntry(
                 id = "oracle_note_2", accountId = "oracle_note_acc",
-                typeRaw = "note", amountIqd = 0.0, debtAfterIqd = 0.0,
+                typeRaw = "took", amountIqd = 40000.0, debtAfterIqd = 0.0,
                 occurredAt = 1700100000000L
             )
         )
 
-        val (balances, _) = BalanceCalculator.reconstructCurrentPosition(
-            openingDebt = 0.0, openingAdvance = 0.0, openingLoan = 0.0,
-            transactions = entries, isSnapshotBaseline = false
+        val (claimBalances, claimUpdated) = BalanceCalculator.reconstructCurrentPosition(
+            openingDebt = 10000.0, openingAdvance = 5000.0, openingLoan = 7000.0,
+            transactions = claimEntries, isSnapshotBaseline = false
         )
 
         assertEquals(
-            "ORACLE | Note transaction must have zero financial impact. " +
-            "Expected: 40000.0 | Actual: ${balances.debtIqd}",
-            40000.0, balances.debtIqd, 0.001
+            "ORACLE | Note must not move the DEBT leg even though it carries 12000.0. " +
+            "Expected 10000.0 + (40000.0 - minOf(5000.0, 40000.0)=5000.0) = 45000.0 " +
+            "| Actual: ${claimBalances.debtIqd}. " +
+            "A note routed into the debt arm would give 57000.0 — the H-3 inflation shape.",
+            45000.0, claimBalances.debtIqd, 0.001
+        )
+        assertEquals(
+            "ORACLE | Note must not move the ADVANCE leg. " +
+            "Expected 5000.0 - minOf(5000.0, 40000.0)=5000.0 = 0.0 " +
+            "| Actual: ${claimBalances.advanceIqd}",
+            0.0, claimBalances.advanceIqd, 0.001
+        )
+        assertEquals(
+            "ORACLE | Note must not move the LOAN leg. Expected the untouched opening 7000.0 " +
+            "| Actual: ${claimBalances.loanIqd}",
+            7000.0, claimBalances.loanIqd, 0.001
+        )
+
+        // The note's OWN rolling position, read from the entry the production loop wrote back.
+        // Pins the note in isolation rather than pinning the sum of the two entries.
+        val noteEntryAfter = claimUpdated.first { it.id == "oracle_note_1" }
+        assertEquals(
+            "ORACLE | The note entry alone must leave debt at the opening 10000.0, " +
+            "proving inertness is the TYPE's doing and not the amount's. " +
+            "Expected: 10000.0 | Actual: ${noteEntryAfter.debtAfterIqd} " +
+            "(a note behaving as 'took' would read 17000.0)",
+            10000.0, noteEntryAfter.debtAfterIqd, 0.001
+        )
+
+        // ---------- CONTROL arm: the SAME 12000.0 on a non-note type ----------
+        // Without this, the claim above is satisfied by any implementation that is blind at
+        // amount 0 — which is the defect this repair exists to close.
+        val controlEntries = listOf(
+            LocalLedgerEntry(
+                id = "oracle_note_ctrl_1", accountId = "oracle_note_control_acc",
+                typeRaw = "took", amountIqd = 12000.0, debtAfterIqd = 0.0,
+                occurredAt = 1700000000000L
+            ),
+            LocalLedgerEntry(
+                id = "oracle_note_ctrl_2", accountId = "oracle_note_control_acc",
+                typeRaw = "took", amountIqd = 40000.0, debtAfterIqd = 0.0,
+                occurredAt = 1700100000000L
+            )
+        )
+
+        val (controlBalances, _) = BalanceCalculator.reconstructCurrentPosition(
+            openingDebt = 10000.0, openingAdvance = 5000.0, openingLoan = 7000.0,
+            transactions = controlEntries, isSnapshotBaseline = false
+        )
+
+        assertEquals(
+            "ORACLE CONTROL | The same 12000.0 on a non-note type MUST move debt, otherwise " +
+            "the claim arm above proves nothing about the type. " +
+            "Expected 10000.0 + (12000.0 - 5000.0) + (40000.0 - 0.0) = 57000.0 " +
+            "| Actual: ${controlBalances.debtIqd}",
+            57000.0, controlBalances.debtIqd, 0.001
+        )
+        assertEquals(
+            "ORACLE CONTROL | Expected advance 5000.0 - 5000.0 = 0.0 " +
+            "| Actual: ${controlBalances.advanceIqd}",
+            0.0, controlBalances.advanceIqd, 0.001
+        )
+        assertEquals(
+            "ORACLE CONTROL | Expected the untouched opening loan 7000.0 " +
+            "| Actual: ${controlBalances.loanIqd}",
+            7000.0, controlBalances.loanIqd, 0.001
         )
     }
 

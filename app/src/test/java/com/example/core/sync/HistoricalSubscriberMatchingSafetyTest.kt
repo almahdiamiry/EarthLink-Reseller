@@ -236,44 +236,60 @@ class HistoricalSubscriberMatchingSafetyTest {
 
     @Test
     fun testPhoneMatching_cannotCrossHistoricalBoundary() {
+        // FIXTURE CONTRACT: the historical gate at SubscriberMatcher.kt:103 is the ONLY thing
+        // standing between this candidate and a Unique match.
+        //   Stage 1 (:71)  skipped -- the incoming username is null.
+        //   Stage 2 (:89)  misses -- candidate sourceExternalId is null and id != incoming extId.
+        //   conflictingExtId    (:105) = cleanExtId != null && !sourceExternalId.isNullOrEmpty()
+        //                                      = true && !true = FALSE
+        //   conflictingUsername (:106) = cleanUsername != null && ...
+        //                                      = FALSE
+        // With both guards false, an ACTIVE candidate carrying this phone WOULD be matched. Only
+        // :103 rejects the historical one, so a mutant that removes :103 must turn this red.
+        val sharedPhone = "07709999999"
         val historicalCandidate = LocalAccount(
             id = "acc_hist_1",
-            sourceExternalId = "e_11111",
+            sourceExternalId = null,
             displayName = "Historical Person",
-            earthlinkUsername = "hist_user@sacx",
-            phone1 = "07709999999",
+            earthlinkUsername = null,
+            phone1 = sharedPhone,
             debtIqd = 30000.0,
             isHistoryOnlySubscriber = true
         )
 
-        // Incoming subscriber has a different username, different extId, but same phone number
+        // Incoming subscriber has a DIFFERENT external ID, no username, but the same phone number
         val matched = SubscriberMatcher.matchSubscriber(
             candidates = listOf(historicalCandidate),
             extId = "e_22222",
-            username = "other_user@sacx",
-            phone = "07709999999"
+            username = null,
+            phone = sharedPhone
         )
         assertNull("Historical account must NEVER be matched via phone fallback", matched.accountOrNull)
     }
 
     @Test
     fun testNameMatching_cannotCrossHistoricalBoundary() {
+        // FIXTURE CONTRACT: identical to the phone case, for the display-name gate at
+        // SubscriberMatcher.kt:119. Stage 1 skipped (no incoming username), Stage 2 misses
+        // (null candidate sourceExternalId, id != incoming extId), and both conflicting* guards
+        // at :121/:122 are FALSE -- so only :119 can reject this candidate.
+        val sharedName = "Same Common Name"
         val historicalCandidate = LocalAccount(
             id = "acc_hist_2",
-            sourceExternalId = "e_11111",
-            displayName = "Same Common Name",
-            earthlinkUsername = "hist_user@sacx",
+            sourceExternalId = null,
+            displayName = sharedName,
+            earthlinkUsername = null,
             phone1 = "07701111111",
             debtIqd = 30000.0,
             isHistoryOnlySubscriber = true
         )
 
-        // Incoming subscriber has different username, different extId, but same display name
+        // Incoming subscriber has a different external ID, no username, but the same display name
         val matched = SubscriberMatcher.matchSubscriber(
             candidates = listOf(historicalCandidate),
             extId = "e_22222",
-            username = "other_user@sacx",
-            name = "Same Common Name"
+            username = null,
+            name = sharedName
         )
         assertNull("Historical account must NEVER be matched via name fallback", matched.accountOrNull)
     }
