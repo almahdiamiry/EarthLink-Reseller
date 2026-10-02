@@ -95,6 +95,7 @@ $PYTHON_CMD scripts/run_verified_command.py --timeout 900 --heartbeat 15 -- $GRA
     --tests "com.example.Phase1ItemIsolationTest" \
     --tests "com.example.Phase1OrphanHandlingTest" \
     --tests "com.example.Phase3CoordinatorMutexTokenTest" \
+    --tests "com.example.core.ledger.BalanceAfterRenewalTest" \
     --no-daemon
 
 # 5. Verify JUnit Test Results

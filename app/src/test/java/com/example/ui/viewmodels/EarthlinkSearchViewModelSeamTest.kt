@@ -1202,12 +1202,20 @@ class EarthlinkSearchViewModelSeamTest {
     fun testGetResellerBalance_apiFailure_resultsInNullNotZero() = runBlocking {
         testGateway.balanceException = RuntimeException("Gateway balance API error")
         val vm = createViewModel()
-        var resellerBalance: Double? = 0.0
-        try {
-            resellerBalance = vm.getResellerBalance()
-        } catch (e: Exception) {
-            resellerBalance = null
-        }
-        assertNull(resellerBalance)
+
+        // GAP-1: routed through the REAL production function rather than a copy of the catch.
+        // The previous version re-implemented the try/catch inline in the test, which meant it
+        // verified a LOCAL REPLICA of the consumer's catch and never touched production's. This
+        // now covers both halves at once: that `getResellerBalance()` propagates the gateway
+        // failure (it is declared `: Double` with no catch of its own), and that production's own
+        // `BalanceAfterRenewal.readBalance` turns that failure into null rather than 0.0.
+        val r = com.example.core.ledger.BalanceAfterRenewal.readBalance { vm.getResellerBalance() }
+
+        assertNull(
+            "An API failure must surface as a null balance through production's own readBalance, " +
+                "never as 0.0. It yielded $r. A zero here is GAP-1's exact harm: the screen renders " +
+                "it as a real-looking 0 IQD, indistinguishable from a genuine zero balance.",
+            r
+        )
     }
 }

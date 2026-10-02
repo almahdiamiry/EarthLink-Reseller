@@ -38,14 +38,33 @@ column. `AGENTS.md` §7.4 forbids the "while we're here" expansion that fixing t
 > BalanceAfterRenewalTest > readBalance_otherExceptionsStillBecomeNull FAILED
 > ```
 >
+> With `readBalance`'s catch returning `0.0`, the RESTORED seam test is killed too, which is the
+> point of routing it through production:
+>
+> ```
+> 46 tests completed, 3 failed
+> BalanceAfterRenewalTest > readBalance_gatewayFailure_yieldsNullNotZero FAILED
+> BalanceAfterRenewalTest > readBalance_otherExceptionsStillBecomeNull FAILED
+> EarthlinkSearchViewModelSeamTest > testGetResellerBalance_apiFailure_resultsInNullNotZero FAILED
+> ```
+>
 > An earlier mutation on the `compute` failure branch (`Result.Known(0.0)`) gave
 > `4 tests completed, 1 failed` — `unknownBalance_yieldsExplicitUnknown_notZero`.
 >
-> Seven tests now cover the object, all JVM: an unreadable balance yields `Unknown` with no
-> reachable amount; 100,000 - 40,000 = 60,000 (both literals by hand); a balance genuinely spent
-> down stays `Known(0.0)` rather than becoming `Unknown`, because refusing to answer when the honest
-> answer is zero is a DIFFERENT lie; a negative position stays Known; a throwing fetch yields null;
-> a successful fetch passes 100,000 through; and `CancellationException` propagates.
+> **Eight** tests now cover the object, all JVM:
+>
+> 1. `unknownBalance_yieldsExplicitUnknown_notZero` — an unreadable balance yields `Unknown` with no
+>    reachable amount
+> 2. `knownBalance_subtractsPackageCost` — 100,000 - 40,000 = 60,000, both literals by hand
+> 3. `zeroResult_staysKnownSoAGenuineZeroIsNotHidden` — a balance genuinely spent down stays
+>    `Known(0.0)` rather than becoming `Unknown`, because refusing to answer when the honest answer
+>    is zero is a DIFFERENT lie
+> 4. `balanceBelowCost_staysKnownAndNegative` — a negative position stays Known
+> 5. `readBalance_gatewayFailure_yieldsNullNotZero` — a throwing fetch yields null, not 0.0
+> 6. `readBalance_success_yieldsTheFetchedBalance` — a successful fetch passes 100,000 through
+> 7. `readBalance_cancellationException_isNotSwallowed` — `CancellationException` propagates, and
+>    the original instance rather than a wrapper
+> 8. `readBalance_otherExceptionsStillBecomeNull` — a non-cancellation failure still becomes null
 >
 > **TWO OLD TRIPWIRES DELETED, ONE TEST WRONGLY DELETED AND RESTORED.**
 >
@@ -55,12 +74,12 @@ column. `AGENTS.md` §7.4 forbids the "while we're here" expansion that fixing t
 > changed. They were deleted, and their claim is now proven by EXECUTION — strictly stronger, since
 > a source-text pin would have stayed green if the expression were extracted into a helper that then
 > ignored the null, which is the precise failure it was meant to catch.
-`productionBalanceAfterLine()` became dead with them and went too.
+> `productionBalanceAfterLine()` became dead with them and went too.
 >
 > `testGetResellerBalance_apiFailure_resultsInNullNotZero` was ALSO removed in that same commit and
 > that removal was WRONG. It is not a tripwire: it calls the real `vm.getResellerBalance()`, which is
 > declared `: Double` with no catch of its own, so a gateway error propagates as an exception and the
-> test asserts the consumer's catch turns it into null rather than 0.0. It is restored verbatim.
+> test is now routed through PRODUCTION's own function rather than a copy of the catch: `val r = BalanceAfterRenewal.readBalance { vm.getResellerBalance() }; assertNull(r)`. The earlier version re-implemented the try/catch inline in the test, so it verified a LOCAL REPLICA of the consumer's catch and never touched production. It now covers BOTH halves at once - that `getResellerBalance()` propagates the gateway failure (declared `: Double`, no catch of its own), and that production's `readBalance` turns that failure into null rather than 0.0.
 >
 > Counts, corrected: **three** tests were deleted, not two —
 > `EarthlinkSearchViewModelSeamTest` went **40 -> 37**, and is **38** again after the restore. The
@@ -72,6 +91,8 @@ column. `AGENTS.md` §7.4 forbids the "while we're here" expansion that fixing t
 > an em dash. Both are Compose concerns a JVM test cannot observe. What is proven is that the
 > arithmetic, the read, and the failure branch each have one definition and are reachable and
 > testable — which is exactly what the tripwire could not do.
+
+
 | | |
 |:--|:--|
 | **Location** | `app/src/main/java/com/example/ui/viewmodels/UserDetailScreenV2.kt:382` |

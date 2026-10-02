@@ -14,7 +14,7 @@
     "Verify:     python scripts/test_count_manifest.py"
   ],
   "schema_version": 1,
-  "established_at_commit": "78d52d3",
+  "established_at_commit": "8d50b0c",
   "governed_source": "scripts/production_gate.sh (--tests selections, parsed at run time)",
   "classes": {
     "com.example.DataIntegrityReleaseGateTest": 36,
@@ -32,6 +32,7 @@
     "com.example.Phase2UtowerImportHardeningTest": 9,
     "com.example.Phase3CoordinatorMutexTokenTest": 5,
     "com.example.Phase3PersistedGenerationTest": 9,
-    "com.example.ResolveLocalVersionTest": 9
+    "com.example.ResolveLocalVersionTest": 9,
+    "com.example.core.ledger.BalanceAfterRenewalTest": 8
   }
 }
