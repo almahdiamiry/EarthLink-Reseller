@@ -74,6 +74,22 @@ def validate_schema(bundle: dict, schema: dict) -> list[str]:
         for k in ["command", "exit_code", "total_tests", "passed_tests", "failed_tests", "suites"]:
             if k not in te:
                 errors.append(f"test_execution missing '{k}'")
+        # GAP-7. The floor verdict is REQUIRED, not optional. Before this, the key list above only
+        # checked that certain keys were PRESENT, so a bundle whose test_execution reported a
+        # failed floor still validated cleanly - the check existed and nothing read it, which is the
+        # GAP-7 condition restated one layer up. An absent verdict is an error here for the same
+        # reason: a gate that treats "did not run" as "passed" has stopped gating.
+        if "test_count_floor_ok" not in te:
+            errors.append("test_execution missing 'test_count_floor_ok' (GAP-7 floor verdict absent)")
+        elif te.get("test_count_floor_ok") is not True:
+            detail = te.get("test_count_floor_detail") or []
+            errors.append(
+                "test_count_floor_ok is %r, not True - a governed test class is below its floor. %s"
+                % (te.get("test_count_floor_ok"), "; ".join(detail) if detail else "")
+            )
+        # And the aggregate verdict itself: a bundle that records exit_code 1 must not verify clean.
+        if te.get("exit_code") not in (0, None):
+            errors.append(f"test_execution.exit_code is {te.get('exit_code')!r}, expected 0")
 
     return errors
 

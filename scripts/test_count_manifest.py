@@ -1,10 +1,10 @@
 """
 GAP-7 - expected test-count manifest.
 
-The release gate asserts that nothing FAILED. Until this module it asserted nothing about whether
-anything was still THERE, so a deleted test could not turn the gate red. The live example was r13:
-deleting Scenario J took Phase1FirestoreDocumentIdentityTest from 20 tests to 19 and the gate
-passed, because the deletion was correct - the gate simply had no way to tell.
+The release gate asserted that nothing FAILED and said nothing about whether anything was still
+THERE, so a deleted test could not turn it red. The live example was r13: deleting Scenario J took
+Phase1FirestoreDocumentIdentityTest from 20 tests to 19 and the gate passed, because the deletion
+happened to be correct - the gate simply had no way to tell.
 
 THE ASYMMETRY IS THE POINT.
 
@@ -14,12 +14,18 @@ THE ASYMMETRY IS THE POINT.
                edit this manifest without reading why. That is how a count check becomes a rubber
                stamp, and it would be strictly worse than having no check at all.
 
-So the manifest records a FLOOR per governed class, not an expectation. Each entry carries the
-commit that established the floor, so a change is reviewable rather than mechanical.
+So the manifest records a FLOOR per governed class, not an expectation.
 
-Scope is deliberately narrow: only the classes `scripts/production_gate.sh` names in its
-`--tests` selection are governed. Governing all 113 test classes would make the manifest a
-changelog of the suite and nobody would read it.
+DEPENDENCIES: none. The manifest is JSON and this module is stdlib-only, deliberately. The gate
+chain's OTHER scripts do import PyYAML (collect_closure_evidence.py for closure_contract.yaml), and
+that dependency is declared in scripts/requirements.txt rather than left implicit - but the floor
+check itself must not add a second reason for the gate to fail to start.
+
+SCOPE, and why it is checked rather than trusted: the governed set is derived by PARSING
+scripts/production_gate.sh, not copied from it. A hand-copied list rots the first time someone adds
+a class to the gate, and a floor check that silently stops covering a newly gated class is worse than
+no check at all - it reads as coverage. `gate_selections()` returns what the script actually asks
+for, and `check()` fails when that disagrees with the manifest.
 
 Usage
 -----
@@ -33,37 +39,41 @@ from __future__ import annotations
 
 import argparse
 import glob
+import json
 import os
+import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
-import yaml
-
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MANIFEST_PATH = os.path.join(REPO_ROOT, "scripts", "test_count_manifest.yaml")
+MANIFEST_PATH = os.path.join(REPO_ROOT, "scripts", "test_count_manifest.json")
+GATE_PATH = os.path.join(REPO_ROOT, "scripts", "production_gate.sh")
 RESULTS_DIR = os.path.join(REPO_ROOT, "app", "build", "test-results", "testDebugUnitTest")
 
-# The classes production_gate.sh:82-97 passes to --tests. Kept here as a literal so a change to the
-# gate's selection and a change to the governed set are reviewed together, in one place.
-GOVERNED_CLASSES = [
-    "com.example.DataIntegrityReleaseGateTest",
-    "com.example.ResolveLocalVersionTest",
-    "com.example.Phase2ServerConfirmedLifecycleTest",
-    "com.example.Phase2RemoteVersionAdversarialTest",
-    "com.example.Phase1FirestoreDocumentIdentityTest",
-    "com.example.Phase1TwoDeviceConvergenceTest",
-    "com.example.Phase3PersistedGenerationTest",
-    "com.example.Phase1G1PendingOperationDurabilityTest",
-    "com.example.Phase1AtomicityAndLostAckTest",
-    "com.example.Phase1DuplicateInitiationProtectionTest",
-    "com.example.Phase2RestoreReplaceHardeningTest",
-    "com.example.Phase2UtowerImportHardeningTest",
-    "com.example.Phase1OutboxDurabilityTest",
-    "com.example.Phase1ItemIsolationTest",
-    "com.example.Phase1OrphanHandlingTest",
-    "com.example.Phase3CoordinatorMutexTokenTest",
-]
+_TEST_SELECT = re.compile(r'--tests\s+"([^"]+)"')
+
+
+def gate_selections(gate_path: str = GATE_PATH) -> list[str]:
+    """
+    Parse the class list straight out of production_gate.sh.
+
+    Every `--tests "..."` in the file is collected, in order, duplicates removed. Parsing rather
+    than hardcoding is the whole point: if someone adds a gated class and forgets this module, the
+    mismatch check in `check()` fails and says so, instead of the manifest quietly ceasing to cover
+    the new class.
+    """
+    try:
+        with open(gate_path, "r", encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except FileNotFoundError:
+        return []
+    seen, out = set(), []
+    for cls in _TEST_SELECT.findall(text):
+        if cls not in seen:
+            seen.add(cls)
+            out.append(cls)
+    return out
 
 
 def measure(results_dir: str = RESULTS_DIR) -> dict:
@@ -92,33 +102,59 @@ def head_commit() -> str:
         return "unknown"
 
 
-def load() -> dict:
-    with open(MANIFEST_PATH, "r", encoding="utf-8") as fh:
-        return yaml.safe_load(fh)
+def load(manifest_path: str = MANIFEST_PATH) -> dict:
+    with open(manifest_path, "r", encoding="utf-8") as fh:
+        return json.load(fh)
 
 
-def check(measured: dict, manifest: dict) -> tuple[bool, list]:
+def check(measured: dict, manifest: dict, gate_path: str = GATE_PATH) -> tuple[bool, list]:
     """Compare measured against the floor. Returns (ok, lines)."""
     floors = manifest.get("classes", {}) or {}
+    governed = gate_selections(gate_path)
     lines, ok = [], True
 
-    for cls in GOVERNED_CLASSES:
+    # --- the governed set must match production_gate.sh, in both directions -------------
+    if not governed:
+        lines.append(
+            "  [NO-GATE]    could not read any `--tests` selection out of scripts/production_gate.sh. "
+            "The floor check has no governed set, so it is checking nothing."
+        )
+        ok = False
+    else:
+        missing = [c for c in governed if c not in floors]
+        if missing:
+            lines.append(
+                f"  [UNGOVERNED] {len(missing)} class(es) are gated by production_gate.sh but absent "
+                f"from the manifest: {missing}. Either the manifest is stale or the gate selection "
+                f"changed without a re-baseline."
+            )
+            ok = False
+        orphan = [c for c in floors if c not in governed]
+        if orphan:
+            lines.append(
+                f"  [ORPHAN]     {len(orphan)} class(es) are in the manifest but no longer gated by "
+                f"production_gate.sh: {orphan}. A floor for an ungated class is bookkeeping nobody "
+                f"reads."
+            )
+            ok = False
+
+    # --- each governed class must be at or above its floor ------------------------------
+    for cls in governed:
         floor = floors.get(cls)
         actual = measured.get(cls)
         if floor is None:
-            lines.append(f"  [UNGOVERNED] {cls}: not in the manifest but is gated by production_gate.sh")
-            ok = False
-            continue
+            continue  # already reported as UNGOVERNED above
         if actual is None:
-            lines.append(f"  [MISSING]   {cls}: expected >= {floor} tests, but no JUnit XML was produced")
-            ok = False
-            continue
-        if actual < floor:
             lines.append(
-                f"  [DECREASED] {cls}: {actual} tests, floor is {floor} "
-                f"({floor - actual} lost). Losing a test loses protection and nothing else in the "
-                f"gate can see it. If the removal was intended, re-baseline with --write in the "
-                f"same commit as the removal and say so in the message."
+                f"  [MISSING]   {cls}: expected >= {floor} tests, but no JUnit XML was produced. "
+                f"A gated class that reports nothing is a gate that ran nothing."
+            )
+            ok = False
+        elif actual < floor:
+            lines.append(
+                f"  [DECREASED] {cls}: {actual} tests, floor is {floor} ({floor - actual} lost). "
+                f"Losing a test loses protection and nothing else here can see it. If the removal "
+                f"was intended, re-baseline with --write in the same commit as the removal."
             )
             ok = False
         elif actual > floor:
@@ -126,76 +162,156 @@ def check(measured: dict, manifest: dict) -> tuple[bool, list]:
         else:
             lines.append(f"  [ok]        {cls}: {actual} tests, floor is {floor}")
 
-    # A governed class that has vanished from the gate's selection would otherwise go unnoticed.
-    for cls in floors:
-        if cls not in GOVERNED_CLASSES:
-            lines.append(f"  [ORPHAN]    {cls}: in the manifest but no longer gated by production_gate.sh")
-            ok = False
-
     return ok, lines
 
 
 def write(measured: dict) -> int:
+    governed = gate_selections()
+    if not governed:
+        print("[FAIL] production_gate.sh yielded no `--tests` selections; refusing to write a manifest.",
+              file=sys.stderr)
+        return 1
     sha = head_commit()
-    body = [
-        "# GAP-7 - expected test-count manifest",
-        "#",
-        "# The release gate used to assert only that nothing FAILED. Nothing asserted that anything",
-        "# was still THERE, so deleting a test could not turn the gate red. The live example was r13",
-        "# itself: deleting Scenario J took Phase1FirestoreDocumentIdentityTest from 20 tests to 19",
-        "# and the gate passed.",
-        "#",
-        "# SEMANTICS, and the reason they are asymmetric:",
-        "#   * A DECREASE is a failure. A lost test is lost protection.",
-        "#   * An INCREASE is allowed. Adding a test is the normal way this suite grows, and pinning",
-        "#     to an exact number would make every legitimate addition a gate failure - which trains",
-        "#     the next person to edit this file without reading why, and that is how a count check",
-        "#     becomes a rubber stamp.",
-        "#",
-        "# Each entry is a FLOOR, established by the commit recorded in `established_at_commit`.",
-        "# To record an intended deletion, edit that number AND the sha in the same commit as the",
-        "# removal, and say so in the commit message.",
-        "#",
-        "# Regenerate with:  python scripts/test_count_manifest.py --write",
-        "# Verify with:      python scripts/test_count_manifest.py",
-        "",
-        "schema_version: 1",
-        f"established_at_commit: {sha}",
-        "",
-        "classes:",
-    ]
-    for cls in sorted(GOVERNED_CLASSES):
-        if cls in measured:
-            body.append(f"  {cls}: {measured[cls]}")
+    doc = {
+        "_comment": [
+            "GAP-7 expected test-count manifest.",
+            "A DECREASE below the floor fails the gate. An INCREASE is allowed: adding a test is",
+            "how this suite normally grows, and pinning to an exact number would make every",
+            "legitimate addition a failure - which trains the next person to bump the number",
+            "without reading why. A count check that becomes a rubber stamp is worse than none.",
+            "ONE commit is recorded for the whole manifest below, not one per class: the floors",
+            "were all established by a single run of a single commit. Re-baselining rewrites that",
+            "one field.",
+            "The governed set is NOT stored here as the source of truth - it is parsed from",
+            "scripts/production_gate.sh on every run, and a mismatch fails the check.",
+            "Regenerate: python scripts/test_count_manifest.py --write",
+            "Verify:     python scripts/test_count_manifest.py",
+        ],
+        "schema_version": 1,
+        "established_at_commit": sha,
+        "governed_source": "scripts/production_gate.sh (--tests selections, parsed at run time)",
+        "classes": {cls: measured[cls] for cls in sorted(governed) if cls in measured},
+    }
     with open(MANIFEST_PATH, "w", encoding="utf-8") as fh:
-        fh.write("\n".join(body) + "\n")
-    print(f"[written] {MANIFEST_PATH} at commit {sha}")
+        json.dump(doc, fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
+    print(f"[written] {MANIFEST_PATH}")
+    print(f"  established_at_commit = {sha}  (ONE sha for the whole manifest, not per class)")
+    print(f"  governed classes     = {len(doc['classes'])} parsed from {os.path.relpath(GATE_PATH, REPO_ROOT)}")
     return 0
+
+
+def self_test(tmpdir: str) -> int:
+    """
+    Fixtures for the floor logic and for the governed-set agreement.
+
+    Every case is synthetic - a temporary gate script and a temporary manifest - so this runs in
+    milliseconds and needs neither gradle nor a JUnit run. The governed-set cases matter most: the
+    whole reason the governed list is PARSED instead of hardcoded is that a hardcoded list rots
+    silently, and a floor check that quietly stops covering a newly gated class still reads as
+    coverage. That failure has to be pinned, not just asserted once by hand.
+
+    Each case states its oracle in terms of the RULE - a decrease is a failure, an increase is not,
+    and the two sets must agree in both directions - not in terms of this implementation.
+    """
+    import tempfile
+
+    def gate_with(classes):
+        body = "".join(f'    --tests "{c}" \\\n' for c in classes)
+        return '#!/bin/sh\ngradlew.bat :app:testDebugUnitTest \\\n' + body + '    --no-daemon\n'
+
+    def write_gate(path, classes):
+        with open(path, "w", encoding="utf-8", newline="") as fh:
+            fh.write(gate_with(classes))
+
+    def run(gate_classes, manifest_classes, measured):
+        gpath = os.path.join(tmpdir, "gate.sh")
+        write_gate(gpath, gate_classes)
+        manifest = {"schema_version": 1, "established_at_commit": "fixture",
+                    "classes": manifest_classes}
+        return check(measured, manifest, gate_path=gpath)
+
+    passed, failed = 0, 0
+
+    def case(name, gate_classes, manifest_classes, measured, expect_ok, expect_marker):
+        nonlocal passed, failed
+        ok, lines = run(gate_classes, manifest_classes, measured)
+        hit = any(expect_marker in l for l in lines)
+        good = (ok is expect_ok) and hit
+        print(f"    {'PASS' if good else 'FAIL'}  {name}  (ok={ok}, saw {expect_marker!r}={hit})")
+        if not good:
+            for l in lines:
+                print(f"           {l}")
+            failed += 1
+        else:
+            passed += 1
+
+    A, B, C = "com.example.Aaa", "com.example.Bbb", "com.example.Ccc"
+
+    # 1. Exact agreement, every class exactly at its floor -> PASS.
+    case("exact match at the floor passes", [A, B], {A: 10, B: 5}, {A: 10, B: 5}, True, "[ok]")
+
+    # 2. A class the gate selects but the manifest omits -> FAIL. This is the rotted-list case.
+    case("class gated but absent from the manifest fails", [A, B, C], {A: 10, B: 5},
+         {A: 10, B: 5, C: 3}, False, "[UNGOVERNED]")
+
+    # 3. The reverse: a floor for something no longer gated -> FAIL, it is unread bookkeeping.
+    case("manifest entry no longer gated fails", [A], {A: 10, B: 5}, {A: 10, B: 5}, False, "[ORPHAN]")
+
+    # 4. The case the whole module exists for: one test lost from a gated class -> FAIL.
+    case("a decrease fails", [A], {A: 10}, {A: 9}, False, "[DECREASED]")
+
+    # 5. The asymmetry, stated as its own fixture: adding tests is NOT a failure.
+    case("an increase is allowed", [A], {A: 10}, {A: 14}, True, "[ok +4]")
+
+    # 6. A gated class that produced no XML at all -> FAIL, not silently skipped.
+    case("a gated class with no results fails", [A, B], {A: 10, B: 5}, {A: 10}, False, "[MISSING]")
+
+    # 7. An empty gate selection must not read as "nothing to check, therefore pass".
+    case("an unreadable gate does not pass vacuously", [], {A: 10}, {A: 10}, False, "[NO-GATE]")
+
+    print(f"\n  {passed} passed, {failed} failed")
+    return 1 if failed else 0
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="GAP-7 expected test-count manifest")
     ap.add_argument("--write", action="store_true", help="re-baseline the manifest from current XMLs")
+    ap.add_argument("--self-test", action="store_true",
+                    help="run the synthetic fixtures for the floor logic (no gradle, no JUnit XML)")
     args = ap.parse_args()
 
     if not os.path.isdir(RESULTS_DIR):
         print(f"[FAIL] no JUnit results at {RESULTS_DIR}. Run the suite first.", file=sys.stderr)
         return 1
 
+    if args.self_test:
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            return self_test(td)
+
     measured = measure()
     if args.write:
         return write(measured)
 
-    manifest = load()
+    try:
+        manifest = load()
+    except FileNotFoundError:
+        print(f"[FAIL] {MANIFEST_PATH} not found. The gate cannot prove any test is still present.",
+              file=sys.stderr)
+        return 1
+
+    governed = gate_selections()
     ok, lines = check(measured, manifest)
-    print(f"Test-count manifest: {len(GOVERNED_CLASSES)} governed classes, "
-          f"floor established at {manifest.get('established_at_commit')}")
+    print(f"Test-count manifest: {len(governed)} governed classes parsed from production_gate.sh, "
+          f"one established_at_commit = {manifest.get('established_at_commit')} "
+          f"(single sha for the whole manifest)")
     for line in lines:
         print(line)
     if ok:
-        print("RESULT: PASS - no governed class is below its floor.")
+        print("RESULT: PASS - every gated class is at or above its floor.")
         return 0
-    print("RESULT: FAIL - at least one governed class lost tests.")
+    print("RESULT: FAIL - a gated class is below its floor, or the governed set disagrees with the gate.")
     return 1
 
 

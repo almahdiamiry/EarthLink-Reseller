@@ -92,12 +92,31 @@ an em dash as `??` in PowerShell output. Codepoint enumeration gives `U+2014`; t
 `U+FFFD`. This is console rendering, not corruption.
 
 ## GAP-7 — the release gate does not assert a test count, and this branch proved it
-> **CLOSED in r13b. scripts/test_count_manifest.yaml records a per-class FLOOR for the 16 
-classes production_gate.sh governs, each carrying the establishing commit; 
-scripts/test_count_manifest.py fails on a DECREASE and allows an INCREASE; 
-collect_closure_evidence.py now folds that verdict into its exit_code. Proven by deleting 
-testScenarioI_financialSemanticsPreservedWithoutRawJson: Phase1FirestoreDocumentIdentityTest fell 
-19 -> 18 and the gate returned exit 1, which is the condition r13 could not catch.**
+> **CLOSED in r13b.** `scripts/test_count_manifest.json` records a per-class FLOOR for the classes
+> `production_gate.sh` governs, with **ONE `established_at_commit` for the whole manifest** — not one
+> sha per class, because the floors were all established by a single run of a single commit.
+> `scripts/test_count_manifest.py` fails on a DECREASE and allows an INCREASE; the governed set is
+> **parsed from `production_gate.sh` on every run**, so adding a gated class without re-baselining
+> fails the check. `collect_closure_evidence.py` folds the verdict into its exit code, and
+> `verify_closure_evidence.py` now **requires** the verdict rather than merely accepting the key.
+>
+> **PROVEN**, and re-done because the first version of this claim in this file overstated it.
+> Deleting `testScenarioI_financialSemanticsPreservedWithoutRawJson`, running gradle for that class
+> alone — `BUILD SUCCESSFUL`, `Phase1FirestoreDocumentIdentityTest` at **18 against a floor of 19** —
+> and then:
+>
+> ```
+> python scripts/collect_closure_evidence.py   ->  exit 1   (was 0 before this branch)
+> python scripts/verify_closure_evidence.py    ->  exit 1
+> ```
+>
+> On a clean full run (113 XML, 801 tests, 0 failures) all three return 0 and the verdict is
+> `READY_FOR_CLOSURE`.
+>
+> **NOT PROVEN: `production_gate.sh` itself.** It is a bash script and WSL is unavailable on this
+> machine, so it was never executed. What is proven is the two Python stages it invokes, and that
+> its own `--tests` selection is what defines the governed set. Whether the shell wrapper propagates
+> a non-zero exit from those stages into its own exit code is **unverified**.
 
 
 | | |
@@ -106,9 +125,9 @@ testScenarioI_financialSemanticsPreservedWithoutRawJson: Phase1FirestoreDocument
 | **Mechanism** | The gate's exit code is `0 if (failed_tests == 0 and error_tests == 0 and total_tests > 0) else 1`. There is no lower bound on `total_tests`. |
 | **Live example — this branch** | Deleting `testScenarioJ_counterfactualRawPayloadContainsRawJson` changed `Phase1FirestoreDocumentIdentityTest` from **20 tests to 19**. The gate still passed. The deletion was correct and independently verified; the point is that **the gate could not have noticed**, and would equally not notice a test lost by accident, by a bad merge, or by a future deletion nobody reviewed. |
 | **Second live example** | `DatabaseMigration17To18Test` cannot pass outside this machine — it loads a gitignored golden backup by bare filename. In a clean worktree the suite is 797 tests with 1 failure, so the gate fails for an unrelated reason and the real cause is not surfaced. |
-| **What is checked today** | That nothing failed. Not that anything is still there. |
+| **What is checked today** | That nothing failed, and — since r13b — that no class the gate selects has lost tests. Still not checked: whether the bash wrapper propagates a non-zero exit. |
 | **Why not this branch** | Changing the gate is a release-process change, and this branch's charter was test repairs. Recording it is the correct action. |
-| **Suggested fix, not applied** | Add a committed **expected-count manifest** — a file listing, per gated class, the test count and the commit that established it — and have `collect_closure_evidence.py` compare the measured count against it, failing on a **decrease** while tolerating an increase. A decrease is the direction that loses protection; an increase is the normal result of adding a test. Pinning to an exact number instead would make every legitimate new test a gate failure and train the next person to update the number without reading why, which is how a count check becomes a rubber stamp. The manifest should carry the commit sha so a count change is reviewable rather than mechanical. |
+| **Suggested fix** (APPLIED in r13b) | Add a committed **expected-count manifest** — a file listing, per gated class, the test count and the commit that established it — and have `collect_closure_evidence.py` compare the measured count against it, failing on a **decrease** while tolerating an increase. A decrease is the direction that loses protection; an increase is the normal result of adding a test. Pinning to an exact number instead would make every legitimate new test a gate failure and train the next person to update the number without reading why, which is how a count check becomes a rubber stamp. The manifest should carry the commit sha so a count change is reviewable rather than mechanical. |
 
 ---
 

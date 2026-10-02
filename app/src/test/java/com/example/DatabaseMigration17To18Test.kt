@@ -35,7 +35,7 @@ import java.util.zip.ZipFile
 @Config(manifest = Config.NONE)
 class DatabaseMigration17To18Test {
 
-private fun findGoldenZip(): File {
+    private fun findGoldenZip(): File {
         val candidates = listOf(
             File("earthlink_backup_1789281798680.zip"),
             File("..", "earthlink_backup_1789281798680.zip"),

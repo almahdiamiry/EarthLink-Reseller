@@ -26,7 +26,15 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
 import xml.etree.ElementTree as ET
-import yaml
+
+try:
+    import yaml
+except ModuleNotFoundError as _exc:  # pragma: no cover - environment diagnostic
+    raise SystemExit(
+        "[FAIL] PyYAML is required by this script (it parses contract/closure_contract.yaml) but is "
+        "not installed. Install it with:  pip install -r scripts/requirements.txt\n"
+        f"       original error: {_exc}"
+    ) from _exc
 
 if hasattr(sys.stdout, "reconfigure"):
     try:
@@ -455,8 +463,33 @@ def main():
     parser.add_argument("--run-tests", action="store_true", help="Execute gradle unit tests before collecting evidence")
     args = parser.parse_args()
 
-    collect_all_evidence(run_tests=args.run_tests)
+    bundle = collect_all_evidence(run_tests=args.run_tests)
+
+    # GAP-7, second half. collect_all_evidence() used to be called for its side effect and its
+    # return value thrown away, so this process ALWAYS exited 0 - including when
+    # test_execution["exit_code"] said otherwise. A verdict written into a bundle nobody reads is
+    # not a gate. The floor verdict and the test verdict are now propagated to the exit code.
+    te = bundle.get("test_execution", {})
+    floor_ok = te.get("test_count_floor_ok")
+    te_ok = te.get("exit_code") == 0
+    if floor_ok is False:
+        print("[FAIL] GAP-7 test-count floor: at least one governed class is BELOW its floor.")
+        for line in te.get("test_count_floor_detail", []):
+            print(line)
+        print(
+            "[FAIL] A decrease in a governed class loses protection that nothing else in this "
+            "gate pipeline can observe. If the removal was intended, re-baseline with "
+            "`python scripts/test_count_manifest.py --write` in the SAME commit as the removal."
+        )
+    elif floor_ok is None:
+        print(
+            "[FAIL] GAP-7 floor verdict is absent from the bundle - the check did not run. "
+            "Treating an absent check as a pass is how a gate silently stops gating."
+        )
+    if not te_ok:
+        print(f"[FAIL] test_execution.exit_code is {te.get('exit_code')}, not 0.")
+    return 0 if (floor_ok and te_ok) else 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
