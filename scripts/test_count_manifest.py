@@ -241,6 +241,20 @@ def gate_chain_intact(gate_path: str = GATE_PATH) -> tuple[bool, list]:
         )
         ok = False
 
+    # `set -e` at the top is not the whole story: a later `set +e` silently turns errexit back off
+    # for the rest of the script, and nothing else in the file would reveal it. That is the easiest
+    # possible way for this chain to rot - one word, no visible diff of consequence - so it is
+    # checked explicitly rather than left to a reader to notice.
+    for i, l in enumerate(lines_src, 1):
+        st = l.strip()
+        if st.startswith("set ") and "+e" in st.replace(" ", "").replace("-", "", 1):
+            lines.append(
+                f"  [ERREXIT-OFF] production_gate.sh:{i} runs `{st}`, which disables errexit for "
+                f"the rest of the script. Everything after that point ignores a non-zero exit from "
+                f"the evidence stages, which is the r13 failure mode."
+            )
+            ok = False
+
     for stage in ("collect_closure_evidence.py", "verify_closure_evidence.py"):
         hits = [l for l in lines_src if stage in l and not l.strip().startswith("#")]
         if not hits:
@@ -382,6 +396,10 @@ def self_test(tmpdir: str) -> int:
     chain_case("a chain that never invokes verify fails",
                GOOD_GATE.replace("scripts/verify_closure_evidence.py", "scripts/something_else.py"),
                False, "[NOT-INVOKED]")
+    chain_case("a chain that turns errexit back off fails",
+               GOOD_GATE.replace("set -euo pipefail", "set -euo pipefail" + chr(10) + "set +e"),
+               False, "[ERREXIT-OFF]")
+
     chain_case("a chain that swallows the status fails",
                GOOD_GATE.replace(
                    "$PYTHON_CMD scripts/collect_closure_evidence.py",
@@ -401,14 +419,21 @@ def main() -> int:
                     help="run the synthetic fixtures for the floor logic (no gradle, no JUnit XML)")
     args = ap.parse_args()
 
-    if not os.path.isdir(RESULTS_DIR):
-        print(f"[FAIL] no JUnit results at {RESULTS_DIR}. Run the suite first.", file=sys.stderr)
-        return 1
-
+    # The self-test is deliberately handled BEFORE the RESULTS_DIR existence check. The fixtures are
+    # synthetic - a temporary gate script and a temporary manifest - so they need neither gradle nor a
+    # JUnit run, and making them depend on app/build/test-results existing couples the check for
+    # "is the floor logic correct" to the check for "was the suite run". The second can fail for
+    # reasons that have nothing to do with the first, and then the fixtures become unrunnable exactly
+    # when someone needs them. Proven by pointing RESULTS_DIR at a non-existent path and by deleting
+    # app/build: --self-test still exits 0.
     if args.self_test:
         import tempfile
         with tempfile.TemporaryDirectory() as td:
             return self_test(td)
+
+    if not os.path.isdir(RESULTS_DIR):
+        print(f"[FAIL] no JUnit results at {RESULTS_DIR}. Run the suite first.", file=sys.stderr)
+        return 1
 
     measured = measure()
     if args.write:

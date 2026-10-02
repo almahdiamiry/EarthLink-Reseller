@@ -120,10 +120,31 @@ an em dash as `??` in PowerShell output. Codepoint enumeration gives `U+2014`; t
 > | 1 | `test_count_manifest.check()` returns False on a decrease | **measured** |
 > | 2 | `collect_closure_evidence.py` process exits 1 | **measured** — exit 1 |
 > | 3 | `run_verified_command.py` propagates the child's code | **measured** — 1→1, 0→0, 3→3 |
-> | 4 | `production_gate.sh` `set -e` aborts the script | **NOT EXECUTED** — bash semantics only |
+> | 4 | `set -e` aborts the script on a non-zero stage | **MEASURED, via an equivalent script** |
 >
-> Hop 4 is the one still resting on a language guarantee rather than a run, and WSL is
-> unavailable on this machine, so the bash script itself was never executed.
+> Hop 4 was measured with an EQUIVALENT script under Git Bash, not with production_gate.sh
+> itself. The script is three lines - `set -euo pipefail`, then
+> `run_verified_command.py -- python -c "sys.exit(1)"`, then `echo REACHED` - and it printed
+> nothing and exited 1, so `REACHED` was never reached. Two controls make the finding
+> discriminating rather than merely negative: the same three lines WITHOUT `set -e` printed
+> `REACHED` and exited 0, which is the r13 failure mode reproduced on demand; and the same
+> lines with a child that exits 0 printed `REACHED` and exited 0, so the abort is attributable
+> to errexit and not to some unrelated failure.
+>
+> **The full production_gate.sh was NOT executed.** WSL is unavailable, and the script also
+> drives gradle with `--no-daemon` plus two further stages (`generate_and_verify_compliance_matrix.py --check`
+> and `render_certification_report.py`) that were not exercised. What is proven is the errexit
+> propagation mechanism; the rest of the script is unverified.
+>
+> Because hop 4 now rests on a run rather than a promise, its preconditions are asserted on every
+> run by `gate_chain_intact()`: `set -euo pipefail` must be present, both evidence stages must be>
+> The gate now runs the fixtures itself, as step 5b in `production_gate.sh`, through the same
+> `run_verified_command.py --timeout 60 --` wrapper as every other stage - and deliberately
+> BEFORE evidence collection, because there is no point collecting a bundle that will carry a
+> verdict produced by broken logic.
+> invoked, neither invocation may swallow its status with `|| true` / `|| exit 0` / a trailing `;`,
+> and **no line may re-disable errexit with `set +e`**. That last one is the cheapest possible
+> rot - a single word that makes everything after it ignore a failure, with no other symptom.
 >
 > Because a guarantee is exactly what a later edit breaks quietly, hop 4's preconditions are now
 > asserted on every run by `gate_chain_intact()`: `set -euo pipefail` must be present, both

@@ -87,9 +87,18 @@ def validate_schema(bundle: dict, schema: dict) -> list[str]:
                 "test_count_floor_ok is %r, not True - a governed test class is below its floor. %s"
                 % (te.get("test_count_floor_ok"), "; ".join(detail) if detail else "")
             )
-        # And the aggregate verdict itself: a bundle that records exit_code 1 must not verify clean.
-        if te.get("exit_code") not in (0, None):
-            errors.append(f"test_execution.exit_code is {te.get('exit_code')!r}, expected 0")
+        # And the aggregate verdict itself: a bundle that records a non-zero exit_code must not
+        # verify clean. Written as `!= 0`, NOT `not in (0, None)`. The `None` exemption looks
+        # harmless - a bundle that never computed a verdict is "not a failure" - but it is the same
+        # shape as the bug this whole GAP-7 line is about: a field that is ABSENT or UNSET being
+        # read as a PASS. `None` in particular is what a partially-written bundle carries, and
+        # accepting it would let an incomplete bundle satisfy the gate. Anything that is not an
+        # explicit 0 is a failure, including null.
+        if te.get("exit_code") != 0:
+            errors.append(
+                f"test_execution.exit_code is {te.get('exit_code')!r}, expected exactly 0. A null or "
+                f"unset verdict is not a pass - it means the check did not report."
+            )
 
     return errors
 
