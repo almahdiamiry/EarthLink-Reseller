@@ -77,7 +77,18 @@ def gate_selections(gate_path: str = GATE_PATH) -> list[str]:
 
 
 def measure(results_dir: str = RESULTS_DIR) -> dict:
-    """Return {classname: tests} from every JUnit XML in `results_dir`."""
+    """
+    Return {classname: (tests, skipped)} from every JUnit XML in `results_dir`.
+
+    The floor must never be satisfied by a test that did not run, so `tests` alone is the wrong
+    number to compare against a floor: in JUnit a skipped testcase is still counted in `tests`. The
+    executed count is `tests - skipped`, and `check()` needs the raw skipped value as well so it can
+    say WHY a suite failed rather than only that it did.
+
+    Returning a pair keeps the two facts together and keeps this the single place the executed-count
+    rule lives. `write()` re-baselines from the same measurement, so a suite cannot acquire a floor
+    that its own skips are quietly propping up.
+    """
     counts: dict = {}
     for path in glob.glob(os.path.join(results_dir, "*.xml")):
         try:
@@ -88,7 +99,13 @@ def measure(results_dir: str = RESULTS_DIR) -> dict:
         suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
         for suite in suites:
             name = suite.attrib.get("name", "")
-            counts[name] = counts.get(name, 0) + int(suite.attrib.get("tests", 0))
+            tests = int(suite.attrib.get("tests", 0))
+            skipped = int(suite.attrib.get("skipped", 0))
+            if name in counts:
+                prev_tests, prev_skipped = counts[name]
+                counts[name] = (prev_tests + tests, prev_skipped + skipped)
+            else:
+                counts[name] = (tests, skipped)
     return counts
 
 
@@ -142,29 +159,49 @@ def check(measured: dict, manifest: dict, gate_path: str = GATE_PATH) -> tuple[b
             )
             ok = False
 
-    # --- each governed class must be at or above its floor ------------------------------
+    # --- each governed class must be at or above its floor, counting only EXECUTED tests ----
+    # The invariant, in one place: a governed suite may satisfy the floor only with tests that
+    # actually ran. `tests - skipped` is the executed count, and skipped must be zero outright -
+    # a skip is not a partial pass, it is an absence, and the floor is a promise about protection
+    # that a skipped testcase does not keep.
     for cls in governed:
         floor = floors.get(cls)
-        actual = measured.get(cls)
+        pair = measured.get(cls)
         if floor is None:
             continue  # already reported as UNGOVERNED above
-        if actual is None:
+        if pair is None:
             lines.append(
                 f"  [MISSING]   {cls}: expected >= {floor} tests, but no JUnit XML was produced. "
                 f"A gated class that reports nothing is a gate that ran nothing."
             )
             ok = False
-        elif actual < floor:
+            continue
+        actual_tests, skipped = pair
+        executed = actual_tests - skipped
+        if skipped > 0:
             lines.append(
-                f"  [DECREASED] {cls}: {actual} tests, floor is {floor} ({floor - actual} lost). "
+                f"  [SKIPPED]   {cls}: {skipped} of {actual_tests} test(s) were SKIPPED, leaving "
+                f"{executed} executed against a floor of {floor}. A skipped test is not a partial "
+                f"pass - it is an absence, and it does not satisfy the floor. The gate cannot prove "
+                f"the protection that test was providing."
+            )
+            ok = False
+        if executed < floor:
+            lines.append(
+                f"  [DECREASED] {cls}: {executed} executed test(s), floor is {floor} "
+                f"({floor - executed} short, of {actual_tests} reported). "
                 f"Losing a test loses protection and nothing else here can see it. If the removal "
                 f"was intended, re-baseline with --write in the same commit as the removal."
             )
             ok = False
-        elif actual > floor:
-            lines.append(f"  [ok +{actual - floor}]  {cls}: {actual} tests, floor is {floor} (increase allowed)")
+        elif executed > floor:
+            lines.append(
+                f"  [ok +{executed - floor}]  {cls}: {executed} executed test(s), floor is {floor} "
+                f"(increase allowed)")
         else:
-            lines.append(f"  [ok]        {cls}: {actual} tests, floor is {floor}")
+            lines.append(
+                f"  [ok]        {cls}: {executed} executed test(s), floor is {floor}"
+                + (f" ({skipped} skipped)" if skipped else ""))
 
     return ok, lines
 
@@ -194,11 +231,23 @@ def write(measured: dict) -> int:
         "schema_version": 1,
         "established_at_commit": sha,
         "governed_source": "scripts/production_gate.sh (--tests selections, parsed at run time)",
-        "classes": {cls: measured[cls] for cls in sorted(governed) if cls in measured},
+        # Floors are EXECUTED counts. Baselining from `tests` would let a suite's own skips
+        # raise its floor, which is the bug in reverse: the manifest would then require fewer
+        # real runs than the suite actually performs. A suite that skipped is refused outright
+        # so a re-baseline can never be taken from a partial run.
+        "classes": {cls: measured[cls][0] - measured[cls][1]
+                    for cls in sorted(governed) if cls in measured and measured[cls][1] == 0},
     }
     with open(MANIFEST_PATH, "w", encoding="utf-8") as fh:
         json.dump(doc, fh, indent=2, ensure_ascii=False)
         fh.write("\n")
+    skipped_suites = [c for c in sorted(governed)
+                      if c in measured and measured[c][1] > 0]
+    if skipped_suites:
+        print(
+            f"[REFUSED]  {len(skipped_suites)} governed suite(s) skipped tests and were NOT given "
+            f"a floor: {skipped_suites}"
+        )
     print(f"[written] {MANIFEST_PATH}")
     print(f"  established_at_commit = {sha}  (ONE sha for the whole manifest, not per class)")
     print(f"  governed classes     = {len(doc['classes'])} parsed from {os.path.relpath(GATE_PATH, REPO_ROOT)}")
@@ -343,26 +392,26 @@ def self_test(tmpdir: str) -> int:
     A, B, C = "com.example.Aaa", "com.example.Bbb", "com.example.Ccc"
 
     # 1. Exact agreement, every class exactly at its floor -> PASS.
-    case("exact match at the floor passes", [A, B], {A: 10, B: 5}, {A: 10, B: 5}, True, "[ok]")
+    case("exact match at the floor passes", [A, B], {A: 10, B: 5}, {A: (10, 0), B: (5, 0)}, True, "[ok]")
 
     # 2. A class the gate selects but the manifest omits -> FAIL. This is the rotted-list case.
     case("class gated but absent from the manifest fails", [A, B, C], {A: 10, B: 5},
-         {A: 10, B: 5, C: 3}, False, "[UNGOVERNED]")
+         {A: (10, 0), B: (5, 0), C: (3, 0)}, False, "[UNGOVERNED]")
 
     # 3. The reverse: a floor for something no longer gated -> FAIL, it is unread bookkeeping.
-    case("manifest entry no longer gated fails", [A], {A: 10, B: 5}, {A: 10, B: 5}, False, "[ORPHAN]")
+    case("manifest entry no longer gated fails", [A], {A: 10, B: 5}, {A: (10, 0), B: (5, 0)}, False, "[ORPHAN]")
 
     # 4. The case the whole module exists for: one test lost from a gated class -> FAIL.
-    case("a decrease fails", [A], {A: 10}, {A: 9}, False, "[DECREASED]")
+    case("a decrease fails", [A], {A: 10}, {A: (9, 0)}, False, "[DECREASED]")
 
     # 5. The asymmetry, stated as its own fixture: adding tests is NOT a failure.
-    case("an increase is allowed", [A], {A: 10}, {A: 14}, True, "[ok +4]")
+    case("an increase is allowed", [A], {A: 10}, {A: (14, 0)}, True, "[ok +4]")
 
     # 6. A gated class that produced no XML at all -> FAIL, not silently skipped.
-    case("a gated class with no results fails", [A, B], {A: 10, B: 5}, {A: 10}, False, "[MISSING]")
+    case("a gated class with no results fails", [A, B], {A: 10, B: 5}, {A: (10, 0)}, False, "[MISSING]")
 
     # 7. An empty gate selection must not read as "nothing to check, therefore pass".
-    case("an unreadable gate does not pass vacuously", [], {A: 10}, {A: 10}, False, "[NO-GATE]")
+    case("an unreadable gate does not pass vacuously", [], {A: 10}, {A: (10, 0)}, False, "[NO-GATE]")
 
     # --- gate-chain fixtures: the floor verdict must be able to REACH the gate's exit code ----
     GOOD_GATE = (
@@ -389,6 +438,33 @@ def self_test(tmpdir: str) -> int:
             failed += 1
         else:
             passed += 1
+
+    # --- CASE A / B / D: the skipped-test rule, at the floor layer --------------------
+    # The oracle is the invariant itself, not this implementation: a governed suite satisfies its
+    # floor only with tests that RAN, so `executed = tests - skipped` is what is compared, and
+    # skipped must be zero outright.
+    case("CASE A skipped test cannot satisfy the floor",
+         [A], {A: 9}, {A: (9, 1)}, False, "[SKIPPED]")
+    case("CASE A the same suite also reports a shortfall against its floor",
+         [A], {A: 9}, {A: (9, 1)}, False, "[DECREASED]")
+    case("CASE B all tests executed and passing passes",
+         [A], {A: 9}, {A: (9, 0)}, True, "[ok]")
+    case("CASE B one skip on an otherwise over-floor suite still fails",
+         [A], {A: 4}, {A: (9, 1)}, False, "[SKIPPED]")
+    case("CASE D failures are unaffected - a real decrease is still caught",
+         [A], {A: 9}, {A: (8, 0)}, False, "[DECREASED]")
+    case("CASE D a skip inside a multi-suite run cannot be absorbed elsewhere",
+         [A, B], {A: 9, B: 5}, {A: (9, 1), B: (14, 0)}, False, "[SKIPPED]")
+    case("CASE A executed count is tests minus skipped, never tests",
+         [A], {A: 9}, {A: (9, 1)}, False, "[SKIPPED]")
+
+    # CASE 2 - a skip in a class the gate does NOT govern must not reject closure. The rule is
+    # deliberately scoped to the governed set: production_gate.sh parses its `--tests` selections,
+    # and a class outside them is nobody's contractual business. `DatabaseMigration17To18Test`
+    # is the live case - it skips on a clean clone by design, and a global skip rule would make
+    # every clean clone permanently red for a reason unrelated to the code under test.
+    case("CASE 2 a skip in a NON-governed class does not reject closure",
+         [A], {A: 9}, {A: (9, 0), "com.example.NotGatedTest": (4, 2)}, True, "[ok]")
 
     chain_case("an intact chain passes", GOOD_GATE, True, "[ok]")
     chain_case("a chain without set -e fails", GOOD_GATE.replace("set -euo pipefail", "# none"),

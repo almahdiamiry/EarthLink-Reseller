@@ -245,7 +245,11 @@ def parse_junit_xmls(results_dir: str) -> dict:
     # is a gate failure; an INCREASE is allowed. See scripts/test_count_manifest.py for why the
     # asymmetry is deliberate - pinning to an exact number would make every legitimate new test a
     # failure and turn the manifest into a rubber stamp.
-    floor_ok, floor_lines = evaluate_test_count_floors({s["name"]: s["tests"] for s in suites})
+    # Pass (tests, skipped), not just tests: the executed-count rule lives in
+    # test_count_manifest.check() and is the single authoritative implementation. Passing
+    # `tests` alone here is exactly what let a skipped testcase satisfy a floor.
+    floor_ok, floor_lines = evaluate_test_count_floors(
+        {s["name"]: (s["tests"], s["skipped"]) for s in suites})
 
     return {
         "command": "./gradlew :app:testDebugUnitTest --no-daemon",
