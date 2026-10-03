@@ -22,7 +22,6 @@ import com.example.core.util.AppBuildConfig
 class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private val prefs: com.example.core.security.PreferenceManager) : EarthlinkGateway {
 
     companion object {
-        private val cachedCosts = java.util.concurrent.ConcurrentHashMap<Int, Double>()
         private val costMutexes = java.util.concurrent.ConcurrentHashMap<Int, kotlinx.coroutines.sync.Mutex>()
         @Volatile private var cachedBalance: Double? = null
         @Volatile private var lastBalanceFetchTime: Long = 0L
@@ -41,10 +40,6 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
             }
         }
 
-        @VisibleForTesting
-        fun clearCostCache() {
-            cachedCosts.clear()
-        }
         /**
          * DEV / DEMO-ONLY: Generates synthetic in-memory demo subscriber data for testing and offline demo mode.
          * Must NOT be used for live production ISP subscriber operations.
@@ -403,16 +398,12 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
         }
     }
     override suspend fun getAccountCost(accountIndex: Int): Double = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-        val cached = cachedCosts[accountIndex]
-        if (cached != null && cached > 0.0) {
-            return@withContext cached
-        }
+        // FINANCIAL AUTHORITY: the ISP package cost is mutable, so it is NEVER memoized here.
+        // A process-lifetime cache could freeze a stale price into a new Activation's
+        // amountIqd while the ISP charges its current price. Every call re-reads the
+        // authoritative value; costMutexes only prevents duplicate concurrent requests.
         val mutex = costMutexes.getOrPut(accountIndex) { kotlinx.coroutines.sync.Mutex() }
         mutex.withLock {
-            val retry = cachedCosts[accountIndex]
-            if (retry != null && retry > 0.0) {
-                return@withLock retry
-            }
             val responseBody = try {
                 apiService.getAccountCost(accountIndex)
             } catch (e: Exception) {
@@ -475,7 +466,6 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
                 )
             }
 
-            cachedCosts[accountIndex] = c
             c
         }
     }

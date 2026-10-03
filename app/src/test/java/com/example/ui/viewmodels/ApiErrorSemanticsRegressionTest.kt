@@ -84,14 +84,10 @@ class ApiErrorSemanticsRegressionTest {
         `when`(mockPrefs.getIspAdminUsername()).thenReturn("admin")
         `when`(mockPrefs.getIspAdminPassword()).thenReturn("pass")
         `when`(mockPrefs.getDashboardSortOption()).thenReturn("name")
-
-        // Deterministic cache isolation
-        EarthlinkGatewayImpl.clearCostCache()
     }
 
     @After
     fun tearDown() {
-        EarthlinkGatewayImpl.clearCostCache()
         db.close()
         Dispatchers.resetMain()
     }
@@ -134,20 +130,71 @@ class ApiErrorSemanticsRegressionTest {
     }
 
     @Test
-    fun testApi02_repository_validPositiveCostSucceedsAndCaches() = runTest(testDispatcher) {
+    fun testApi02_repository_validPositiveCostSucceedsAndIsReReadEachTime() = runTest(testDispatcher) {
         val testAccountIdx = 90003
-        val validJson = "{\"value\":35000.0}"
-        `when`(mockApiService.getAccountCost(testAccountIdx)).thenReturn(
-            validJson.toResponseBody("application/json".toMediaTypeOrNull())
-        )
+        // thenAnswer (not thenReturn): each call must receive a FRESH ResponseBody, because the
+        // production path consumes the body via `use { it.string() }`.
+        `when`(mockApiService.getAccountCost(testAccountIdx)).thenAnswer {
+            "{\"value\":35000.0}".toResponseBody("application/json".toMediaTypeOrNull())
+        }
 
         val cost = gatewayImpl.getAccountCost(testAccountIdx)
         assertEquals(35000.0, cost, 0.001)
 
-        // Second call must hit cache without invoking API service again
-        val cachedCost = gatewayImpl.getAccountCost(testAccountIdx)
-        assertEquals(35000.0, cachedCost, 0.001)
-        verify(mockApiService, times(1)).getAccountCost(testAccountIdx)
+        // Every call re-reads the authoritative ISP cost; nothing is memoized.
+        val secondCost = gatewayImpl.getAccountCost(testAccountIdx)
+        assertEquals(35000.0, secondCost, 0.001)
+        verify(mockApiService, times(2)).getAccountCost(testAccountIdx)
+    }
+
+    /**
+     * Core Triad Standard:
+     * 1. Claim: A NEW Activation must be able to obtain the CURRENT authoritative ISP package
+     *    cost within the same process, without an application restart. A price the ISP changes
+     *    after a first read must never be served again from process-lifetime state, because the
+     *    Activation path freezes this value into PendingExternalOperation.amountIqd and thence
+     *    into the local ledger and currentPriceIqd.
+     * 2. Seam / Environment: ROBOLECTRIC tier (real EarthlinkGatewayImpl + mocked
+     *    EarthlinkApiService, same seam the Activation path uses).
+     * 3. Independent Oracle: T1 and T3 are two separate authoritative values supplied by the
+     *    mocked server (40000, then 45000). The expectation "T3 == 45000" is derived from the
+     *    server, not from production code. Proof that T3 cannot come from stale process state:
+     *    the server is asked a SECOND time (verify times(2)), so on any implementation that
+     *    memoizes, T3 would return the T1 value with only one network read and this test fails
+     *    on both the value assertion and the interaction count. A never-cached sibling index
+     *    controls for "the gateway stopped calling the API at all".
+     */
+    @Test
+    fun testApi02_costAuthoritativePriceChangeIsObservedWithoutProcessRestart() = runTest(testDispatcher) {
+        val idx = 90004
+        val neverCachedControlIdx = 90005
+        var authoritative = 40000.0
+
+        `when`(mockApiService.getAccountCost(idx)).thenAnswer {
+            "{\"value\":$authoritative}".toResponseBody("application/json".toMediaTypeOrNull())
+        }
+        `when`(mockApiService.getAccountCost(neverCachedControlIdx)).thenAnswer {
+            "{\"value\":60000.0}".toResponseBody("application/json".toMediaTypeOrNull())
+        }
+
+        // T1: authoritative cost is 40000.
+        assertEquals(40000.0, gatewayImpl.getAccountCost(idx), 0.001)
+        verify(mockApiService, times(1)).getAccountCost(idx)
+
+        // T2: the ISP changes the authoritative price for the SAME package index.
+        authoritative = 45000.0
+
+        // T3: a NEW Activation's cost read must observe the new authoritative price.
+        assertEquals(
+            "T3 must return the NEW authoritative price, not the T1 value",
+            45000.0, gatewayImpl.getAccountCost(idx), 0.001
+        )
+
+        // The second value provably came from a second network read, not from a memo.
+        verify(mockApiService, times(2)).getAccountCost(idx)
+
+        // CONTROL: the gateway still performs network reads for other indices.
+        assertEquals(60000.0, gatewayImpl.getAccountCost(neverCachedControlIdx), 0.001)
     }
 
     // ==========================================
