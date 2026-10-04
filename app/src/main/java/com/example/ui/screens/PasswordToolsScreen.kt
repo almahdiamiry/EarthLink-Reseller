@@ -262,7 +262,7 @@ fun PasswordToolsScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Save,
-                                contentDescription = if (currentLang == "ar") "حفظ" else "Save"
+                                contentDescription = if (currentLang == "ar") "حفظ كلمة مرور البوابة" else "Save portal password"
                             )
                         }
                     }
@@ -333,7 +333,7 @@ fun PasswordToolsScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Save,
-                                contentDescription = if (currentLang == "ar") "حفظ" else "Save"
+                                contentDescription = if (currentLang == "ar") "حفظ كلمة مرور الخط" else "Save line password"
                             )
                         }
                     }

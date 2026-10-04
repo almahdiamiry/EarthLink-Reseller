@@ -103,6 +103,27 @@ internal fun sanitizePresentationDateString(dateStr: String?): String? {
     }
 
     var cleanStr = dateStr.trim()
+
+    // Fast linear scan to bypass regex and string allocations if input is already clean ASCII
+    var needsCleaning = false
+    val len = cleanStr.length
+    for (i in 0 until len) {
+        val c = cleanStr[i]
+        if (c == 't' || c == 'z' || c == '\u00A0' ||
+            c == '\u200E' || c == '\u200F' || c == '\u206E' || c == '\u206F' ||
+            c in '\u202A'..'\u202E' ||
+            c in '٠'..'٩' || c in '۰'..'۹' ||
+            (c == ' ' && i + 1 < len && cleanStr[i + 1] == ' ')
+        ) {
+            needsCleaning = true
+            break
+        }
+    }
+
+    if (!needsCleaning && !FRACTIONAL_SECONDS_REGEX.containsMatchIn(cleanStr)) {
+        return cleanStr
+    }
+
     cleanStr = cleanStr.replace('t', 'T').replace('z', 'Z')
     cleanStr = FRACTIONAL_SECONDS_REGEX.replace(cleanStr, "$1")
 
