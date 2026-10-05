@@ -71,6 +71,10 @@ object HistoryPresentationManager {
         if (rawList.isEmpty()) return emptyList()
 
         val pairedChargeIds = mutableSetOf<String>()
+        val nonSnapshotChargeMap = rawList
+            .filter { !it.isSnapshotHistory }
+            .associateBy { Pair(it.id, it.accountId) }
+
         for (payment in rawList) {
             if (payment.isSnapshotHistory) continue
             val payId = payment.id
@@ -80,13 +84,8 @@ object HistoryPresentationManager {
             if (paymentCanonicalType != "gave" && paymentCanonicalType != "payment" && payment.typeRaw != "gave") continue
 
             val expectedChargeId = payId.removePrefix("pay_")
-            val matchingCharge = rawList.find { charge ->
-                !charge.isSnapshotHistory &&
-                charge.id == expectedChargeId &&
-                charge.accountId == payment.accountId &&
-                kotlin.math.abs(charge.amountIqd - payment.amountIqd) < 0.0001
-            }
-            if (matchingCharge != null) {
+            val matchingCharge = nonSnapshotChargeMap[Pair(expectedChargeId, payment.accountId)]
+            if (matchingCharge != null && kotlin.math.abs(matchingCharge.amountIqd - payment.amountIqd) < 0.0001) {
                 pairedChargeIds.add(matchingCharge.id)
             }
         }
