@@ -187,8 +187,9 @@ object BackupManager {
             val timeStamp = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.US).format(Date())
             val finalZipFile = File(dailyBackupsDir, "backup_$timeStamp.zip")
             
-            // Move temp zip to daily directory
-            tempZip.copyTo(finalZipFile, overwrite = true)
+            // Publish atomically: stage under ".part", rename into the visible name only
+            // after the whole archive has transferred.
+            publishBackupAtomically(tempZip, finalZipFile)
             tempZip.delete()
             
             // Delete old backups if more than 30.
@@ -217,6 +218,39 @@ object BackupManager {
         val dailyBackupsDir = getBackupsDirectory(context)
         if (!dailyBackupsDir.exists()) return@withContext emptyList()
         return@withContext dailyBackupsDir.listFiles()?.filter { it.name.endsWith(".zip") }?.sortedByDescending { it.lastModified() } ?: emptyList()
+    }
+
+    /**
+     * Publishes a completed backup archive under its final, operator-visible name.
+     *
+     * The transfer is staged through a `.part` file and renamed into place only once it has
+     * finished, so an interrupted or failed copy can never leave an incomplete archive under a
+     * name that [listDailyBackups] would advertise or that the retention prune would count.
+     * The `.part` suffix also fails the existing `endsWith(".zip")` predicate, so no
+     * list-side validation is required.
+     *
+     * On failure the staged file is removed and [destination] is never created; the caller
+     * keeps its existing responsibility for [source] so error semantics are unchanged.
+     *
+     * [copier] is a test seam so the regression test can inject a deterministic mid-transfer
+     * failure without process-kill timing dependence.
+     */
+    internal fun publishBackupAtomically(
+        source: File,
+        destination: File,
+        copier: (File, File) -> Unit = { src, dst -> src.copyTo(dst, overwrite = true) }
+    ) {
+        val partFile = File(destination.parentFile, "${destination.name}.part")
+        try {
+            copier(source, partFile)
+            if (!partFile.renameTo(destination)) {
+                throw IllegalStateException("Failed to publish backup archive atomically to ${destination.name}")
+            }
+        } finally {
+            if (partFile.exists()) {
+                partFile.delete()
+            }
+        }
     }
 
     data class DatabaseStats(
