@@ -42,7 +42,7 @@ SCANNED	core\sync\SyncConflictResolver.kt	50	12	0 findings; all branches recompu
 SCANNED	core\sync\EventSyncResult.kt	50	12	0 findings; canAdvanceCursor exhaustively classified
 SCANNED	core\sync\DataOperationCoordinator.kt	129	12	0 findings; mutual exclusion proven by execution, R5 fix holds
 SCANNED	core\sync\IspDisappearanceReconciler.kt	150	12	0 findings
-SCANNED	core\sync\UtowerDebtResolver.kt	150	12	1 candidate UNRESOLVED (see RESULTS doc); Priority-1 branch is dead
+SCANNED	core\sync\UtowerDebtResolver.kt	150	12	0 open; Priority-3 double-count CLOSED FALSE POSITIVE vs real utower_data_c.tgz (0 accounts reach Priority 3) - see LL-STAGE-FAITHFUL-PROBES.md; Priority-1 branch is dead; :1696 lacks the isSnapshotHistory exclusion but is unreachable on real data (hardening)
 SCANNED	core\sync\RemoteEntityValidator.kt	120	12	0 findings
 SCANNED	core\sync\SubscriberMatcher.kt	120	12	0 findings; N2/R6 peer containers are intentional
 SCANNED	core\sync\SyncRepositoryImpl.kt	1771	9	1 bug (SRI-1 auditDao never wired to the coordinator)

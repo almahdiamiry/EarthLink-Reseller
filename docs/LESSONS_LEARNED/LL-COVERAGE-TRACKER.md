@@ -48,10 +48,15 @@ Also unverified, and stated as such rather than assumed safe:
 
 - Live Firestore behaviour and composite-index ordering.
 - Real multi-device convergence.
-- `UtowerDebtResolver` Priority-3 double-count: **UNRESOLVED**, not reported. The export lacks
-  `lastDebtResetDate`, so the real post-reset selection cannot be reproduced. Two independent
-  measurements showed zero divergence; the mechanism at `UtowerImporter.kt:1707` remains a
-  structural concern.
+- `UtowerDebtResolver` Priority-3 double-count: **CLOSED — FALSE POSITIVE** (verified against
+  the real `utower_data_c.tgz` at HEAD; see `LL-STAGE-FAITHFUL-PROBES.md`). The earlier
+  "UNRESOLVED, the export lacks `lastDebtResetDate`" blocker was itself wrong — the field is
+  present in 57 accounts and `parseBghDate` parses epoch millis. The real import reaches
+  Priority 3 for **0** accounts: all 15 qualifying accounts short-circuit at Priority 2
+  because every post-reset snapshot row carries an explicit `debtAfter`. The asymmetry at
+  `UtowerImporter.kt:1696` (no `isSnapshotHistory` exclusion, unlike
+  `BalanceCalculator.reconstructCurrentPosition:70-74`) is real but **unreachable from real
+  data**; treat it as hardening, not a defect.
 - The 4-tuple `operation` correlation in `verifyRenewalViaStatement`: **UNPROVEN**. No ISP
   statement artifact exists in any dataset — statements are fetched live and never persisted.
 
