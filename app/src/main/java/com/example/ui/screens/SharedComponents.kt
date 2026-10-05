@@ -1197,6 +1197,7 @@ fun ConfirmationDialog(
     message: String,
     onCancel: () -> Unit,
     onConfirm: () -> Unit,
+    confirmLabel: String? = null,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
@@ -1235,7 +1236,7 @@ fun ConfirmationDialog(
                         onClick = onConfirm,
                         modifier = Modifier.heightIn(min = 48.dp)
                     ) {
-                        Text("Save")
+                        Text(confirmLabel ?: (if (isAr) "تأكيد" else "Confirm"))
                     }
                 }
             }
