@@ -624,6 +624,8 @@ open class PreferenceManager(private val context: Context) {
         private const val KEY_SETTINGS_SYNCED_TIMESTAMP = "user_settings_last_synced_timestamp"
         private const val KEY_DASHBOARD_SORT_OPTION = "dashboard_sort_option"
         private const val KEY_LOCAL_ACCOUNTS_SORT_OPTION = "local_accounts_sort_option"
+        private const val KEY_SAMM_BASE_URL = "enc_samm_base_url"
+        private const val KEY_SAMM_API_TOKEN = "enc_samm_api_token"
     }
 
     fun getDashboardSortOption(): String {
@@ -866,6 +868,50 @@ open class PreferenceManager(private val context: Context) {
         return prefs.getString(KEY_EARTHLINK_API_TOKEN, null)
     }
 
+    // --- SAMM GATEWAY CREDENTIALS & CONFIGURATION ---
+    private val _sammConfigVersionFlow = MutableStateFlow(0)
+    val sammConfigVersionFlow = _sammConfigVersionFlow.asStateFlow()
+
+    fun saveSammBaseUrl(url: String?) {
+        if (url.isNullOrBlank()) {
+            prefs.edit().remove(KEY_SAMM_BASE_URL).apply()
+        } else {
+            // Normalize URL: trim and remove trailing slashes
+            val normalized = url.trim().trimEnd('/')
+            prefs.edit().putString(KEY_SAMM_BASE_URL, normalized).apply()
+        }
+        _sammConfigVersionFlow.value += 1
+    }
+
+    fun getSammBaseUrl(): String? = prefs.getString(KEY_SAMM_BASE_URL, null)
+
+    fun saveSammToken(token: String?) {
+        if (token.isNullOrBlank()) {
+            prefs.edit().remove(KEY_SAMM_API_TOKEN).apply()
+        } else {
+            prefs.edit().putString(KEY_SAMM_API_TOKEN, token.trim()).apply()
+        }
+        _sammConfigVersionFlow.value += 1
+    }
+
+    fun getSammToken(): String? = prefs.getString(KEY_SAMM_API_TOKEN, null)
+
+    fun isSammConfigured(): Boolean = !getSammBaseUrl().isNullOrBlank() && !getSammToken().isNullOrBlank()
+
+    fun getMaskedSammToken(): String {
+        val token = getSammToken() ?: return ""
+        if (token.isEmpty()) return ""
+        return if (token.length <= 4) "••••" else "••••••••"
+    }
+
+    fun clearSammCredentials() {
+        prefs.edit()
+            .remove(KEY_SAMM_BASE_URL)
+            .remove(KEY_SAMM_API_TOKEN)
+            .apply()
+        _sammConfigVersionFlow.value += 1
+    }
+
     fun setRememberMe(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_REMEMBER, enabled).apply()
     }
@@ -929,9 +975,12 @@ open class PreferenceManager(private val context: Context) {
             .remove(KEY_ISP_ADMIN_USERNAME)
             .remove(KEY_ISP_ADMIN_PASSWORD)
             .remove(KEY_EARTHLINK_API_TOKEN)
+            .remove(KEY_SAMM_BASE_URL)
+            .remove(KEY_SAMM_API_TOKEN)
             .apply()
         _isLoggedInFlow.value = false
         _demoModeFlow.value = false
+        _sammConfigVersionFlow.value += 1
     }
 
     fun getPackageSellingPrice(packageName: String, defaultPrice: Double): Double {
