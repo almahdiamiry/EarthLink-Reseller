@@ -5,7 +5,7 @@ package com.example.core.network
  * Eliminates keyword heuristic guessing and ensures all network/API boundaries
  * are strictly typed and fail-closed.
  */
-sealed class EarthlinkGatewayException(message: String, cause: Throwable? = null) : Exception(message, cause)
+sealed class EarthlinkGatewayException(message: String, cause: Throwable? = null) : SasGatewayException(message, cause)
 
 /**
  * Transport Uncertainty: Outcome is unknown. Gateway call may or may not have reached the ISP.
