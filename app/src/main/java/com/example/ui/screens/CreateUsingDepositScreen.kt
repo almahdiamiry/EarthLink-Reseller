@@ -50,6 +50,7 @@ fun CreateUsingDepositScreen(
     var name by rememberSaveable { mutableStateOf("") }
     var selectedPkgIndex by rememberSaveable { mutableStateOf(-1) }
 
+    val selectedProvider by viewModel.selectedProvider.collectAsStateWithLifecycle()
     val pkgs by viewModel.packages.collectAsStateWithLifecycle()
     val isActionLoading by viewModel.isActionLoading.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
@@ -76,9 +77,9 @@ fun CreateUsingDepositScreen(
             else "Package cost is currently unavailable and will be verified before deduction."
         }
         ConfirmationDialog(
-            title = if (isAr) "تأكيد إنشاء مشترك مدفوع" else "Confirm Paid Account Creation",
-            message = if (isAr) "هل تود إنشاء وتفعيل المشترك $userId على الباقة $selectedPkgName؟ $costMsg"
-            else "Generate paid subscription $userId with package $selectedPkgName? $costMsg",
+            title = if (isAr) "تأكيد إنشاء مشترك مدفوع ($selectedProvider)" else "Confirm Paid Account Creation ($selectedProvider)",
+            message = if (isAr) "هل تود إنشاء وتفعيل المشترك $userId على مزود $selectedProvider وباقة $selectedPkgName؟ $costMsg"
+            else "Generate paid subscription $userId on provider $selectedProvider with package $selectedPkgName? $costMsg",
             needsPasswordField = true,
             onCancel = { showConfirmDialog = false },
             onConfirm = { pass ->
@@ -181,7 +182,7 @@ fun CreateUsingDepositScreen(
                     }
                 }
 
-                // Section 1: Subscriber Profile Info
+                // 1. Choose Provider (اختيار مزود الخدمة)
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = Color(0xFF141922),
@@ -192,96 +193,75 @@ fun CreateUsingDepositScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Text(
-                            text = if (isAr) "بيانات المشترك" else "Subscriber Information",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.White
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Dns,
+                                contentDescription = null,
+                                tint = Color(0xFF0A84FF),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = if (isAr) "1. اختيار مزود الخدمة" else "1. Choose Service Provider",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White
+                            )
+                        }
 
-                        // UserID
-                        OutlinedTextField(
-                            value = userId,
-                            onValueChange = { userId = it },
-                            label = { Text(if (isAr) "اسم المستخدم (UserID)" else "Username (UserID)") },
-                            leadingIcon = {
-                                Icon(imageVector = Icons.Outlined.Person, contentDescription = null, tint = Color(0xFF8E8E93), modifier = Modifier.size(18.dp))
-                            },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color(0xFF0E131B),
-                                unfocusedContainerColor = Color(0xFF0E131B),
-                                focusedBorderColor = Color(0xFF0A84FF),
-                                unfocusedBorderColor = Color.White.copy(alpha = 0.08f),
-                                focusedLabelColor = Color(0xFF0A84FF),
-                                unfocusedLabelColor = Color(0xFF8E8E93),
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
-                                cursorColor = Color(0xFF0A84FF)
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        // Full Name
-                        OutlinedTextField(
-                            value = name,
-                            onValueChange = { name = it },
-                            label = { Text(if (isAr) "الاسم الكامل" else "Full Name") },
-                            leadingIcon = {
-                                Icon(imageVector = Icons.Outlined.Badge, contentDescription = null, tint = Color(0xFF8E8E93), modifier = Modifier.size(18.dp))
-                            },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color(0xFF0E131B),
-                                unfocusedContainerColor = Color(0xFF0E131B),
-                                focusedBorderColor = Color(0xFF0A84FF),
-                                unfocusedBorderColor = Color.White.copy(alpha = 0.08f),
-                                focusedLabelColor = Color(0xFF0A84FF),
-                                unfocusedLabelColor = Color(0xFF8E8E93),
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
-                                cursorColor = Color(0xFF0A84FF)
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        // Phone
-                        OutlinedTextField(
-                            value = phone,
-                            onValueChange = { phone = it },
-                            label = { Text(if (isAr) "رقم الهاتف" else "Phone Number") },
-                            leadingIcon = {
-                                Icon(imageVector = Icons.Outlined.Phone, contentDescription = null, tint = Color(0xFF8E8E93), modifier = Modifier.size(18.dp))
-                            },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Done),
-                            keyboardActions = KeyboardActions(onDone = {
-                                focusManager.clearFocus(force = true)
-                            }),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color(0xFF0E131B),
-                                unfocusedContainerColor = Color(0xFF0E131B),
-                                focusedBorderColor = Color(0xFF0A84FF),
-                                unfocusedBorderColor = Color.White.copy(alpha = 0.08f),
-                                focusedLabelColor = Color(0xFF0A84FF),
-                                unfocusedLabelColor = Color(0xFF8E8E93),
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
-                                cursorColor = Color(0xFF0A84FF)
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            listOf(
+                                com.example.core.model.SasProviders.EARTHLINK to if (isAr) "إيرثلنك\n(EARTHLINK)" else "EarthLink\n(EARTHLINK)",
+                                com.example.core.model.SasProviders.ALAMIRY to if (isAr) "العامري / سام\n(ALAMIRY)" else "Alamiry / SAMM\n(ALAMIRY)"
+                            ).forEach { (provKey, provLabel) ->
+                                val isSel = selectedProvider == provKey
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSel) Color(0xFF0A84FF).copy(alpha = 0.15f) else Color(0xFF0E131B),
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isSel) Color(0xFF0A84FF) else Color.White.copy(alpha = 0.06f)
+                                    ),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable { viewModel.setSelectedProvider(provKey) }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        RadioButton(
+                                            selected = isSel,
+                                            onClick = null,
+                                            colors = RadioButtonDefaults.colors(
+                                                selectedColor = Color(0xFF0A84FF),
+                                                unselectedColor = Color.White.copy(alpha = 0.3f)
+                                            )
+                                        )
+                                        Text(
+                                            text = provLabel,
+                                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                                            fontSize = 12.sp,
+                                            color = if (isSel) Color.White else Color.White.copy(alpha = 0.85f),
+                                            lineHeight = 16.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
-                // Section 2: Package Selection & Cost preview
+                // 2. Choose Plan (باقة الاشتراك والتكلفة)
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = Color(0xFF141922),
@@ -295,7 +275,7 @@ fun CreateUsingDepositScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Text(
-                            text = if (isAr) "باقة الاشتراك" else "Subscription Package",
+                            text = if (isAr) "2. باقة الاشتراك" else "2. Subscription Package",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = Color.White
@@ -395,13 +375,113 @@ fun CreateUsingDepositScreen(
                     }
                 }
 
+                // 3. Enter Account Data (بيانات المشترك)
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFF141922),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = if (isAr) "3. بيانات المشترك" else "3. Subscriber Information",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
+
+                        // UserID
+                        OutlinedTextField(
+                            value = userId,
+                            onValueChange = { userId = it },
+                            label = { Text(if (isAr) "اسم المستخدم (UserID)" else "Username (UserID)") },
+                            leadingIcon = {
+                                Icon(imageVector = Icons.Outlined.Person, contentDescription = null, tint = Color(0xFF8E8E93), modifier = Modifier.size(18.dp))
+                            },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color(0xFF0E131B),
+                                unfocusedContainerColor = Color(0xFF0E131B),
+                                focusedBorderColor = Color(0xFF0A84FF),
+                                unfocusedBorderColor = Color.White.copy(alpha = 0.08f),
+                                focusedLabelColor = Color(0xFF0A84FF),
+                                unfocusedLabelColor = Color(0xFF8E8E93),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                cursorColor = Color(0xFF0A84FF)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        // Full Name
+                        OutlinedTextField(
+                            value = name,
+                            onValueChange = { name = it },
+                            label = { Text(if (isAr) "الاسم الكامل" else "Full Name") },
+                            leadingIcon = {
+                                Icon(imageVector = Icons.Outlined.Badge, contentDescription = null, tint = Color(0xFF8E8E93), modifier = Modifier.size(18.dp))
+                            },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color(0xFF0E131B),
+                                unfocusedContainerColor = Color(0xFF0E131B),
+                                focusedBorderColor = Color(0xFF0A84FF),
+                                unfocusedBorderColor = Color.White.copy(alpha = 0.08f),
+                                focusedLabelColor = Color(0xFF0A84FF),
+                                unfocusedLabelColor = Color(0xFF8E8E93),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                cursorColor = Color(0xFF0A84FF)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        // Phone
+                        OutlinedTextField(
+                            value = phone,
+                            onValueChange = { phone = it },
+                            label = { Text(if (isAr) "رقم الهاتف" else "Phone Number") },
+                            leadingIcon = {
+                                Icon(imageVector = Icons.Outlined.Phone, contentDescription = null, tint = Color(0xFF8E8E93), modifier = Modifier.size(18.dp))
+                            },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = {
+                                focusManager.clearFocus(force = true)
+                            }),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color(0xFF0E131B),
+                                unfocusedContainerColor = Color(0xFF0E131B),
+                                focusedBorderColor = Color(0xFF0A84FF),
+                                unfocusedBorderColor = Color.White.copy(alpha = 0.08f),
+                                focusedLabelColor = Color(0xFF0A84FF),
+                                unfocusedLabelColor = Color(0xFF8E8E93),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                cursorColor = Color(0xFF0A84FF)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+
                 // Action Button
                 Button(
                     onClick = {
                         focusManager.clearFocus()
                         showConfirmDialog = true
                     },
-                    enabled = userId.isNotBlank() && selectedPkgIndex != -1 && !isActionLoading,
+                    enabled = selectedProvider.isNotBlank() && userId.isNotBlank() && selectedPkgIndex != -1 && !isActionLoading,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFF30D158),
                         disabledContainerColor = Color(0xFF30D158).copy(alpha = 0.35f)

@@ -262,6 +262,18 @@ fun SettingsScreen(
                     }
                 }
 
+                // 3. ALAMIRY (SAMM) GATEWAY (بوابة العامري / سام)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SettingsSectionTitle(text = if (currentLang == "ar") "بوابة العامري (SAMM)" else "ALAMIRY (SAMM) GATEWAY")
+                    
+                    SettingsCardGroup {
+                        SammSettingsSection(
+                            prefs = prefs,
+                            currentLang = currentLang
+                        )
+                    }
+                }
+
                 // 3. CLOUD SYNC & DATA MANAGEMENT (المزامنة والبيانات)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SettingsSectionTitle(text = if (currentLang == "ar") "المزامنة والبيانات" else "SYNC & DATA")

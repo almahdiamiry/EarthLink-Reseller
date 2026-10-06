@@ -1218,6 +1218,7 @@ class LocalAccountRepositoryImpl(
                         longitude = account.longitude ?: existing.longitude,
                         ispSubscriberId = if (existing.ispSubscriberId == null) account.ispSubscriberId else existing.ispSubscriberId,
                         ispUserIndex = if (existing.ispUserIndex == null) account.ispUserIndex else existing.ispUserIndex,
+                        operationProvider = if (account.operationProvider.isNotBlank()) account.operationProvider else existing.operationProvider,
                         updatedAt = System.currentTimeMillis()
                     )
                 } else {
@@ -2624,6 +2625,7 @@ class LocalLedgerRepositoryImpl(
                 longitude = account.longitude ?: existing.longitude,
                 ispSubscriberId = if (existing.ispSubscriberId == null) account.ispSubscriberId else existing.ispSubscriberId,
                 ispUserIndex = if (existing.ispUserIndex == null) account.ispUserIndex else existing.ispUserIndex,
+                operationProvider = if (account.operationProvider.isNotBlank()) account.operationProvider else existing.operationProvider,
                 updatedAt = System.currentTimeMillis()
             )
         } else {

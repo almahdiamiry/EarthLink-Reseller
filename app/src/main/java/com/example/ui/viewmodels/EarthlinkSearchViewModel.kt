@@ -1540,4 +1540,49 @@ class EarthlinkSearchViewModel(
                 _isActionLoading.value = false
             }
         }
+
+    suspend fun hasActivePendingOperation(accountId: String): Boolean {
+        if (accountId.isBlank()) return false
+        return withContext(Dispatchers.IO) {
+            localLedgerRepository.getPendingOperationByAccountId(accountId) != null
+        }
+    }
+
+    fun updateAccountProvider(
+        account: LocalAccount,
+        newProvider: String,
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
+    ): kotlinx.coroutines.Job = viewModelScope.launch {
+        _isActionLoading.value = true
+        _error.value = null
+        try {
+            if (hasActivePendingOperation(account.id)) {
+                val msg = "Cannot change provider: account has an active in-flight operation."
+                _error.value = msg
+                onError(msg)
+                return@launch
+            }
+            val updated = account.copy(
+                operationProvider = newProvider,
+                updatedAt = System.currentTimeMillis()
+            )
+            withContext(Dispatchers.IO) {
+                localAccountRepository.saveAccount(updated)
+            }
+            _actionSuccess.value = if (prefs.getLanguage() == "ar") {
+                "تم تغيير مزود الخدمة بنجاح."
+            } else {
+                "Account provider updated successfully."
+            }
+            onSuccess()
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            val msg = e.message ?: "Failed to update account provider"
+            _error.value = msg
+            onError(msg)
+        } finally {
+            _isActionLoading.value = false
+        }
+    }
 }

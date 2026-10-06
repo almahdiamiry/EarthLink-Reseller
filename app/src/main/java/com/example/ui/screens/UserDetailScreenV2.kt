@@ -250,6 +250,7 @@ fun UserDetailScreenV2(
 
     var showEditPackageDialog by rememberSaveable { mutableStateOf(false) }
     var showEditDisplayNameDialog by rememberSaveable { mutableStateOf(false) }
+    var showEditProviderDialog by rememberSaveable { mutableStateOf(false) }
     var showStopUserDialog by rememberSaveable { mutableStateOf(false) }
     var showEditCustomIpDialog by rememberSaveable { mutableStateOf(false) }
 
@@ -1877,6 +1878,29 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                 DropdownMenuItem(
                                     text = {
                                         Text(
+                                            if (currentLang == "ar") "تعديل مزود الخدمة" else "Edit Provider",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 14.sp
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.SwapHoriz,
+                                            contentDescription = null,
+                                            tint = Color(0xFF0288D1),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    },
+                                    onClick = {
+                                        expanded = false
+                                        showEditProviderDialog = true
+                                    }
+                                )
+                                HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.8.dp)
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
                                             if (currentLang == "ar") "تمديد المشترك" else "Extend User",
                                             color = Color.White,
                                             fontWeight = FontWeight.Medium,
@@ -2459,11 +2483,31 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                             horizontalAlignment = Alignment.Start
                         ) {
                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(
-                                    text = if (currentLang == "ar") "الاسم" else "Name",
-                                    fontSize = 11.5.sp,
-                                    color = Color.White.copy(alpha = 0.8f)
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = if (currentLang == "ar") "الاسم" else "Name",
+                                        fontSize = 11.5.sp,
+                                        color = Color.White.copy(alpha = 0.8f)
+                                    )
+                                    val currentOpProvider = matchingAccount?.operationProvider ?: com.example.core.model.SasProviders.EARTHLINK
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = if (currentOpProvider == com.example.core.model.SasProviders.ALAMIRY) Color(0xFF7C4DFF).copy(alpha = 0.35f) else Color.White.copy(alpha = 0.2f),
+                                        border = BorderStroke(0.8.dp, if (currentOpProvider == com.example.core.model.SasProviders.ALAMIRY) Color(0xFFB388FF) else Color.White.copy(alpha = 0.4f)),
+                                        modifier = Modifier.clip(RoundedCornerShape(4.dp)).clickable { showEditProviderDialog = true }
+                                    ) {
+                                        Text(
+                                            text = currentOpProvider,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp)
+                                        )
+                                    }
+                                }
                                 Text(
                                     text = displayNameToUse,
                                     fontSize = 19.sp,
@@ -2530,6 +2574,46 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         // --- GROUP 1: Status & Session Information ---
+
+                        // Provider
+                        val currentOpProvider = matchingAccount?.operationProvider ?: com.example.core.model.SasProviders.EARTHLINK
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { showEditProviderDialog = true }
+                                .padding(vertical = 1.5.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (currentLang == "ar") "مزود الخدمة" else "Provider",
+                                color = Color(0xFF8E8E93),
+                                fontSize = 13.5.sp
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (currentOpProvider == com.example.core.model.SasProviders.ALAMIRY) Color(0xFF7C4DFF).copy(alpha = 0.2f) else Color(0xFF0A84FF).copy(alpha = 0.2f),
+                                    border = BorderStroke(1.dp, if (currentOpProvider == com.example.core.model.SasProviders.ALAMIRY) Color(0xFFB388FF).copy(alpha = 0.5f) else Color(0xFF0A84FF).copy(alpha = 0.5f))
+                                ) {
+                                    Text(
+                                        text = currentOpProvider,
+                                        color = if (currentOpProvider == com.example.core.model.SasProviders.ALAMIRY) Color(0xFFD1C4E9) else Color(0xFF90CAF9),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = if (currentLang == "ar") "تعديل" else "Edit",
+                                    tint = Color(0xFF90CAF9),
+                                    modifier = Modifier.size(13.dp)
+                                )
+                            }
+                        }
 
                         // Status
                         Row(
@@ -3051,6 +3135,185 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                 showEditDisplayNameDialog = false 
                             }) {
                                 Text(if (currentLang == "ar") "الغاء" else "Cancel")
+                            }
+                        }
+                    )
+                }
+
+                if (showEditProviderDialog) {
+                    val currentOpProvider = matchingAccount?.operationProvider ?: com.example.core.model.SasProviders.EARTHLINK
+                    var targetProvider by rememberSaveable { mutableStateOf(currentOpProvider) }
+                    var providerChangeError by remember { mutableStateOf<String?>(null) }
+                    var isCheckingInFlight by remember { mutableStateOf(false) }
+                    val coroutineScope = rememberCoroutineScope()
+
+                    AlertDialog(
+                        onDismissRequest = {
+                            if (!isCheckingInFlight) showEditProviderDialog = false
+                        },
+                        title = {
+                            Text(if (currentLang == "ar") "تعديل مزود الخدمة" else "Edit Service Provider")
+                        },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                // Warning Card with EXACT required text
+                                Surface(
+                                    color = Color(0xFFF59E0B).copy(alpha = 0.12f),
+                                    border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.4f)),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = "Changing provider changes where future ISP operations are sent.\nThis does not migrate the external subscriber.\nLocal history remains unchanged.\nPending operations keep their original provider.",
+                                            color = Color(0xFFF59E0B),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            lineHeight = 17.sp
+                                        )
+                                    }
+                                }
+
+                                Text(
+                                    text = if (currentLang == "ar") "اختر المزود الجديد:" else "Select new provider:",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White
+                                )
+
+                                listOf(
+                                    com.example.core.model.SasProviders.EARTHLINK to if (currentLang == "ar") "إيرثلنك (EARTHLINK)" else "EarthLink (EARTHLINK)",
+                                    com.example.core.model.SasProviders.ALAMIRY to if (currentLang == "ar") "العامري / سام (ALAMIRY)" else "Alamiry / SAMM (ALAMIRY)"
+                                ).forEach { (provKey, provLabel) ->
+                                    val isSelected = targetProvider == provKey
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isSelected) Color(0xFF0A84FF).copy(alpha = 0.15f) else Color(0xFF161E27),
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (isSelected) Color(0xFF0A84FF) else Color.White.copy(alpha = 0.08f)
+                                        ),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .clickable {
+                                                targetProvider = provKey
+                                                providerChangeError = null
+                                            }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            RadioButton(
+                                                selected = isSelected,
+                                                onClick = null,
+                                                colors = RadioButtonDefaults.colors(
+                                                    selectedColor = Color(0xFF0A84FF),
+                                                    unselectedColor = Color.White.copy(alpha = 0.4f)
+                                                )
+                                            )
+                                            Text(
+                                                text = provLabel,
+                                                color = Color.White,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                fontSize = 13.sp
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (providerChangeError != null) {
+                                    Surface(
+                                        color = Color(0xFFFF453A).copy(alpha = 0.12f),
+                                        border = BorderStroke(1.dp, Color(0xFFFF453A).copy(alpha = 0.35f)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ErrorOutline,
+                                                contentDescription = null,
+                                                tint = Color(0xFFFF453A),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Text(
+                                                text = providerChangeError!!,
+                                                color = Color(0xFFFF453A),
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
+                                        earthlinkUsername = user.userID,
+                                        displayName = displayNameToUse.takeIf { it != "N/A" } ?: (user.customerFullName ?: user.userID),
+                                        phone1 = user.mobileNumber,
+                                        packageName = user.packageName ?: "Default",
+                                        currentPriceIqd = matchingAccount?.currentPriceIqd ?: 40000.0,
+                                        operationProvider = currentOpProvider,
+                                        createdAt = System.currentTimeMillis()
+                                    )
+                                    isCheckingInFlight = true
+                                    providerChangeError = null
+                                    coroutineScope.launch {
+                                        try {
+                                            val hasInFlight = viewModel.hasActivePendingOperation(finalAcc.id)
+                                            if (hasInFlight) {
+                                                providerChangeError = "Cannot change provider: account has an active in-flight operation."
+                                                return@launch
+                                            }
+                                            viewModel.updateAccountProvider(
+                                                account = finalAcc,
+                                                newProvider = targetProvider,
+                                                onSuccess = {
+                                                    showEditProviderDialog = false
+                                                },
+                                                onError = { err ->
+                                                    providerChangeError = err
+                                                }
+                                            )
+                                        } finally {
+                                            isCheckingInFlight = false
+                                        }
+                                    }
+                                },
+                                enabled = !isCheckingInFlight,
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0A84FF))
+                            ) {
+                                if (isCheckingInFlight) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                        color = Color.White
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                }
+                                Text(if (currentLang == "ar") "حفظ التغيير" else "Save Change")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = { showEditProviderDialog = false },
+                                enabled = !isCheckingInFlight
+                            ) {
+                                Text(if (currentLang == "ar") "إلغاء" else "Cancel")
                             }
                         }
                     )
