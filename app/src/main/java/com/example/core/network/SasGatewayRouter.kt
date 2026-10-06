@@ -29,9 +29,16 @@ import com.example.core.security.PreferenceManager
  */
 class SasGatewayRouter(
     private val earthlinkAdapter: SasGateway,
-    private val preferenceManager: PreferenceManager,
+    private val preferenceManager: PreferenceManager? = null,
     private val sammGatewayFactory: ((baseUrl: String, token: String) -> SasGateway)? = null
 ) {
+    constructor(earthlinkAdapter: SasGateway, sammAdapter: SasGateway) : this(
+        earthlinkAdapter = earthlinkAdapter,
+        preferenceManager = null,
+        sammGatewayFactory = null
+    ) {
+        this.cachedSammGateway = sammAdapter
+    }
     @Volatile
     private var cachedSammGateway: SasGateway? = null
     @Volatile
@@ -64,7 +71,12 @@ class SasGatewayRouter(
 
     @Synchronized
     private fun resolveSammGateway(): SasGateway {
-        if (!preferenceManager.isSammConfigured()) {
+        val staticInstance = cachedSammGateway
+        if (staticInstance != null && preferenceManager == null) {
+            return staticInstance
+        }
+
+        if (preferenceManager == null || !preferenceManager.isSammConfigured()) {
             invalidateSammCache()
             throw SasBusinessException(
                 statusCode = null,
@@ -97,9 +109,11 @@ class SasGatewayRouter(
 
     @Synchronized
     fun invalidateSammCache() {
-        cachedSammGateway = null
-        cachedConfigVersion = null
-        cachedBaseUrl = null
-        cachedToken = null
+        if (preferenceManager != null) {
+            cachedSammGateway = null
+            cachedConfigVersion = null
+            cachedBaseUrl = null
+            cachedToken = null
+        }
     }
 }
