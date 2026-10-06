@@ -9,3 +9,7 @@
 ## 2026-05-04 - Complete Localization Consistency across Top-Level Cards and Action Buttons
 **Learning:** In multi-language Compose screens observing `languageFlow`, partial localization where lower content blocks (e.g. audit logs) are translated while top status cards and action buttons remain in hardcoded English creates a confusing hybrid-language UI for Arabic operators. Additionally, `SimpleDateFormat` used in date labels must be hoisted with `remember` to prevent GC allocation jank on recompositions.
 **Action:** Always check all text nodes, status mappings, and action buttons in a composable for `currentLang == "ar"` checks and hoist `SimpleDateFormat` allocations using `remember`.
+
+## 2026-10-06 - Localized Confirm Action Button Labels in Custom Compose Modal Dialogs
+**Learning:** Custom Jetpack Compose modal dialogs (such as `ConfirmationDialog`) that accept custom content must provide an optional explicit confirm label parameter or check `currentLang == "ar"` to render localized action button text (e.g. "تأكيد" / "Confirm"), avoiding hardcoded English literals like "Save" in multi-language interfaces.
+**Action:** Always accept an optional `confirmLabel: String? = null` parameter in modal dialog components and fall back to localized defaults like `confirmLabel ?: (if (isAr) "تأكيد" else "Confirm")`.
