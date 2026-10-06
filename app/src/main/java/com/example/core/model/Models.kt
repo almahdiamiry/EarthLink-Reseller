@@ -350,6 +350,13 @@ data class PasswordPayload(
     @Json(name = "value") val value: String? = null
 )
 
+object SasProviders {
+    const val EARTHLINK = "EARTHLINK"
+    const val ALAMIRY = "ALAMIRY"
+    val ALL = setOf(EARTHLINK, ALAMIRY)
+    fun isValid(provider: String): Boolean = provider in ALL
+}
+
 // --- Local Entities (Room) ---
 
 /**
@@ -417,6 +424,8 @@ data class LocalAccount(
     val snapshotCapturedAt: Long? = null,
     val ispSubscriberId: String? = null,
     val ispUserIndex: Int? = null,
+    @ColumnInfo(name = "operationProvider", defaultValue = "'EARTHLINK'")
+    val operationProvider: String = SasProviders.EARTHLINK,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 ) {
@@ -607,7 +616,9 @@ data class PendingExternalOperation(
     val updatedAt: Long = System.currentTimeMillis(),
     val lastError: String? = null,
     val verificationEvidence: String? = null,
-    @ColumnInfo(defaultValue = "0") val dispatchClaimCount: Int = 0
+    @ColumnInfo(defaultValue = "0") val dispatchClaimCount: Int = 0,
+    @ColumnInfo(name = "operationProvider", defaultValue = "'EARTHLINK'")
+    val operationProvider: String = SasProviders.EARTHLINK
 )
 
 typealias StringComponents = String
