@@ -86,11 +86,11 @@ All production external mutations that interact with ISP backends are governed b
 
 | Operation Type | Producer File & Method | Mutex Key | Intent ID & Business Tx ID | Financial Impact | Dispatch Seam & Verification Rule |
 |---|---|---|---|---|---|
-| **`ACTIVATION`** | `EarthlinkSearchViewModel.createSubscriberUsingDeposit` (lines 535–645) | `"${username}:ACTIVATION"` | `opIntentId = UUID`<br>`businessTxId = "act_" + opIntentId` | **Yes** (`exactAmountIqd` > 0, 250-IQD multiple) | Claim 1-writer hardware lock -> `gateway.createUserUsingDeposit(...)` -> If success, `resolvePendingOperationVerifiedSuccess` materializes debt in `local_ledger_entries`. |
-| **`REFILL`** | `EarthlinkSearchViewModel.refillUser` (lines 749–925) | `"${userId}:REFILL"` | `opIntentId = intentId ?: UUID`<br>`businessTxId = "charge_" + opIntentId` | **Yes** (`exactAmountIqd` > 0, 250-IQD multiple) | Claim 1-writer hardware lock -> `gateway.refillUserDeposit(...)` -> If success, `resolvePendingOperationVerifiedSuccess` + `recordAccountRenewal` updates ledger debt and advance balance. |
-| **`RENEWAL`** | Production alias of `REFILL`. Supported identically in `LocalLedgerRepositoryImpl` lines 1469, 1903. | `"${userId}:REFILL"` | Same as `REFILL` | **Yes** (`exactAmountIqd` > 0) | Same verification and materialization path as `REFILL`. |
+| **`ACTIVATION`** | `EarthlinkSearchViewModel.createSubscriberUsingDeposit` (lines 535–645) | `"${username}:ACTIVATION"` | `opIntentId = UUID`<br>`businessTxId = "act_" + opIntentId` | **Yes** (`exactAmountIqd` > 0, 250-IQD multiple) | Claim 1-writer hardware lock -> `gateway.createUserUsingDeposit(...)` -> If success, `resolvePendingOperationVerifiedSuccess` materializes debt in `local_ledger_entries`. Supported on both EarthLink and SAMM (`POST /customers`). |
+| **`RENEWAL`** | Subscription duration renewal. Triggered via `EarthlinkSearchViewModel.refillUser` (or UI renewal action). | `"${userId}:REFILL"` | `opIntentId = intentId ?: UUID`<br>`businessTxId = "charge_" + opIntentId` | **Yes** (`exactAmountIqd` > 0, 250-IQD multiple) | Claim 1-writer hardware lock -> routes to provider renewal (`POST /api/v1/customers/{id}/renew` on SAMM, `refilluserdeposit` on EarthLink) -> `resolvePendingOperationVerifiedSuccess` + `recordAccountRenewal`. Full parity. |
+| **`REFILL`** | Deposit wallet refill (`refillUserDeposit`). | `"${userId}:REFILL"` | `opIntentId = intentId ?: UUID`<br>`businessTxId = "charge_" + opIntentId` | **Yes** (`exactAmountIqd` > 0) | **EarthLink-Only; STRICTLY UNSUPPORTED on SAMM.** SAMM does not maintain a reseller deposit box. Any `REFILL` operation targeting `ALAMIRY` must fail closed as `UnsupportedProviderOperationException` and never route to `/renew` or billing. |
 | **`EXTEND`** | `EarthlinkSearchViewModel.extendUser` (lines 1002–1065) | `"${userId}:EXTEND"` | `opIntentId = UUID`<br>`businessTxId = "ext_" + opIntentId` | **No** (`amountIqd = 0L`) | Claim 1-writer hardware lock -> `gateway.extendUser(...)` -> `resolvePendingOperationVerifiedSuccess` records 0 ledger debt (non-financial). |
-| **`TEST_USER`** | `EarthlinkSearchViewModel.createTestUser` (lines 457–520) | `"${username}:TEST_USER"` | `opIntentId = UUID`<br>`businessTxId = "test_" + opIntentId` | **No** (`amountIqd = 0L`) | Claim 1-writer hardware lock -> `gateway.createTestUser(...)` -> `resolvePendingOperationVerifiedSuccess` records 0 ledger debt (non-financial). |
+| **`TEST_USER`** | `EarthlinkSearchViewModel.createTestUser` (lines 457–520) | `"${username}:TEST_USER"` | `opIntentId = UUID`<br>`businessTxId = "test_" + opIntentId` | **No** (`amountIqd = 0L`) | Claim 1-writer hardware lock -> `gateway.createTestUser(...)` -> `resolvePendingOperationVerifiedSuccess` records 0 ledger debt (non-financial). EarthLink-only. |
 
 ### 3.2 Producer Architecture & Guarantees
 1. **Single Producer File:** `EarthlinkSearchViewModel.kt` is the **only** file in `app/src/main` that calls `localLedgerRepository.recordPendingOperation`.
@@ -184,7 +184,7 @@ When `operationProvider` is added to `LocalAccount`:
 #### Q3: How is local provider state preserved across restore / offline use?
 1. **Local SQLite Backup/Restore:** `BackupManager.kt` copies the SQLite database table-by-table. Because `operationProvider` resides in `local_accounts` SQLite schema, it is completely preserved across all offline backup and restore operations.
 2. **Cloud Restore on New Device:** When a new device signs in to Firebase and downloads `local_accounts`, the Moshi adapter reads `operationProvider` from Firestore and persists it into the local Room database.
-3. **Database Migration:** Adding `operationProvider` to Room requires a standard Room migration (Migration 16 -> 17) with `ALTER TABLE local_accounts ADD COLUMN operationProvider TEXT NOT NULL DEFAULT 'EARTHLINK'`.
+3. **Database Migration:** Adding `operationProvider` to Room requires a standard Room migration (Migration 18 -> 19) with `ALTER TABLE local_accounts ADD COLUMN operationProvider TEXT NOT NULL DEFAULT 'EARTHLINK'`.
 
 ---
 
@@ -230,7 +230,8 @@ Comparison between Earthlink Gateway and SAMM REST API (version 5.1.15, OpenAPI 
 | 7 | **Username Availability** | `GET /api/reseller/checkusername?userId={u}` -> Boolean | `GET /api/v1/customers?search={u}` (empty result = available) | **Full Parity** | `SasGateway.checkUsernameAvailable()` checks if query returns zero matching customers. |
 | 8 | **Customer Pre-creation** | `POST /api/reseller/createcustomer` with name, phone | Unified with `POST /api/v1/customers` | **Mapped / Simplified** | EarthLink requires 2 steps (customer, then user). SAMM creates customer + username in a single atomic call. |
 | 9 | **Durable Activation** | `POST /api/reseller/createuserusingdeposit` with username, phone, accountIndex, depositPassword | `POST /api/v1/customers` with username, name, phone, plan_id, password, `generate_invoice=false` | **Full Parity (Durable)** | Governed by `PendingExternalOperation(operationType="ACTIVATION")`. Materializes debt upon verified success. |
-| 10 | **Durable Renewal / Refill** | `POST /api/reseller/refilluserdeposit` with userId, depositPassword | `POST /api/v1/customers/{id}/renew` with `generate_invoice=false` | **Full Parity (Durable)** | Governed by `PendingExternalOperation(operationType="REFILL")`. Materializes debt upon verified success. |
+| 10a | **Durable Renewal (`RENEWAL`)** | `POST /api/reseller/refilluserdeposit` with userId, depositPassword | `POST /api/v1/customers/{id}/renew` with `generate_invoice=false` | **Full Parity (Durable)** | Governed by `PendingExternalOperation(operationType="RENEWAL")`. Materializes debt upon verified success. Full functional and financial parity on SAMM. |
+| 10b | **Deposit Refill (`REFILL`)** | `POST /api/reseller/refilluserdeposit` with userId, depositPassword | Not supported on SAMM (no reseller deposit mechanism) | **UNSUPPORTED on SAMM (EarthLink-Only)** | SAMM does not have reseller deposit balance or deposit refill debiting. Any `REFILL` operation targeting `ALAMIRY` must fail closed as `UnsupportedProviderOperationException` and never route to `/renew` or billing. |
 | 11 | **Grace Extension** | `POST /api/reseller/extenduser?userIndex={id}` | `POST /api/v1/customers/{id}/reset-limit` or update via `PATCH` | **Mapped / EarthLink-Preferred** | EarthLink extends subscription grace. For SAMM, map to `/reset-limit` or mark provider-unsupported. |
 | 12 | **Toggle User Active** | `POST /api/reseller/toggleuseractive?userIndex={id}&active={b}` | `POST /api/v1/customers/{id}/activate`<br>`POST /api/v1/customers/{id}/suspend` | **Full Parity** | Calls `activate` if true, `suspend` if false. |
 | 13 | **Change Plan / Package** | `POST /api/reseller/changeaccounttype` with userIndex, accountIndex | `POST /api/v1/customers/{id}/assign-plan` with `plan_id` | **Full Parity** | Maps plan index/ID and dispatches to SAMM assign-plan endpoint. |
@@ -263,6 +264,8 @@ To ensure zero regression against existing EarthLink functionality:
    If a SAMM call fails, times out, or returns inconclusive, the application **must NEVER** fall back to EarthLink.
 4. **Local Ledger Exclusivity:**
    SAMM operations must use `generate_invoice = false`. Local financial ledger entries (`local_ledger_entries`) remain the sole financial bookkeeping authority.
+5. **Unsupported Refill on SAMM:**
+   REFILL operations targeting ALAMIRY must fail closed as `UnsupportedProviderOperationException` and never route to `/renew` or billing.
 
 ---
 
