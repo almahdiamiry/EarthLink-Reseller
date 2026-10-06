@@ -1045,7 +1045,8 @@ class LocalAccountRepositoryImpl(
         filterCoordinates: Boolean,
         sortOption: String,
         limit: Int,
-        offset: Int
+        offset: Int,
+        filterProvider: String?
     ): Flow<List<LocalAccount>> {
         var sql = "SELECT * FROM local_accounts WHERE isHistoryOnlySubscriber = 0"
         val args = mutableListOf<Any>()
@@ -1057,6 +1058,10 @@ class LocalAccountRepositoryImpl(
         if (filterAdvance) sql += " AND advanceIqd > 0.0"
         if (filterNoUsername) sql += " AND (earthlinkUsername IS NULL OR earthlinkUsername = '')"
         if (filterCoordinates) sql += " AND (latitude IS NOT NULL AND longitude IS NOT NULL)"
+        if (!filterProvider.isNullOrEmpty()) {
+            sql += " AND operationProvider = ?"
+            args.add(filterProvider)
+        }
         
         sql += when (sortOption) {
             "name" -> " ORDER BY displayName ASC"
@@ -1077,7 +1082,8 @@ class LocalAccountRepositoryImpl(
         filterDebt: Boolean,
         filterAdvance: Boolean,
         filterNoUsername: Boolean,
-        filterCoordinates: Boolean
+        filterCoordinates: Boolean,
+        filterProvider: String?
     ): Flow<Int> {
         var sql = "SELECT COUNT(*) FROM local_accounts WHERE isHistoryOnlySubscriber = 0"
         val args = mutableListOf<Any>()
@@ -1089,8 +1095,84 @@ class LocalAccountRepositoryImpl(
         if (filterAdvance) sql += " AND advanceIqd > 0.0"
         if (filterNoUsername) sql += " AND (earthlinkUsername IS NULL OR earthlinkUsername = '')"
         if (filterCoordinates) sql += " AND (latitude IS NOT NULL AND longitude IS NOT NULL)"
+        if (!filterProvider.isNullOrEmpty()) {
+            sql += " AND operationProvider = ?"
+            args.add(filterProvider)
+        }
         
         return accountDao.getSearchCountRawFlow(androidx.sqlite.db.SimpleSQLiteQuery(sql, args.toTypedArray()))
+    }
+
+    override suspend fun queryAccountIdsFiltered(
+        query: String,
+        filterDebt: Boolean,
+        filterAdvance: Boolean,
+        filterNoUsername: Boolean,
+        filterCoordinates: Boolean,
+        filterProvider: String?
+    ): List<String> {
+        var sql = "SELECT id FROM local_accounts WHERE isHistoryOnlySubscriber = 0"
+        val args = mutableListOf<Any>()
+        if (query.isNotEmpty()) {
+            sql += " AND (displayName LIKE '%' || ? || '%' OR earthlinkUsername LIKE '%' || ? || '%' OR phone1 LIKE '%' || ? || '%' OR phone2 LIKE '%' || ? || '%' OR packageName LIKE '%' || ? || '%' OR towerName LIKE '%' || ? || '%' OR address LIKE '%' || ? || '%')"
+            for (i in 0 until 7) args.add(query)
+        }
+        if (filterDebt) sql += " AND debtIqd > 0.0"
+        if (filterAdvance) sql += " AND advanceIqd > 0.0"
+        if (filterNoUsername) sql += " AND (earthlinkUsername IS NULL OR earthlinkUsername = '')"
+        if (filterCoordinates) sql += " AND (latitude IS NOT NULL AND longitude IS NOT NULL)"
+        if (!filterProvider.isNullOrEmpty()) {
+            sql += " AND operationProvider = ?"
+            args.add(filterProvider)
+        }
+
+        return accountDao.getAccountIdsRaw(androidx.sqlite.db.SimpleSQLiteQuery(sql, args.toTypedArray()))
+    }
+
+    override suspend fun batchSetProvider(
+        candidateAccountIds: List<String>,
+        targetProvider: String
+    ): BatchProviderResult {
+        if (candidateAccountIds.isEmpty()) {
+            return BatchProviderResult(0, 0, 0, 0)
+        }
+
+        return database.withTransaction {
+            val chunkSize = 900
+            val chunks = candidateAccountIds.chunked(chunkSize)
+
+            val activeInFlightIds = mutableSetOf<String>()
+            val alreadyOnTargetIds = mutableSetOf<String>()
+            var updatedCount = 0
+
+            for (chunk in chunks) {
+                // 1. RE-CHECK active in-flight operations inside transaction (TOCTOU guard)
+                val inFlight = accountDao.getAccountIdsWithActiveInFlightOperations(chunk)
+                activeInFlightIds.addAll(inFlight)
+
+                // 2. Identify accounts already on target provider
+                val onTarget = accountDao.getAccountIdsAlreadyOnProvider(chunk, targetProvider)
+                alreadyOnTargetIds.addAll(onTarget)
+
+                // 3. Eligible accounts for this chunk
+                val eligibleChunk = chunk.filterNot { it in inFlight || it in onTarget }
+
+                // 4. Update eligible
+                if (eligibleChunk.isNotEmpty()) {
+                    updatedCount += accountDao.updateOperationProviderForAccounts(
+                        eligibleAccountIds = eligibleChunk,
+                        targetProvider = targetProvider
+                    )
+                }
+            }
+
+            BatchProviderResult(
+                totalSelected = candidateAccountIds.size,
+                updated = updatedCount,
+                alreadyTarget = alreadyOnTargetIds.size,
+                skippedDueToPending = activeInFlightIds.size
+            )
+        }
     }
     override fun getAccountById(id: String): Flow<LocalAccount?> {
         return accountDao.getById(id).distinctUntilChanged()

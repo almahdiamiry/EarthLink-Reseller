@@ -49,7 +49,8 @@ interface LocalAccountRepository {
         filterCoordinates: Boolean,
         sortOption: String,
         limit: Int,
-        offset: Int
+        offset: Int,
+        filterProvider: String? = null
     ): Flow<List<LocalAccount>>
 
     fun countAccountsFilteredFlow(
@@ -57,8 +58,23 @@ interface LocalAccountRepository {
         filterDebt: Boolean,
         filterAdvance: Boolean,
         filterNoUsername: Boolean,
-        filterCoordinates: Boolean
+        filterCoordinates: Boolean,
+        filterProvider: String? = null
     ): Flow<Int>
+
+    suspend fun queryAccountIdsFiltered(
+        query: String,
+        filterDebt: Boolean,
+        filterAdvance: Boolean,
+        filterNoUsername: Boolean,
+        filterCoordinates: Boolean,
+        filterProvider: String? = null
+    ): List<String>
+
+    suspend fun batchSetProvider(
+        candidateAccountIds: List<String>,
+        targetProvider: String
+    ): BatchProviderResult
     
     fun getAccountById(id: String): Flow<LocalAccount?>
     suspend fun getAccountByIdOneShot(id: String): LocalAccount?

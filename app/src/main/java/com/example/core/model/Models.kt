@@ -746,5 +746,16 @@ data class RestoreMergeResult(
     val summary: String = ""
 )
 
+/**
+ * Result summary for batch provider assignment (Task 11A).
+ */
+@JsonClass(generateAdapter = true)
+data class BatchProviderResult(
+    val totalSelected: Int,
+    val updated: Int,
+    val alreadyTarget: Int,
+    val skippedDueToPending: Int
+)
+
 
 

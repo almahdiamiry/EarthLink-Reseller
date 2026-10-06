@@ -139,6 +139,31 @@ interface LocalAccountDao {
 
     @RawQuery(observedEntities = [LocalAccount::class])
     fun getSearchCountRawFlow(query: androidx.sqlite.db.SupportSQLiteQuery): Flow<Int>
+
+    @Query("""
+        SELECT DISTINCT accountId 
+        FROM pending_external_operations 
+        WHERE status NOT IN ('COMPLETED', 'FAILED') 
+          AND accountId IN (:accountIds)
+    """)
+    suspend fun getAccountIdsWithActiveInFlightOperations(accountIds: List<String>): List<String>
+
+    @Query("SELECT id FROM local_accounts WHERE id IN (:accountIds) AND operationProvider = :targetProvider")
+    suspend fun getAccountIdsAlreadyOnProvider(accountIds: List<String>, targetProvider: String): List<String>
+
+    @Query("""
+        UPDATE local_accounts 
+        SET operationProvider = :targetProvider, updatedAt = :now 
+        WHERE id IN (:eligibleAccountIds)
+    """)
+    suspend fun updateOperationProviderForAccounts(
+        eligibleAccountIds: List<String>, 
+        targetProvider: String, 
+        now: Long = System.currentTimeMillis()
+    ): Int
+
+    @RawQuery
+    suspend fun getAccountIdsRaw(query: androidx.sqlite.db.SupportSQLiteQuery): List<String>
 }
 
 /**

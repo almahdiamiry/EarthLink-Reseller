@@ -40,11 +40,24 @@ class LocalAccountsViewModel(
     private val _filterCoordinates = MutableStateFlow(false)
     val filterCoordinates = _filterCoordinates.asStateFlow()
 
+    private val _filterProvider = MutableStateFlow<String?>(null)
+    val filterProvider = _filterProvider.asStateFlow()
+
     private val _sortOption = MutableStateFlow(prefs?.getLocalAccountsSortOption() ?: "name") // "name", "debt", "price"
     val sortOption = _sortOption.asStateFlow()
 
     private val _displayLimit = MutableStateFlow(50)
     val displayLimit = _displayLimit.asStateFlow()
+
+    // Multi-selection state
+    private val _selectedAccountIds = MutableStateFlow<Set<String>>(emptySet())
+    val selectedAccountIds = _selectedAccountIds.asStateFlow()
+
+    val isSelectionMode = _selectedAccountIds.map { it.isNotEmpty() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    private val _batchResult = MutableStateFlow<BatchProviderResult?>(null)
+    val batchResult = _batchResult.asStateFlow()
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val totalMatchingCount = combine(
@@ -52,14 +65,11 @@ class LocalAccountsViewModel(
         _filterDebt,
         _filterAdvance,
         _filterNoUsername,
-        _filterCoordinates
-    ) { q, debt, advance, noUsername, coordinates ->
-        Triple(q, debt, advance) to Pair(noUsername, coordinates)
-    }.flatMapLatest { (triple, pair) ->
-        val (q, debt, advance) = triple
-        val (noUsername, coordinates) = pair
-        localRepo.countAccountsFilteredFlow(q, debt, advance, noUsername, coordinates)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+        combine(_filterCoordinates, _filterProvider) { coords, prov -> coords to prov }
+    ) { q, debt, advance, noUsername, (coordinates, provider) ->
+        localRepo.countAccountsFilteredFlow(q, debt, advance, noUsername, coordinates, provider)
+    }.flatMapLatest { it }
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val filteredAccounts = combine(
@@ -67,22 +77,17 @@ class LocalAccountsViewModel(
         _filterDebt,
         _filterAdvance,
         _filterNoUsername,
-        _filterCoordinates,
-        _sortOption,
-        _displayLimit
-    ) { flowsArray ->
-        flowsArray
-    }.flatMapLatest { params ->
-        val q = params[0] as String
-        val debt = params[1] as Boolean
-        val advance = params[2] as Boolean
-        val noUsername = params[3] as Boolean
-        val coordinates = params[4] as Boolean
-        val sort = params[5] as String
-        val limit = params[6] as Int
-        
-        localRepo.searchAccountsFilteredFlow(q, debt, advance, noUsername, coordinates, sort, limit, 0)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        combine(_filterCoordinates, _filterProvider, _sortOption, _displayLimit) { coords, prov, sort, limit ->
+            listOf(coords, prov, sort, limit)
+        }
+    ) { q, debt, advance, noUsername, rest ->
+        val coords = rest[0] as Boolean
+        val provider = rest[1] as String?
+        val sort = rest[2] as String
+        val limit = rest[3] as Int
+        localRepo.searchAccountsFilteredFlow(q, debt, advance, noUsername, coords, sort, limit, 0, provider)
+    }.flatMapLatest { it }
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _selectedAccount = MutableStateFlow<LocalAccount?>(null)
     val selectedAccount = _selectedAccount.asStateFlow()
@@ -105,15 +110,80 @@ class LocalAccountsViewModel(
         _error.value = null
     }
 
+    fun clearBatchResult() {
+        _batchResult.value = null
+    }
+
     fun setSearchQuery(value: String) { _displayLimit.value = 50; _searchQuery.value = value }
     fun toggleFilterDebt() { _displayLimit.value = 50; _filterDebt.value = !_filterDebt.value }
     fun toggleFilterAdvance() { _displayLimit.value = 50; _filterAdvance.value = !_filterAdvance.value }
     fun toggleFilterNoUsername() { _displayLimit.value = 50; _filterNoUsername.value = !_filterNoUsername.value }
     fun toggleFilterCoordinates() { _displayLimit.value = 50; _filterCoordinates.value = !_filterCoordinates.value }
+    fun setFilterProvider(provider: String?) { _displayLimit.value = 50; _filterProvider.value = provider }
     fun setSortOption(value: String) { _displayLimit.value = 50; _sortOption.value = value; prefs?.setLocalAccountsSortOption(value) }
 
     fun loadMore() {
         _displayLimit.value += 50
+    }
+
+    // Selection management
+    fun toggleAccountSelection(id: String) {
+        val current = _selectedAccountIds.value
+        _selectedAccountIds.value = if (id in current) current - id else current + id
+    }
+
+    fun selectAllVisible(visibleIds: List<String>) {
+        _selectedAccountIds.value = _selectedAccountIds.value + visibleIds
+    }
+
+    fun selectAllResults(): kotlinx.coroutines.Job = viewModelScope.launch {
+        try {
+            val allIds = localRepo.queryAccountIdsFiltered(
+                query = _searchQuery.value,
+                filterDebt = _filterDebt.value,
+                filterAdvance = _filterAdvance.value,
+                filterNoUsername = _filterNoUsername.value,
+                filterCoordinates = _filterCoordinates.value,
+                filterProvider = _filterProvider.value
+            )
+            _selectedAccountIds.value = allIds.toSet()
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            _error.value = "Failed to select all results: ${e.message}"
+        }
+    }
+
+    fun clearSelection() {
+        _selectedAccountIds.value = emptySet()
+    }
+
+    suspend fun executeBatchProviderAssignment(targetProvider: String): BatchProviderResult {
+        val selected = _selectedAccountIds.value.toList()
+        if (selected.isEmpty()) {
+            val empty = BatchProviderResult(0, 0, 0, 0)
+            _batchResult.value = empty
+            return empty
+        }
+        _isLoading.value = true
+        return try {
+            val result = localRepo.batchSetProvider(selected, targetProvider)
+            _batchResult.value = result
+            audit.logAction(
+                "BATCH_SET_PROVIDER",
+                "LOCAL_ACCOUNT",
+                "BATCH",
+                "Batch set provider to $targetProvider: updated ${result.updated}/${result.totalSelected}, alreadyTarget ${result.alreadyTarget}, skippedDueToPending ${result.skippedDueToPending}"
+            )
+            clearSelection()
+            syncRepo.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
+            result
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            _error.value = "Batch provider assignment failed: ${e.message}"
+            throw e
+        } finally {
+            _isLoading.value = false
+        }
     }
 
     private var ledgerJob: kotlinx.coroutines.Job? = null
