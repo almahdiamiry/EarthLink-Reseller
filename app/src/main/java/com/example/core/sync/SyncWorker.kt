@@ -26,7 +26,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         }
 
         try {
-            app.localLedgerRepository.sweepAndResolvePendingOperations(app.earthlinkGateway)
+            app.localLedgerRepository.sweepAndResolvePendingOperations(app.sasGatewayRouter)
         } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
             android.util.Log.e("SyncWorker", "Pending operation recovery sweep failed", e)
         }

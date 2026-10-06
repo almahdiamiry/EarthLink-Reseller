@@ -43,6 +43,8 @@ class EarthlinkApp : Application() {
 
     val apiService: NetworkClient by lazy { NetworkClient(this) }
     val earthlinkGateway: EarthlinkGateway by lazy { EarthlinkGatewayImpl(apiService.apiService, preferenceManager) }
+    val sasGatewayAdapter by lazy { com.example.core.network.EarthlinkSasGatewayAdapter(earthlinkGateway) }
+    val sasGatewayRouter by lazy { com.example.core.network.SasGatewayRouter(sasGatewayAdapter, preferenceManager) }
 
     val localAccountRepository: LocalAccountRepository by lazy { LocalAccountRepositoryImpl(database, database.localAccountDao(), database.syncOutboxDao()) }
     val localLedgerRepository: LocalLedgerRepository by lazy { LocalLedgerRepositoryImpl(database, database.localLedgerEntryDao(), database.localAccountDao(), database.syncOutboxDao()) }
@@ -116,7 +118,7 @@ class EarthlinkApp : Application() {
         val processStartMs = System.currentTimeMillis()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                localLedgerRepository.recoverColdStartOrphanedOperations(earthlinkGateway, processStartMs)
+                localLedgerRepository.recoverColdStartOrphanedOperations(sasGatewayRouter, processStartMs)
                 localLedgerRepository.sweepAndResolvePendingOperations(earthlinkGateway)
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
