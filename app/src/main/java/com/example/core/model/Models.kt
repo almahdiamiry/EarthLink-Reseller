@@ -357,6 +357,21 @@ object SasProviders {
     fun isValid(provider: String): Boolean = provider in ALL
 }
 
+/**
+ * ProviderAccessState: Evaluates currently configured and usable provider credentials.
+ * Decouples global app unlock from any single provider (EarthLink or SAMM).
+ */
+enum class ProviderAccessState {
+    NONE,
+    EARTHLINK_ONLY,
+    SAMM_ONLY,
+    BOTH;
+
+    val isAppUnlocked: Boolean get() = this != NONE
+    val hasEarthlink: Boolean get() = this == EARTHLINK_ONLY || this == BOTH
+    val hasSamm: Boolean get() = this == SAMM_ONLY || this == BOTH
+}
+
 // --- Local Entities (Room) ---
 
 /**

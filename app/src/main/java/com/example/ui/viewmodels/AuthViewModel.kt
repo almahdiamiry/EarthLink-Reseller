@@ -35,6 +35,17 @@ class AuthViewModel(
 
     val isLoggedIn = prefs.isLoggedInFlow
 
+    private val _selectedProvider = MutableStateFlow(prefs.getLastSelectedLoginProvider())
+    val selectedProvider = _selectedProvider.asStateFlow()
+
+    private val _sammBaseUrl = MutableStateFlow(prefs.getSammBaseUrl() ?: "")
+    val sammBaseUrl = _sammBaseUrl.asStateFlow()
+
+    private val _sammApiToken = MutableStateFlow(prefs.getSammToken() ?: "")
+    val sammApiToken = _sammApiToken.asStateFlow()
+
+    val providerAccessState = prefs.providerAccessStateFlow
+
     init {
         if (prefs.getRememberMe()) {
             _username.value = prefs.getUsername() ?: ""
@@ -42,11 +53,72 @@ class AuthViewModel(
         }
     }
 
+    fun setSelectedProvider(provider: String) {
+        if (SasProviders.isValid(provider)) {
+            _selectedProvider.value = provider
+            prefs.setLastSelectedLoginProvider(provider)
+        }
+    }
+
+    fun setSammBaseUrl(value: String) { _sammBaseUrl.value = value }
+    fun setSammApiToken(value: String) { _sammApiToken.value = value }
+
     fun setUsername(value: String) { _username.value = value }
     fun setPassword(value: String) { _password.value = value }
     fun setRememberMe(value: Boolean) { _rememberMe.value = value }
 
     fun clearError() { _error.value = null }
+
+    fun loginSamm(
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
+        val rawUrl = _sammBaseUrl.value.trim()
+        val token = _sammApiToken.value.trim()
+
+        if (rawUrl.isEmpty() || token.isEmpty()) {
+            val msg = "Server URL and API Token cannot be empty."
+            _error.value = msg
+            onError(msg)
+            return
+        }
+
+        val normalizedUrl = com.example.ui.screens.SammUrlNormalizer.normalize(rawUrl)
+
+        viewModelScope.launch {
+            _isLoading.value = true
+            _error.value = null
+            try {
+                val status = com.example.ui.screens.SammConnectionEvaluator.testConnection(
+                    baseUrl = normalizedUrl,
+                    token = token
+                )
+                if (status == com.example.ui.screens.SammConnectionStatus.CONNECTED) {
+                    prefs.saveSammBaseUrl(normalizedUrl)
+                    prefs.saveSammToken(token)
+                    prefs.setLastSelectedLoginProvider(SasProviders.ALAMIRY)
+                    audit.logAction(
+                        action = "SAMM_LOGIN",
+                        entityType = "PROVIDER",
+                        entityId = normalizedUrl,
+                        summary = "Operator logged in via SAMM API Token"
+                    )
+                    onSuccess()
+                } else {
+                    val msg = status.englishMessage
+                    _error.value = msg
+                    onError(msg)
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                val msg = e.message ?: "Failed to connect to SAMM server."
+                _error.value = msg
+                onError(msg)
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
 
     fun login() {
         if (_username.value.isEmpty() || _password.value.isEmpty()) {
@@ -110,6 +182,50 @@ class AuthViewModel(
                 onError(e.message ?: "Failed to sign out")
             }
         }
+    }
+
+    /**
+     * Clears credentials for a single provider (EARTHLINK or ALAMIRY).
+     * If the other provider remains configured, the app stays unlocked in single-provider mode.
+     */
+    fun clearProviderCredentials(provider: String) {
+        when (provider) {
+            SasProviders.EARTHLINK -> {
+                prefs.clearEarthlinkCredentials()
+                _password.value = ""
+                viewModelScope.launch {
+                    try {
+                        audit.logAction(
+                            action = "PROVIDER_REMOVE",
+                            entityType = "PROVIDER",
+                            entityId = SasProviders.EARTHLINK,
+                            summary = "EarthLink credentials cleared by operator"
+                        )
+                    } catch (_: Throwable) {}
+                }
+            }
+            SasProviders.ALAMIRY -> {
+                prefs.clearSammCredentials()
+                viewModelScope.launch {
+                    try {
+                        audit.logAction(
+                            action = "PROVIDER_REMOVE",
+                            entityType = "PROVIDER",
+                            entityId = SasProviders.ALAMIRY,
+                            summary = "SAMM credentials cleared by operator"
+                        )
+                    } catch (_: Throwable) {}
+                }
+            }
+        }
+    }
+
+    /**
+     * Clears credentials across all providers and resets session.
+     */
+    fun clearAllProviders() {
+        prefs.clearCredentials()
+        _password.value = ""
     }
 
     fun signInWithGoogle(idToken: String, email: String?, onSuccess: () -> Unit) {

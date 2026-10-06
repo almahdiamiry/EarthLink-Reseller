@@ -3,6 +3,8 @@ package com.example.core.security
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Base64
+import com.example.core.model.ProviderAccessState
+import com.example.core.model.SasProviders
 import com.example.core.util.AppBuildConfig
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
@@ -626,6 +628,7 @@ open class PreferenceManager(private val context: Context) {
         private const val KEY_LOCAL_ACCOUNTS_SORT_OPTION = "local_accounts_sort_option"
         private const val KEY_SAMM_BASE_URL = "enc_samm_base_url"
         private const val KEY_SAMM_API_TOKEN = "enc_samm_api_token"
+        private const val KEY_LAST_SELECTED_LOGIN_PROVIDER = "last_selected_login_provider"
     }
 
     fun getDashboardSortOption(): String {
@@ -644,8 +647,46 @@ open class PreferenceManager(private val context: Context) {
         prefs.edit().putString(KEY_LOCAL_ACCOUNTS_SORT_OPTION, sort).apply()
     }
 
-    private val _isLoggedInFlow by lazy { MutableStateFlow(!getAuthToken().isNullOrEmpty()) }
+    private val _isLoggedInFlow by lazy { MutableStateFlow(isAnyProviderConfigured()) }
     val isLoggedInFlow by lazy { _isLoggedInFlow.asStateFlow() }
+
+    private val _providerAccessStateFlow by lazy { MutableStateFlow(getProviderAccessState()) }
+    val providerAccessStateFlow by lazy { _providerAccessStateFlow.asStateFlow() }
+
+    fun getProviderAccessState(): ProviderAccessState {
+        val hasEl = !getAuthToken().isNullOrEmpty() || (AppBuildConfig.DEBUG && prefs.getBoolean(KEY_DEMO_MODE, false))
+        val hasSamm = isSammConfigured()
+        return when {
+            hasEl && hasSamm -> ProviderAccessState.BOTH
+            hasEl -> ProviderAccessState.EARTHLINK_ONLY
+            hasSamm -> ProviderAccessState.SAMM_ONLY
+            else -> ProviderAccessState.NONE
+        }
+    }
+
+    fun isAnyProviderConfigured(): Boolean = getProviderAccessState().isAppUnlocked
+
+    fun getLastSelectedLoginProvider(): String {
+        val stored = prefs.getString(KEY_LAST_SELECTED_LOGIN_PROVIDER, null)
+        if (!stored.isNullOrBlank() && SasProviders.isValid(stored)) return stored
+        // Default to whichever is configured, preferring EARTHLINK
+        return when (getProviderAccessState()) {
+            ProviderAccessState.SAMM_ONLY -> SasProviders.ALAMIRY
+            else -> SasProviders.EARTHLINK
+        }
+    }
+
+    fun setLastSelectedLoginProvider(provider: String) {
+        if (SasProviders.isValid(provider)) {
+            prefs.edit().putString(KEY_LAST_SELECTED_LOGIN_PROVIDER, provider).apply()
+        }
+    }
+
+    internal fun refreshProviderAccessState() {
+        val state = getProviderAccessState()
+        _providerAccessStateFlow.value = state
+        _isLoggedInFlow.value = state.isAppUnlocked
+    }
 
     private val _demoModeFlow by lazy { MutableStateFlow(prefs.getBoolean(KEY_DEMO_MODE, false)) }
     val demoModeFlow by lazy { _demoModeFlow.asStateFlow() }
@@ -714,7 +755,7 @@ open class PreferenceManager(private val context: Context) {
 
     fun saveAuthToken(token: String) {
         prefs.edit().putString(KEY_TOKEN, token).apply()
-        _isLoggedInFlow.value = true
+        refreshProviderAccessState()
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
             try {
                 (context.applicationContext as? com.example.EarthlinkApp)?.auditRepository?.log(
@@ -732,7 +773,25 @@ open class PreferenceManager(private val context: Context) {
 
     fun clearAuthToken() {
         prefs.edit().remove(KEY_TOKEN).apply()
-        _isLoggedInFlow.value = false
+        refreshProviderAccessState()
+    }
+
+    /**
+     * Clears only EarthLink credentials (session token, admin credentials, deposit password).
+     * Preserves SAMM gateway credentials and local app configuration.
+     */
+    fun clearEarthlinkCredentials() {
+        prefs.edit()
+            .remove(KEY_TOKEN)
+            .remove(KEY_USERNAME)
+            .remove(KEY_PASSWORD)
+            .remove(KEY_DEPOSIT_PASSWORD)
+            .remove(KEY_ISP_ADMIN_USERNAME)
+            .remove(KEY_ISP_ADMIN_PASSWORD)
+            .remove(KEY_EARTHLINK_API_TOKEN)
+            .apply()
+        _demoModeFlow.value = false
+        refreshProviderAccessState()
     }
 
     /**
@@ -881,6 +940,7 @@ open class PreferenceManager(private val context: Context) {
             prefs.edit().putString(KEY_SAMM_BASE_URL, normalized).apply()
         }
         _sammConfigVersionFlow.value += 1
+        refreshProviderAccessState()
     }
 
     fun getSammBaseUrl(): String? = prefs.getString(KEY_SAMM_BASE_URL, null)
@@ -892,6 +952,7 @@ open class PreferenceManager(private val context: Context) {
             prefs.edit().putString(KEY_SAMM_API_TOKEN, token.trim()).apply()
         }
         _sammConfigVersionFlow.value += 1
+        refreshProviderAccessState()
     }
 
     fun getSammToken(): String? = prefs.getString(KEY_SAMM_API_TOKEN, null)
@@ -910,6 +971,7 @@ open class PreferenceManager(private val context: Context) {
             .remove(KEY_SAMM_API_TOKEN)
             .apply()
         _sammConfigVersionFlow.value += 1
+        refreshProviderAccessState()
     }
 
     fun setRememberMe(enabled: Boolean) {
@@ -978,9 +1040,9 @@ open class PreferenceManager(private val context: Context) {
             .remove(KEY_SAMM_BASE_URL)
             .remove(KEY_SAMM_API_TOKEN)
             .apply()
-        _isLoggedInFlow.value = false
         _demoModeFlow.value = false
         _sammConfigVersionFlow.value += 1
+        refreshProviderAccessState()
     }
 
     fun getPackageSellingPrice(packageName: String, defaultPrice: Double): Double {
