@@ -17,6 +17,14 @@ interface SammApiService {
     @GET("api/v1/me")
     suspend fun getMe(): Response<MeResponse>
 
+    @POST("api/v1/auth/agent-login")
+    suspend fun agentLogin(
+        @Body request: SammAgentLoginRequest
+    ): Response<SammAgentLoginResponse>
+
+    @POST("api/v1/auth/agent-logout")
+    suspend fun agentLogout(): Response<SammAgentLogoutResponse>
+
     @GET("api/v1/customers")
     suspend fun listCustomers(
         @Query("search") search: String? = null,

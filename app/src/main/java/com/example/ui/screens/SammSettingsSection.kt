@@ -138,12 +138,19 @@ fun SammSettingsSection(
     val scope = rememberCoroutineScope()
 
     var baseUrlText by rememberSaveable { mutableStateOf(prefs.getSammBaseUrl() ?: "") }
-    var tokenText by rememberSaveable { mutableStateOf(prefs.getSammToken() ?: "") }
-    var isTokenVisible by rememberSaveable { mutableStateOf(false) }
+    var agentUsernameText by rememberSaveable { mutableStateOf(prefs.getSammAgentUsername() ?: "") }
+    var agentPasswordText by rememberSaveable { mutableStateOf("") }
+    var isPasswordVisible by rememberSaveable { mutableStateOf(false) }
+
+    var isConfigured by remember { mutableStateOf(prefs.isSammConfigured()) }
+    var connectedAgentUsername by remember { mutableStateOf(prefs.getSammAgentUsername()) }
+    var connectedAgentId by remember { mutableStateOf(prefs.getSammAgentId()) }
 
     var connectionStatus by remember { mutableStateOf(SammConnectionStatus.IDLE) }
     var actionFeedback by remember { mutableStateOf<String?>(null) }
     var isTesting by remember { mutableStateOf(false) }
+    var isLoggingIn by remember { mutableStateOf(false) }
+    var showLoginForm by rememberSaveable { mutableStateOf(!isConfigured) }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         // Section Header
@@ -172,169 +179,325 @@ fun SammSettingsSection(
                     color = Color.White
                 )
                 Text(
-                    text = if (isAr) "تهيئة الرابط ورمز الدخول للعمليات البديلة" else "Configure host URL and token for SAMM gateway",
+                    text = if (isAr) "حساب الوكيل والاتصال بالخادم" else "Agent account and server connection",
                     fontSize = 11.sp,
                     color = Color.White.copy(alpha = 0.5f)
                 )
             }
         }
 
-        // Base URL input
-        OutlinedTextField(
-            value = baseUrlText,
-            onValueChange = {
-                baseUrlText = it
-                actionFeedback = null
-            },
-            modifier = Modifier.fillMaxWidth(),
-            label = {
-                Text(
-                    if (isAr) "رابط الخادم (Base URL)" else "SAMM Base URL",
-                    fontSize = 12.sp
-                )
-            },
-            placeholder = {
-                Text(
-                    "https://samm.al-amiry.net",
-                    fontSize = 12.sp,
-                    color = Color.White.copy(alpha = 0.3f)
-                )
-            },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                focusedBorderColor = Color(0xFF5856D6),
-                unfocusedBorderColor = Color.White.copy(alpha = 0.12f),
-                focusedContainerColor = Color(0xFF0E131B),
-                unfocusedContainerColor = Color(0xFF0E131B)
-            ),
-            shape = RoundedCornerShape(12.dp),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-            singleLine = true
-        )
-
-        // API Token input (masked toggle)
-        OutlinedTextField(
-            value = tokenText,
-            onValueChange = {
-                tokenText = it
-                actionFeedback = null
-            },
-            modifier = Modifier.fillMaxWidth(),
-            label = {
-                Text(
-                    if (isAr) "رمز الدخول (API Token)" else "SAMM API Token",
-                    fontSize = 12.sp
-                )
-            },
-            visualTransformation = if (isTokenVisible) VisualTransformation.None else PasswordVisualTransformation(),
-            trailingIcon = {
-                IconButton(onClick = { isTokenVisible = !isTokenVisible }) {
-                    Icon(
-                        imageVector = if (isTokenVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                        contentDescription = if (isTokenVisible) {
-                            if (isAr) "إخفاء رمز الدخول" else "Hide token"
-                        } else {
-                            if (isAr) "إظهار رمز الدخول" else "Show token"
-                        },
-                        tint = Color.White.copy(alpha = 0.5f),
-                        modifier = Modifier.size(18.dp)
+        // Configured Agent Status Box
+        if (isConfigured) {
+            Surface(
+                color = Color(0xFF171E29),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, Color(0xFF30D158).copy(alpha = 0.3f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .background(Color(0xFF30D158), RoundedCornerShape(5.dp))
+                        )
+                        Text(
+                            text = if (isAr) "متصل بحساب الوكيل" else "Connected as Agent",
+                            color = Color(0xFF30D158),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                    }
+                    Text(
+                        text = "${if (isAr) "اسم المستخدم" else "Username"}: ${connectedAgentUsername ?: "-"}",
+                        color = Color.White,
+                        fontSize = 12.sp
+                    )
+                    if (connectedAgentId != null) {
+                        Text(
+                            text = "${if (isAr) "معرف الوكيل" else "Agent ID"}: $connectedAgentId",
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 12.sp
+                        )
+                    }
+                    Text(
+                        text = "${if (isAr) "الخادم" else "Server"}: ${prefs.getSammBaseUrl() ?: "-"}",
+                        color = Color.White.copy(alpha = 0.7f),
+                        fontSize = 12.sp
                     )
                 }
-            },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                focusedBorderColor = Color(0xFF5856D6),
-                unfocusedBorderColor = Color.White.copy(alpha = 0.12f),
-                focusedContainerColor = Color(0xFF0E131B),
-                unfocusedContainerColor = Color(0xFF0E131B)
-            ),
-            shape = RoundedCornerShape(12.dp),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            singleLine = true
-        )
-
-        // Action Buttons Row: Save, Clear, Test Connection
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Save Button
-            Button(
-                onClick = {
-                    val normalizedUrl = SammUrlNormalizer.normalize(baseUrlText)
-                    prefs.saveSammBaseUrl(normalizedUrl)
-                    prefs.saveSammToken(tokenText.trim())
-                    baseUrlText = normalizedUrl
-                    actionFeedback = if (isAr) "تم حفظ الإعدادات بنجاح" else "Settings saved successfully"
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5856D6)),
-                shape = RoundedCornerShape(10.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                Text(
-                    text = if (isAr) "حفظ" else "Save",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
             }
 
-            // Test Connection Button
+            // Buttons when configured: Test Connection, Switch Agent, Logout
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Test Connection
+                Button(
+                    onClick = {
+                        isTesting = true
+                        connectionStatus = SammConnectionStatus.TESTING
+                        actionFeedback = null
+                        scope.launch {
+                            try {
+                                val url = prefs.getSammBaseUrl() ?: baseUrlText
+                                val token = prefs.getSammToken() ?: ""
+                                val result = onTestConnectionOverride?.invoke(url, token)
+                                    ?: SammConnectionEvaluator.testConnection(url, token)
+                                connectionStatus = result
+                            } finally {
+                                isTesting = false
+                            }
+                        }
+                    },
+                    enabled = !isTesting,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0A84FF)),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.weight(1.2f)
+                ) {
+                    if (isTesting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+                    Text(
+                        text = if (isAr) "اختبار الاتصال" else "Test Connection",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+
+                // Switch Agent toggle
+                OutlinedButton(
+                    onClick = { showLoginForm = !showLoginForm },
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = if (showLoginForm) {
+                            if (isAr) "إلغاء" else "Cancel"
+                        } else {
+                            if (isAr) "تبديل الوكيل" else "Switch Agent"
+                        },
+                        fontSize = 12.sp,
+                        color = Color.White
+                    )
+                }
+
+                // Logout Button
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            val token = prefs.getSammToken()
+                            val url = prefs.getSammBaseUrl()
+                            if (!token.isNullOrBlank() && !url.isNullOrBlank()) {
+                                try {
+                                    val api = SammNetworkClient.createApiService(url, token)
+                                    api.agentLogout()
+                                } catch (_: Throwable) {
+                                    // Fail-safe
+                                }
+                            }
+                            prefs.clearSammCredentials()
+                            baseUrlText = ""
+                            agentUsernameText = ""
+                            agentPasswordText = ""
+                            isConfigured = false
+                            connectedAgentUsername = null
+                            connectedAgentId = null
+                            showLoginForm = true
+                            connectionStatus = SammConnectionStatus.IDLE
+                            actionFeedback = if (isAr) "تم تسجيل الخروج ومسح البيانات" else "Logged out and cleared"
+                        }
+                    },
+                    border = BorderStroke(1.dp, Color(0xFFFF453A).copy(alpha = 0.5f)),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(
+                        text = if (isAr) "خروج" else "Logout",
+                        fontSize = 12.sp,
+                        color = Color(0xFFFF453A)
+                    )
+                }
+            }
+        }
+
+        // Login / Switch Form
+        if (showLoginForm || !isConfigured) {
+            Text(
+                text = if (isAr) "تسجيل الدخول كوكيل (Agent Login)" else "Agent Login Credentials",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White.copy(alpha = 0.9f)
+            )
+
+            // Server URL input
+            OutlinedTextField(
+                value = baseUrlText,
+                onValueChange = {
+                    baseUrlText = it
+                    actionFeedback = null
+                },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(if (isAr) "رابط الخادم (Server URL)" else "Server URL", fontSize = 12.sp) },
+                placeholder = { Text("https://samm.example.com", fontSize = 12.sp, color = Color.White.copy(alpha = 0.3f)) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color(0xFF5856D6),
+                    unfocusedBorderColor = Color.White.copy(alpha = 0.12f),
+                    focusedContainerColor = Color(0xFF0E131B),
+                    unfocusedContainerColor = Color(0xFF0E131B)
+                ),
+                shape = RoundedCornerShape(12.dp),
+                keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri, imeAction = ImeAction.Next),
+                singleLine = true
+            )
+
+            // Agent Username input
+            OutlinedTextField(
+                value = agentUsernameText,
+                onValueChange = {
+                    agentUsernameText = it
+                    actionFeedback = null
+                },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(if (isAr) "اسم مستخدم الوكيل" else "Agent Username", fontSize = 12.sp) },
+                placeholder = { Text(if (isAr) "أدخل اسم المستخدم" else "Enter username", fontSize = 12.sp, color = Color.White.copy(alpha = 0.3f)) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color(0xFF5856D6),
+                    unfocusedBorderColor = Color.White.copy(alpha = 0.12f),
+                    focusedContainerColor = Color(0xFF0E131B),
+                    unfocusedContainerColor = Color(0xFF0E131B)
+                ),
+                shape = RoundedCornerShape(12.dp),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                singleLine = true
+            )
+
+            // Agent Password input (masked)
+            OutlinedTextField(
+                value = agentPasswordText,
+                onValueChange = {
+                    agentPasswordText = it
+                    actionFeedback = null
+                },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(if (isAr) "كلمة مرور الوكيل" else "Agent Password", fontSize = 12.sp) },
+                visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
+                        Icon(
+                            imageVector = if (isPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                            contentDescription = if (isPasswordVisible) "Hide password" else "Show password",
+                            tint = Color.White.copy(alpha = 0.5f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color(0xFF5856D6),
+                    unfocusedBorderColor = Color.White.copy(alpha = 0.12f),
+                    focusedContainerColor = Color(0xFF0E131B),
+                    unfocusedContainerColor = Color(0xFF0E131B)
+                ),
+                shape = RoundedCornerShape(12.dp),
+                keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password, imeAction = ImeAction.Done),
+                singleLine = true
+            )
+
+            // Login / Connect Button
             Button(
                 onClick = {
-                    isTesting = true
-                    connectionStatus = SammConnectionStatus.TESTING
+                    val rawUrl = baseUrlText.trim()
+                    val user = agentUsernameText.trim()
+                    val pass = agentPasswordText
+
+                    if (rawUrl.isEmpty() || user.isEmpty() || pass.isEmpty()) {
+                        actionFeedback = if (isAr) "يرجى إدخال الرابط، اسم المستخدم، وكلمة المرور" else "Please enter Server URL, Username, and Password"
+                        return@Button
+                    }
+
+                    isLoggingIn = true
                     actionFeedback = null
+                    val normalizedUrl = SammUrlNormalizer.normalize(rawUrl)
+                    baseUrlText = normalizedUrl
+
                     scope.launch {
                         try {
-                            val result = onTestConnectionOverride?.invoke(baseUrlText, tokenText)
-                                ?: SammConnectionEvaluator.testConnection(baseUrlText, tokenText)
-                            connectionStatus = result
+                            // Transient login call - zero password persistence to prefs/disk
+                            val api = SammNetworkClient.createApiService(normalizedUrl, token = null)
+                            val response = api.agentLogin(
+                                com.example.core.network.samm.SammAgentLoginRequest(
+                                    username = user,
+                                    password = pass
+                                )
+                            )
+
+                            if (response.isSuccessful && response.body() != null) {
+                                val body = response.body()!!
+                                prefs.saveSammBaseUrl(normalizedUrl)
+                                prefs.saveSammToken(body.token)
+                                prefs.saveSammAgentInfo(
+                                    agentId = body.agent.id,
+                                    username = body.agent.username,
+                                    resellerId = body.agent.resellerId
+                                )
+                                prefs.setLastSelectedLoginProvider(com.example.core.model.SasProviders.ALAMIRY)
+
+                                isConfigured = true
+                                connectedAgentUsername = body.agent.username
+                                connectedAgentId = body.agent.id
+                                showLoginForm = false
+                                agentPasswordText = "" // Clear password from memory
+                                actionFeedback = if (isAr) "تم تسجيل الدخول بنجاح" else "Logged in successfully"
+                            } else {
+                                val errBody = response.errorBody()?.string()
+                                val errorDetail = SammNetworkClient.parseErrorDetail(errBody)
+                                actionFeedback = when (response.code()) {
+                                    401 -> if (isAr) "اسم المستخدم أو كلمة المرور غير صحيحة" else "Invalid username or password"
+                                    403 -> errorDetail ?: if (isAr) "الحساب غير مصرح به كوكيل" else "User is not an authorized agent"
+                                    else -> errorDetail ?: if (isAr) "فشل تسجيل الدخول (${response.code()})" else "Login failed (${response.code()})"
+                                }
+                                agentPasswordText = ""
+                            }
+                        } catch (e: Throwable) {
+                            if (e is kotlinx.coroutines.CancellationException) throw e
+                            actionFeedback = e.message ?: if (isAr) "فشل الاتصال بالخادم" else "Failed to connect to server"
+                            agentPasswordText = ""
                         } finally {
-                            isTesting = false
+                            isLoggingIn = false
                         }
                     }
                 },
-                enabled = !isTesting,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0A84FF)),
+                enabled = !isLoggingIn,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5856D6)),
                 shape = RoundedCornerShape(10.dp),
-                modifier = Modifier.weight(1.3f)
+                modifier = Modifier.fillMaxWidth().height(48.dp)
             ) {
-                if (isTesting) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
-                        color = Color.White
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
+                if (isLoggingIn) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
+                    Spacer(modifier = Modifier.width(8.dp))
                 }
                 Text(
-                    text = if (isAr) "اختبار الاتصال" else "Test Connection",
+                    text = if (isAr) "تسجيل الدخول كوكيل" else "Login as Agent",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
-                )
-            }
-
-            // Clear Button
-            OutlinedButton(
-                onClick = {
-                    prefs.clearSammCredentials()
-                    baseUrlText = ""
-                    tokenText = ""
-                    connectionStatus = SammConnectionStatus.IDLE
-                    actionFeedback = if (isAr) "تم مسح البيانات" else "Credentials cleared"
-                },
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Text(
-                    text = if (isAr) "مسح" else "Clear",
-                    fontSize = 13.sp,
-                    color = Color(0xFFFF453A)
                 )
             }
         }

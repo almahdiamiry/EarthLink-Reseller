@@ -7,6 +7,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -472,5 +473,89 @@ class SammWireContractTest {
             "Must never contain duplicate /api/v1/api/v1",
             recorded.path?.contains("/api/v1/api/v1") == true
         )
+    }
+
+    @Test
+    fun agentLogin_verifiesPathMethodBodyAndResponseDeserialization() = runTest {
+        // Claim: Agent login posts username & password to /api/v1/auth/agent-login and returns agent token & info
+        val jsonResponse = """
+            {
+              "token": "samm_agent_secret_token_12345",
+              "token_type": "bearer",
+              "expires_at": null,
+              "agent": {
+                "id": 5,
+                "username": "test_agent_v1",
+                "role": "agent",
+                "reseller_id": 2
+              }
+            }
+        """.trimIndent()
+
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(jsonResponse)
+        )
+
+        val unauthClient = SammNetworkClient.createApiService(mockServer.url("/").toString(), token = null)
+        val response = unauthClient.agentLogin(
+            SammAgentLoginRequest(
+                username = "test_agent_v1",
+                password = "agentpass123"
+            )
+        )
+
+        assertTrue(response.isSuccessful)
+        val body = response.body()
+        assertNotNull(body)
+        assertEquals("samm_agent_secret_token_12345", body?.token)
+        assertEquals("bearer", body?.tokenType)
+        assertNull(body?.expiresAt)
+        assertEquals(5, body?.agent?.id)
+        assertEquals("test_agent_v1", body?.agent?.username)
+        assertEquals("agent", body?.agent?.role)
+        assertEquals(2, body?.agent?.resellerId)
+
+        val recorded = mockServer.takeRequest()
+        assertEquals("POST", recorded.method)
+        assertEquals("/api/v1/auth/agent-login", recorded.path)
+        assertEquals("application/json", recorded.getHeader("Accept"))
+        assertNull("Unauthenticated login must not have Authorization header", recorded.getHeader("Authorization"))
+        val requestBody = recorded.body.readUtf8()
+        assertTrue(requestBody.contains("\"username\":\"test_agent_v1\""))
+        assertTrue(requestBody.contains("\"password\":\"agentpass123\""))
+    }
+
+    @Test
+    fun agentLogout_verifiesPathMethodHeadersAndResponseDeserialization() = runTest {
+        // Claim: Agent logout posts to /api/v1/auth/agent-logout with Bearer token
+        val jsonResponse = """
+            {
+              "status": "success",
+              "message": "Logged out successfully"
+            }
+        """.trimIndent()
+
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(jsonResponse)
+        )
+
+        val response = apiService.agentLogout()
+
+        assertTrue(response.isSuccessful)
+        val body = response.body()
+        assertNotNull(body)
+        assertEquals("success", body?.status)
+        assertEquals("Logged out successfully", body?.message)
+
+        val recorded = mockServer.takeRequest()
+        assertEquals("POST", recorded.method)
+        assertEquals("/api/v1/auth/agent-logout", recorded.path)
+        assertEquals("Bearer $testToken", recorded.getHeader("Authorization"))
     }
 }

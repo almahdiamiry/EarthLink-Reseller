@@ -41,6 +41,12 @@ class AuthViewModel(
     private val _sammBaseUrl = MutableStateFlow(prefs.getSammBaseUrl() ?: "")
     val sammBaseUrl = _sammBaseUrl.asStateFlow()
 
+    private val _sammUsername = MutableStateFlow(prefs.getSammAgentUsername() ?: "")
+    val sammUsername = _sammUsername.asStateFlow()
+
+    private val _sammPassword = MutableStateFlow("")
+    val sammPassword = _sammPassword.asStateFlow()
+
     private val _sammApiToken = MutableStateFlow(prefs.getSammToken() ?: "")
     val sammApiToken = _sammApiToken.asStateFlow()
 
@@ -61,6 +67,8 @@ class AuthViewModel(
     }
 
     fun setSammBaseUrl(value: String) { _sammBaseUrl.value = value }
+    fun setSammUsername(value: String) { _sammUsername.value = value }
+    fun setSammPassword(value: String) { _sammPassword.value = value }
     fun setSammApiToken(value: String) { _sammApiToken.value = value }
 
     fun setUsername(value: String) { _username.value = value }
@@ -70,52 +78,120 @@ class AuthViewModel(
     fun clearError() { _error.value = null }
 
     fun loginSamm(
+        username: String? = null,
+        password: String? = null,
         onSuccess: () -> Unit = {},
         onError: (String) -> Unit = {}
-    ) {
+    ): kotlinx.coroutines.Job {
         val rawUrl = _sammBaseUrl.value.trim()
-        val token = _sammApiToken.value.trim()
+        val user = (username ?: _sammUsername.value).trim()
+        val pass = password ?: _sammPassword.value
 
-        if (rawUrl.isEmpty() || token.isEmpty()) {
-            val msg = "Server URL and API Token cannot be empty."
+        if (rawUrl.isEmpty() || user.isEmpty() || pass.isEmpty()) {
+            val msg = "Server URL, Username, and Password cannot be empty."
             _error.value = msg
             onError(msg)
-            return
+            return kotlinx.coroutines.Job().apply { complete() }
         }
 
         val normalizedUrl = com.example.ui.screens.SammUrlNormalizer.normalize(rawUrl)
 
-        viewModelScope.launch {
+        return viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
             try {
-                val status = com.example.ui.screens.SammConnectionEvaluator.testConnection(
-                    baseUrl = normalizedUrl,
-                    token = token
+                // Zero Password Persistence: Passwords are used solely in this transient Retrofit call
+                // and never written to SharedPreferences, Room, or disk.
+                val apiService = com.example.core.network.samm.SammNetworkClient.createApiService(normalizedUrl, token = null)
+                val response = apiService.agentLogin(
+                    com.example.core.network.samm.SammAgentLoginRequest(
+                        username = user,
+                        password = pass
+                    )
                 )
-                if (status == com.example.ui.screens.SammConnectionStatus.CONNECTED) {
+
+                if (response.isSuccessful && response.body() != null) {
+                    val loginResp = response.body()!!
+                    val rawToken = loginResp.token
+                    val agent = loginResp.agent
+
                     prefs.saveSammBaseUrl(normalizedUrl)
-                    prefs.saveSammToken(token)
+                    prefs.saveSammToken(rawToken)
+                    prefs.saveSammAgentInfo(
+                        agentId = agent.id,
+                        username = agent.username,
+                        resellerId = agent.resellerId
+                    )
                     prefs.setLastSelectedLoginProvider(SasProviders.ALAMIRY)
+
                     audit.logAction(
                         action = "SAMM_LOGIN",
                         entityType = "PROVIDER",
                         entityId = normalizedUrl,
-                        summary = "Operator logged in via SAMM API Token"
+                        summary = "Agent ${agent.username} (ID: ${agent.id}) logged in"
                     )
+
+                    // Immediately clear transient password from memory
+                    _sammPassword.value = ""
                     onSuccess()
                 } else {
-                    val msg = status.englishMessage
+                    val errBody = response.errorBody()?.string()
+                    val errorDetail = com.example.core.network.samm.SammNetworkClient.parseErrorDetail(errBody)
+                    val msg = when (response.code()) {
+                        401 -> "Invalid username or password."
+                        403 -> errorDetail ?: "Access denied: Account is not an authorized agent."
+                        else -> errorDetail ?: "Login failed with code ${response.code()}."
+                    }
                     _error.value = msg
+                    _sammPassword.value = ""
                     onError(msg)
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                val msg = e.message ?: "Failed to connect to SAMM server."
+                val msg = when (e) {
+                    is java.net.UnknownHostException -> "Server not found. Check server URL."
+                    is java.net.SocketTimeoutException -> "Connection timed out."
+                    is java.io.IOException -> "Network connection failed: ${e.message}"
+                    else -> e.message ?: "Failed to connect to SAMM server."
+                }
                 _error.value = msg
+                _sammPassword.value = ""
                 onError(msg)
             } finally {
                 _isLoading.value = false
+            }
+        }
+    }
+
+    fun logoutSamm(
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
+    ): kotlinx.coroutines.Job {
+        val currentToken = prefs.getSammToken()
+        val currentUrl = prefs.getSammBaseUrl()
+
+        return viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                if (!currentToken.isNullOrBlank() && !currentUrl.isNullOrBlank()) {
+                    try {
+                        val api = com.example.core.network.samm.SammNetworkClient.createApiService(currentUrl, currentToken)
+                        api.agentLogout()
+                    } catch (_: Exception) {
+                        // Fail-safe: even if server network call fails, local session is cleared
+                    }
+                }
+                audit.logAction(
+                    action = "SAMM_LOGOUT",
+                    entityType = "PROVIDER",
+                    entityId = currentUrl ?: "UNKNOWN",
+                    summary = "Agent logged out from SAMM"
+                )
+            } finally {
+                prefs.clearSammCredentials()
+                _sammPassword.value = ""
+                _isLoading.value = false
+                onSuccess()
             }
         }
     }

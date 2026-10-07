@@ -182,6 +182,8 @@ class SammNetworkClient(
             }
         }
 
+        fun parseErrorDetail(errorBody: String?): String? = extractErrorMessage(errorBody)
+
         /**
          * Maps Retrofit HTTP error response to typed fail-closed SasGatewayException hierarchy:
          * - 401 -> SasAuthException

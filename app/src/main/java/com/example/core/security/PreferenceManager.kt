@@ -628,6 +628,9 @@ open class PreferenceManager(private val context: Context) {
         private const val KEY_LOCAL_ACCOUNTS_SORT_OPTION = "local_accounts_sort_option"
         private const val KEY_SAMM_BASE_URL = "enc_samm_base_url"
         private const val KEY_SAMM_API_TOKEN = "enc_samm_api_token"
+        private const val KEY_SAMM_AGENT_ID = "enc_samm_agent_id"
+        private const val KEY_SAMM_AGENT_USERNAME = "enc_samm_agent_username"
+        private const val KEY_SAMM_AGENT_RESELLER_ID = "enc_samm_agent_reseller_id"
         private const val KEY_LAST_SELECTED_LOGIN_PROVIDER = "last_selected_login_provider"
     }
 
@@ -965,10 +968,38 @@ open class PreferenceManager(private val context: Context) {
         return if (token.length <= 4) "••••" else "••••••••"
     }
 
+    fun saveSammAgentInfo(agentId: Int, username: String, resellerId: Int? = null) {
+        val editor = prefs.edit()
+            .putInt(KEY_SAMM_AGENT_ID, agentId)
+            .putString(KEY_SAMM_AGENT_USERNAME, username.trim())
+        if (resellerId != null) {
+            editor.putInt(KEY_SAMM_AGENT_RESELLER_ID, resellerId)
+        } else {
+            editor.remove(KEY_SAMM_AGENT_RESELLER_ID)
+        }
+        editor.apply()
+        _sammConfigVersionFlow.value += 1
+    }
+
+    fun getSammAgentId(): Int? {
+        val id = prefs.getInt(KEY_SAMM_AGENT_ID, -1)
+        return if (id != -1) id else null
+    }
+
+    fun getSammAgentUsername(): String? = prefs.getString(KEY_SAMM_AGENT_USERNAME, null)
+
+    fun getSammAgentResellerId(): Int? {
+        val id = prefs.getInt(KEY_SAMM_AGENT_RESELLER_ID, -1)
+        return if (id != -1) id else null
+    }
+
     fun clearSammCredentials() {
         prefs.edit()
             .remove(KEY_SAMM_BASE_URL)
             .remove(KEY_SAMM_API_TOKEN)
+            .remove(KEY_SAMM_AGENT_ID)
+            .remove(KEY_SAMM_AGENT_USERNAME)
+            .remove(KEY_SAMM_AGENT_RESELLER_ID)
             .apply()
         _sammConfigVersionFlow.value += 1
         refreshProviderAccessState()
@@ -1039,6 +1070,9 @@ open class PreferenceManager(private val context: Context) {
             .remove(KEY_EARTHLINK_API_TOKEN)
             .remove(KEY_SAMM_BASE_URL)
             .remove(KEY_SAMM_API_TOKEN)
+            .remove(KEY_SAMM_AGENT_ID)
+            .remove(KEY_SAMM_AGENT_USERNAME)
+            .remove(KEY_SAMM_AGENT_RESELLER_ID)
             .apply()
         _demoModeFlow.value = false
         _sammConfigVersionFlow.value += 1

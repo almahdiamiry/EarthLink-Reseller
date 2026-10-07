@@ -24,6 +24,34 @@ data class MeResponse(
 )
 
 @JsonClass(generateAdapter = true)
+data class SammAgentLoginRequest(
+    @Json(name = "username") val username: String,
+    @Json(name = "password") val password: String
+)
+
+@JsonClass(generateAdapter = true)
+data class SammAgentInfo(
+    @Json(name = "id") val id: Int,
+    @Json(name = "username") val username: String,
+    @Json(name = "role") val role: String,
+    @Json(name = "reseller_id") val resellerId: Int? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class SammAgentLoginResponse(
+    @Json(name = "token") val token: String,
+    @Json(name = "token_type") val tokenType: String = "bearer",
+    @Json(name = "expires_at") val expiresAt: String? = null,
+    @Json(name = "agent") val agent: SammAgentInfo
+)
+
+@JsonClass(generateAdapter = true)
+data class SammAgentLogoutResponse(
+    @Json(name = "status") val status: String,
+    @Json(name = "message") val message: String
+)
+
+@JsonClass(generateAdapter = true)
 data class CustomerCreate(
     @Json(name = "username") val username: String,
     @Json(name = "password") val password: String,

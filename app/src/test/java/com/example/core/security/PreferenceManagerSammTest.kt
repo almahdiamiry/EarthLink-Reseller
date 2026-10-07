@@ -210,4 +210,50 @@ class PreferenceManagerSammTest {
         preferenceManager.clearCredentials()
         assertEquals(initialVersion + 6, preferenceManager.sammConfigVersionFlow.value)
     }
+
+    @Test
+    fun saveAndGetSammAgentInfo_storesAndRetrievesAgentMetadata() {
+        // Claim: Agent ID, username, and reseller ID are persisted in secure prefs and retrieved correctly.
+        preferenceManager.saveSammAgentInfo(agentId = 5, username = "test_agent_v1", resellerId = 2)
+
+        assertEquals(5, preferenceManager.getSammAgentId())
+        assertEquals("test_agent_v1", preferenceManager.getSammAgentUsername())
+        assertEquals(2, preferenceManager.getSammAgentResellerId())
+
+        // Reseller ID is optional (null case)
+        preferenceManager.saveSammAgentInfo(agentId = 6, username = "agent_no_reseller", resellerId = null)
+        assertEquals(6, preferenceManager.getSammAgentId())
+        assertEquals("agent_no_reseller", preferenceManager.getSammAgentUsername())
+        assertNull(preferenceManager.getSammAgentResellerId())
+    }
+
+    @Test
+    fun clearSammCredentials_clearsAgentInfoAndToken() {
+        // Claim: Clearing SAMM credentials completely removes agent metadata and token.
+        preferenceManager.saveSammBaseUrl("https://samm.al-amiry.net")
+        preferenceManager.saveSammToken("samm_token_abc")
+        preferenceManager.saveSammAgentInfo(agentId = 5, username = "test_agent_v1", resellerId = 2)
+
+        preferenceManager.clearSammCredentials()
+
+        assertNull(preferenceManager.getSammBaseUrl())
+        assertNull(preferenceManager.getSammToken())
+        assertNull(preferenceManager.getSammAgentId())
+        assertNull(preferenceManager.getSammAgentUsername())
+        assertNull(preferenceManager.getSammAgentResellerId())
+        assertFalse(preferenceManager.isSammConfigured())
+    }
+
+    @Test
+    fun zeroPasswordPersistenceInvariant_ensuresNoAgentPasswordStoredInPrefs() {
+        // Claim: Zero password persistence - SAMM agent credentials never store plaintext password on disk.
+        preferenceManager.saveSammBaseUrl("https://samm.al-amiry.net")
+        preferenceManager.saveSammToken("samm_scoped_bearer_xyz")
+        preferenceManager.saveSammAgentInfo(agentId = 5, username = "test_agent_v1", resellerId = 2)
+
+        val allKeys = preferenceManager.prefs.all.keys
+        assertFalse("Must never store samm password key", allKeys.contains("enc_samm_password"))
+        assertFalse("Must never store agent password key", allKeys.contains("samm_agent_password"))
+        assertFalse("Must never store plaintext agent password", allKeys.contains("agent_password"))
+    }
 }
