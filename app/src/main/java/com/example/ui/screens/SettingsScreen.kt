@@ -257,7 +257,22 @@ fun SettingsScreen(
                                 authViewModel.saveIspAdminCredentials(u, p)
                                 dashboardViewModel.loadDashboardData()
                                 onNavigateToSubscribers?.invoke()
+                            },
+                            onClearEarthlink = {
+                                authViewModel.clearProviderCredentials(com.example.core.model.SasProviders.EARTHLINK)
                             }
+                        )
+                    }
+                }
+
+                // 3. ALAMIRY (SAMM) GATEWAY (بوابة العامري / سام)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SettingsSectionTitle(text = if (currentLang == "ar") "بوابة العامري (SAMM)" else "ALAMIRY (SAMM) GATEWAY")
+                    
+                    SettingsCardGroup {
+                        SammSettingsSection(
+                            prefs = prefs,
+                            currentLang = currentLang
                         )
                     }
                 }
@@ -1062,7 +1077,8 @@ private fun AccountAndIspSection(
     username: String,
     prefs: com.example.core.security.PreferenceManager,
     currentLang: String,
-    onSaveIsp: (String, String) -> Unit
+    onSaveIsp: (String, String) -> Unit,
+    onClearEarthlink: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -1237,6 +1253,36 @@ private fun AccountAndIspSection(
             Icon(Icons.Default.Save, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
             Spacer(modifier = Modifier.width(6.dp))
             Text(if (currentLang == "ar") "حفظ الإعدادات" else "Save Settings", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+        }
+
+        // Clear EarthLink Gateway Credentials Button
+        val hasEarthlinkConfig = !prefs.getAuthToken().isNullOrEmpty() || !prefs.getIspAdminUsername().isNullOrEmpty()
+        if (hasEarthlinkConfig) {
+            OutlinedButton(
+                onClick = {
+                    onClearEarthlink()
+                    ispAdminUserText = ""
+                    ispAdminPassText = ""
+                    depositPassText = ""
+                    Toast.makeText(
+                        context,
+                        if (currentLang == "ar") "تم حذف بيانات إيرثلنك بنجاح" else "EarthLink credentials removed",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                },
+                border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f)),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().height(42.dp)
+            ) {
+                Icon(Icons.Default.DeleteOutline, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = if (currentLang == "ar") "إزالة بيانات إيرثلنك" else "Remove EarthLink Credentials",
+                    color = Color(0xFFEF4444),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
         }
     }
 }

@@ -56,6 +56,7 @@ import com.google.android.gms.common.api.ApiException
 
 // Formatting helper for Money
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LocalAccountsScreen(
     viewModel: LocalAccountsViewModel,
@@ -69,12 +70,34 @@ fun LocalAccountsScreen(
     val hasAdv by viewModel.filterAdvance.collectAsStateWithLifecycle()
     val noUser by viewModel.filterNoUsername.collectAsStateWithLifecycle()
     val hasCoords by viewModel.filterCoordinates.collectAsStateWithLifecycle()
+    val filterProvider by viewModel.filterProvider.collectAsStateWithLifecycle()
     val sortOption by viewModel.sortOption.collectAsStateWithLifecycle()
+
+    val selectedAccountIds by viewModel.selectedAccountIds.collectAsStateWithLifecycle()
+    val isSelectionMode by viewModel.isSelectionMode.collectAsStateWithLifecycle()
+    val batchResult by viewModel.batchResult.collectAsStateWithLifecycle()
+    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     val prefs = remember(context) { (context.applicationContext as EarthlinkApp).preferenceManager }
     val currentLang by prefs.languageFlow.collectAsStateWithLifecycle()
     val isAr = currentLang == "ar"
+
+    val coroutineScope = rememberCoroutineScope()
+    var pendingBatchTargetProvider by remember { mutableStateOf<String?>(null) }
+
+    // Toast or message when batchResult changes
+    LaunchedEffect(batchResult) {
+        batchResult?.let { res ->
+            val msg = if (isAr) {
+                "اكتمل التعيين: تم تحديث ${res.updated}، بالفعل على المزود ${res.alreadyTarget}، تم تخطي ${res.skippedDueToPending} لوجود عمليات معلقة."
+            } else {
+                "Batch complete: Updated ${res.updated}, Already target ${res.alreadyTarget}, Skipped ${res.skippedDueToPending} (in-flight ops)."
+            }
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+            viewModel.clearBatchResult()
+        }
+    }
 
     val sortLabel = if (isAr) "ترتيب حسب:" else "Sorted by:"
     val sortOptionsList = if (isAr) {
@@ -90,17 +113,48 @@ fun LocalAccountsScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text(text = if (isAr) "سجل الحسابات المحلية" else "Local Subscriber Billing", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Text(text = if (isAr) "دفاتر ديون سريعة بدون إنترنت" else "Fast Offline-First Ledgers", fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
+        // Top Bar
+        if (isSelectionMode) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    IconButton(onClick = { viewModel.clearSelection() }) {
+                        Icon(imageVector = Icons.Default.Close, contentDescription = if (isAr) "إلغاء التحديد" else "Clear selection")
+                    }
+                    Text(
+                        text = if (isAr) "تم تحديد: ${selectedAccountIds.size}" else "Selected: ${selectedAccountIds.size}",
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = { viewModel.selectAllVisible(accounts.map { it.id }) }) {
+                        Text(if (isAr) "تحديد الظاهر" else "Select Visible", fontSize = 12.sp)
+                    }
+                    TextButton(onClick = { viewModel.selectAllResults() }) {
+                        Text(if (isAr) "تحديد الكل ($totalMatchingCount)" else "Select All ($totalMatchingCount)", fontSize = 12.sp)
+                    }
+                }
             }
-            IconButton(onClick = onNavigateToImport, modifier = Modifier.size(48.dp)) {
-                Icon(imageVector = Icons.Default.ImportContacts, contentDescription = if (isAr) "استيراد" else "Import", tint = MaterialTheme.colorScheme.primary)
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(text = if (isAr) "سجل الحسابات المحلية" else "Local Subscriber Billing", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text(text = if (isAr) "دفاتر ديون سريعة بدون إنترنت" else "Fast Offline-First Ledgers", fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
+                }
+                IconButton(onClick = onNavigateToImport, modifier = Modifier.size(48.dp)) {
+                    Icon(imageVector = Icons.Default.ImportContacts, contentDescription = if (isAr) "استيراد" else "Import", tint = MaterialTheme.colorScheme.primary)
+                }
             }
         }
 
@@ -146,6 +200,48 @@ fun LocalAccountsScreen(
                 onClick = { viewModel.toggleFilterCoordinates() },
                 label = { Text(if (isAr) "إحداثيات الموقع" else "GPS Coordinates") }
             )
+
+            // Provider filter chips
+            FilterChip(
+                selected = filterProvider == null,
+                onClick = { viewModel.setFilterProvider(null) },
+                label = { Text(if (isAr) "المزود: الكل" else "Provider: All") }
+            )
+            FilterChip(
+                selected = filterProvider == SasProviders.EARTHLINK,
+                onClick = { viewModel.setFilterProvider(if (filterProvider == SasProviders.EARTHLINK) null else SasProviders.EARTHLINK) },
+                label = { Text("EarthLink") }
+            )
+            FilterChip(
+                selected = filterProvider == SasProviders.ALAMIRY,
+                onClick = { viewModel.setFilterProvider(if (filterProvider == SasProviders.ALAMIRY) null else SasProviders.ALAMIRY) },
+                label = { Text("SAMM (Alamiry)") }
+            )
+        }
+
+        // Action Row when selection is active
+        if (isSelectionMode) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { pendingBatchTargetProvider = SasProviders.EARTHLINK },
+                    modifier = Modifier.weight(1f),
+                    enabled = !isLoading
+                ) {
+                    Text(if (isAr) "تعيين إلى EarthLink" else "Set -> EarthLink", fontSize = 12.sp)
+                }
+                Button(
+                    onClick = { pendingBatchTargetProvider = SasProviders.ALAMIRY },
+                    modifier = Modifier.weight(1f),
+                    enabled = !isLoading
+                ) {
+                    Text(if (isAr) "تعيين إلى SAMM" else "Set -> SAMM", fontSize = 12.sp)
+                }
+            }
         }
 
         // Sorting Row
@@ -178,30 +274,68 @@ fun LocalAccountsScreen(
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize().weight(1f)) {
                 items(accounts, key = { it.id }) { acc ->
+                    val isSelected = acc.id in selectedAccountIds
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 4.dp)
-                            .clickable { onAccountClick(acc) }
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(text = acc.displayName, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                                if (acc.debtIqd > 0.0) {
-                                    Text(text = formatIqd(acc.debtIqd), color = Color(0xFFC62828), fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                } else if (acc.advanceIqd > 0.0) {
-                                    Text(text = "+" + formatIqd(acc.advanceIqd), color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                } else {
-                                    Text(text = if (isAr) "مسدد" else "Settled", color = Color.Gray, fontSize = 13.sp)
+                            .combinedClickable(
+                                onClick = {
+                                    if (isSelectionMode) {
+                                        viewModel.toggleAccountSelection(acc.id)
+                                    } else {
+                                        onAccountClick(acc)
+                                    }
+                                },
+                                onLongClick = {
+                                    viewModel.toggleAccountSelection(acc.id)
                                 }
+                            ),
+                        colors = if (isSelected) {
+                            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
+                        } else {
+                            CardDefaults.cardColors()
+                        }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (isSelectionMode) {
+                                Checkbox(
+                                    checked = isSelected,
+                                    onCheckedChange = { viewModel.toggleAccountSelection(acc.id) },
+                                    modifier = Modifier.padding(end = 8.dp)
+                                )
                             }
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(text = acc.earthlinkUsername ?: (if (isAr) "حساب إيرثلنك غير مرتبط" else "Missing Earthlink Account"), color = Color.Gray, fontSize = 12.sp)
-                                Text(text = "${if (isAr) "الباقة: " else "Pkg: "}${acc.packageName ?: "N/A"}", fontSize = 12.sp)
-                            }
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(text = "${if (isAr) "الهاتف: " else "Phone: "}${acc.phone1 ?: acc.phone2 ?: "N/A"}", fontSize = 12.sp)
-                                Text(text = "${if (isAr) "السعر: " else "Price: "}${formatIqd(acc.currentPriceIqd)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(text = acc.displayName, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                    if (acc.debtIqd > 0.0) {
+                                        Text(text = formatIqd(acc.debtIqd), color = Color(0xFFC62828), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    } else if (acc.advanceIqd > 0.0) {
+                                        Text(text = "+" + formatIqd(acc.advanceIqd), color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    } else {
+                                        Text(text = if (isAr) "مسدد" else "Settled", color = Color.Gray, fontSize = 13.sp)
+                                    }
+                                }
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(text = acc.earthlinkUsername ?: (if (isAr) "حساب إيرثلنك غير مرتبط" else "Missing Earthlink Account"), color = Color.Gray, fontSize = 12.sp)
+                                    Text(text = "${if (isAr) "الباقة: " else "Pkg: "}${acc.packageName ?: "N/A"}", fontSize = 12.sp)
+                                }
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(text = "${if (isAr) "الهاتف: " else "Phone: "}${acc.phone1 ?: acc.phone2 ?: "N/A"}", fontSize = 12.sp)
+                                    Text(text = "${if (isAr) "السعر: " else "Price: "}${formatIqd(acc.currentPriceIqd)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                                }
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(
+                                        text = "${if (isAr) "المزود: " else "Provider: "}${acc.operationProvider}",
+                                        fontSize = 11.sp,
+                                        color = if (acc.operationProvider == SasProviders.ALAMIRY) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
                         }
                     }
@@ -232,6 +366,68 @@ fun LocalAccountsScreen(
                 }
             }
         }
+    }
+
+    // Confirmation Dialog for Batch Provider Assignment
+    pendingBatchTargetProvider?.let { target ->
+        val selectedCount = selectedAccountIds.size
+        AlertDialog(
+            onDismissRequest = { pendingBatchTargetProvider = null },
+            title = {
+                Text(
+                    text = if (isAr) "تأكيد تعيين المزود بالدفعة" else "Confirm Batch Provider Assignment",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = if (isAr) "عدد الحسابات المحددة: $selectedCount" else "Selected Accounts: $selectedCount",
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = if (isAr) "المزود المستهدف: $target" else "Target Provider: $target",
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Divider(modifier = Modifier.padding(vertical = 4.dp))
+                    Text(
+                        text = "Changing provider changes where future ISP operations are sent.\n" +
+                               "This does not migrate the external subscriber.\n" +
+                               "Local history remains unchanged.\n" +
+                               "Pending operations keep their original provider.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Divider(modifier = Modifier.padding(vertical = 4.dp))
+                    Text(
+                        text = if (isAr) "ملاحظة: سيتم تخطي أي حساب يحتوي على عمليات معلقة نشطة تلقائياً لأمان المعاملات."
+                               else "Note: Accounts with active in-flight operations will be skipped automatically.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val prov = target
+                        pendingBatchTargetProvider = null
+                        coroutineScope.launch {
+                            viewModel.executeBatchProviderAssignment(prov)
+                        }
+                    }
+                ) {
+                    Text(if (isAr) "تأكيد التعيين" else "Confirm")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { pendingBatchTargetProvider = null }) {
+                    Text(if (isAr) "إلغاء" else "Cancel")
+                }
+            }
+        )
     }
 }
 

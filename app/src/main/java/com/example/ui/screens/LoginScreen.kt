@@ -60,6 +60,9 @@ fun LoginScreen(viewModel: AuthViewModel) {
     val rememberMe by viewModel.rememberMe.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
+    val selectedProvider by viewModel.selectedProvider.collectAsStateWithLifecycle()
+    val sammBaseUrl by viewModel.sammBaseUrl.collectAsStateWithLifecycle()
+    val sammApiToken by viewModel.sammApiToken.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -240,140 +243,300 @@ fun LoginScreen(viewModel: AuthViewModel) {
 
                         Spacer(modifier = Modifier.height(2.dp))
 
-                        // 1. Reseller Username Input Field
-                        var localUsername by remember(username) { mutableStateOf(username) }
-                        OutlinedTextField(
-                            value = localUsername,
-                            onValueChange = {
-                                localUsername = it
-                                viewModel.setUsername(it)
-                            },
-                            label = { Text(if (currentLang == "ar") "اسم المستخدم" else "Username") },
-                            placeholder = {
-                                Text(
-                                    if (currentLang == "ar") "أدخل اسم المستخدم" else "Enter username",
-                                    color = Color.White.copy(alpha = 0.3f)
-                                )
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Outlined.Person,
-                                    contentDescription = null,
-                                    tint = Color(0xFF38BDF8)
-                                )
-                            },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color(0xFF171E29),
-                                unfocusedContainerColor = Color(0xFF171E29),
-                                focusedBorderColor = Color(0xFF0288D1),
-                                unfocusedBorderColor = Color.White.copy(alpha = 0.1f),
-                                focusedLabelColor = Color(0xFF38BDF8),
-                                unfocusedLabelColor = Color.White.copy(alpha = 0.55f),
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
-                                cursorColor = Color(0xFF38BDF8)
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 56.dp)
-                        )
-
-                        // 2. Password Input Field
-                        var localPassword by remember(password) { mutableStateOf(password) }
-                        OutlinedTextField(
-                            value = localPassword,
-                            onValueChange = {
-                                localPassword = it
-                                viewModel.setPassword(it)
-                            },
-                            label = { Text(if (currentLang == "ar") "كلمة المرور" else "Password") },
-                            placeholder = {
-                                Text(
-                                    if (currentLang == "ar") "••••••••" else "••••••••",
-                                    color = Color.White.copy(alpha = 0.3f)
-                                )
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Outlined.Lock,
-                                    contentDescription = null,
-                                    tint = Color(0xFF38BDF8)
-                                )
-                            },
-                            singleLine = true,
-                            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                            trailingIcon = {
-                                val image = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
-                                IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                    Icon(
-                                        imageVector = image,
-                                        contentDescription = if (passwordVisible) {
-                                            if (currentLang == "ar") "إخفاء كلمة المرور" else "Hide password"
-                                        } else {
-                                            if (currentLang == "ar") "إظهار كلمة المرور" else "Show password"
-                                        },
-                                        tint = Color.White.copy(alpha = 0.6f)
+                        // Provider Switcher Tabs (Apple Segmented Style)
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color(0xFF171E29),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                // EarthLink Tab
+                                val isEarthlink = selectedProvider == com.example.core.model.SasProviders.EARTHLINK
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isEarthlink) Color(0xFF0288D1) else Color.Transparent,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable { viewModel.setSelectedProvider(com.example.core.model.SasProviders.EARTHLINK) }
+                                ) {
+                                    Text(
+                                        text = if (currentLang == "ar") "إيرثلنك (EarthLink)" else "EarthLink",
+                                        fontSize = 13.sp,
+                                        fontWeight = if (isEarthlink) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isEarthlink) Color.White else Color.White.copy(alpha = 0.6f),
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.padding(vertical = 10.dp)
                                     )
                                 }
-                            },
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Password,
-                                imeAction = ImeAction.Done
-                            ),
-                            keyboardActions = KeyboardActions(
-                                onDone = {
-                                    focusManager.clearFocus()
-                                    viewModel.login()
-                                }
-                            ),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color(0xFF171E29),
-                                unfocusedContainerColor = Color(0xFF171E29),
-                                focusedBorderColor = Color(0xFF0288D1),
-                                unfocusedBorderColor = Color.White.copy(alpha = 0.1f),
-                                focusedLabelColor = Color(0xFF38BDF8),
-                                unfocusedLabelColor = Color.White.copy(alpha = 0.55f),
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
-                                cursorColor = Color(0xFF38BDF8)
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 56.dp)
-                        )
 
-                        // 3. Remember Credentials Checkbox Row
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable { viewModel.setRememberMe(!rememberMe) }
-                                .padding(vertical = 4.dp, horizontal = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                checked = rememberMe,
-                                onCheckedChange = null,
-                                colors = CheckboxDefaults.colors(
-                                    checkedColor = Color(0xFF0288D1),
-                                    uncheckedColor = Color.White.copy(alpha = 0.3f),
-                                    checkmarkColor = Color.White
-                                )
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (currentLang == "ar") "تذكر بيانات الدخول" else "Remember login info",
-                                fontSize = 13.sp,
-                                color = Color.White.copy(alpha = 0.85f),
-                                fontWeight = FontWeight.Medium
-                            )
+                                // SAMM Tab
+                                val isSamm = selectedProvider == com.example.core.model.SasProviders.ALAMIRY
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isSamm) Color(0xFF0288D1) else Color.Transparent,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable { viewModel.setSelectedProvider(com.example.core.model.SasProviders.ALAMIRY) }
+                                ) {
+                                    Text(
+                                        text = if (currentLang == "ar") "العامري (SAMM)" else "Alamiry (SAMM)",
+                                        fontSize = 13.sp,
+                                        fontWeight = if (isSamm) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSamm) Color.White else Color.White.copy(alpha = 0.6f),
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.padding(vertical = 10.dp)
+                                    )
+                                }
+                            }
                         }
 
-                        // 4. Error Banner
+                        if (selectedProvider == com.example.core.model.SasProviders.ALAMIRY) {
+                            // --- SAMM LOGIN INPUTS ---
+                            var localSammUrl by remember(sammBaseUrl) { mutableStateOf(sammBaseUrl) }
+                            OutlinedTextField(
+                                value = localSammUrl,
+                                onValueChange = {
+                                    localSammUrl = it
+                                    viewModel.setSammBaseUrl(it)
+                                },
+                                label = { Text(if (currentLang == "ar") "عنوان الخادم (Server URL)" else "Server URL / Domain / IP") },
+                                placeholder = {
+                                    Text(
+                                        "https://samm.example.com",
+                                        color = Color.White.copy(alpha = 0.3f)
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Dns,
+                                        contentDescription = null,
+                                        tint = Color(0xFF38BDF8)
+                                    )
+                                },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Uri,
+                                    imeAction = ImeAction.Next
+                                ),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = Color(0xFF171E29),
+                                    unfocusedContainerColor = Color(0xFF171E29),
+                                    focusedBorderColor = Color(0xFF0288D1),
+                                    unfocusedBorderColor = Color.White.copy(alpha = 0.1f),
+                                    focusedLabelColor = Color(0xFF38BDF8),
+                                    unfocusedLabelColor = Color.White.copy(alpha = 0.55f),
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White,
+                                    cursorColor = Color(0xFF38BDF8)
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 56.dp)
+                            )
+
+                            var localSammToken by remember(sammApiToken) { mutableStateOf(sammApiToken) }
+                            OutlinedTextField(
+                                value = localSammToken,
+                                onValueChange = {
+                                    localSammToken = it
+                                    viewModel.setSammApiToken(it)
+                                },
+                                label = { Text(if (currentLang == "ar") "رمز الدخول البرمجي (API Token)" else "API Bearer Token") },
+                                placeholder = {
+                                    Text(
+                                        "eyJhbGciOi...",
+                                        color = Color.White.copy(alpha = 0.3f)
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.VpnKey,
+                                        contentDescription = null,
+                                        tint = Color(0xFF38BDF8)
+                                    )
+                                },
+                                singleLine = true,
+                                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                trailingIcon = {
+                                    val image = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
+                                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                        Icon(
+                                            imageVector = image,
+                                            contentDescription = if (passwordVisible) "Hide token" else "Show token",
+                                            tint = Color.White.copy(alpha = 0.6f)
+                                        )
+                                    }
+                                },
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Password,
+                                    imeAction = ImeAction.Done
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onDone = {
+                                        focusManager.clearFocus()
+                                        viewModel.loginSamm()
+                                    }
+                                ),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = Color(0xFF171E29),
+                                    unfocusedContainerColor = Color(0xFF171E29),
+                                    focusedBorderColor = Color(0xFF0288D1),
+                                    unfocusedBorderColor = Color.White.copy(alpha = 0.1f),
+                                    focusedLabelColor = Color(0xFF38BDF8),
+                                    unfocusedLabelColor = Color.White.copy(alpha = 0.55f),
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White,
+                                    cursorColor = Color(0xFF38BDF8)
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 56.dp)
+                            )
+                        } else {
+                            // --- EARTHLINK LOGIN INPUTS ---
+                            var localUsername by remember(username) { mutableStateOf(username) }
+                            OutlinedTextField(
+                                value = localUsername,
+                                onValueChange = {
+                                    localUsername = it
+                                    viewModel.setUsername(it)
+                                },
+                                label = { Text(if (currentLang == "ar") "اسم المستخدم" else "Username") },
+                                placeholder = {
+                                    Text(
+                                        if (currentLang == "ar") "أدخل اسم المستخدم" else "Enter username",
+                                        color = Color.White.copy(alpha = 0.3f)
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Person,
+                                        contentDescription = null,
+                                        tint = Color(0xFF38BDF8)
+                                    )
+                                },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = Color(0xFF171E29),
+                                    unfocusedContainerColor = Color(0xFF171E29),
+                                    focusedBorderColor = Color(0xFF0288D1),
+                                    unfocusedBorderColor = Color.White.copy(alpha = 0.1f),
+                                    focusedLabelColor = Color(0xFF38BDF8),
+                                    unfocusedLabelColor = Color.White.copy(alpha = 0.55f),
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White,
+                                    cursorColor = Color(0xFF38BDF8)
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 56.dp)
+                            )
+
+                            var localPassword by remember(password) { mutableStateOf(password) }
+                            OutlinedTextField(
+                                value = localPassword,
+                                onValueChange = {
+                                    localPassword = it
+                                    viewModel.setPassword(it)
+                                },
+                                label = { Text(if (currentLang == "ar") "كلمة المرور" else "Password") },
+                                placeholder = {
+                                    Text(
+                                        if (currentLang == "ar") "••••••••" else "••••••••",
+                                        color = Color.White.copy(alpha = 0.3f)
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Lock,
+                                        contentDescription = null,
+                                        tint = Color(0xFF38BDF8)
+                                    )
+                                },
+                                singleLine = true,
+                                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                trailingIcon = {
+                                    val image = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
+                                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                        Icon(
+                                            imageVector = image,
+                                            contentDescription = if (passwordVisible) {
+                                                if (currentLang == "ar") "إخفاء كلمة المرور" else "Hide password"
+                                            } else {
+                                                if (currentLang == "ar") "إظهار كلمة المرور" else "Show password"
+                                            },
+                                            tint = Color.White.copy(alpha = 0.6f)
+                                        )
+                                    }
+                                },
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Password,
+                                    imeAction = ImeAction.Done
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onDone = {
+                                        focusManager.clearFocus()
+                                        viewModel.login()
+                                    }
+                                ),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = Color(0xFF171E29),
+                                    unfocusedContainerColor = Color(0xFF171E29),
+                                    focusedBorderColor = Color(0xFF0288D1),
+                                    unfocusedBorderColor = Color.White.copy(alpha = 0.1f),
+                                    focusedLabelColor = Color(0xFF38BDF8),
+                                    unfocusedLabelColor = Color.White.copy(alpha = 0.55f),
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White,
+                                    cursorColor = Color(0xFF38BDF8)
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 56.dp)
+                            )
+
+                            // Remember Credentials Checkbox Row
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { viewModel.setRememberMe(!rememberMe) }
+                                    .padding(vertical = 4.dp, horizontal = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = rememberMe,
+                                    onCheckedChange = null,
+                                    colors = CheckboxDefaults.colors(
+                                        checkedColor = Color(0xFF0288D1),
+                                        uncheckedColor = Color.White.copy(alpha = 0.3f),
+                                        checkmarkColor = Color.White
+                                    )
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (currentLang == "ar") "تذكر بيانات الدخول" else "Remember login info",
+                                    fontSize = 13.sp,
+                                    color = Color.White.copy(alpha = 0.85f),
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+
+                        // Error Banner
                         AnimatedVisibility(
                             visible = error != null,
                             enter = fadeIn(),
@@ -406,11 +569,16 @@ fun LoginScreen(viewModel: AuthViewModel) {
                             }
                         }
 
-                        // 5. Primary Login Button
+                        // Primary Login Button
+                        val isSammSelected = selectedProvider == com.example.core.model.SasProviders.ALAMIRY
                         Button(
                             onClick = {
                                 focusManager.clearFocus()
-                                viewModel.login()
+                                if (isSammSelected) {
+                                    viewModel.loginSamm()
+                                } else {
+                                    viewModel.login()
+                                }
                             },
                             enabled = !isLoading,
                             colors = ButtonDefaults.buttonColors(
@@ -430,7 +598,7 @@ fun LoginScreen(viewModel: AuthViewModel) {
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = if (currentLang == "ar") "جاري تسجيل الدخول..." else "Signing in...",
+                                    text = if (currentLang == "ar") "جاري الاتصال..." else "Connecting...",
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
@@ -441,13 +609,17 @@ fun LoginScreen(viewModel: AuthViewModel) {
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Lock,
+                                        imageVector = if (isSammSelected) Icons.Default.CloudQueue else Icons.Default.Lock,
                                         contentDescription = null,
                                         tint = Color.White,
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Text(
-                                        text = if (currentLang == "ar") "تسجيل الدخول" else "Sign In",
+                                        text = if (isSammSelected) {
+                                            if (currentLang == "ar") "اتصال ببوابة SAMM" else "Connect to SAMM"
+                                        } else {
+                                            if (currentLang == "ar") "تسجيل الدخول" else "Sign In"
+                                        },
                                         fontSize = 15.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color.White

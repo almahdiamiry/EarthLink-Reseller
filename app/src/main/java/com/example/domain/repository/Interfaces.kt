@@ -1,6 +1,7 @@
 package com.example.domain.repository
 
 import com.example.core.model.*
+import com.example.core.network.SasGatewayRouter
 import com.example.core.sync.ImportResult
 import java.io.File
 import kotlinx.coroutines.flow.Flow
@@ -48,7 +49,8 @@ interface LocalAccountRepository {
         filterCoordinates: Boolean,
         sortOption: String,
         limit: Int,
-        offset: Int
+        offset: Int,
+        filterProvider: String? = null
     ): Flow<List<LocalAccount>>
 
     fun countAccountsFilteredFlow(
@@ -56,8 +58,23 @@ interface LocalAccountRepository {
         filterDebt: Boolean,
         filterAdvance: Boolean,
         filterNoUsername: Boolean,
-        filterCoordinates: Boolean
+        filterCoordinates: Boolean,
+        filterProvider: String? = null
     ): Flow<Int>
+
+    suspend fun queryAccountIdsFiltered(
+        query: String,
+        filterDebt: Boolean,
+        filterAdvance: Boolean,
+        filterNoUsername: Boolean,
+        filterCoordinates: Boolean,
+        filterProvider: String? = null
+    ): List<String>
+
+    suspend fun batchSetProvider(
+        candidateAccountIds: List<String>,
+        targetProvider: String
+    ): BatchProviderResult
     
     fun getAccountById(id: String): Flow<LocalAccount?>
     suspend fun getAccountByIdOneShot(id: String): LocalAccount?
@@ -152,6 +169,7 @@ interface LocalLedgerRepository {
     suspend fun recordPendingOperation(operation: PendingExternalOperation): PendingExternalOperation
     suspend fun claimDispatchAuthorization(businessTransactionId: String): Boolean
     suspend fun recoverColdStartOrphanedOperations(gateway: EarthlinkGateway, processStartMs: Long)
+    suspend fun recoverColdStartOrphanedOperations(router: SasGatewayRouter, processStartMs: Long)
     suspend fun getUnresolvedClaimedOperations(): List<PendingExternalOperation>
     suspend fun getPendingOperationByIntentId(operationIntentId: String): PendingExternalOperation?
     suspend fun getPendingOperationByTransactionId(businessTransactionId: String): PendingExternalOperation?
@@ -180,10 +198,13 @@ interface LocalLedgerRepository {
     suspend fun resolvePendingOperationVerifiedFailure(businessTransactionId: String, diagnostic: String): Boolean
     suspend fun resolvePendingOperationInconclusive(businessTransactionId: String, diagnostic: String): Boolean
     suspend fun verifyAndResolvePendingOperation(businessTransactionId: String, gateway: EarthlinkGateway, baselineExpirationDate: String? = null): PendingOperationResolution
+    suspend fun verifyAndResolvePendingOperation(businessTransactionId: String, router: SasGatewayRouter, baselineExpirationDate: String? = null): PendingOperationResolution
     suspend fun submitManualVerificationEvidence(businessTransactionId: String, externalEvidence: String): PendingOperationResolution
     suspend fun resolvePendingOperationSerialized(businessTransactionId: String, gateway: EarthlinkGateway, baselineExpirationDate: String? = null): PendingOperationResolution
+    suspend fun resolvePendingOperationSerialized(businessTransactionId: String, router: SasGatewayRouter, baselineExpirationDate: String? = null): PendingOperationResolution
     suspend fun getPendingSyntheticHistory(): List<LocalLedgerEntry>
     suspend fun sweepAndResolvePendingOperations(gateway: EarthlinkGateway, graceWindowMs: Long = 5000L): List<PendingOperationResolution>
+    suspend fun sweepAndResolvePendingOperations(router: SasGatewayRouter, graceWindowMs: Long = 5000L): List<PendingOperationResolution> = emptyList()
 }
 
 interface UtowerImportRepository {

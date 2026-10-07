@@ -32,6 +32,7 @@ object AppViewModelProvider {
             val app = (this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as EarthlinkApp)
             EarthlinkSearchViewModel(
                 gateway = app.earthlinkGateway,
+                sasGatewayRouter = app.sasGatewayRouter,
                 audit = app.auditRepository,
                 prefs = app.preferenceManager,
                 localAccountRepository = app.localAccountRepository,

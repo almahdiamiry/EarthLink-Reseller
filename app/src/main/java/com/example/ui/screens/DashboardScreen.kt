@@ -186,6 +186,7 @@ fun DashboardScreen(
 ) {
     val prefs = remember { viewModel.prefs }
     val isDemoOn by prefs.demoModeFlow.collectAsStateWithLifecycle()
+    val providerAccessState by prefs.providerAccessStateFlow.collectAsStateWithLifecycle()
 
     LaunchedEffect(isDemoOn) {
         viewModel.loadDashboardData()
@@ -451,39 +452,41 @@ fun DashboardScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            // Remaining Balance Capsule Promoted to Header (Clickable for Financial Breakdown)
-                            Surface(
-                                color = Color(0xFF141922),
-                                shape = RoundedCornerShape(10.dp),
-                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
-                                modifier = Modifier
-                                    .height(38.dp)
-                                    .clickable {
-                                        val hadFocusOrKeyboard = isSearchActive || isImeVisible || imeInsets.getBottom(density) > 0
-                                        focusManager.clearFocus(force = true)
-                                        keyboardController?.hide()
-                                        showFinancialSummarySheet = true
-                                    }
-                            ) {
-                                Row(
+                            // Remaining Balance Capsule Promoted to Header (Clickable for Financial Breakdown, EarthLink only)
+                            if (providerAccessState.hasEarthlink) {
+                                Surface(
+                                    color = Color(0xFF141922),
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
                                     modifier = Modifier
-                                        .fillMaxHeight()
-                                        .padding(horizontal = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        .height(38.dp)
+                                        .clickable {
+                                            val hadFocusOrKeyboard = isSearchActive || isImeVisible || imeInsets.getBottom(density) > 0
+                                            focusManager.clearFocus(force = true)
+                                            keyboardController?.hide()
+                                            showFinancialSummarySheet = true
+                                        }
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.AccountBalanceWallet,
-                                        contentDescription = null,
-                                        tint = Color(0xFF0A84FF),
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Text(
-                                        text = formatIqd(balance),
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp,
-                                        color = Color(0xFF0A84FF)
-                                    )
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxHeight()
+                                            .padding(horizontal = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.AccountBalanceWallet,
+                                            contentDescription = null,
+                                            tint = Color(0xFF0A84FF),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            text = formatIqd(balance),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp,
+                                            color = Color(0xFF0A84FF)
+                                        )
+                                    }
                                 }
                             }
 
@@ -559,7 +562,7 @@ fun DashboardScreen(
                         }
                     }
                     
-                    if (isCredentialsEmpty && !isDemoOn) {
+                    if (isCredentialsEmpty && !isDemoOn && providerAccessState.hasEarthlink) {
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             color = Color(0xFF141922),

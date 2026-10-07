@@ -16,12 +16,33 @@ import kotlinx.coroutines.withContext
 
 class EarthlinkSearchViewModel(
     private val gateway: com.example.domain.repository.EarthlinkGateway,
+    private val sasGatewayRouter: com.example.core.network.SasGatewayRouter,
     private val audit: com.example.domain.repository.AuditRepository,
     val prefs: com.example.core.security.PreferenceManager,
     private val localAccountRepository: com.example.domain.repository.LocalAccountRepository,
     private val localLedgerRepository: com.example.domain.repository.LocalLedgerRepository,
     private val syncRepo: com.example.domain.repository.SyncRepository? = null
 ) : ViewModel() {
+
+    constructor(
+        gateway: com.example.domain.repository.EarthlinkGateway,
+        audit: com.example.domain.repository.AuditRepository,
+        prefs: com.example.core.security.PreferenceManager,
+        localAccountRepository: com.example.domain.repository.LocalAccountRepository,
+        localLedgerRepository: com.example.domain.repository.LocalLedgerRepository,
+        syncRepo: com.example.domain.repository.SyncRepository? = null
+    ) : this(
+        gateway = gateway,
+        sasGatewayRouter = com.example.core.network.SasGatewayRouter(
+            com.example.core.network.EarthlinkSasGatewayAdapter(gateway),
+            prefs
+        ),
+        audit = audit,
+        prefs = prefs,
+        localAccountRepository = localAccountRepository,
+        localLedgerRepository = localLedgerRepository,
+        syncRepo = syncRepo
+    )
 
     companion object {
         private val isoFormat = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
@@ -31,6 +52,13 @@ class EarthlinkSearchViewModel(
         @Synchronized fun parseIsoDate(str: String): java.util.Date? = try { isoFormat.parse(str) } catch (_: Exception) { null }
         @Synchronized fun parseBghDate(str: String): java.util.Date? = try { bghFormat.parse(str) } catch (_: Exception) { null }
         @Synchronized fun formatBghFullDate(date: java.util.Date): String = try { bghFormatFull.format(date) } catch (_: Exception) { "" }
+    }
+
+    private val _selectedProvider = MutableStateFlow(com.example.core.model.SasProviders.EARTHLINK)
+    val selectedProvider: StateFlow<String> = _selectedProvider.asStateFlow()
+
+    fun setSelectedProvider(provider: String) {
+        _selectedProvider.value = provider
     }
 
     private val _searchQuery = MutableStateFlow("")
@@ -150,10 +178,17 @@ class EarthlinkSearchViewModel(
     }
 
 
+    fun searchUsers() = search()
+
     fun search() {
         if (_searchQuery.value.isEmpty()) return
+        val currentProvider = _selectedProvider.value
         val isDemo = prefs.getDemoMode()
-        val isCredentialsEmpty = !isDemo && (prefs.getIspAdminUsername().isNullOrBlank() || prefs.getIspAdminPassword().isNullOrBlank())
+        val isCredentialsEmpty = if (currentProvider == com.example.core.model.SasProviders.ALAMIRY) {
+            false
+        } else {
+            !isDemo && (prefs.getIspAdminUsername().isNullOrBlank() || prefs.getIspAdminPassword().isNullOrBlank())
+        }
 
         viewModelScope.launch {
             _isLoading.value = true
@@ -207,14 +242,29 @@ class EarthlinkSearchViewModel(
             }
 
             try {
-                val res = gateway.searchUsers(query = _searchQuery.value, startIndex = 0, rowCount = 200)
-                _usersList.value = res.itemsList ?: emptyList()
+                val targetGateway = sasGatewayRouter.getGateway(currentProvider)
+                val subscribers = targetGateway.searchSubscribers(query = _searchQuery.value, page = 1, pageSize = 200)
+                _usersList.value = subscribers.map { sub ->
+                    val numIndex = sub.subscriberId.toIntOrNull() ?: sub.subscriberId.hashCode()
+                    com.example.core.model.UserListItem(
+                        userIndexLower = numIndex,
+                        userIDLower = sub.username,
+                        customerNameLower = sub.displayName ?: sub.username,
+                        mobileNumberLower = sub.phone,
+                        accountStatusLower = sub.status,
+                        expirationDateLower = sub.expiresAt,
+                        accountExpirationDateLower = sub.expiresAt,
+                        displayNameLower = sub.displayName,
+                        accountNameLower = sub.planName
+                    )
+                }
             } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
                 val isNetworkIssue = e.message?.contains("Network unavailable", ignoreCase = true) == true || 
                                      e.message?.contains("Connection error", ignoreCase = true) == true || 
                                      e.message?.contains("ConnectException", ignoreCase = true) == true || 
                                      e.message?.contains("UnknownHostException", ignoreCase = true) == true || 
-                                     e.message?.contains("SocketTimeoutException", ignoreCase = true) == true
+                                     e.message?.contains("SocketTimeoutException", ignoreCase = true) == true ||
+                                     e is com.example.core.network.SasTransportException
 
                 if (isNetworkIssue) {
                     try {
@@ -293,8 +343,28 @@ class EarthlinkSearchViewModel(
         }
     }
 
-    fun loadUserDetail(userIndex: Int, knownUserId: String? = null): kotlinx.coroutines.Job =
-        viewModelScope.launch {
+    suspend fun getUserDetail(userIndex: Int, accountProvider: String? = null): com.example.core.model.UserDetail? {
+        val targetProvider = accountProvider ?: _selectedProvider.value
+        val targetGateway = sasGatewayRouter.getGateway(targetProvider)
+        val sub = targetGateway.getSubscriber(userIndex.toString()) ?: return null
+        return com.example.core.model.UserDetail(
+            userIndexLower = sub.subscriberId.toIntOrNull() ?: userIndex,
+            userIDLower = sub.username,
+            customerFullNameLower = sub.displayName,
+            customerNameLower = sub.displayName ?: sub.username,
+            displayNameLower = sub.displayName,
+            mobileNumberLower = sub.phone,
+            packageNameLower = sub.planName,
+            accountIndexLower = sub.planId?.toIntOrNull(),
+            accountStatusLower = sub.status,
+            expirationDateLower = sub.expiresAt,
+            accountExpirationDateLower = sub.expiresAt
+        )
+    }
+
+    fun loadUserDetail(userIndex: Int, knownUserId: String? = null): kotlinx.coroutines.Job {
+        val currentProvider = _selectedProvider.value
+        return viewModelScope.launch {
             _error.value = null
             
             if (knownUserId != null && _selectedUser.value?.userID != knownUserId) {
@@ -382,27 +452,45 @@ class EarthlinkSearchViewModel(
                 false
             }
             val hasIspLinkage = if (foundLocal != null) {
-                foundLocal.earthlinkUsername?.isNotBlank() == true
+                foundLocal.earthlinkUsername?.isNotBlank() == true || foundLocal.ispUserIndex != null || foundLocal.ispSubscriberId != null
             } else {
                 currentUserId != null && !currentUserId.startsWith("local_") && currentUserId.isNotBlank()
             }
             if (hasIspLinkage && !isSyntheticLocal) {
                 _isRefreshingDetail.value = true
                 try {
-                    val detail = gateway.getUserDetail(userIndex)
-                    // A slower earlier request must not clobber a newer operator selection.
-                    // The activity-scoped _selectedUser is shared across navigation, so a late
-                    // response for an abandoned subscriber would otherwise resurrect it.
-                    val stillSelected = _selectedUser.value
-                    if (stillSelected == null || stillSelected.userIndex == userIndex) {
-                        _selectedUser.value = detail
-                    }
-                    if (foundLocal != null && detail.userIndex > 0) {
-                        try {
-                            localAccountRepository.bindIspIdentity(foundLocal.id, detail.userIndex)
-                        } catch (e: Exception) {
-                            if (e is kotlinx.coroutines.CancellationException) throw e
-                            Log.w("EarthlinkSearchVM", "ISP identity binding skipped: ${e.message}")
+                    val accountProvider = foundLocal?.operationProvider
+                    val targetProvider = accountProvider ?: currentProvider
+                    val targetGateway = sasGatewayRouter.getGateway(targetProvider)
+                    val sub = targetGateway.getSubscriber(userIndex.toString())
+                    if (sub != null) {
+                        val detail = com.example.core.model.UserDetail(
+                            userIndexLower = sub.subscriberId.toIntOrNull() ?: userIndex,
+                            userIDLower = sub.username,
+                            customerFullNameLower = sub.displayName,
+                            customerNameLower = sub.displayName ?: sub.username,
+                            displayNameLower = sub.displayName,
+                            mobileNumberLower = sub.phone,
+                            packageNameLower = sub.planName,
+                            accountIndexLower = sub.planId?.toIntOrNull(),
+                            accountStatusLower = sub.status,
+                            expirationDateLower = sub.expiresAt,
+                            accountExpirationDateLower = sub.expiresAt
+                        )
+                        // A slower earlier request must not clobber a newer operator selection.
+                        // The activity-scoped _selectedUser is shared across navigation, so a late
+                        // response for an abandoned subscriber would otherwise resurrect it.
+                        val stillSelected = _selectedUser.value
+                        if (stillSelected == null || stillSelected.userIndex == userIndex) {
+                            _selectedUser.value = detail
+                        }
+                        if (foundLocal != null && detail.userIndex > 0) {
+                            try {
+                                localAccountRepository.bindIspIdentity(foundLocal.id, detail.userIndex)
+                            } catch (e: Exception) {
+                                if (e is kotlinx.coroutines.CancellationException) throw e
+                                Log.w("EarthlinkSearchVM", "ISP identity binding skipped: ${e.message}")
+                            }
                         }
                     }
                 } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
@@ -418,6 +506,7 @@ class EarthlinkSearchViewModel(
                 _isRefreshingDetail.value = false
             }
         }
+    }
 
     private fun loadPackages() {
         val token = prefs.getAuthToken()
@@ -533,6 +622,7 @@ class EarthlinkSearchViewModel(
     }
 
     fun createUserUsingDeposit(username: String, phone: String, fullName: String, pkgIndex: Int, depositPass: String, intentId: String? = null): kotlinx.coroutines.Job {
+        val targetProvider = _selectedProvider.value
         val lock = getAccountLock("${username}:ACTIVATION")
 
         return viewModelScope.launch(Dispatchers.IO) {
@@ -593,6 +683,7 @@ class EarthlinkSearchViewModel(
                     put("fullName", fullName)
                     put("pkgIndex", pkgIndex)
                     put("localAccountId", activationLocalAccountId)
+                    put("operationProvider", targetProvider)
                 }.toString()
 
                 localLedgerRepository.recordPendingOperation(
@@ -604,7 +695,8 @@ class EarthlinkSearchViewModel(
                         amountIqd = exactAmountIqd,
                         payloadJson = payloadJson,
                         status = "PENDING",
-                        dispatchClaimCount = 0
+                        dispatchClaimCount = 0,
+                        operationProvider = targetProvider
                     )
                 )
 
@@ -614,30 +706,68 @@ class EarthlinkSearchViewModel(
                     return@launch
                 }
 
-                val generatedPassword = gateway.createUserUsingDeposit(username, phone, fullName, pkgIndex, depositPass)
-                if (generatedPassword != null) {
+                val targetGateway = sasGatewayRouter.getGateway(targetProvider)
+                val parts = fullName.trim().split("\\s+".toRegex(), limit = 2)
+                val firstName = parts.getOrNull(0) ?: fullName
+                val lastName = parts.getOrNull(1) ?: ""
+                val opResult = targetGateway.createSubscriber(
+                    username = username,
+                    planId = pkgIndex.toString(),
+                    password = depositPass,
+                    firstName = firstName,
+                    lastName = lastName,
+                    phone = phone
+                )
+
+                if (opResult is com.example.core.network.SasOperationResult.Applied) {
+                    val generatedPassword = if (targetProvider == com.example.core.model.SasProviders.EARTHLINK) {
+                        opResult.evidence ?: depositPass
+                    } else {
+                        depositPass
+                    }
                     localLedgerRepository.resolvePendingOperationVerifiedSuccess(businessTxId, "[VERIFIED ACTIVATION]")
                     _actionSuccess.value = "Paid subscriber $username created successfully.\nPassword: $generatedPassword"
                     audit.logAction("CREATE_PAID_USER", "USER", username, "Created subscriber using reseller deposit")
+                } else if (opResult is com.example.core.network.SasOperationResult.Rejected) {
+                    localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, opResult.reason)
+                    _error.value = opResult.reason
+                } else if (opResult is com.example.core.network.SasOperationResult.Inconclusive) {
+                    localLedgerRepository.resolvePendingOperationInconclusive(businessTxId, opResult.reason)
+                    _error.value = "Subscriber created on gateway with missing ID payload. Operation stored for verification."
                 } else {
                     localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, "Subscriber creation failed")
                     _error.value = "Subscriber creation failed."
                 }
+            } catch (e: com.example.core.network.SasInconclusiveException) {
+                localLedgerRepository.resolvePendingOperationInconclusive(businessTxId, e.message ?: "Inconclusive outcome")
+                _error.value = "Subscriber created on gateway with missing ID payload. Operation stored for verification."
             } catch (e: EarthlinkInconclusiveException) {
                 localLedgerRepository.resolvePendingOperationInconclusive(businessTxId, e.message)
                 _error.value = "Subscriber created on gateway with missing ID payload. Operation stored for verification."
+            } catch (e: com.example.core.network.SasBusinessException) {
+                localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, e.errorMessage)
+                _error.value = e.errorMessage
             } catch (e: EarthlinkBusinessException) {
                 localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, e.errorMessage)
                 _error.value = e.errorMessage
+            } catch (e: com.example.core.network.SasAuthException) {
+                localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, "Auth failed: ${e.message ?: "Auth failed"}")
+                _error.value = "Session expired. Please log in again."
             } catch (e: EarthlinkAuthException) {
                 localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, "Auth failed: ${e.message}")
                 _error.value = "Session expired. Please log in again."
+            } catch (e: com.example.core.network.SasTransportException) {
+                localLedgerRepository.resolvePendingOperationInconclusive(businessTxId, "Transport uncertainty: ${e.message ?: "Transport error"}")
+                _error.value = "Network uncertain. Operation stored for verification."
             } catch (e: EarthlinkTransportException) {
                 localLedgerRepository.resolvePendingOperationInconclusive(businessTxId, "Transport uncertainty: ${e.message}")
                 _error.value = "Network uncertain. Operation stored for verification."
+            } catch (e: com.example.core.network.SasUnsupportedOperationException) {
+                localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, "Unsupported: ${e.message ?: "Unsupported"}")
+                _error.value = e.message ?: "Unsupported operation"
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                localLedgerRepository.resolvePendingOperationInconclusive(businessTxId, "Unexpected error: ${e.message}")
+                localLedgerRepository.resolvePendingOperationInconclusive(businessTxId, "Unexpected error: ${e.message ?: "Unknown error"}")
                 _error.value = "Operation pending verification."
             } finally {
                 _isActionLoading.value = false
@@ -743,6 +873,17 @@ class EarthlinkSearchViewModel(
             localAccountRepository.saveAccount(updated)
         }
 
+    fun refillUserDeposit(
+        userId: String,
+        depositPass: String? = null,
+        price: Double? = null,
+        note: String? = null,
+        intentId: String? = null,
+        isWasil: Boolean = false,
+        account: LocalAccount? = null,
+        onSuccessCallback: (suspend (String) -> Unit)? = null
+    ): kotlinx.coroutines.Job = refillUser(userId, depositPass, price, note, intentId, isWasil, account, onSuccessCallback)
+
     fun refillUser(
         userId: String,
         depositPass: String? = null,
@@ -753,9 +894,14 @@ class EarthlinkSearchViewModel(
         account: LocalAccount? = null,
         onSuccessCallback: (suspend (String) -> Unit)? = null
     ): kotlinx.coroutines.Job {
+        val targetProvider = account?.operationProvider ?: _selectedProvider.value
         val lock = getAccountLock("${userId}:REFILL")
 
         return viewModelScope.launch(Dispatchers.IO) {
+            if (targetProvider == com.example.core.model.SasProviders.ALAMIRY) {
+                _error.value = "Refill is not supported for ALAMIRY provider."
+                return@launch
+            }
             if (!lock.tryLock()) {
                 Log.w("EarthlinkSearchVM", "Duplicate financial operation suppressed: account $userId has an active inflight operation")
                 _error.value = "Operation already in progress or awaiting verification."
@@ -852,6 +998,11 @@ class EarthlinkSearchViewModel(
                             newAcc
                         }
                     }
+                }
+
+                if (effectiveAcc.operationProvider == com.example.core.model.SasProviders.ALAMIRY) {
+                    _error.value = "Refill is not supported for ALAMIRY provider."
+                    return@launch
                 }
 
                 val payloadJson = org.json.JSONObject().apply {
@@ -1119,6 +1270,7 @@ class EarthlinkSearchViewModel(
 
     fun toggleUserActive(userIndex: Int, userId: String, active: Boolean): kotlinx.coroutines.Job =
         viewModelScope.launch {
+            val fallbackProvider = _selectedProvider.value
             if (isSyntheticLocalIspIdentity(userIndex, userId)) {
                 _error.value = "Action unavailable for local-only account."
                 return@launch
@@ -1126,7 +1278,18 @@ class EarthlinkSearchViewModel(
             _isActionLoading.value = true
             _error.value = null
             try {
-                val success = gateway.toggleUserActive(userIndex, active)
+                val localAcc = withContext(Dispatchers.IO) {
+                    localAccountRepository.findActiveAccountsBySubscriberIdentity(userIndex, userId).firstOrNull()
+                        ?: localAccountRepository.findActiveAccountByUsernameOrIdOneShot(userId)
+                }
+                val accountProvider = localAcc?.operationProvider ?: fallbackProvider
+                val targetGateway = sasGatewayRouter.getGateway(accountProvider)
+                val opResult = if (active) {
+                    targetGateway.activateSubscriber(userIndex.toString())
+                } else {
+                    targetGateway.suspendSubscriber(userIndex.toString())
+                }
+                val success = opResult.isApplied
                 if (success) {
                     val msg = if (active) "Status for $userId updated successfully." else "Subscriber $userId suspended successfully."
                     _actionSuccess.value = msg
@@ -1145,7 +1308,8 @@ class EarthlinkSearchViewModel(
                                      e.message?.contains("Connection error", ignoreCase = true) == true || 
                                      e.message?.contains("ConnectException", ignoreCase = true) == true || 
                                      e.message?.contains("UnknownHostException", ignoreCase = true) == true || 
-                                     e.message?.contains("SocketTimeoutException", ignoreCase = true) == true
+                                     e.message?.contains("SocketTimeoutException", ignoreCase = true) == true ||
+                                     e is com.example.core.network.SasTransportException
 
                 if (isNetworkIssue) {
                     val actionTextAr = if (active) "تفعيل الحساب" else "إيقاف الحساب"
@@ -1172,6 +1336,7 @@ class EarthlinkSearchViewModel(
         newPriceIqd: Double? = null
     ): kotlinx.coroutines.Job =
         viewModelScope.launch {
+            val fallbackProvider = _selectedProvider.value
             if (isSyntheticLocalIspIdentity(userIndex, userId)) {
                 _error.value = "Action unavailable for local-only account."
                 return@launch
@@ -1179,12 +1344,22 @@ class EarthlinkSearchViewModel(
             _isActionLoading.value = true
             _error.value = null
             try {
-                val success = gateway.changeAccountType(userIndex, userId, accountIndex)
+                val localAcc = if (account == null) {
+                    withContext(Dispatchers.IO) {
+                        localAccountRepository.findActiveAccountsBySubscriberIdentity(userIndex, userId).firstOrNull()
+                            ?: localAccountRepository.findActiveAccountByUsernameOrIdOneShot(userId)
+                    }
+                } else null
+                val accountProvider = account?.operationProvider ?: localAcc?.operationProvider ?: fallbackProvider
+                val targetGateway = sasGatewayRouter.getGateway(accountProvider)
+                val opResult = targetGateway.changePlan(userIndex.toString(), accountIndex.toString())
+                val success = opResult.isApplied
                 if (success) {
-                    if (account != null) {
-                        val updated = account.copy(
+                    val effectiveAccount = account ?: localAcc
+                    if (effectiveAccount != null) {
+                        val updated = effectiveAccount.copy(
                             packageName = accountName,
-                            currentPriceIqd = newPriceIqd ?: account.currentPriceIqd,
+                            currentPriceIqd = newPriceIqd ?: effectiveAccount.currentPriceIqd,
                             updatedAt = System.currentTimeMillis()
                         )
                         withContext(Dispatchers.IO) {
@@ -1267,6 +1442,7 @@ class EarthlinkSearchViewModel(
 
     fun changeUserPassword(userIndex: Int, userId: String, newPass: String): kotlinx.coroutines.Job =
         viewModelScope.launch {
+            val fallbackProvider = _selectedProvider.value
             if (isSyntheticLocalIspIdentity(userIndex, userId)) {
                 _error.value = "Action unavailable for local-only account."
                 return@launch
@@ -1274,7 +1450,14 @@ class EarthlinkSearchViewModel(
             _isActionLoading.value = true
             _error.value = null
             try {
-                val success = gateway.changeUserPassword(userIndex, userId, newPass)
+                val localAcc = withContext(Dispatchers.IO) {
+                    localAccountRepository.findActiveAccountsBySubscriberIdentity(userIndex, userId).firstOrNull()
+                        ?: localAccountRepository.findActiveAccountByUsernameOrIdOneShot(userId)
+                }
+                val accountProvider = localAcc?.operationProvider ?: fallbackProvider
+                val targetGateway = sasGatewayRouter.getGateway(accountProvider)
+                val opResult = targetGateway.changePassword(userIndex.toString(), newPass)
+                val success = opResult.isApplied
                 if (success) {
                     _revealedUserPass.value = newPass
                     _actionSuccess.value = if (prefs.getLanguage() == "ar") "تم تغيير كلمة مرور البوابة بنجاح." else "User password changed successfully."
@@ -1357,4 +1540,49 @@ class EarthlinkSearchViewModel(
                 _isActionLoading.value = false
             }
         }
+
+    suspend fun hasActivePendingOperation(accountId: String): Boolean {
+        if (accountId.isBlank()) return false
+        return withContext(Dispatchers.IO) {
+            localLedgerRepository.getPendingOperationByAccountId(accountId) != null
+        }
+    }
+
+    fun updateAccountProvider(
+        account: LocalAccount,
+        newProvider: String,
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
+    ): kotlinx.coroutines.Job = viewModelScope.launch {
+        _isActionLoading.value = true
+        _error.value = null
+        try {
+            if (hasActivePendingOperation(account.id)) {
+                val msg = "Cannot change provider: account has an active in-flight operation."
+                _error.value = msg
+                onError(msg)
+                return@launch
+            }
+            val updated = account.copy(
+                operationProvider = newProvider,
+                updatedAt = System.currentTimeMillis()
+            )
+            withContext(Dispatchers.IO) {
+                localAccountRepository.saveAccount(updated)
+            }
+            _actionSuccess.value = if (prefs.getLanguage() == "ar") {
+                "تم تغيير مزود الخدمة بنجاح."
+            } else {
+                "Account provider updated successfully."
+            }
+            onSuccess()
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            val msg = e.message ?: "Failed to update account provider"
+            _error.value = msg
+            onError(msg)
+        } finally {
+            _isActionLoading.value = false
+        }
+    }
 }

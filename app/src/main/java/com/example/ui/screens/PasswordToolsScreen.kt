@@ -62,8 +62,10 @@ fun PasswordToolsScreen(
     userId: String,
     viewModel: EarthlinkSearchViewModel,
     currentLang: String,
+    provider: String = com.example.core.model.SasProviders.EARTHLINK,
     onClose: () -> Unit
 ) {
+    val isEarthlink = provider == com.example.core.model.SasProviders.EARTHLINK
     val revealedUser by viewModel.revealedUserPass.collectAsStateWithLifecycle()
     val revealedAcc by viewModel.revealedAccountPass.collectAsStateWithLifecycle()
     val isActionLoading by viewModel.isActionLoading.collectAsStateWithLifecycle()
@@ -77,10 +79,12 @@ fun PasswordToolsScreen(
     var inputAccResetPass by rememberSaveable { mutableStateOf("") }
 
     // Load passwords automatically when entering
-    LaunchedEffect(userIndex, userId) {
+    LaunchedEffect(userIndex, userId, isEarthlink) {
         viewModel.clearErrorAndSuccess()
         viewModel.clearRevealedPasswords()
-        viewModel.revealUserPassword(userIndex, userId)
+        if (isEarthlink) {
+            viewModel.revealUserPassword(userIndex, userId)
+        }
         viewModel.revealAccountPassword(userIndex, userId)
     }
 
@@ -198,76 +202,78 @@ fun PasswordToolsScreen(
 
                     HorizontalDivider()
 
-                    // --- Part 1: Portal Password ---
-                    Text(
-                        text = if (currentLang == "ar") "بيانات مرور بوابة المستخدم" else "User Portal Credentials",
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp
-                    )
-                    val rUser = revealedUser
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (rUser == null) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    text = if (currentLang == "ar") "جاري جلب كلمة المرور..." else "Fetching password...",
-                                    color = Color(0xFF8E8E93),
-                                    fontSize = 14.sp
-                                )
-                            }
-                        } else {
-                            val isEmpty = rUser.isBlank()
-                            val displayText = if (isEmpty) {
-                                if (currentLang == "ar") "لا يوجد" else "None"
-                            } else {
-                                rUser
-                            }
-                            Text(
-                                text = if (currentLang == "ar") "كلمة المرور: $displayText" else "Password: $displayText",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp,
-                                color = if (isEmpty) Color(0xFF8E8E93) else MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = inputUserResetPass,
-                            onValueChange = { inputUserResetPass = it },
-                            label = { Text(if (currentLang == "ar") "كلمة مرور البوابة الجديدة" else "New Portal Pass") },
-                            singleLine = true,
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 48.dp)
+                    // --- Part 1: Portal Password (EarthLink-only) ---
+                    if (isEarthlink) {
+                        Text(
+                            text = if (currentLang == "ar") "بيانات مرور بوابة المستخدم" else "User Portal Credentials",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp
                         )
-                        IconButton(
-                            onClick = { showResetUserPass = true },
-                            enabled = inputUserResetPass.isNotEmpty() && !isActionLoading,
-                            modifier = Modifier.size(48.dp)
+                        val rUser = revealedUser
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Save,
-                                contentDescription = if (currentLang == "ar") "حفظ" else "Save"
-                            )
+                            if (rUser == null) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        text = if (currentLang == "ar") "جاري جلب كلمة المرور..." else "Fetching password...",
+                                        color = Color(0xFF8E8E93),
+                                        fontSize = 14.sp
+                                    )
+                                }
+                            } else {
+                                val isEmpty = rUser.isBlank()
+                                val displayText = if (isEmpty) {
+                                    if (currentLang == "ar") "لا يوجد" else "None"
+                                } else {
+                                    rUser
+                                }
+                                Text(
+                                    text = if (currentLang == "ar") "كلمة المرور: $displayText" else "Password: $displayText",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                    color = if (isEmpty) Color(0xFF8E8E93) else MaterialTheme.colorScheme.primary
+                                )
+                            }
                         }
-                    }
 
-                    HorizontalDivider()
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = inputUserResetPass,
+                                onValueChange = { inputUserResetPass = it },
+                                label = { Text(if (currentLang == "ar") "كلمة مرور البوابة الجديدة" else "New Portal Pass") },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 48.dp)
+                            )
+                            IconButton(
+                                onClick = { showResetUserPass = true },
+                                enabled = inputUserResetPass.isNotEmpty() && !isActionLoading,
+                                modifier = Modifier.size(48.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Save,
+                                    contentDescription = if (currentLang == "ar") "حفظ" else "Save"
+                                )
+                            }
+                        }
+
+                        HorizontalDivider()
+                    }
 
                     // --- Part 2: Broadband Account ---
                     Text(

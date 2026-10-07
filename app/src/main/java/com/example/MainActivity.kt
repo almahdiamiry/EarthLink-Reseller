@@ -144,6 +144,7 @@ fun OperatorMainScreen(authViewModel: AuthViewModel) {
     val prefs = remember(context) { (context.applicationContext as EarthlinkApp).preferenceManager }
     val currentLang by prefs.languageFlow.collectAsStateWithLifecycle()
     val isAr = currentLang == "ar"
+    val providerAccessState by prefs.providerAccessStateFlow.collectAsStateWithLifecycle()
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -169,7 +170,8 @@ fun OperatorMainScreen(authViewModel: AuthViewModel) {
                 showCreateSheet = false
                 navController.navigate("create_using_deposit")
             },
-            isAr = isAr
+            isAr = isAr,
+            providerAccessState = providerAccessState
         )
     }
 
@@ -458,7 +460,8 @@ fun CreateChooserBottomSheet(
     onDismissRequest: () -> Unit,
     onNavigateToTest: () -> Unit,
     onNavigateToPaid: () -> Unit,
-    isAr: Boolean
+    isAr: Boolean,
+    providerAccessState: com.example.core.model.ProviderAccessState = com.example.core.model.ProviderAccessState.BOTH
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val coroutineScope = rememberCoroutineScope()
@@ -524,58 +527,60 @@ fun CreateChooserBottomSheet(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                    // Option 1: Trial Account
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { dismissWithAction(onNavigateToTest) }
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Box(
+                    // Option 1: Trial Account (EarthLink-only)
+                    if (providerAccessState.hasEarthlink) {
+                        Row(
                             modifier = Modifier
-                                .size(32.dp)
-                                .background(Color(0xFF0A84FF), shape = RoundedCornerShape(8.dp)),
-                            contentAlignment = Alignment.Center
+                                .fillMaxWidth()
+                                .clickable { dismissWithAction(onNavigateToTest) }
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .background(Color(0xFF0A84FF), shape = RoundedCornerShape(8.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Bolt,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = if (isAr) "حساب تجريبي (24 ساعة)" else "Trial User (24 Hours)",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = if (isAr) "فحص وتجربة الخط بدون خصم من الرصيد" else "Line testing without balance deduction",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF8E8E93)
+                                )
+                            }
+
                             Icon(
-                                imageVector = Icons.Default.Bolt,
+                                imageVector = if (isAr) Icons.AutoMirrored.Filled.KeyboardArrowLeft else Icons.AutoMirrored.Filled.KeyboardArrowRight,
                                 contentDescription = null,
-                                tint = Color.White,
+                                tint = Color(0xFF8E8E93),
                                 modifier = Modifier.size(18.dp)
                             )
                         }
 
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
-                        ) {
-                            Text(
-                                text = if (isAr) "حساب تجريبي (24 ساعة)" else "Trial User (24 Hours)",
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp,
-                                color = Color.White
-                            )
-                            Text(
-                                text = if (isAr) "فحص وتجربة الخط بدون خصم من الرصيد" else "Line testing without balance deduction",
-                                fontSize = 11.sp,
-                                color = Color(0xFF8E8E93)
-                            )
-                        }
-
-                        Icon(
-                            imageVector = if (isAr) Icons.AutoMirrored.Filled.KeyboardArrowLeft else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = null,
-                            tint = Color(0xFF8E8E93),
-                            modifier = Modifier.size(18.dp)
+                        HorizontalDivider(
+                            color = Color.White.copy(alpha = 0.05f),
+                            modifier = Modifier.padding(horizontal = 14.dp)
                         )
                     }
-
-                    HorizontalDivider(
-                        color = Color.White.copy(alpha = 0.05f),
-                        modifier = Modifier.padding(horizontal = 14.dp)
-                    )
 
                     // Option 2: Paid Subscriber
                     Row(
@@ -640,11 +645,13 @@ fun CreateChooserScreen(
     val prefs = remember { com.example.core.security.PreferenceManager(context) }
     val currentLang by prefs.languageFlow.collectAsStateWithLifecycle(initialValue = prefs.getLanguage())
     val isAr = currentLang == "ar"
+    val providerAccessState by prefs.providerAccessStateFlow.collectAsStateWithLifecycle(initialValue = prefs.getProviderAccessState())
 
     CreateChooserBottomSheet(
         onDismissRequest = onDismiss,
         onNavigateToTest = onNavigateToTest,
         onNavigateToPaid = onNavigateToPaid,
-        isAr = isAr
+        isAr = isAr,
+        providerAccessState = providerAccessState
     )
 }

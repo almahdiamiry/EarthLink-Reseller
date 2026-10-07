@@ -1045,7 +1045,8 @@ class LocalAccountRepositoryImpl(
         filterCoordinates: Boolean,
         sortOption: String,
         limit: Int,
-        offset: Int
+        offset: Int,
+        filterProvider: String?
     ): Flow<List<LocalAccount>> {
         var sql = "SELECT * FROM local_accounts WHERE isHistoryOnlySubscriber = 0"
         val args = mutableListOf<Any>()
@@ -1057,6 +1058,10 @@ class LocalAccountRepositoryImpl(
         if (filterAdvance) sql += " AND advanceIqd > 0.0"
         if (filterNoUsername) sql += " AND (earthlinkUsername IS NULL OR earthlinkUsername = '')"
         if (filterCoordinates) sql += " AND (latitude IS NOT NULL AND longitude IS NOT NULL)"
+        if (!filterProvider.isNullOrEmpty()) {
+            sql += " AND operationProvider = ?"
+            args.add(filterProvider)
+        }
         
         sql += when (sortOption) {
             "name" -> " ORDER BY displayName ASC"
@@ -1077,7 +1082,8 @@ class LocalAccountRepositoryImpl(
         filterDebt: Boolean,
         filterAdvance: Boolean,
         filterNoUsername: Boolean,
-        filterCoordinates: Boolean
+        filterCoordinates: Boolean,
+        filterProvider: String?
     ): Flow<Int> {
         var sql = "SELECT COUNT(*) FROM local_accounts WHERE isHistoryOnlySubscriber = 0"
         val args = mutableListOf<Any>()
@@ -1089,8 +1095,84 @@ class LocalAccountRepositoryImpl(
         if (filterAdvance) sql += " AND advanceIqd > 0.0"
         if (filterNoUsername) sql += " AND (earthlinkUsername IS NULL OR earthlinkUsername = '')"
         if (filterCoordinates) sql += " AND (latitude IS NOT NULL AND longitude IS NOT NULL)"
+        if (!filterProvider.isNullOrEmpty()) {
+            sql += " AND operationProvider = ?"
+            args.add(filterProvider)
+        }
         
         return accountDao.getSearchCountRawFlow(androidx.sqlite.db.SimpleSQLiteQuery(sql, args.toTypedArray()))
+    }
+
+    override suspend fun queryAccountIdsFiltered(
+        query: String,
+        filterDebt: Boolean,
+        filterAdvance: Boolean,
+        filterNoUsername: Boolean,
+        filterCoordinates: Boolean,
+        filterProvider: String?
+    ): List<String> {
+        var sql = "SELECT id FROM local_accounts WHERE isHistoryOnlySubscriber = 0"
+        val args = mutableListOf<Any>()
+        if (query.isNotEmpty()) {
+            sql += " AND (displayName LIKE '%' || ? || '%' OR earthlinkUsername LIKE '%' || ? || '%' OR phone1 LIKE '%' || ? || '%' OR phone2 LIKE '%' || ? || '%' OR packageName LIKE '%' || ? || '%' OR towerName LIKE '%' || ? || '%' OR address LIKE '%' || ? || '%')"
+            for (i in 0 until 7) args.add(query)
+        }
+        if (filterDebt) sql += " AND debtIqd > 0.0"
+        if (filterAdvance) sql += " AND advanceIqd > 0.0"
+        if (filterNoUsername) sql += " AND (earthlinkUsername IS NULL OR earthlinkUsername = '')"
+        if (filterCoordinates) sql += " AND (latitude IS NOT NULL AND longitude IS NOT NULL)"
+        if (!filterProvider.isNullOrEmpty()) {
+            sql += " AND operationProvider = ?"
+            args.add(filterProvider)
+        }
+
+        return accountDao.getAccountIdsRaw(androidx.sqlite.db.SimpleSQLiteQuery(sql, args.toTypedArray()))
+    }
+
+    override suspend fun batchSetProvider(
+        candidateAccountIds: List<String>,
+        targetProvider: String
+    ): BatchProviderResult {
+        if (candidateAccountIds.isEmpty()) {
+            return BatchProviderResult(0, 0, 0, 0)
+        }
+
+        return database.withTransaction {
+            val chunkSize = 900
+            val chunks = candidateAccountIds.chunked(chunkSize)
+
+            val activeInFlightIds = mutableSetOf<String>()
+            val alreadyOnTargetIds = mutableSetOf<String>()
+            var updatedCount = 0
+
+            for (chunk in chunks) {
+                // 1. RE-CHECK active in-flight operations inside transaction (TOCTOU guard)
+                val inFlight = accountDao.getAccountIdsWithActiveInFlightOperations(chunk)
+                activeInFlightIds.addAll(inFlight)
+
+                // 2. Identify accounts already on target provider
+                val onTarget = accountDao.getAccountIdsAlreadyOnProvider(chunk, targetProvider)
+                alreadyOnTargetIds.addAll(onTarget)
+
+                // 3. Eligible accounts for this chunk
+                val eligibleChunk = chunk.filterNot { it in inFlight || it in onTarget }
+
+                // 4. Update eligible
+                if (eligibleChunk.isNotEmpty()) {
+                    updatedCount += accountDao.updateOperationProviderForAccounts(
+                        eligibleAccountIds = eligibleChunk,
+                        targetProvider = targetProvider
+                    )
+                }
+            }
+
+            BatchProviderResult(
+                totalSelected = candidateAccountIds.size,
+                updated = updatedCount,
+                alreadyTarget = alreadyOnTargetIds.size,
+                skippedDueToPending = activeInFlightIds.size
+            )
+        }
     }
     override fun getAccountById(id: String): Flow<LocalAccount?> {
         return accountDao.getById(id).distinctUntilChanged()
@@ -1218,6 +1300,7 @@ class LocalAccountRepositoryImpl(
                         longitude = account.longitude ?: existing.longitude,
                         ispSubscriberId = if (existing.ispSubscriberId == null) account.ispSubscriberId else existing.ispSubscriberId,
                         ispUserIndex = if (existing.ispUserIndex == null) account.ispUserIndex else existing.ispUserIndex,
+                        operationProvider = if (account.operationProvider.isNotBlank()) account.operationProvider else existing.operationProvider,
                         updatedAt = System.currentTimeMillis()
                     )
                 } else {
@@ -1302,8 +1385,15 @@ class LocalLedgerRepositoryImpl(
     private val ledgerDao: LocalLedgerEntryDao,
     private val accountDao: LocalAccountDao,
     private val outboxDao: SyncOutboxDao,
-    private val pendingDao: PendingExternalOperationDao = database.pendingExternalOperationDao()
+    private val pendingDao: PendingExternalOperationDao = database.pendingExternalOperationDao(),
+    private val preferenceManager: com.example.core.security.PreferenceManager? = null
 ) : LocalLedgerRepository {
+
+    private fun routerForGateway(gateway: EarthlinkGateway): SasGatewayRouter =
+        SasGatewayRouter(
+            earthlinkAdapter = EarthlinkSasGatewayAdapter(gateway),
+            preferenceManager = preferenceManager
+        )
 
     private val moshi = Moshi.Builder().build()
     private val ledgerAdapter = moshi.adapter(LocalLedgerEntry::class.java)
@@ -1405,6 +1495,42 @@ class LocalLedgerRepositoryImpl(
         }
     }
 
+    override suspend fun recoverColdStartOrphanedOperations(
+        router: SasGatewayRouter,
+        processStartMs: Long
+    ) {
+        val orphaned = pendingDao.getOrphanedInFlightOperations(processStartMs)
+        if (orphaned.isEmpty()) return
+
+        for (op in orphaned) {
+            try {
+                // Previous-process in-flight state is reset to recovery-blocked PENDING.
+                // Operations already in PENDING require no status reset.
+                // The external mutation is NEVER redispatched.
+                if (op.status in listOf("DISPATCHING", "RESOLVING")) {
+                    val reset = pendingDao.resetOrphanedInFlightToPending(
+                        op.businessTransactionId,
+                        System.currentTimeMillis()
+                    )
+                    if (reset != 1) continue
+                }
+
+                val resolution = resolvePendingOperationSerialized(
+                    businessTransactionId = op.businessTransactionId,
+                    router = router,
+                    baselineExpirationDate = null
+                )
+                android.util.Log.i("ColdRecovery", "Orphaned op ${op.businessTransactionId} resolved via router: ${resolution.result}")
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                resolvePendingOperationInconclusive(
+                    businessTransactionId = op.businessTransactionId,
+                    diagnostic = "Cold-start recovery verification interrupted on ${op.operationProvider}: ${e.message}"
+                )
+            }
+        }
+    }
+
     override suspend fun getUnresolvedClaimedOperations(): List<PendingExternalOperation> {
         return pendingDao.getUnresolvedClaimedOperations()
     }
@@ -1493,7 +1619,8 @@ class LocalLedgerRepositoryImpl(
                                 displayName = parsedFullName ?: op.accountId,
                                 phone1 = parsedPhone,
                                 currentPriceIqd = op.amountIqd.toDouble(),
-                                debtIqd = 0.0
+                                debtIqd = 0.0,
+                                operationProvider = op.operationProvider
                             )
                             accountDao.insert(shellAcc)
                             OutboxManager.upsertWithOutbox(outboxDao, "local_accounts", shellAcc.id, accountAdapter.toJson(shellAcc))
@@ -1517,7 +1644,8 @@ class LocalLedgerRepositoryImpl(
                                 displayName = parsedFullName ?: op.accountId,
                                 phone1 = parsedPhone,
                                 currentPriceIqd = op.amountIqd.toDouble(),
-                                debtIqd = 0.0
+                                debtIqd = 0.0,
+                                operationProvider = op.operationProvider
                             )
                             accountDao.insert(shellAcc)
                             OutboxManager.upsertWithOutbox(outboxDao, "local_accounts", shellAcc.id, accountAdapter.toJson(shellAcc))
@@ -1741,6 +1869,18 @@ class LocalLedgerRepositoryImpl(
     ): PendingOperationResolution {
         val op = getPendingOperationByTransactionId(businessTransactionId)
             ?: throw IllegalArgumentException("Pending operation $businessTransactionId not found")
+
+        if (op.operationProvider != SasProviders.EARTHLINK) {
+            val diag = "Cannot verify ${op.operationProvider} operation using EarthlinkGateway (zero cross-provider fallback)"
+            resolvePendingOperationInconclusive(businessTransactionId, diag)
+            val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+            return PendingOperationResolution(
+                result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
+                operation = updatedOp,
+                ledgerEntry = null,
+                diagnosticMessage = diag
+            )
+        }
 
         if (op.status == "COMPLETED") {
             val existingLedger = ledgerDao.getByIdOneShot(businessTransactionId)
@@ -2128,6 +2268,177 @@ class LocalLedgerRepositoryImpl(
         }
     }
 
+    override suspend fun verifyAndResolvePendingOperation(
+        businessTransactionId: String,
+        router: SasGatewayRouter,
+        baselineExpirationDate: String?
+    ): PendingOperationResolution {
+        val op = getPendingOperationByTransactionId(businessTransactionId)
+            ?: throw IllegalArgumentException("Pending operation $businessTransactionId not found")
+
+        if (op.status == "COMPLETED") {
+            val existingLedger = ledgerDao.getByIdOneShot(businessTransactionId)
+            return PendingOperationResolution(
+                result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
+                operation = op,
+                ledgerEntry = existingLedger,
+                diagnosticMessage = "Operation was already confirmed successful"
+            )
+        }
+        if (op.status == "FAILED") {
+            return PendingOperationResolution(
+                result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                operation = op,
+                ledgerEntry = null,
+                diagnosticMessage = op.lastError ?: "Operation was previously marked failed"
+            )
+        }
+        if (op.status == "RESOLVING") {
+            return PendingOperationResolution(
+                result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
+                operation = op,
+                ledgerEntry = null,
+                diagnosticMessage = "Operation is already actively resolving by another caller"
+            )
+        }
+
+        if (op.status == "PENDING") {
+            val rows = pendingDao.transitionToResolving(businessTransactionId, System.currentTimeMillis())
+            if (rows == 0) {
+                val current = getPendingOperationByTransactionId(businessTransactionId)
+                if (current != null && current.status == "COMPLETED") {
+                    val existingLedger = ledgerDao.getByIdOneShot(businessTransactionId)
+                    return PendingOperationResolution(
+                        result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
+                        operation = current,
+                        ledgerEntry = existingLedger,
+                        diagnosticMessage = "Operation was already confirmed successful"
+                    )
+                }
+                if (current != null && current.status == "FAILED") {
+                    return PendingOperationResolution(
+                        result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                        operation = current,
+                        ledgerEntry = null,
+                        diagnosticMessage = current.lastError ?: "Operation was previously marked failed"
+                    )
+                }
+                if (current != null && current.status == "RESOLVING") {
+                    return PendingOperationResolution(
+                        result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
+                        operation = current,
+                        ledgerEntry = null,
+                        diagnosticMessage = "Operation is already actively resolving by another caller"
+                    )
+                }
+            }
+        }
+
+        val payloadObj = try { JSONObject(op.payloadJson) } catch (_: Exception) { JSONObject() }
+        val targetIdentifier = payloadObj.optString("subscriberId").takeIf { it.isNotBlank() }
+            ?: payloadObj.optString("userIndex").takeIf { it.isNotBlank() }
+            ?: payloadObj.optString("username").takeIf { it.isNotBlank() }
+            ?: payloadObj.optString("userId").takeIf { it.isNotBlank() }
+            ?: payloadObj.optString("targetIdentifier").takeIf { it.isNotBlank() }
+            ?: op.accountId
+
+        val effectiveBaselineEvidence = baselineExpirationDate
+            ?: payloadObj.optString("baselineExpirationDate").takeIf { it.isNotBlank() }
+            ?: payloadObj.optString("baselineEvidence").takeIf { it.isNotBlank() }
+            ?: payloadObj.optString("targetStatus").takeIf { it.isNotBlank() }
+            ?: payloadObj.optString("newPlanId").takeIf { it.isNotBlank() }
+
+        return try {
+            val gateway = router.getGateway(op.operationProvider)
+            val outcome = gateway.verifyOperationOutcome(
+                operationType = op.operationType,
+                targetIdentifier = targetIdentifier,
+                baselineEvidence = effectiveBaselineEvidence
+            )
+            when (outcome) {
+                SasVerificationOutcome.VERIFIED_SUCCESS -> {
+                    if (op.dispatchClaimCount == 0) {
+                        val diag = "Operation was not dispatched prior to process termination (dispatchClaimCount=0)"
+                        resolvePendingOperationVerifiedFailure(businessTransactionId, diag)
+                        val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                        PendingOperationResolution(
+                            result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                            operation = updatedOp,
+                            ledgerEntry = null,
+                            diagnosticMessage = diag
+                        )
+                    } else {
+                        val ledger = resolvePendingOperationVerifiedSuccess(businessTransactionId, "[VERIFIED ${op.operationType}]")
+                        val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                        PendingOperationResolution(
+                            result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
+                            operation = updatedOp,
+                            ledgerEntry = ledger,
+                            diagnosticMessage = "Operation verified successfully on ${op.operationProvider}"
+                        )
+                    }
+                }
+                SasVerificationOutcome.VERIFIED_FAILURE -> {
+                    val diag = "Verification proved failure on ${op.operationProvider}"
+                    resolvePendingOperationVerifiedFailure(businessTransactionId, diag)
+                    val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                    PendingOperationResolution(
+                        result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                        operation = updatedOp,
+                        ledgerEntry = null,
+                        diagnosticMessage = diag
+                    )
+                }
+                SasVerificationOutcome.INCONCLUSIVE -> {
+                    if (op.dispatchClaimCount == 0) {
+                        val diag = "Operation was not dispatched prior to process termination (dispatchClaimCount=0)"
+                        resolvePendingOperationVerifiedFailure(businessTransactionId, diag)
+                        val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                        PendingOperationResolution(
+                            result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                            operation = updatedOp,
+                            ledgerEntry = null,
+                            diagnosticMessage = diag
+                        )
+                    } else {
+                        val diag = "Verification inconclusive on ${op.operationProvider}"
+                        resolvePendingOperationInconclusive(businessTransactionId, diag)
+                        val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                        PendingOperationResolution(
+                            result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
+                            operation = updatedOp,
+                            ledgerEntry = null,
+                            diagnosticMessage = diag
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            if (op.dispatchClaimCount == 0) {
+                val diag = "Operation was not dispatched prior to process termination (${e.message})"
+                resolvePendingOperationVerifiedFailure(businessTransactionId, diag)
+                val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                PendingOperationResolution(
+                    result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                    operation = updatedOp,
+                    ledgerEntry = null,
+                    diagnosticMessage = diag
+                )
+            } else {
+                val diag = "Verification inconclusive on ${op.operationProvider}: ${e.message}"
+                resolvePendingOperationInconclusive(businessTransactionId, diag)
+                val updatedOp = getPendingOperationByTransactionId(businessTransactionId) ?: op
+                PendingOperationResolution(
+                    result = UnknownOutcomeResolutionResult.INCONCLUSIVE,
+                    operation = updatedOp,
+                    ledgerEntry = null,
+                    diagnosticMessage = diag
+                )
+            }
+        }
+    }
+
     private val repositoryAccountLocks = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>()
     private fun getRepositoryAccountLock(accountId: String): kotlinx.coroutines.sync.Mutex =
         repositoryAccountLocks.computeIfAbsent(accountId) { kotlinx.coroutines.sync.Mutex() }
@@ -2241,6 +2552,66 @@ class LocalLedgerRepositoryImpl(
         }
     }
 
+    override suspend fun resolvePendingOperationSerialized(
+        businessTransactionId: String,
+        router: SasGatewayRouter,
+        baselineExpirationDate: String?
+    ): PendingOperationResolution {
+        val initialOp = getPendingOperationByTransactionId(businessTransactionId)
+            ?: throw IllegalArgumentException("Pending operation $businessTransactionId not found")
+
+        val accountId = initialOp.accountId
+        val lock = if (accountId.isNotBlank()) getRepositoryAccountLock(accountId) else null
+
+        return if (lock != null) {
+            lock.withLock {
+                val op = getPendingOperationByTransactionId(businessTransactionId)
+                    ?: throw IllegalArgumentException("Pending operation $businessTransactionId not found")
+
+                if (op.status == "COMPLETED") {
+                    val existingLedger = ledgerDao.getByIdOneShot(businessTransactionId)
+                    return@withLock PendingOperationResolution(
+                        result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
+                        operation = op,
+                        ledgerEntry = existingLedger,
+                        diagnosticMessage = "Operation was already confirmed successful"
+                    )
+                }
+                if (op.status == "FAILED") {
+                    return@withLock PendingOperationResolution(
+                        result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                        operation = op,
+                        ledgerEntry = null,
+                        diagnosticMessage = op.lastError ?: "Operation was previously marked failed"
+                    )
+                }
+
+                verifyAndResolvePendingOperation(businessTransactionId, router, baselineExpirationDate)
+            }
+        } else {
+            val op = getPendingOperationByTransactionId(businessTransactionId)
+                ?: throw IllegalArgumentException("Pending operation $businessTransactionId not found")
+            if (op.status == "COMPLETED") {
+                val existingLedger = ledgerDao.getByIdOneShot(businessTransactionId)
+                return PendingOperationResolution(
+                    result = UnknownOutcomeResolutionResult.VERIFIED_SUCCESS,
+                    operation = op,
+                    ledgerEntry = existingLedger,
+                    diagnosticMessage = "Operation was already confirmed successful"
+                )
+            }
+            if (op.status == "FAILED") {
+                return PendingOperationResolution(
+                    result = UnknownOutcomeResolutionResult.VERIFIED_FAILURE,
+                    operation = op,
+                    ledgerEntry = null,
+                    diagnosticMessage = op.lastError ?: "Operation was previously marked failed"
+                )
+            }
+            verifyAndResolvePendingOperation(businessTransactionId, router, baselineExpirationDate)
+        }
+    }
+
     override suspend fun sweepAndResolvePendingOperations(
         gateway: EarthlinkGateway,
         graceWindowMs: Long
@@ -2258,6 +2629,33 @@ class LocalLedgerRepositoryImpl(
 
             try {
                 val resolution = resolvePendingOperationSerialized(op.businessTransactionId, gateway)
+                resolutions.add(resolution)
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                android.util.Log.e("LocalLedgerRepo", "Sweep error for op ${op.businessTransactionId}", e)
+            }
+        }
+
+        return resolutions
+    }
+
+    override suspend fun sweepAndResolvePendingOperations(
+        router: SasGatewayRouter,
+        graceWindowMs: Long
+    ): List<PendingOperationResolution> {
+        val unresolved = getUnresolvedPendingOperations()
+        if (unresolved.isEmpty()) return emptyList()
+
+        val now = System.currentTimeMillis()
+        val resolutions = mutableListOf<PendingOperationResolution>()
+
+        for (op in unresolved) {
+            if (graceWindowMs > 0 && (now - op.createdAt < graceWindowMs)) {
+                continue
+            }
+
+            try {
+                val resolution = resolvePendingOperationSerialized(op.businessTransactionId, router)
                 resolutions.add(resolution)
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
@@ -2309,6 +2707,7 @@ class LocalLedgerRepositoryImpl(
                 longitude = account.longitude ?: existing.longitude,
                 ispSubscriberId = if (existing.ispSubscriberId == null) account.ispSubscriberId else existing.ispSubscriberId,
                 ispUserIndex = if (existing.ispUserIndex == null) account.ispUserIndex else existing.ispUserIndex,
+                operationProvider = if (account.operationProvider.isNotBlank()) account.operationProvider else existing.operationProvider,
                 updatedAt = System.currentTimeMillis()
             )
         } else {
