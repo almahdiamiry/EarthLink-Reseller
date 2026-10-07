@@ -30,6 +30,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.110.0] - 2026-10-07 — Multi-Provider Architecture & SAMM Integration
+
+**Certified Baseline: `d95ea2c` | Test Corpus: 1034/1034 Green across 130 Test Suites**
+
+### Added & Certified
+- **Multi-Provider SAS Layer (`SasGateway` & `SasGatewayRouter`)**:
+  - Unified SAS interface abstracting ISP operational commands (`create`, `activate`, `suspend`, `renew`, `changePlan`, `changePassword`).
+  - Strict zero cross-provider fallback: failure on one provider fails closed without cascading.
+  - Dynamically cached provider clients invalidating upon credential update.
+- **Room Database Migration 18 ➔ 19 (`MIGRATION_18_19`)**:
+  - Added `operationProvider TEXT NOT NULL DEFAULT 'EARTHLINK'` to `local_accounts` and `pending_external_operations`.
+  - Guaranteed seamless backward-compatibility and zero data loss for production upgrades originating from schema v16 or v17.
+- **Provider-Independent Authentication & Session Isolation**:
+  - Support for 4 provider access states: `NONE`, `EARTHLINK_ONLY`, `SAMM_ONLY`, and `BOTH`.
+  - Independent credential management in `EncryptedSharedPreferences` with secure token masking.
+  - Feature gating disabling EarthLink-specific views (balance, deposit refill) when operating on SAMM.
+- **Batch Provider Assignment with TOCTOU Protection**:
+  - Room transaction-guarded batch assignment (`batchSetProvider`) preventing provider migration during in-flight operations.
+- **SAMM 5.2.0 API & Live Data-Plane Verification**:
+  - Validated OpenAPI 3.1.0 wire contract against live SAMM 5.2.0 server (`http://172.16.0.190`).
+  - Certified live PPPoE data-plane session lifecycle, disconnect CoA (`ui_disconnect`), and dynamic rate-limiting (`plan_change_pool`) on MikroTik CHR routers (`CHR-SERVER` and `CHR-CLI`) and FreeRADIUS.
+
+---
+
 ## [1.109.0] - 2026-08-22 — V1 Production Certified Baseline
 
 **Final Independently Certified Baseline: `6d91dbd` | Test Corpus: 535/535 Green**
