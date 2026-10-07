@@ -1897,29 +1897,32 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                         showEditProviderDialog = true
                                     }
                                 )
-                                HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.8.dp)
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            if (currentLang == "ar") "تمديد المشترك" else "Extend User",
-                                            color = Color.White,
-                                            fontWeight = FontWeight.Medium,
-                                            fontSize = 14.sp
-                                        )
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.HourglassTop,
-                                            contentDescription = null,
-                                            tint = Color(0xFFF59E0B),
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    },
-                                    onClick = {
-                                        expanded = false
-                                        showExtendDialog = true
-                                    }
-                                )
+                                val currentOpProvider = matchingAccount?.operationProvider ?: com.example.core.model.SasProviders.EARTHLINK
+                                if (currentOpProvider == com.example.core.model.SasProviders.EARTHLINK) {
+                                    HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.8.dp)
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                if (currentLang == "ar") "تمديد المشترك" else "Extend User",
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Medium,
+                                                fontSize = 14.sp
+                                            )
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Default.HourglassTop,
+                                                contentDescription = null,
+                                                tint = Color(0xFFF59E0B),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        },
+                                        onClick = {
+                                            expanded = false
+                                            showExtendDialog = true
+                                        }
+                                    )
+                                }
                                 HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.8.dp)
                                 val isSuspended = detail?.accountStatus?.trim()?.lowercase() == "suspendedbyagent"
                                 DropdownMenuItem(
@@ -2964,6 +2967,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                         userId = user.userID,
                         viewModel = viewModel,
                         currentLang = currentLang,
+                        provider = matchingAccount?.operationProvider ?: com.example.core.model.SasProviders.EARTHLINK,
                         onClose = { showPassToolsDialog = false }
                     )
                 }

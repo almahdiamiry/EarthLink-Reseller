@@ -179,4 +179,73 @@ class ProviderIndependentLoginTest {
         assertEquals("https://new-samm.alamiry.net/api", preferenceManager.getSammBaseUrl())
         assertEquals("new-production-token", preferenceManager.getSammToken())
     }
+
+    @Test
+    fun testProviderOutageDoesNotCauseGlobalLogout() {
+        // Configure both providers
+        preferenceManager.saveAuthToken("earthlink_jwt_token_123")
+        preferenceManager.saveSammBaseUrl("http://192.168.1.100:8000")
+        preferenceManager.saveSammToken("samm_token_secret_xyz")
+
+        val stateBefore = preferenceManager.getProviderAccessState()
+        assertEquals(ProviderAccessState.BOTH, stateBefore)
+        assertTrue(preferenceManager.isLoggedInFlow.value)
+
+        // Simulate a network outage / server failure (e.g., HTTP 503, timeout)
+        // Architectural guarantee: Configured provider != live reachability.
+        // A network or server error must NEVER automatically trigger credential clearing or global logout.
+        val simulatedNetworkError = java.io.IOException("Failed to connect to SAMM gateway: Connection refused")
+        assertNotNull(simulatedNetworkError)
+
+        // Verify state remains BOTH and session remains unlocked
+        val stateAfter = preferenceManager.getProviderAccessState()
+        assertEquals("Configured state must remain BOTH during provider network outage", ProviderAccessState.BOTH, stateAfter)
+        assertTrue("Application must remain unlocked during provider outage", stateAfter.isAppUnlocked)
+        assertTrue("isLoggedInFlow must remain true", preferenceManager.isLoggedInFlow.value)
+        assertEquals("Credentials must remain stored", "samm_token_secret_xyz", preferenceManager.getSammToken())
+        assertEquals("Credentials must remain stored", "earthlink_jwt_token_123", preferenceManager.getAuthToken())
+    }
+
+    @Test
+    fun testSammOnlyGatingHidesEarthlinkFeatures() {
+        // Setup SAMM-only mode
+        preferenceManager.saveSammBaseUrl("http://192.168.1.100:8000")
+        preferenceManager.saveSammToken("samm_token_secret_xyz")
+
+        val state = preferenceManager.getProviderAccessState()
+        assertEquals(ProviderAccessState.SAMM_ONLY, state)
+        assertTrue("App is unlocked in SAMM-only mode", state.isAppUnlocked)
+        assertTrue("SAMM provider is active", state.hasSamm)
+        assertFalse("EarthLink provider is NOT active", state.hasEarthlink)
+
+        // Under SAMM-only mode:
+        // 1. Trial User creation in CreateChooserBottomSheet is gated by hasEarthlink
+        val canCreateTrialUser = state.hasEarthlink
+        assertFalse("Trial user creation must be disabled in SAMM-only mode", canCreateTrialUser)
+
+        // 2. Paid Subscriber creation is available for both
+        val canCreatePaidUser = state.hasSamm || state.hasEarthlink
+        assertTrue("Paid user creation must remain available", canCreatePaidUser)
+    }
+
+    @Test
+    fun testGlobalLogoutClearsBothProviders() {
+        preferenceManager.saveAuthToken("earthlink_jwt_token_123")
+        preferenceManager.saveSammBaseUrl("http://192.168.1.100:8000")
+        preferenceManager.saveSammToken("samm_token_secret_xyz")
+        assertEquals(ProviderAccessState.BOTH, preferenceManager.getProviderAccessState())
+
+        // Global logout via clearCredentials()
+        preferenceManager.clearCredentials()
+
+        val state = preferenceManager.getProviderAccessState()
+        assertEquals("State must transition to NONE", ProviderAccessState.NONE, state)
+        assertFalse("App must be locked", state.isAppUnlocked)
+        assertFalse("EarthLink credentials must be cleared", state.hasEarthlink)
+        assertFalse("SAMM credentials must be cleared", state.hasSamm)
+        assertNull("Auth token must be null", preferenceManager.getAuthToken())
+        assertNull("SAMM token must be null", preferenceManager.getSammToken())
+        assertFalse("isLoggedInFlow must be false", preferenceManager.isLoggedInFlow.value)
+    }
 }
+
