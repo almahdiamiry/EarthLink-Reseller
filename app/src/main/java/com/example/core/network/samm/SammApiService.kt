@@ -67,13 +67,13 @@ interface SammApiService {
 
     @GET("api/v1/plans")
     suspend fun listPlans(
-        @Query("page") page: Int? = 1,
-        @Query("per_page") perPage: Int? = 100
-    ): Response<ListResponse<PlanResponse>>
+        @Query("enabled_only") enabledOnly: Boolean? = null
+    ): Response<List<PlanResponse>>
 
     @GET("api/v1/commands")
     suspend fun listCommands(
-        @Query("page") page: Int? = 1,
-        @Query("per_page") perPage: Int? = 50
+        @Query("applied") applied: Boolean? = null,
+        @Query("limit") limit: Int? = 50,
+        @Query("offset") offset: Int? = 0
     ): Response<ListResponse<CommandItem>>
 }

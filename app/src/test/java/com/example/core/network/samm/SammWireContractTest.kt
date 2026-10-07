@@ -376,19 +376,16 @@ class SammWireContractTest {
     @Test
     fun listPlans_verifiesGetMethodAndPagingParams() = runTest {
         val jsonResponse = """
-            {
-              "total": 1,
-              "items": [
-                {
-                  "id": 12,
-                  "name": "Standard 10M",
-                  "price": 35000.0,
-                  "speed_download": 10000000,
-                  "speed_upload": 5000000,
-                  "description": "Standard Residential"
-                }
-              ]
-            }
+            [
+              {
+                "id": 12,
+                "name": "Standard 10M",
+                "price": 35000.0,
+                "speed_download": 10000000,
+                "speed_upload": 5000000,
+                "description": "Standard Residential"
+              }
+            ]
         """.trimIndent()
 
         mockServer.enqueue(
@@ -398,17 +395,17 @@ class SammWireContractTest {
                 .setBody(jsonResponse)
         )
 
-        val response = apiService.listPlans(page = 1, perPage = 100)
+        val response = apiService.listPlans(enabledOnly = true)
 
         assertTrue(response.isSuccessful)
         val list = response.body()
         assertNotNull(list)
-        assertEquals(1, list?.total)
-        assertEquals("Standard 10M", list?.items?.first()?.name)
+        assertEquals(1, list?.size)
+        assertEquals("Standard 10M", list?.first()?.name)
 
         val recorded = mockServer.takeRequest()
         assertEquals("GET", recorded.method)
-        assertEquals("/api/v1/plans?page=1&per_page=100", recorded.path)
+        assertEquals("/api/v1/plans?enabled_only=true", recorded.path)
     }
 
     @Test
@@ -436,7 +433,7 @@ class SammWireContractTest {
                 .setBody(jsonResponse)
         )
 
-        val response = apiService.listCommands(page = 1, perPage = 50)
+        val response = apiService.listCommands(limit = 50, offset = 0)
 
         assertTrue(response.isSuccessful)
         val list = response.body()
@@ -449,7 +446,7 @@ class SammWireContractTest {
 
         val recorded = mockServer.takeRequest()
         assertEquals("GET", recorded.method)
-        assertEquals("/api/v1/commands?page=1&per_page=50", recorded.path)
+        assertEquals("/api/v1/commands?limit=50&offset=0", recorded.path)
     }
 
     @Test

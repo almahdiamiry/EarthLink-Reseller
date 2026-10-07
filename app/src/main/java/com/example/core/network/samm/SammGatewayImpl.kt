@@ -161,9 +161,9 @@ class SammGatewayImpl(
         return response.body()?.toSubscriberView()
     }
 
-    suspend fun listPlans(page: Int = 1, perPage: Int = 100): List<PlanResponse> {
-        val response = safeApiCall { apiService.listPlans(page = page, perPage = perPage) }
-        return response.body()?.items.orEmpty()
+    suspend fun listPlans(enabledOnly: Boolean? = null): List<PlanResponse> {
+        val response = safeApiCall { apiService.listPlans(enabledOnly = enabledOnly) }
+        return response.body().orEmpty()
     }
 
     override suspend fun checkConnection(): Boolean {

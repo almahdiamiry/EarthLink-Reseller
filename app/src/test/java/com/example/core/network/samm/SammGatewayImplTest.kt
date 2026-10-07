@@ -297,7 +297,7 @@ class SammGatewayImplTest {
     /**
      * Claim: listPlans queries GET /api/v1/plans and returns parsed PlanResponse list.
      * Seam: JVM MockWebServer Wire Contract.
-     * Independent Oracle: GET /api/v1/plans?page=1&per_page=100 returns plan items.
+     * Independent Oracle: GET /api/v1/plans returns plan items array.
      */
     @Test
     fun listPlans_fetchesAndReturnsPlans() = runTest {
@@ -307,18 +307,15 @@ class SammGatewayImplTest {
                 .setHeader("Content-Type", "application/json")
                 .setBody(
                     """
-                    {
-                      "total": 1,
-                      "items": [
-                        {
-                          "id": 10,
-                          "name": "Standard 50M",
-                          "price": 35000.0,
-                          "speed_download": 50000000,
-                          "speed_upload": 10000000
-                        }
-                      ]
-                    }
+                    [
+                      {
+                        "id": 10,
+                        "name": "Standard 50M",
+                        "price": 35000.0,
+                        "speed_download": 50000000,
+                        "speed_upload": 10000000
+                      }
+                    ]
                     """.trimIndent()
                 )
         )

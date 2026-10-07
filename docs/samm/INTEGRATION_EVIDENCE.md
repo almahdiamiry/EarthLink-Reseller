@@ -36,7 +36,7 @@ This document certifies the successful, regression-free integration of the **Ala
 ---
 
 ## 3. Test Suites & Regression Verification
-- **Verified Test Baseline:** **1019/1019 unit tests passing** across **128** test suites (0 failures, 0 errors).
+- **Verified Test Baseline:** **1034/1034 unit tests passing** across **130** test suites (0 failures, 0 errors).
 - **Core Triad Compliance:** 100% of new tests specify Claim, Seam, and Independent Oracle.
 - **Dedicated Adversarial Kit (`AdversarialIntegrationKitTest`):**
   - Proven Zero Fallback: SAMM timeout, 401, 404, 500, or unconfigured states make 0 calls to EarthLink.
@@ -45,6 +45,10 @@ This document certifies the successful, regression-free integration of the **Ala
   - Historical & Identity Preservation: Switching provider preserves account ID, debts, advances, and ledger lineage.
   - TOCTOU Transaction Guard: In-flight operations prevent provider re-assignment inside atomic Room `@Transaction`.
   - Wire Contract Protocol: 100% MockWebServer coverage matching SAMM FastAPI schemas.
+- **Dedicated Live Server Suite (`SammLiveServerIntegrationTest`):**
+  - Live E2E wire verification against SAMM 5.2.0 at `http://172.16.0.190`.
+  - Proves connection health, full plan catalog deserialization (array response), customer search, details lookup, suspension, activation, renewal, plan modification, and write-only password updates.
+  - All recovery verification oracles (`ACTIVATION`, `TOGGLE_ACTIVE`, `RENEWAL`, `CHANGE_PLAN`) return `VERIFIED_SUCCESS` against live server database state.
 
 ---
 
