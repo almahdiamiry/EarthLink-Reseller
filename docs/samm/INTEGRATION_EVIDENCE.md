@@ -7,9 +7,11 @@ This document certifies the successful, regression-free integration of the **Ala
 
 ## 1. Environment & Build Metadata
 - **Branch:** `feat/alamiry-samm-integration`
-- **Head Commit:** `3d85446`
-- **Target SAMM Gateway Version:** 5.1.15
-- **OpenAPI Schema Version:** OpenAPI 3.1.0 (`docs/samm/openapi.json`)
+- **Head Commit:** `39cfe6e`
+- **Live SAMM Lab Probe:** Reachable at `http://172.16.0.190` (Port 80 TCP open, Ping RTT ~10ms)
+- **Live SAMM Server Version:** SAMM 5.2.0 (Ubuntu / nginx 1.24.0)
+- **OpenAPI Schema Version:** OpenAPI 3.1.0 (`/api/v1/openapi.json`)
+- **Authentication Scheme:** Bearer Token (`APIToken`, `Authorization: Bearer <token>`)
 - **Room Database Schema:** Version 19 (`MIGRATION_18_19`)
 - **Compilation Status:** `assembleDebug` SUCCESSFUL
 
