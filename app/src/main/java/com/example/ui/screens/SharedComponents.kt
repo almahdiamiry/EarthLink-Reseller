@@ -1195,6 +1195,7 @@ fun DetailRow(
 fun ConfirmationDialog(
     title: String,
     message: String,
+    confirmLabel: String? = null,
     onCancel: () -> Unit,
     onConfirm: () -> Unit,
     content: @Composable () -> Unit
@@ -1235,7 +1236,7 @@ fun ConfirmationDialog(
                         onClick = onConfirm,
                         modifier = Modifier.heightIn(min = 48.dp)
                     ) {
-                        Text("Save")
+                        Text(confirmLabel ?: (if (isAr) "تأكيد" else "Confirm"))
                     }
                 }
             }
