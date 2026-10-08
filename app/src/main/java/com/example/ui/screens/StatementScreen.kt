@@ -65,7 +65,10 @@ fun StatementScreen(
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
 
-    val isAr = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val context = LocalContext.current
+    val prefs = remember(context) { (context.applicationContext as EarthlinkApp).preferenceManager }
+    val currentLang by prefs.languageFlow.collectAsStateWithLifecycle()
+    val isAr = currentLang == "ar"
 
     Column(
         modifier = Modifier
@@ -80,8 +83,16 @@ fun StatementScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column {
-                Text(text = "Account Invoices & Statements", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Text(text = "Real-Time Reseller Billing Audit Log", fontSize = 12.sp, color = Color.Gray)
+                Text(
+                    text = if (isAr) "فواتير وكشف الحساب" else "Account Invoices & Statements",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = if (isAr) "سجل تدقيق الفواتير المباشر" else "Real-Time Reseller Billing Audit Log",
+                    fontSize = 12.sp,
+                    color = Color.Gray
+                )
             }
             IconButton(onClick = { viewModel.loadStatement() }) {
                 Icon(
@@ -103,7 +114,10 @@ fun StatementScreen(
             }
         } else if (items.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize().weight(1f), contentAlignment = Alignment.Center) {
-                Text(text = "No invoices logged in current calendar cycle.", color = Color.Gray)
+                Text(
+                    text = if (isAr) "لا توجد فواتير مسجلة في الدورة الحالية." else "No invoices logged in current calendar cycle.",
+                    color = Color.Gray
+                )
             }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize().weight(1f)) {
@@ -131,7 +145,11 @@ fun StatementScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(text = "Balance: ${formatIqd(tx.balanceAfter ?: 0.0)}", color = Color.Gray, fontSize = 12.sp)
+                                Text(
+                                    text = "${if (isAr) "الرصيد:" else "Balance:"} ${formatIqd(tx.balanceAfter ?: 0.0)}",
+                                    color = Color.Gray,
+                                    fontSize = 12.sp
+                                )
                                 Text(text = tx.occurredAt ?: "", color = Color.Gray, fontSize = 11.sp)
                             }
                         }

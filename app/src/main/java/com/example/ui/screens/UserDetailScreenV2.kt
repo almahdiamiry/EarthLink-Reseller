@@ -71,6 +71,13 @@ object HistoryPresentationManager {
         if (rawList.isEmpty()) return emptyList()
 
         val pairedChargeIds = mutableSetOf<String>()
+        val nonSnapshotMap = HashMap<Pair<String, String>, com.example.core.model.LocalLedgerEntry>(rawList.size)
+        for (entry in rawList) {
+            if (!entry.isSnapshotHistory) {
+                nonSnapshotMap[Pair(entry.id, entry.accountId)] = entry
+            }
+        }
+
         for (payment in rawList) {
             if (payment.isSnapshotHistory) continue
             val payId = payment.id
@@ -80,13 +87,8 @@ object HistoryPresentationManager {
             if (paymentCanonicalType != "gave" && paymentCanonicalType != "payment" && payment.typeRaw != "gave") continue
 
             val expectedChargeId = payId.removePrefix("pay_")
-            val matchingCharge = rawList.find { charge ->
-                !charge.isSnapshotHistory &&
-                charge.id == expectedChargeId &&
-                charge.accountId == payment.accountId &&
-                kotlin.math.abs(charge.amountIqd - payment.amountIqd) < 0.0001
-            }
-            if (matchingCharge != null) {
+            val matchingCharge = nonSnapshotMap[Pair(expectedChargeId, payment.accountId)]
+            if (matchingCharge != null && kotlin.math.abs(matchingCharge.amountIqd - payment.amountIqd) < 0.0001) {
                 pairedChargeIds.add(matchingCharge.id)
             }
         }
