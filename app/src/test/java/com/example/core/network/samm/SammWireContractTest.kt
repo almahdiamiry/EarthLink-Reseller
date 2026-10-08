@@ -503,7 +503,7 @@ class SammWireContractTest {
         val response = unauthClient.agentLogin(
             SammAgentLoginRequest(
                 username = "test_agent_v1",
-                password = "agentpass123"
+                password = "MockAgentPassword#456"
             )
         )
 
@@ -525,7 +525,7 @@ class SammWireContractTest {
         assertNull("Unauthenticated login must not have Authorization header", recorded.getHeader("Authorization"))
         val requestBody = recorded.body.readUtf8()
         assertTrue(requestBody.contains("\"username\":\"test_agent_v1\""))
-        assertTrue(requestBody.contains("\"password\":\"agentpass123\""))
+        assertTrue(requestBody.contains("\"password\":\"MockAgentPassword#456\""))
     }
 
     @Test
@@ -557,5 +557,59 @@ class SammWireContractTest {
         assertEquals("POST", recorded.method)
         assertEquals("/api/v1/auth/agent-logout", recorded.path)
         assertEquals("Bearer $testToken", recorded.getHeader("Authorization"))
+    }
+
+    @Test
+    fun agentLogin_whenInvalidCredentials_returns401WithGenericFailure() = runTest {
+        // Claim: Agent login failures return HTTP 401 with normalized generic message "Invalid username or password."
+        val jsonError = """{"detail": "Invalid username or password."}"""
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(401)
+                .setHeader("Content-Type", "application/json")
+                .setBody(jsonError)
+        )
+
+        val unauthClient = SammNetworkClient.createApiService(mockServer.url("/").toString(), token = null)
+        val response = unauthClient.agentLogin(
+            SammAgentLoginRequest(
+                username = "invalid_user",
+                password = "invalid_password"
+            )
+        )
+
+        assertFalse(response.isSuccessful)
+        assertEquals(401, response.code())
+        val errorBody = response.errorBody()?.string()
+        assertNotNull(errorBody)
+        assertTrue(errorBody?.contains("Invalid username or password.") == true)
+    }
+
+    @Test
+    fun agentLogin_whenThrottled_returns429TooManyRequestsWithRetryAfter() = runTest {
+        // Claim: Agent login rate limit returns HTTP 429 Too Many Requests with Retry-After header
+        val jsonError = """{"detail": "Too many failed login attempts. Please try again later."}"""
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(429)
+                .setHeader("Content-Type", "application/json")
+                .setHeader("Retry-After", "300")
+                .setBody(jsonError)
+        )
+
+        val unauthClient = SammNetworkClient.createApiService(mockServer.url("/").toString(), token = null)
+        val response = unauthClient.agentLogin(
+            SammAgentLoginRequest(
+                username = "throttled_user",
+                password = "any_password"
+            )
+        )
+
+        assertFalse(response.isSuccessful)
+        assertEquals(429, response.code())
+        assertEquals("300", response.headers()["Retry-After"])
+        val errorBody = response.errorBody()?.string()
+        assertNotNull(errorBody)
+        assertTrue(errorBody?.contains("Too many failed login attempts") == true)
     }
 }

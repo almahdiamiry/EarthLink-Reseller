@@ -122,7 +122,7 @@ class SammAgentAuthViewModelTest {
         val vm = createViewModel()
         vm.setSammBaseUrl(serverUrl)
         vm.setSammUsername("test_agent_v1")
-        vm.setSammPassword("agentpass123")
+        vm.setSammPassword("MockAgentPassword#456")
 
         var successCalled = false
         var errorCalled: String? = null
@@ -159,7 +159,7 @@ class SammAgentAuthViewModelTest {
         assertEquals("/api/v1/auth/agent-login", recorded.path)
         val bodyText = recorded.body.readUtf8()
         assertTrue(bodyText.contains("\"username\":\"test_agent_v1\""))
-        assertTrue(bodyText.contains("\"password\":\"agentpass123\""))
+        assertTrue(bodyText.contains("\"password\":\"MockAgentPassword#456\""))
 
         // 5. Audit logged
         assertTrue(
@@ -226,6 +226,36 @@ class SammAgentAuthViewModelTest {
         assertFalse(successCalled)
         assertEquals("User is an administrator, not a reseller agent", errorCalled)
         assertNull("No token should be stored on 403", prefs.getSammToken())
+    }
+
+    @Test
+    fun loginSamm_throttled_failsClosedWith429AndClearsPassword() = runTest {
+        val serverUrl = mockServer.url("/").toString()
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(429)
+                .setHeader("Content-Type", "application/json")
+                .setHeader("Retry-After", "300")
+                .setBody("""{"detail": "Too many failed login attempts. Please try again later."}""")
+        )
+
+        val vm = createViewModel()
+        vm.setSammBaseUrl(serverUrl)
+        vm.setSammUsername("test_agent_v1")
+        vm.setSammPassword("transient_pass")
+
+        var successCalled = false
+        var errorCalled: String? = null
+
+        val job = vm.loginSamm(
+            onSuccess = { successCalled = true },
+            onError = { errorCalled = it }
+        )
+        job.join()
+
+        assertFalse(successCalled)
+        assertEquals("Too many failed login attempts. Please try again later.", errorCalled)
+        assertNull("No token should be stored on 429", prefs.getSammToken())
         assertEquals("", vm.sammPassword.value)
     }
 

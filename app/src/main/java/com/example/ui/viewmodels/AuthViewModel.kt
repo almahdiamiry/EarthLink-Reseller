@@ -140,6 +140,7 @@ class AuthViewModel(
                     val msg = when (response.code()) {
                         401 -> "Invalid username or password."
                         403 -> errorDetail ?: "Access denied: Account is not an authorized agent."
+                        429 -> errorDetail ?: "Too many failed login attempts. Please try again later."
                         else -> errorDetail ?: "Login failed with code ${response.code()}."
                     }
                     _error.value = msg
