@@ -113,7 +113,7 @@ class SammNetworkClient(
             timeoutSeconds: Long = 30L,
             isDebug: Boolean = AppBuildConfig.DEBUG
         ): OkHttpClient {
-            return OkHttpClient.Builder()
+            val builder = OkHttpClient.Builder()
                 .connectTimeout(15, TimeUnit.SECONDS)
                 .readTimeout(timeoutSeconds, TimeUnit.SECONDS)
                 .writeTimeout(15, TimeUnit.SECONDS)
@@ -121,7 +121,30 @@ class SammNetworkClient(
                 .followSslRedirects(false)
                 .addInterceptor(createAuthInterceptor(tokenProvider))
                 .addInterceptor(createLoggingInterceptor(isDebug))
-                .build()
+
+            if (isDebug) {
+                configureDebugTls(builder)
+            }
+
+            return builder.build()
+        }
+
+        private fun configureDebugTls(builder: OkHttpClient.Builder) {
+            try {
+                val trustAllCerts = arrayOf<javax.net.ssl.TrustManager>(
+                    object : javax.net.ssl.X509TrustManager {
+                        override fun checkClientTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
+                        override fun checkServerTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
+                        override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = arrayOf()
+                    }
+                )
+                val sslContext = javax.net.ssl.SSLContext.getInstance("TLS")
+                sslContext.init(null, trustAllCerts, java.security.SecureRandom())
+                builder.sslSocketFactory(sslContext.socketFactory, trustAllCerts[0] as javax.net.ssl.X509TrustManager)
+                builder.hostnameVerifier { _, _ -> true }
+            } catch (_: Throwable) {
+                // Fallback to default TLS if custom SSL fails to initialize
+            }
         }
 
         fun createRetrofit(
