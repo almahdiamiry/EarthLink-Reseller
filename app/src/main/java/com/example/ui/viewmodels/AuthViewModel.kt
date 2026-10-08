@@ -77,6 +77,74 @@ class AuthViewModel(
 
     fun clearError() { _error.value = null }
 
+    fun loginSammWithToken(
+        baseUrl: String? = null,
+        token: String? = null,
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
+    ): kotlinx.coroutines.Job {
+        val rawUrl = (baseUrl ?: _sammBaseUrl.value).trim()
+        val rawToken = (token ?: _sammApiToken.value).trim()
+
+        if (rawUrl.isEmpty() || rawToken.isEmpty()) {
+            val msg = "Server URL and API Token cannot be empty."
+            _error.value = msg
+            onError(msg)
+            return kotlinx.coroutines.Job().apply { complete() }
+        }
+
+        val normalizedUrl = com.example.ui.screens.SammUrlNormalizer.normalize(rawUrl)
+
+        return viewModelScope.launch {
+            _isLoading.value = true
+            _error.value = null
+            try {
+                val apiService = com.example.core.network.samm.SammNetworkClient.createApiService(normalizedUrl, rawToken)
+                val response = apiService.getMe()
+
+                if (response.isSuccessful && response.body() != null) {
+                    val me = response.body()!!
+                    prefs.saveSammBaseUrl(normalizedUrl)
+                    prefs.saveSammToken(rawToken)
+                    val tokenName = me.name ?: "API Token"
+                    prefs.saveSammAgentInfo(
+                        agentId = 0,
+                        username = tokenName,
+                        resellerId = null
+                    )
+                    prefs.setLastSelectedLoginProvider(SasProviders.ALAMIRY)
+
+                    audit.logAction(
+                        action = "SAMM_LOGIN",
+                        entityType = "PROVIDER",
+                        entityId = normalizedUrl,
+                        summary = "Connected with API Token: $tokenName"
+                    )
+                    onSuccess()
+                } else {
+                    val msg = when (response.code()) {
+                        401, 403 -> "Invalid or unauthorized API token."
+                        else -> "Connection failed with HTTP code ${response.code()}."
+                    }
+                    _error.value = msg
+                    onError(msg)
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                val msg = when (e) {
+                    is java.net.UnknownHostException -> "Server not found. Check server URL."
+                    is java.net.SocketTimeoutException -> "Connection timed out."
+                    is java.io.IOException -> "Network connection failed: ${e.message}"
+                    else -> e.message ?: "Failed to connect to SAMM server."
+                }
+                _error.value = msg
+                onError(msg)
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
     fun loginSamm(
         username: String? = null,
         password: String? = null,
@@ -87,7 +155,10 @@ class AuthViewModel(
         val user = (username ?: _sammUsername.value).trim()
         val pass = password ?: _sammPassword.value
 
-        if (rawUrl.isEmpty() || user.isEmpty() || pass.isEmpty()) {
+        if (user.isEmpty() || pass.isEmpty()) {
+            if (_sammApiToken.value.isNotBlank() || !rawUrl.isEmpty()) {
+                return loginSammWithToken(rawUrl, _sammApiToken.value, onSuccess, onError)
+            }
             val msg = "Server URL, Username, and Password cannot be empty."
             _error.value = msg
             onError(msg)

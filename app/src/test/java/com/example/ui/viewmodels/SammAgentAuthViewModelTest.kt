@@ -11,6 +11,7 @@ import com.example.core.security.PreferenceManager
 import com.example.domain.repository.AuditRepository
 import com.example.domain.repository.EarthlinkGateway
 import com.example.domain.repository.SyncRepository
+import com.example.ui.screens.SammUrlNormalizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -294,6 +295,107 @@ class SammAgentAuthViewModelTest {
             "Audit log must contain agent logout entry",
             audit.loggedActions.any { it.contains("SAMM_LOGOUT") }
         )
+    }
+
+    @Test
+    fun loginSammWithToken_success_verifiesTokenWithGetMe_savesCredentialsAndUnlocksApp() = runTest {
+        val serverUrl = mockServer.url("/").toString()
+        val jsonMe = """
+            {
+              "token_id": 123,
+              "name": "Super Admin Token",
+              "scopes": ["customers:read", "customers:write", "plans:read"],
+              "created_at": "2026-10-08T20:00:00Z"
+            }
+        """.trimIndent()
+
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(jsonMe)
+        )
+
+        val vm = createViewModel()
+        var successCalled = false
+        var errorCalled: String? = null
+
+        val job = vm.loginSammWithToken(
+            baseUrl = serverUrl,
+            token = "samm_valid_secret_token",
+            onSuccess = { successCalled = true },
+            onError = { errorCalled = it }
+        )
+        job.join()
+
+        assertTrue("onSuccess must be called", successCalled)
+        assertNull("onError must not be called", errorCalled)
+        assertNull("ViewModel error flow must be null", vm.error.value)
+
+        // Verifies token and URL stored in preferences
+        assertEquals(SammUrlNormalizer.normalize(serverUrl), prefs.getSammBaseUrl())
+        assertEquals("samm_valid_secret_token", prefs.getSammToken())
+        assertTrue("SAMM must be configured", prefs.isSammConfigured())
+
+        // Verifies network request to /api/v1/me
+        val recorded = mockServer.takeRequest()
+        assertEquals("GET", recorded.method)
+        assertEquals("/api/v1/me", recorded.path)
+        assertEquals("Bearer samm_valid_secret_token", recorded.getHeader("Authorization"))
+
+        // Verifies audit log entry
+        assertTrue(
+            "Audit log must contain SAMM_LOGIN entry",
+            audit.loggedActions.any { it.contains("SAMM_LOGIN") }
+        )
+    }
+
+    @Test
+    fun loginSammWithToken_unauthorized_failsClosedAndDoesNotPersist() = runTest {
+        val serverUrl = mockServer.url("/").toString()
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(401)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"detail": "Unauthorized API token"}""")
+        )
+
+        val vm = createViewModel()
+        var successCalled = false
+        var errorCalled: String? = null
+
+        val job = vm.loginSammWithToken(
+            baseUrl = serverUrl,
+            token = "samm_invalid_token",
+            onSuccess = { successCalled = true },
+            onError = { errorCalled = it }
+        )
+        job.join()
+
+        assertFalse("onSuccess must not be called", successCalled)
+        assertEquals("Invalid or unauthorized API token.", errorCalled)
+        assertEquals("Invalid or unauthorized API token.", vm.error.value)
+        assertNull("Token must NOT be persisted on failure", prefs.getSammToken())
+        assertFalse("SAMM must NOT be configured", prefs.isSammConfigured())
+    }
+
+    @Test
+    fun loginSammWithToken_blankInputs_failsValidationWithoutNetworkCall() = runTest {
+        val vm = createViewModel()
+        var successCalled = false
+        var errorCalled: String? = null
+
+        val job = vm.loginSammWithToken(
+            baseUrl = "",
+            token = "",
+            onSuccess = { successCalled = true },
+            onError = { errorCalled = it }
+        )
+        job.join()
+
+        assertFalse("onSuccess must not be called", successCalled)
+        assertEquals("Server URL and API Token cannot be empty.", errorCalled)
+        assertEquals(0, mockServer.requestCount)
     }
 
     class TestAuditRepository : AuditRepository {

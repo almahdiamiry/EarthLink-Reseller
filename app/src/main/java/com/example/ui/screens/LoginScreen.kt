@@ -62,8 +62,7 @@ fun LoginScreen(viewModel: AuthViewModel) {
     val error by viewModel.error.collectAsStateWithLifecycle()
     val selectedProvider by viewModel.selectedProvider.collectAsStateWithLifecycle()
     val sammBaseUrl by viewModel.sammBaseUrl.collectAsStateWithLifecycle()
-    val sammUsername by viewModel.sammUsername.collectAsStateWithLifecycle()
-    val sammPassword by viewModel.sammPassword.collectAsStateWithLifecycle()
+    val sammApiToken by viewModel.sammApiToken.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -300,7 +299,7 @@ fun LoginScreen(viewModel: AuthViewModel) {
                         }
 
                         if (selectedProvider == com.example.core.model.SasProviders.ALAMIRY) {
-                            // --- SAMM LOGIN INPUTS ---
+                            // --- SAMM LOGIN INPUTS (OFFICIAL API TOKEN) ---
                             var localSammUrl by remember(sammBaseUrl) { mutableStateOf(sammBaseUrl) }
                             OutlinedTextField(
                                 value = localSammUrl,
@@ -311,7 +310,7 @@ fun LoginScreen(viewModel: AuthViewModel) {
                                 label = { Text(if (currentLang == "ar") "عنوان الخادم (Server URL)" else "Server URL / Domain / IP") },
                                 placeholder = {
                                     Text(
-                                        "https://samm.example.com",
+                                        "https://isp.alamiry.com",
                                         color = Color.White.copy(alpha = 0.3f)
                                     )
                                 },
@@ -344,75 +343,36 @@ fun LoginScreen(viewModel: AuthViewModel) {
                                     .heightIn(min = 56.dp)
                             )
 
-                            var localAgentUsername by remember(sammUsername) { mutableStateOf(sammUsername) }
+                            var localApiToken by remember(sammApiToken) { mutableStateOf(sammApiToken) }
+                            var isTokenVisible by rememberSaveable { mutableStateOf(false) }
                             OutlinedTextField(
-                                value = localAgentUsername,
+                                value = localApiToken,
                                 onValueChange = {
-                                    localAgentUsername = it
-                                    viewModel.setSammUsername(it)
+                                    localApiToken = it
+                                    viewModel.setSammApiToken(it)
                                 },
-                                label = { Text(if (currentLang == "ar") "اسم مستخدم الوكيل (Agent Username)" else "Agent Username") },
+                                label = { Text(if (currentLang == "ar") "رمز وصول SAMM (API Token)" else "SAMM API Token") },
                                 placeholder = {
                                     Text(
-                                        if (currentLang == "ar") "أدخل اسم مستخدم الوكيل" else "Enter agent username",
+                                        "samm_...",
                                         color = Color.White.copy(alpha = 0.3f)
                                     )
                                 },
                                 leadingIcon = {
                                     Icon(
-                                        imageVector = Icons.Outlined.Person,
+                                        imageVector = Icons.Default.VpnKey,
                                         contentDescription = null,
                                         tint = Color(0xFF38BDF8)
                                     )
                                 },
                                 singleLine = true,
-                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                                shape = RoundedCornerShape(16.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedContainerColor = Color(0xFF171E29),
-                                    unfocusedContainerColor = Color(0xFF171E29),
-                                    focusedBorderColor = Color(0xFF0288D1),
-                                    unfocusedBorderColor = Color.White.copy(alpha = 0.1f),
-                                    focusedLabelColor = Color(0xFF38BDF8),
-                                    unfocusedLabelColor = Color.White.copy(alpha = 0.55f),
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White,
-                                    cursorColor = Color(0xFF38BDF8)
-                                ),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 56.dp)
-                            )
-
-                            var localAgentPassword by remember(sammPassword) { mutableStateOf(sammPassword) }
-                            OutlinedTextField(
-                                value = localAgentPassword,
-                                onValueChange = {
-                                    localAgentPassword = it
-                                    viewModel.setSammPassword(it)
-                                },
-                                label = { Text(if (currentLang == "ar") "كلمة مرور الوكيل (Agent Password)" else "Agent Password") },
-                                placeholder = {
-                                    Text(
-                                        if (currentLang == "ar") "أدخل كلمة المرور" else "Enter password",
-                                        color = Color.White.copy(alpha = 0.3f)
-                                    )
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Default.Lock,
-                                        contentDescription = null,
-                                        tint = Color(0xFF38BDF8)
-                                    )
-                                },
-                                singleLine = true,
-                                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                visualTransformation = if (isTokenVisible) VisualTransformation.None else PasswordVisualTransformation(),
                                 trailingIcon = {
-                                    val image = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
-                                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                    val image = if (isTokenVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
+                                    IconButton(onClick = { isTokenVisible = !isTokenVisible }) {
                                         Icon(
                                             imageVector = image,
-                                            contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                                            contentDescription = if (isTokenVisible) "Hide token" else "Show token",
                                             tint = Color.White.copy(alpha = 0.6f)
                                         )
                                     }
@@ -424,7 +384,7 @@ fun LoginScreen(viewModel: AuthViewModel) {
                                 keyboardActions = KeyboardActions(
                                     onDone = {
                                         focusManager.clearFocus()
-                                        viewModel.loginSamm()
+                                        viewModel.loginSammWithToken()
                                     }
                                 ),
                                 shape = RoundedCornerShape(16.dp),
@@ -616,7 +576,7 @@ fun LoginScreen(viewModel: AuthViewModel) {
                             onClick = {
                                 focusManager.clearFocus()
                                 if (isSammSelected) {
-                                    viewModel.loginSamm()
+                                    viewModel.loginSammWithToken()
                                 } else {
                                     viewModel.login()
                                 }
