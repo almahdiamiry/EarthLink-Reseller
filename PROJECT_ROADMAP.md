@@ -18,7 +18,7 @@
 ├────────────────────────────────────────────────────────────────────────────────────────┤
 │ OPERATING MODE:                 POST-V1 / STABLE MAINTENANCE                           │
 │ ACTIVE WORKSTREAM:              NONE — SYSTEM IDLE                                     │
-│ CURRENT VERIFIED TEST BASELINE: 1046 / 1046 TESTS PASSING (100% GREEN)                 │
+│ CURRENT VERIFIED TEST BASELINE: 1046 TOTAL (1039 PASSED, 0 FAIL, 0 ERR, 7 SKIPPED)    │
 │ CURRENT CHECKPOINT:             HEAD                                                   │
 │ GOVERNING PLAYBOOK:             OPERATIONAL TESTING PLAYBOOK (AGENTS.md §9)            │
 └────────────────────────────────────────────────────────────────────────────────────────┘
@@ -58,7 +58,7 @@ All foundational remediation, verification, and maintainability phases are **for
 | **BUG-HUNT-R4-12** | Adversarial Bug Hunt, Rounds 4–12 | **CLOSED** | 12 confirmed defects fixed, 0 false positives shipped. See [`LL-ROUND-4-12-RESULTS`](docs/LESSONS_LEARNED/LL-ROUND-4-12-RESULTS.md) and the method in [`LL-BUG-HUNT-METHODOLOGY`](docs/LESSONS_LEARNED/LL-BUG-HUNT-METHODOLOGY.md). Baseline grew 607 → 798. Per-file audit coverage 61/61 in [`coverage-tracker.tsv`](docs/LESSONS_LEARNED/coverage-tracker.tsv). |
 | **BUG-HUNT-R13** | Test-Suite Evidence Audit (the tests, not the product) | **CLOSED** | 14 confirmed-fake tests found; **13 repaired, 1 deleted**; 0 product defects asserted. Method: [`LL-BUG-HUNT-METHODOLOGY`](docs/LESSONS_LEARNED/LL-BUG-HUNT-METHODOLOGY.md) §7.2. Results, per-repair evidence, and the unproven surface: [`LL-ROUND-13-TEST-EVIDENCE-AUDIT`](docs/LESSONS_LEARNED/LL-ROUND-13-TEST-EVIDENCE-AUDIT.md). **Baseline 798 → 797 because one dead counterfactual (`testScenarioJ_counterfactualRawPayloadContainsRawJson`) was deleted** — the only sanctioned deletion in the round, guarded by a stop-gate that confirmed Scenario I was the real guard. Commits `6a53357`, `ff5b485`, `2d9ab99`, `b2026e2`, `d728902`, `0b14755`, `bbc4cb1` — **seven** repair commits; the last repaired the one finding no task in the plan covered. **Not a coverage closure:** 41 cohort members unadjudicated, ~86 of 113 files never audited, and the P1–P3 screen measured at 50% misprediction in both directions — see §6 of the results document. |
 | **SAMM-INTEGRATION** | Multi-Provider Architecture & SAMM Integration | **CLOSED** | Multi-provider SAS layer, provider-independent login, Room v19, 1034/1034 tests green, live MikroTik CHR & FreeRADIUS verification, commit `d95ea2c` |
-| **SAMM-AGENT-LOGIN** | SAMM Reseller Agent Login Model & Shared Multi-Worker Throttle | **CLOSED** | Username/Password agent authentication, dynamic token minting, Zero Password Persistence, PostgreSQL shared multi-worker throttle, 1046/1046 tests green |
+| **SAMM-AGENT-LOGIN** | SAMM Reseller Agent Login Model & Shared Multi-Worker Throttle | **CLOSED** | Username/Password agent authentication, dynamic token minting, Zero Password Persistence, PostgreSQL shared multi-worker throttle, 1046 testcases (1039 passed, 7 skipped) |
 
 ---
 

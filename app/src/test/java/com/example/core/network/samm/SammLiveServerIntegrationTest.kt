@@ -41,14 +41,24 @@ import java.util.concurrent.TimeUnit
 class SammLiveServerIntegrationTest {
 
     companion object {
-        private const val LIVE_SAMM_URL = "http://172.16.0.190"
-        private const val LIVE_API_TOKEN = "samm_fd29b53428ce7716dfa69c3eec5dd65df5db1120"
+        private val LIVE_SAMM_URL: String = System.getenv("SAMM_LIVE_URL")
+            ?: System.getProperty("samm.live.url")
+            ?: "http://172.16.0.190"
+
+        private val LIVE_API_TOKEN: String? = System.getenv("SAMM_LIVE_API_TOKEN")
+            ?: System.getProperty("samm.live.api.token")
 
         private var isServerAvailable = false
 
         @JvmStatic
         @BeforeClass
         fun checkLiveServerAvailability() {
+            val token = LIVE_API_TOKEN
+            if (token.isNullOrBlank()) {
+                isServerAvailable = false
+                return
+            }
+
             val probeClient = OkHttpClient.Builder()
                 .connectTimeout(2, TimeUnit.SECONDS)
                 .readTimeout(2, TimeUnit.SECONDS)
@@ -56,7 +66,7 @@ class SammLiveServerIntegrationTest {
 
             val request = Request.Builder()
                 .url("$LIVE_SAMM_URL/api/v1/me")
-                .header("Authorization", "Bearer $LIVE_API_TOKEN")
+                .header("Authorization", "Bearer $token")
                 .build()
 
             isServerAvailable = try {
@@ -70,16 +80,17 @@ class SammLiveServerIntegrationTest {
     }
 
     private fun createGateway(): SammGatewayImpl {
+        val token = LIVE_API_TOKEN ?: error("Live API token must be configured via SAMM_LIVE_API_TOKEN environment variable")
         val client = SammNetworkClient(
             baseUrl = LIVE_SAMM_URL,
-            token = LIVE_API_TOKEN
+            token = token
         )
         return SammGatewayImpl(client)
     }
 
     @Test
     fun liveConnection_verifiesServerHealth() = runTest {
-        Assume.assumeTrue("Live SAMM server is reachable", isServerAvailable)
+        Assume.assumeTrue("Live SAMM server and token are configured and reachable", isServerAvailable)
         val gateway = createGateway()
 
         val connected = gateway.checkConnection()
@@ -88,7 +99,7 @@ class SammLiveServerIntegrationTest {
 
     @Test
     fun livePlans_fetchesAndParsesAllPlans() = runTest {
-        Assume.assumeTrue("Live SAMM server is reachable", isServerAvailable)
+        Assume.assumeTrue("Live SAMM server and token are configured and reachable", isServerAvailable)
         val gateway = createGateway()
 
         val plans = gateway.listPlans()
@@ -101,7 +112,7 @@ class SammLiveServerIntegrationTest {
 
     @Test
     fun liveSubscribers_searchAndGetDetails() = runTest {
-        Assume.assumeTrue("Live SAMM server is reachable", isServerAvailable)
+        Assume.assumeTrue("Live SAMM server and token are configured and reachable", isServerAvailable)
         val gateway = createGateway()
 
         val results = gateway.searchSubscribers("sub_lab_01", page = 1, pageSize = 10)
@@ -118,7 +129,7 @@ class SammLiveServerIntegrationTest {
 
     @Test
     fun liveMutationCycle_suspendActivateRenewAndChangePlan() = runTest {
-        Assume.assumeTrue("Live SAMM server is reachable", isServerAvailable)
+        Assume.assumeTrue("Live SAMM server and token are configured and reachable", isServerAvailable)
         val gateway = createGateway()
 
         // 1. Suspend customer 379
@@ -165,7 +176,7 @@ class SammLiveServerIntegrationTest {
 
     @Test
     fun liveCreationAndLookup_createsSubscriberAndVerifiesOutcome() = runTest {
-        Assume.assumeTrue("Live SAMM server is reachable", isServerAvailable)
+        Assume.assumeTrue("Live SAMM server and token are configured and reachable", isServerAvailable)
         val gateway = createGateway()
 
         val uniqueUsername = "test_lab_" + (System.currentTimeMillis() % 10000)
@@ -191,7 +202,7 @@ class SammLiveServerIntegrationTest {
 
     @Test
     fun livePasswordChange_appliesAndReturnsInconclusive() = runTest {
-        Assume.assumeTrue("Live SAMM server is reachable", isServerAvailable)
+        Assume.assumeTrue("Live SAMM server and token are configured and reachable", isServerAvailable)
         val gateway = createGateway()
 
         val passwordResult = gateway.changePassword("379", "UpdatedLabPass2026!")
@@ -203,7 +214,7 @@ class SammLiveServerIntegrationTest {
 
     @Test
     fun liveRouter_dispatchesToSammAndPreservesZeroCrossFallback() = runTest {
-        Assume.assumeTrue("Live SAMM server is reachable", isServerAvailable)
+        Assume.assumeTrue("Live SAMM server and token are configured and reachable", isServerAvailable)
         val liveGateway = createGateway()
 
         // Verify providerName invariant
