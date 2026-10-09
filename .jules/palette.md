@@ -9,3 +9,7 @@
 ## 2026-05-04 - Complete Localization Consistency across Top-Level Cards and Action Buttons
 **Learning:** In multi-language Compose screens observing `languageFlow`, partial localization where lower content blocks (e.g. audit logs) are translated while top status cards and action buttons remain in hardcoded English creates a confusing hybrid-language UI for Arabic operators. Additionally, `SimpleDateFormat` used in date labels must be hoisted with `remember` to prevent GC allocation jank on recompositions.
 **Action:** Always check all text nodes, status mappings, and action buttons in a composable for `currentLang == "ar"` checks and hoist `SimpleDateFormat` allocations using `remember`.
+
+## 2026-05-05 - Dynamic Content Description Localization for Input Visibility Toggles
+**Learning:** In multi-language Compose UIs, toggles for credential/token inputs (e.g., API token visibility toggles) must inspect active language state (`currentLang == "ar"` or `isAr`) rather than hardcoding English strings ("Hide token" / "Show token"). Hardcoded strings cause TalkBack and assistive services to announce English state changes amidst localized Arabic screen elements.
+**Action:** Always localize `contentDescription` on toggle buttons dynamically based on `isAr` / `currentLang == "ar"`, e.g. `if (isAr) "إخفاء رمز الوصول" else "Hide token"`.

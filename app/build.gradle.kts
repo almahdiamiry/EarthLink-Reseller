@@ -108,6 +108,7 @@ android {
     unitTests {
       isIncludeAndroidResources = true
       all { testTask ->
+        testTask.maxHeapSize = "2048m"
         testTask.jvmArgs(
           "-XX:+EnableDynamicAgentLoading",
           "-Dnet.bytebuddy.experimental=true"

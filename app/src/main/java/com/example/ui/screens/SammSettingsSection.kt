@@ -357,7 +357,11 @@ fun SammSettingsSection(
                     IconButton(onClick = { isTokenVisible = !isTokenVisible }) {
                         Icon(
                             imageVector = if (isTokenVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                            contentDescription = if (isTokenVisible) "Hide token" else "Show token",
+                            contentDescription = if (isAr) {
+                                if (isTokenVisible) "إخفاء رمز الوصول" else "إظهار رمز الوصول"
+                            } else {
+                                if (isTokenVisible) "Hide token" else "Show token"
+                            },
                             tint = Color.White.copy(alpha = 0.5f),
                             modifier = Modifier.size(18.dp)
                         )

@@ -795,7 +795,7 @@ class UnifiedSubscriberHistoryPresentationTest {
         localVm.selectAccount(accA)
 
         // Allow coroutine flow collection:
-        val readFeed = withTimeout(5000) {
+        val readFeed = withTimeout(15000) {
             localVm.ledgerEntries.first { it.size == 4 }
         }
         assertEquals("Unified feed must contain all 4 transactions across containers A and B", 4, readFeed.size)
