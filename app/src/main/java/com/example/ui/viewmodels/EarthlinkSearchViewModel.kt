@@ -54,7 +54,7 @@ class EarthlinkSearchViewModel(
         @Synchronized fun formatBghFullDate(date: java.util.Date): String = try { bghFormatFull.format(date) } catch (_: Exception) { "" }
     }
 
-    private val _selectedProvider = MutableStateFlow(com.example.core.model.SasProviders.EARTHLINK)
+    private val _selectedProvider = MutableStateFlow(prefs.getLastSelectedLoginProvider())
     val selectedProvider: StateFlow<String> = _selectedProvider.asStateFlow()
 
     fun setSelectedProvider(provider: String) {
@@ -338,7 +338,7 @@ class EarthlinkSearchViewModel(
                 activeDaysLeftLower = partialItem.activeDaysLeft,
                 displayNameLower = partialItem.displayName,
                 packageNameLower = partialItem.packageName ?: partialItem.displayName,
-                originProvider = partialItem.originProvider ?: _selectedProvider.value
+                originProvider = partialItem.originProvider
             )
             _isLoading.value = false
         } else {
@@ -348,7 +348,7 @@ class EarthlinkSearchViewModel(
     }
 
     suspend fun getUserDetail(userIndex: Int, accountProvider: String? = null): com.example.core.model.UserDetail? {
-        val targetProvider = accountProvider ?: _selectedProvider.value
+        val targetProvider = accountProvider ?: _selectedUser.value?.originProvider ?: _selectedProvider.value
         val targetGateway = sasGatewayRouter.getGateway(targetProvider)
         val sub = targetGateway.getSubscriber(userIndex.toString()) ?: return null
         return com.example.core.model.UserDetail(
@@ -466,7 +466,7 @@ class EarthlinkSearchViewModel(
                 _isRefreshingDetail.value = true
                 try {
                     val accountProvider = foundLocal?.operationProvider
-                    val targetProvider = accountProvider ?: currentProvider
+                    val targetProvider = accountProvider ?: _selectedUser.value?.originProvider ?: currentProvider
                     val targetGateway = sasGatewayRouter.getGateway(targetProvider)
                     val sub = targetGateway.getSubscriber(userIndex.toString())
                     if (sub != null) {
