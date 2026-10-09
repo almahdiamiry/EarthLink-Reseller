@@ -230,7 +230,8 @@ class EarthlinkSearchViewModel(
                                 }
                             } else acc.expiresAt ?: "",
                             displayNameLower = acc.displayName,
-                            accountNameLower = acc.packageName
+                            accountNameLower = acc.packageName,
+                            originProvider = currentProvider
                         )
                     }
                 } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
@@ -255,7 +256,8 @@ class EarthlinkSearchViewModel(
                         expirationDateLower = sub.expiresAt,
                         accountExpirationDateLower = sub.expiresAt,
                         displayNameLower = sub.displayName,
-                        accountNameLower = sub.planName
+                        accountNameLower = sub.planName,
+                        originProvider = currentProvider
                     )
                 }
             } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
@@ -295,7 +297,8 @@ class EarthlinkSearchViewModel(
                                 } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; acc.expiresAt }
                             } else acc.expiresAt ?: "",
                                 displayNameLower = acc.displayName,
-                                accountNameLower = acc.packageName
+                                accountNameLower = acc.packageName,
+                                originProvider = currentProvider
                             )
                         }
                         _error.value = if (prefs.getLanguage() == "ar") {
@@ -334,7 +337,8 @@ class EarthlinkSearchViewModel(
                 accountExpirationDateLower = partialItem.accountExpirationDate,
                 activeDaysLeftLower = partialItem.activeDaysLeft,
                 displayNameLower = partialItem.displayName,
-                packageNameLower = partialItem.packageName ?: partialItem.displayName
+                packageNameLower = partialItem.packageName ?: partialItem.displayName,
+                originProvider = partialItem.originProvider ?: _selectedProvider.value
             )
             _isLoading.value = false
         } else {
@@ -358,7 +362,8 @@ class EarthlinkSearchViewModel(
             accountIndexLower = sub.planId?.toIntOrNull(),
             accountStatusLower = sub.status,
             expirationDateLower = sub.expiresAt,
-            accountExpirationDateLower = sub.expiresAt
+            accountExpirationDateLower = sub.expiresAt,
+            originProvider = targetProvider
         )
     }
 
@@ -436,7 +441,8 @@ class EarthlinkSearchViewModel(
                                 } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; foundLocal.expiresAt }
                             } else foundLocal.expiresAt ?: "",
                             packageNameLower = foundLocal.packageName,
-                            displayNameLower = foundLocal.displayName
+                            displayNameLower = foundLocal.displayName,
+                            originProvider = foundLocal.operationProvider
                         )
                         _isLoading.value = false
                     }
@@ -475,7 +481,8 @@ class EarthlinkSearchViewModel(
                             accountIndexLower = sub.planId?.toIntOrNull(),
                             accountStatusLower = sub.status,
                             expirationDateLower = sub.expiresAt,
-                            accountExpirationDateLower = sub.expiresAt
+                            accountExpirationDateLower = sub.expiresAt,
+                            originProvider = targetProvider
                         )
                         // A slower earlier request must not clobber a newer operator selection.
                         // The activity-scoped _selectedUser is shared across navigation, so a late

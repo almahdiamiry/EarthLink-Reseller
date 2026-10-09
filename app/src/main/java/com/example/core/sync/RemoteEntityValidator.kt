@@ -70,6 +70,10 @@ object RemoteEntityValidator {
             }
         }
 
+        val operationProvider = (d["operationProvider"] as? String)?.takeIf { com.example.core.model.SasProviders.isValid(it) }
+            ?: existingLocalAccount?.operationProvider
+            ?: com.example.core.model.SasProviders.EARTHLINK
+
         val account = LocalAccount(
             id = id,
             sourceExternalId = d["sourceExternalId"] as? String ?: existingLocalAccount?.sourceExternalId,
@@ -103,6 +107,7 @@ object RemoteEntityValidator {
             snapshotCapturedAt = snapshotCapturedAt,
             ispSubscriberId = d["ispSubscriberId"] as? String ?: existingLocalAccount?.ispSubscriberId,
             ispUserIndex = (d["ispUserIndex"] as? Number)?.toInt() ?: existingLocalAccount?.ispUserIndex,
+            operationProvider = operationProvider,
             createdAt = createdAt,
             updatedAt = remoteUpdatedAt
         )
