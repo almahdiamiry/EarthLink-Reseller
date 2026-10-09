@@ -739,22 +739,54 @@ fun ArabicSubscriberCard(
                             )
                         }
 
-                        // Status Badge
-                        Surface(
-                            color = if (isActive) Color(0xFF30D158).copy(alpha = 0.12f) else Color(0xFFFF453A).copy(alpha = 0.12f),
-                            shape = RoundedCornerShape(8.dp),
-                            border = BorderStroke(
-                                1.dp,
-                                if (isActive) Color(0xFF30D158).copy(alpha = 0.3f) else Color(0xFFFF453A).copy(alpha = 0.3f)
-                            )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Text(
-                                text = if (isActive) (if (lang == "ar") "نشط" else "Active") else (if (lang == "ar") "منتهي" else "Expired"),
-                                color = if (isActive) Color(0xFF30D158) else Color(0xFFFF453A),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                            )
+                            // Provider Badge
+                            if (user.originProvider != null) {
+                                val isAlamiry = user.originProvider == SasProviders.ALAMIRY
+                                val badgeColor = if (isAlamiry) Color(0xFF5E5CE6) else Color(0xFF0A84FF)
+                                val badgeText = if (isAlamiry) {
+                                    if (lang == "ar") "العامري" else "SAMM"
+                                } else {
+                                    if (lang == "ar") "ايرثلنك" else "EarthLink"
+                                }
+                                Surface(
+                                    color = badgeColor.copy(alpha = 0.12f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = BorderStroke(
+                                        1.dp,
+                                        badgeColor.copy(alpha = 0.3f)
+                                    )
+                                ) {
+                                    Text(
+                                        text = badgeText,
+                                        color = badgeColor,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+
+                            // Status Badge
+                            Surface(
+                                color = if (isActive) Color(0xFF30D158).copy(alpha = 0.12f) else Color(0xFFFF453A).copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isActive) Color(0xFF30D158).copy(alpha = 0.3f) else Color(0xFFFF453A).copy(alpha = 0.3f)
+                                )
+                            ) {
+                                Text(
+                                    text = if (isActive) (if (lang == "ar") "نشط" else "Active") else (if (lang == "ar") "منتهي" else "Expired"),
+                                    color = if (isActive) Color(0xFF30D158) else Color(0xFFFF453A),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
                         }
                     }
 

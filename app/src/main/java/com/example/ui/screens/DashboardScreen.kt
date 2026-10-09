@@ -288,7 +288,8 @@ fun DashboardScreen(
                     } else "Active",
                     expirationDateLower = acc.expiresAt ?: "",
                     displayNameLower = acc.displayName,
-                    accountNameLower = acc.packageName
+                    accountNameLower = acc.packageName,
+                    originProvider = acc.operationProvider
                 )
                 mergedList.add(item)
                 seenAccountIds.add(acc.id)

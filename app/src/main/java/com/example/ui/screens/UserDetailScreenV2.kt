@@ -214,6 +214,50 @@ object HistoryPresentationManager {
     }
 }
 
+object AccountMaterializationHelper {
+    /**
+     * Resolves the target operation provider when materializing or working with a subscriber account.
+     * Hierarchy:
+     * 1. matchingAccount?.operationProvider (preserves existing provider for persisted accounts)
+     * 2. originProvider (preserves provider identity of external subscriber, e.g. from SAMM/ALAMIRY or EARTHLINK)
+     * 3. fallbackSelectedProvider (e.g. viewModel.selectedProvider.value)
+     */
+    fun resolveOperationProvider(
+        matchingAccount: com.example.core.model.LocalAccount?,
+        originProvider: String?,
+        fallbackSelectedProvider: String
+    ): String {
+        return matchingAccount?.operationProvider
+            ?: originProvider
+            ?: fallbackSelectedProvider
+    }
+
+    /**
+     * Helper to materialize a LocalAccount from UserDetail when matchingAccount is null.
+     */
+    fun materialize(
+        matchingAccount: com.example.core.model.LocalAccount?,
+        user: com.example.core.model.UserDetail,
+        fallbackSelectedProvider: String,
+        displayName: String = user.customerFullName ?: user.userID,
+        packageName: String = user.packageName ?: "Default",
+        currentPriceIqd: Double = 0.0,
+        id: String? = null
+    ): com.example.core.model.LocalAccount {
+        return matchingAccount ?: com.example.core.model.LocalAccount(
+            id = id ?: java.util.UUID.randomUUID().toString(),
+            earthlinkUsername = user.userID,
+            displayName = displayName,
+            phone1 = user.mobileNumber,
+            packageName = packageName,
+            currentPriceIqd = currentPriceIqd,
+            operationProvider = resolveOperationProvider(matchingAccount, user.originProvider, fallbackSelectedProvider),
+            createdAt = System.currentTimeMillis()
+        )
+    }
+}
+
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UserDetailScreenV2(
@@ -436,12 +480,16 @@ fun UserDetailScreenV2(
                         focusManager.clearFocus(force = true)
                         keyboardController?.hide()
                         showRefillDialog = false
+                        val currentOpProvider = matchingAccount?.operationProvider
+                            ?: user.originProvider
+                            ?: viewModel.selectedProvider.value
                         val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
                             earthlinkUsername = user.userID,
                             displayName = user.customerFullName ?: user.userID,
                             phone1 = user.mobileNumber,
                             packageName = user.packageName ?: "Default",
                             currentPriceIqd = parsedPrice,
+                            operationProvider = currentOpProvider,
                             createdAt = System.currentTimeMillis()
                         )
                         
@@ -830,11 +878,15 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                 } else {
                     focusManager.clearFocus(force = true)
                     keyboardController?.hide()
+                    val currentOpProvider = matchingAccount?.operationProvider
+                        ?: user.originProvider
+                        ?: viewModel.selectedProvider.value
                     val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
                         earthlinkUsername = user.userID,
                         displayName = user.customerFullName ?: user.userID,
                         phone1 = user.mobileNumber,
                         packageName = user.packageName ?: "Default",
+                        operationProvider = currentOpProvider,
                         createdAt = System.currentTimeMillis()
                     )
                     
@@ -1178,11 +1230,15 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                 } else {
                     focusManager.clearFocus(force = true)
                     keyboardController?.hide()
+                    val currentOpProvider = matchingAccount?.operationProvider
+                        ?: user.originProvider
+                        ?: viewModel.selectedProvider.value
                     val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
                         earthlinkUsername = user.userID,
                         displayName = user.customerFullName ?: user.userID,
                         phone1 = user.mobileNumber,
                         packageName = user.packageName ?: "Default",
+                        operationProvider = currentOpProvider,
                         createdAt = System.currentTimeMillis()
                     )
                     
@@ -1485,12 +1541,16 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                             },
                             actions = {
                                 IconButton(onClick = {
+                                    val currentOpProvider = matchingAccount?.operationProvider
+                                        ?: detail?.originProvider
+                                        ?: viewModel.selectedProvider.value
                                     val accountToExport = matchingAccount ?: com.example.core.model.LocalAccount(
                                         id = "temp_acc",
                                         earthlinkUsername = detail?.userID ?: "demo_user",
                                         displayName = detail?.customerFullName ?: detail?.userID ?: "Demo User",
                                         phone1 = detail?.mobileNumber,
                                         packageName = detail?.packageName ?: "Default",
+                                        operationProvider = currentOpProvider,
                                         createdAt = System.currentTimeMillis()
                                     )
                                     com.example.core.sync.PdfStatementGenerator.generateAndShare(
@@ -1723,11 +1783,15 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                         keyboardController?.hide()
                         val user = detail
                         if (user != null) {
+                            val currentOpProvider = matchingAccount?.operationProvider
+                                ?: user.originProvider
+                                ?: viewModel.selectedProvider.value
                             val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
                                 earthlinkUsername = user.userID,
                                 displayName = user.customerFullName ?: user.userID,
                                 phone1 = user.mobileNumber,
                                 packageName = user.packageName ?: "Default",
+                                operationProvider = currentOpProvider,
                                 createdAt = System.currentTimeMillis()
                              )
                             viewModel.saveCustomerNote(finalAcc, noteText)
@@ -3052,12 +3116,16 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                 onClick = {
                                     showEditPackageDialog = false
                                     selectedPkg?.let { pkg ->
+                                        val currentOpProvider = matchingAccount?.operationProvider
+                                            ?: user.originProvider
+                                            ?: viewModel.selectedProvider.value
                                         val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
                                             earthlinkUsername = user.userID,
                                             displayName = displayNameToUse,
                                             phone1 = user.mobileNumber,
                                             packageName = pkg.accountName,
-                                            currentPriceIqd = pkg.price ?: 0.0
+                                            currentPriceIqd = pkg.price ?: 0.0,
+                                            operationProvider = currentOpProvider
                                         )
                                         viewModel.changeAccountType(
                                             userIndex = user.userIndex,
@@ -3116,12 +3184,16 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                     keyboardController?.hide()
                                     showEditDisplayNameDialog = false
                                     if (newName.isNotBlank()) {
+                                        val currentOpProvider = matchingAccount?.operationProvider
+                                            ?: user.originProvider
+                                            ?: viewModel.selectedProvider.value
                                         val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
                                             earthlinkUsername = user.userID,
                                             displayName = newName,
                                             phone1 = user.mobileNumber,
                                             packageName = user.packageName ?: "Unknown",
-                                            currentPriceIqd = 45000.0
+                                            currentPriceIqd = 45000.0,
+                                            operationProvider = currentOpProvider
                                         )
                                         viewModel.updateUserDisplayName(
                                             userIndex = userIndex,
@@ -3147,7 +3219,9 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                 }
 
                 if (showEditProviderDialog) {
-                    val currentOpProvider = matchingAccount?.operationProvider ?: com.example.core.model.SasProviders.EARTHLINK
+                    val currentOpProvider = matchingAccount?.operationProvider
+                        ?: user.originProvider
+                        ?: viewModel.selectedProvider.value
                     var targetProvider by rememberSaveable { mutableStateOf(currentOpProvider) }
                     var providerChangeError by remember { mutableStateOf<String?>(null) }
                     var isCheckingInFlight by remember { mutableStateOf(false) }
@@ -3381,12 +3455,16 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                     focusManager.clearFocus(force = true)
                                     keyboardController?.hide()
                                     showEditCustomIpDialog = false
+                                    val currentOpProvider = matchingAccount?.operationProvider
+                                        ?: user.originProvider
+                                        ?: viewModel.selectedProvider.value
                                     val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
                                         earthlinkUsername = user.userID,
                                         displayName = displayNameToUse,
                                         phone1 = user.mobileNumber,
                                         packageName = user.packageName ?: "Economy",
-                                        currentPriceIqd = 45000.0
+                                        currentPriceIqd = 45000.0,
+                                        operationProvider = currentOpProvider
                                     )
                                     viewModel.saveCustomNanoIp(finalAcc, newIp)
                                 }
