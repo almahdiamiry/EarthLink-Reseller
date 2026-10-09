@@ -563,6 +563,7 @@ fun SettingsScreen(
 
     // 3. Confirm Restore Dialog
     selectedBackupToRestore?.let { fileInfo ->
+        val backupRestoreDateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US) }
         AlertDialog(
             onDismissRequest = { if (!isRestoringFromLocal) selectedBackupToRestore = null },
             title = {
@@ -573,7 +574,7 @@ fun SettingsScreen(
                 )
             },
             text = {
-                val dateText = backupRestoreDate ?: SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(fileInfo.lastModified()))
+                val dateText = backupRestoreDate ?: backupRestoreDateFormat.format(Date(fileInfo.lastModified()))
                 val stats = currentDbStats
                 val statsInfo = if (stats != null) {
                     if (currentLang == "ar") "السجلات الحالية: (${stats.accountCount} مشترك، ${stats.ledgerCount} حركة مالية)"
@@ -1501,8 +1502,9 @@ private fun SyncAndBackupSection(
                     color = Color.White
                 )
                 if (lastLocalBackupTime > 0L) {
+                    val lastBackupDateFormat = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US) }
                     Text(
-                        text = "${if (currentLang == "ar") "آخر نسخة:" else "Last:"} ${SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(lastLocalBackupTime))}",
+                        text = "${if (currentLang == "ar") "آخر نسخة:" else "Last:"} ${lastBackupDateFormat.format(Date(lastLocalBackupTime))}",
                         fontSize = 11.sp,
                         color = Color(0xFF8E8E93)
                     )

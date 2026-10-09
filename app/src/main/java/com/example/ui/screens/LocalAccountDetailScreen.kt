@@ -108,8 +108,12 @@ fun LocalAccountDetailScreen(
         var inputNote by rememberSaveable { mutableStateOf("") }
 
         ConfirmationDialog(
-            title = "Log Local Payment Recieved",
-            message = "This decreases outstanding debt limit. Any excess value converts to prepaid advances.",
+            title = if (isAr) "تسجيل دفعة محلية" else "Log Local Payment Received",
+            message = if (isAr) {
+                "تقلل هذه الدفعة الدين المستحق، ويُحوّل أي مبلغ زائد إلى رصيد مدفوع مسبقاً."
+            } else {
+                "This decreases the outstanding debt balance. Any excess value converts to prepaid advances."
+            },
             onCancel = { 
                 focusManager.clearFocus(force = true)
                 keyboardController?.hide()
@@ -127,7 +131,7 @@ fun LocalAccountDetailScreen(
                 OutlinedTextField(
                     value = inputAmt,
                     onValueChange = { inputAmt = it.replace("\n", "").replace("\r", "") },
-                    label = { Text("Payment in IQD") },
+                    label = { Text(if (isAr) "مبلغ الدفعة (د.ع)" else "Payment amount (IQD)") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = {
@@ -139,7 +143,7 @@ fun LocalAccountDetailScreen(
                 OutlinedTextField(
                     value = inputNote,
                     onValueChange = { inputNote = it },
-                    label = { Text("Optional notes") },
+                    label = { Text(if (isAr) "ملاحظات اختيارية" else "Optional notes") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = {
@@ -157,8 +161,8 @@ fun LocalAccountDetailScreen(
         var inputNote by rememberSaveable { mutableStateOf("") }
 
         ConfirmationDialog(
-            title = "Log Customer Debt/Loan",
-            message = "Increases this subscriber's local debt balance.",
+            title = if (isAr) "تسجيل دين للمشترك" else "Log Customer Debt/Loan",
+            message = if (isAr) "يؤدي ذلك إلى زيادة رصيد الدين المحلي لهذا المشترك." else "Increases this subscriber's local debt balance.",
             onCancel = { 
                 focusManager.clearFocus(force = true)
                 keyboardController?.hide()
@@ -176,7 +180,7 @@ fun LocalAccountDetailScreen(
                 OutlinedTextField(
                     value = inputAmt,
                     onValueChange = { inputAmt = it.replace("\n", "").replace("\r", "") },
-                    label = { Text("Debt Load in IQD") },
+                    label = { Text(if (isAr) "مبلغ الدين (د.ع)" else "Debt amount (IQD)") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = {
@@ -198,7 +202,7 @@ fun LocalAccountDetailScreen(
                 OutlinedTextField(
                     value = inputNote,
                     onValueChange = { inputNote = it },
-                    label = { Text("Reason/Optional notes") },
+                    label = { Text(if (isAr) "السبب / ملاحظات اختيارية" else "Reason / optional notes") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = {
@@ -239,7 +243,7 @@ fun LocalAccountDetailScreen(
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
-            Text(text = "Local Customer File", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(text = if (isAr) "ملف المشترك المحلي" else "Local Customer File", fontSize = 20.sp, fontWeight = FontWeight.Bold)
         }
 
         val acc = account
@@ -259,11 +263,11 @@ fun LocalAccountDetailScreen(
                         )
                     }
                 }
-                Text(text = "Earthlink Username: ${acc.earthlinkUsername ?: "Unassociated"}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                Text(text = "Primary Phone: ${acc.phone1 ?: "N/A"}", fontSize = 13.sp)
-                Text(text = "Backup Phone: ${acc.phone2 ?: "N/A"}", fontSize = 13.sp)
-                Text(text = "Tower node: ${acc.towerName ?: "N/A"} | IP: ${acc.nanoIp ?: "N/A"}", fontSize = 13.sp)
-                Text(text = "Address: ${acc.address ?: "N/A"}", fontSize = 13.sp)
+                Text(text = if (isAr) "اسم مستخدم EarthLink: ${acc.earthlinkUsername ?: "غير مرتبط"}" else "EarthLink Username: ${acc.earthlinkUsername ?: "Unassociated"}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text(text = if (isAr) "رقم الهاتف الأساسي: ${acc.phone1 ?: "غير متوفر"}" else "Primary Phone: ${acc.phone1 ?: "N/A"}", fontSize = 13.sp)
+                Text(text = if (isAr) "رقم الهاتف البديل: ${acc.phone2 ?: "غير متوفر"}" else "Backup Phone: ${acc.phone2 ?: "N/A"}", fontSize = 13.sp)
+                Text(text = if (isAr) "البرج: ${acc.towerName ?: "غير متوفر"} | عنوان IP: ${acc.nanoIp ?: "غير متوفر"}" else "Tower node: ${acc.towerName ?: "N/A"} | IP: ${acc.nanoIp ?: "N/A"}", fontSize = 13.sp)
+                Text(text = if (isAr) "العنوان: ${acc.address ?: "غير متوفر"}" else "Address: ${acc.address ?: "N/A"}", fontSize = 13.sp)
 
                 val lat = acc.latitude
                 val lon = acc.longitude
@@ -281,7 +285,7 @@ fun LocalAccountDetailScreen(
                             modifier = Modifier.size(24.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(text = "GPS Coordinates: $lat, $lon (Tap to open coordinates)", fontSize = 12.sp, color = Color.Blue)
+                        Text(text = if (isAr) "إحداثيات GPS: $lat, $lon (اضغط لفتح الموقع)" else "GPS Coordinates: $lat, $lon (Tap to open coordinates)", fontSize = 12.sp, color = Color.Blue)
                     }
                 }
 
@@ -291,15 +295,15 @@ fun LocalAccountDetailScreen(
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Column {
-                        Text(text = "Assigned Price", fontSize = 11.sp, color = Color.Gray)
+                        Text(text = if (isAr) "سعر الاشتراك" else "Subscription Price", fontSize = 11.sp, color = Color.Gray)
                         Text(text = formatIqd(acc.currentPriceIqd), fontWeight = FontWeight.Bold)
                     }
                     Column {
-                        Text(text = "Debt Limit", fontSize = 11.sp, color = Color.Gray)
+                        Text(text = if (isAr) "الدين المستحق" else "Outstanding Debt", fontSize = 11.sp, color = Color.Gray)
                         Text(text = formatIqd(acc.debtIqd), color = Color(0xFFC62828), fontWeight = FontWeight.Bold)
                     }
                     Column {
-                        Text(text = "Advance Bank", fontSize = 11.sp, color = Color.Gray)
+                        Text(text = if (isAr) "الرصيد المدفوع مسبقاً" else "Prepaid Balance", fontSize = 11.sp, color = Color.Gray)
                         Text(text = formatIqd(acc.advanceIqd), color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold)
                     }
                 }
@@ -320,7 +324,7 @@ fun LocalAccountDetailScreen(
                     .weight(1f)
                     .heightIn(min = 48.dp)
             ) {
-                Text("Recieve Payment")
+                Text(if (isAr) "استلام دفعة" else "Receive Payment")
             }
 
             Button(
@@ -333,16 +337,16 @@ fun LocalAccountDetailScreen(
                     .weight(1f)
                     .heightIn(min = 48.dp)
             ) {
-                Text("Charge Debt")
+                Text(if (isAr) "تسجيل دين" else "Charge Debt")
             }
         }
 
         Spacer(modifier = Modifier.height(4.dp))
-        Text(text = "Ledger Transaction feed", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+        Text(text = if (isAr) "سجل الحركات المالية" else "Ledger Transaction History", fontWeight = FontWeight.Bold, fontSize = 15.sp)
 
         if (ledger.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize().weight(1f), contentAlignment = Alignment.Center) {
-                Text(text = "No prior ledger transactions for this record.", color = Color.Gray, fontSize = 13.sp)
+                Text(text = if (isAr) "لا توجد حركات مالية سابقة لهذا الحساب." else "No prior ledger transactions for this account.", color = Color.Gray, fontSize = 13.sp)
             }
         } else {
             val dateFormat = remember { java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()) }
@@ -355,7 +359,15 @@ fun LocalAccountDetailScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                val txType = if (item.typeRaw == "gave" || item.typeRaw == "payment") "RECEIVED PAYMENT" else if (item.typeRaw == "took" || item.typeRaw == "debt" || item.typeRaw == "debt_added") "DEBT INCREMENT" else if (item.typeRaw == "add" || item.typeRaw == "renewal") "RENEWAL" else "MEMO/NOTE"
+                                val txType = if (item.typeRaw == "gave" || item.typeRaw == "payment") {
+                                    if (isAr) "دفعة مستلمة" else "RECEIVED PAYMENT"
+                                } else if (item.typeRaw == "took" || item.typeRaw == "debt" || item.typeRaw == "debt_added") {
+                                    if (isAr) "زيادة الدين" else "DEBT INCREMENT"
+                                } else if (item.typeRaw == "add" || item.typeRaw == "renewal") {
+                                    if (isAr) "تجديد" else "RENEWAL"
+                                } else {
+                                    if (isAr) "ملاحظة" else "MEMO/NOTE"
+                                }
                                 val color = if (item.typeRaw == "gave" || item.typeRaw == "payment") Color(0xFF2E7D32) else if (item.typeRaw == "took" || item.typeRaw == "debt" || item.typeRaw == "debt_added") Color(0xFFC62828) else Color.DarkGray
 
                                 Text(text = txType, fontWeight = FontWeight.Bold, color = color, fontSize = 12.sp)
@@ -374,7 +386,7 @@ fun LocalAccountDetailScreen(
                                     val sign = if (item.typeRaw == "gave" || item.typeRaw == "payment") "-" else "+"
                                     Text(text = "$sign${formatIqd(item.amountIqd)}", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                 }
-                                Text(text = "Remaining Debt: ${formatIqd(item.debtAfterIqd)}", color = Color.Gray, fontSize = 11.sp)
+                                Text(text = if (isAr) "الدين المتبقي: ${formatIqd(item.debtAfterIqd)}" else "Remaining Debt: ${formatIqd(item.debtAfterIqd)}", color = Color.Gray, fontSize = 11.sp)
                             }
                         }
                     }
