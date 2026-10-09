@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 
 class DashboardViewModel(
     private val gateway: com.example.domain.repository.EarthlinkGateway,
+    private val sasGatewayRouter: com.example.core.network.SasGatewayRouter? = null,
     private val audit: com.example.domain.repository.AuditRepository,
     private val localAccountRepository: com.example.domain.repository.LocalAccountRepository,
     private val localLedgerRepository: com.example.domain.repository.LocalLedgerRepository,
@@ -23,6 +24,38 @@ class DashboardViewModel(
     val prefs: com.example.core.security.PreferenceManager,
     private val ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.IO
 ) : ViewModel() {
+
+    constructor(
+        gateway: com.example.domain.repository.EarthlinkGateway,
+        audit: com.example.domain.repository.AuditRepository,
+        localAccountRepository: com.example.domain.repository.LocalAccountRepository,
+        localLedgerRepository: com.example.domain.repository.LocalLedgerRepository,
+        syncRepo: com.example.domain.repository.SyncRepository,
+        prefs: com.example.core.security.PreferenceManager,
+        ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.IO
+    ) : this(
+        gateway = gateway,
+        sasGatewayRouter = null,
+        audit = audit,
+        localAccountRepository = localAccountRepository,
+        localLedgerRepository = localLedgerRepository,
+        syncRepo = syncRepo,
+        prefs = prefs,
+        ioDispatcher = ioDispatcher
+    )
+
+    private fun getEffectiveRouter(): com.example.core.network.SasGatewayRouter? {
+        if (sasGatewayRouter != null) return sasGatewayRouter
+        return try {
+            com.example.core.network.SasGatewayRouter(
+                com.example.core.network.EarthlinkSasGatewayAdapter(gateway),
+                prefs
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     val localAccounts = localAccountRepository.getAllAccounts()
 
     private val _balance = MutableStateFlow(0.0)
@@ -64,104 +97,180 @@ class DashboardViewModel(
         loadDashboardData()
     }
 
-    fun loadDashboardData(): kotlinx.coroutines.Job {
-        val token = prefs.getAuthToken()
-        val isDemo = prefs.getDemoMode()
-        if (token.isNullOrEmpty() && !isDemo) {
-            _isLoading.value = false
-            return kotlinx.coroutines.Job().apply { complete() }
+    private fun resolveProviderAccessState(): com.example.core.model.ProviderAccessState {
+        val state = try { prefs.getProviderAccessState() } catch (_: Exception) { null }
+        if (state != null) return state
+        val hasEl = !prefs.getAuthToken().isNullOrEmpty() || prefs.getDemoMode()
+        val hasSamm = try { prefs.isSammConfigured() } catch (_: Exception) { false }
+        return when {
+            hasEl && hasSamm -> com.example.core.model.ProviderAccessState.BOTH
+            hasEl -> com.example.core.model.ProviderAccessState.EARTHLINK_ONLY
+            hasSamm -> com.example.core.model.ProviderAccessState.SAMM_ONLY
+            else -> com.example.core.model.ProviderAccessState.NONE
         }
+    }
 
-        if (!isDemo && (prefs.getIspAdminUsername().isNullOrBlank() || prefs.getIspAdminPassword().isNullOrBlank())) {
+    fun loadDashboardData(): kotlinx.coroutines.Job {
+        val providerState = resolveProviderAccessState()
+        val isDemo = prefs.getDemoMode()
+
+        if (providerState == com.example.core.model.ProviderAccessState.NONE && !isDemo) {
             _isCredentialsEmpty.value = true
             _isLoading.value = false
             _error.value = null
             _subscribersList.value = emptyList()
             return kotlinx.coroutines.Job().apply { complete() }
-        } else {
-            _isCredentialsEmpty.value = false
         }
+
+        if (providerState == com.example.core.model.ProviderAccessState.EARTHLINK_ONLY && !isDemo) {
+            if (prefs.getIspAdminUsername().isNullOrBlank() || prefs.getIspAdminPassword().isNullOrBlank()) {
+                _isCredentialsEmpty.value = true
+                _isLoading.value = false
+                _error.value = null
+                _subscribersList.value = emptyList()
+                return kotlinx.coroutines.Job().apply { complete() }
+            }
+        }
+
+        _isCredentialsEmpty.value = false
 
         return viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
             
             coroutineScope {
-                // Parallel fetch 1: Balance (Core indicator)
+                // Parallel fetch 1: Balance (EarthLink only)
                 val balanceJob = async {
-                    try {
-                        val bal = gateway.getBalance()
-                        _balance.value = bal
-                    } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                        if (e.message?.contains("Session expired") == true) {
-                            android.util.Log.w("DashboardViewModel", "Session expired. Redirecting user to login.")
-                            prefs.clearAuthToken()
-                        } else {
-                            android.util.Log.e("DashboardViewModel", "Balance fetch failed: ${e.message}")
-                            _error.value = e.message ?: "Failed to refresh balance indicator."
+                    if (providerState.hasEarthlink || isDemo) {
+                        try {
+                            val bal = gateway.getBalance()
+                            _balance.value = bal
+                        } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+                            if (e.message?.contains("Session expired") == true) {
+                                android.util.Log.w("DashboardViewModel", "Session expired. Redirecting user to login.")
+                                prefs.clearAuthToken()
+                            } else {
+                                android.util.Log.e("DashboardViewModel", "Balance fetch failed: ${e.message}")
+                                _error.value = e.message ?: "Failed to refresh balance indicator."
+                            }
                         }
                     }
                 }
 
-                // Parallel fetch 2: Subscribers
+                // Parallel fetch 2: Subscribers (Multi-Provider)
                 val subJob = async {
-                    try {
-                        val subListRes = gateway.searchUsers(query = "", startIndex = 0, rowCount = 5000)
-                        val items = subListRes.itemsList ?: emptyList()
-                        _subscribersList.value = items
+                    coroutineScope {
+                        val elSubJob = async {
+                            if (providerState.hasEarthlink || isDemo) {
+                                try {
+                                    val subListRes = gateway.searchUsers(query = "", startIndex = 0, rowCount = 5000)
+                                    val rawItems = subListRes.itemsList ?: emptyList()
+                                    val items = rawItems.map { it.copy(originProvider = com.example.core.model.SasProviders.EARTHLINK) }
 
-                        val total = subListRes.totalCount
-                        val isComplete = subListRes.itemsList != null && total != null && total > 0 && items.isNotEmpty() && items.size >= total
-                        if (isComplete) {
-                            val allItemsHaveValidUserId = items.all { it.userID.isNotBlank() }
-                            if (allItemsHaveValidUserId) {
-                                val authoritativeUsernames = items.map { it.userID.trim() }.toSet()
-                                kotlinx.coroutines.withContext(ioDispatcher) {
-                                    try {
-                                        localAccountRepository.reconcileIspDisappearance(authoritativeUsernames, isFetchComplete = true)
-                                    } catch (e: Exception) {
-                                        if (e is kotlinx.coroutines.CancellationException) throw e
-                                        android.util.Log.e("DashboardViewModel", "ISP disappearance reconciliation failed: ${e.message}", e)
+                                    val total = subListRes.totalCount
+                                    val isComplete = subListRes.itemsList != null && total != null && total > 0 && items.isNotEmpty() && items.size >= total
+                                    if (isComplete) {
+                                        val allItemsHaveValidUserId = items.all { it.userID.isNotBlank() }
+                                        if (allItemsHaveValidUserId) {
+                                            val authoritativeUsernames = items.map { it.userID.trim() }.toSet()
+                                            kotlinx.coroutines.withContext(ioDispatcher) {
+                                                try {
+                                                    localAccountRepository.reconcileIspDisappearance(
+                                                        authoritativeIspUserIds = authoritativeUsernames,
+                                                        isFetchComplete = true,
+                                                        targetProvider = com.example.core.model.SasProviders.EARTHLINK
+                                                    )
+                                                } catch (e: Exception) {
+                                                    if (e is kotlinx.coroutines.CancellationException) throw e
+                                                    android.util.Log.e("DashboardViewModel", "ISP disappearance reconciliation failed: ${e.message}", e)
+                                                }
+                                            }
+                                        } else {
+                                            android.util.Log.w("DashboardViewModel", "ISP disappearance reconciliation skipped: snapshot contains item with blank/invalid userID")
+                                        }
                                     }
+                                    items
+                                } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+                                    if (e.message?.contains("Session expired") == true) {
+                                        android.util.Log.w("DashboardViewModel", "Subscribers fetch canceled due to session expiration.")
+                                    } else {
+                                        android.util.Log.e("DashboardViewModel", "Subscribers fetch on dashboard failed: ${e.message}")
+                                    }
+                                    emptyList<UserListItem>()
                                 }
                             } else {
-                                android.util.Log.w("DashboardViewModel", "ISP disappearance reconciliation skipped: snapshot contains item with blank/invalid userID")
+                                emptyList<UserListItem>()
                             }
                         }
-                    } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                        if (e.message?.contains("Session expired") == true) {
-                            android.util.Log.w("DashboardViewModel", "Subscribers fetch canceled due to session expiration.")
-                        } else {
-                            android.util.Log.e("DashboardViewModel", "Subscribers fetch on dashboard failed: ${e.message}")
+
+                        val sammSubJob = async {
+                            if (providerState.hasSamm) {
+                                try {
+                                    val effectiveRouter = getEffectiveRouter()
+                                    if (effectiveRouter != null) {
+                                        val sammGateway = effectiveRouter.getGateway(com.example.core.model.SasProviders.ALAMIRY)
+                                        val subscribers = sammGateway.searchSubscribers(query = "", page = 1, pageSize = 5000)
+                                        val items = subscribers.map { sub ->
+                                            val numIndex = sub.subscriberId.toIntOrNull() ?: sub.subscriberId.hashCode()
+                                            com.example.core.model.UserListItem(
+                                                userIndexLower = numIndex,
+                                                userIDLower = sub.username,
+                                                customerNameLower = sub.displayName ?: sub.username,
+                                                mobileNumberLower = sub.phone,
+                                                accountStatusLower = sub.status,
+                                                expirationDateLower = sub.expiresAt,
+                                                accountExpirationDateLower = sub.expiresAt,
+                                                displayNameLower = sub.displayName,
+                                                accountNameLower = sub.planName,
+                                                originProvider = com.example.core.model.SasProviders.ALAMIRY
+                                            )
+                                        }
+                                        if (items.isNotEmpty()) {
+                                            val allItemsHaveValidUserId = items.all { it.userID.isNotBlank() }
+                                            if (allItemsHaveValidUserId) {
+                                                val authoritativeUsernames = items.map { it.userID.trim() }.toSet()
+                                                kotlinx.coroutines.withContext(ioDispatcher) {
+                                                    try {
+                                                        localAccountRepository.reconcileIspDisappearance(
+                                                            authoritativeIspUserIds = authoritativeUsernames,
+                                                            isFetchComplete = true,
+                                                            targetProvider = com.example.core.model.SasProviders.ALAMIRY
+                                                        )
+                                                    } catch (e: Exception) {
+                                                        if (e is kotlinx.coroutines.CancellationException) throw e
+                                                        android.util.Log.e("DashboardViewModel", "SAMM ISP disappearance reconciliation failed: ${e.message}", e)
+                                                    }
+                                                }
+                                            } else {
+                                                android.util.Log.w("DashboardViewModel", "SAMM ISP disappearance reconciliation skipped: snapshot contains item with blank/invalid userID")
+                                            }
+                                        }
+                                        items
+                                    } else {
+                                        emptyList<UserListItem>()
+                                    }
+                                } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+                                    android.util.Log.e("DashboardViewModel", "SAMM subscribers fetch on dashboard failed: ${e.message}", e)
+                                    emptyList<UserListItem>()
+                                }
+                            } else {
+                                emptyList<UserListItem>()
+                            }
                         }
+
+                        val elItems = elSubJob.await()
+                        val sammItems = sammSubJob.await()
+                        _subscribersList.value = elItems + sammItems
                     }
                 }
 
-                // Parallel fetch 3: Prepaid Needed
+                // Parallel fetch 3: Prepaid Needed (EarthLink only)
                 val prepaidJob = async {
-                    val days = _prepaidNeededDays.value
-                    try {
-                        var needed = gateway.getPrepaidNeeded(days)
-                        if (days == 7) {
-                            val accounts = kotlinx.coroutines.withContext(ioDispatcher) {
-                                try {
-                                    localAccountRepository.getAllAccountsOneShot()
-                                } catch (ex: Exception) { if (ex is kotlinx.coroutines.CancellationException) throw ex;
-                                    emptyList()
-                                }
-                            }
-                            if (needed == 0.0 && accounts.isNotEmpty()) {
-                                needed = accounts.sumOf { acc ->
-                                    val diff = acc.currentPriceIqd - acc.advanceIqd
-                                    if (diff > 0.0) diff else 0.0
-                                }
-                            }
-                        }
-                        _prepaidNeeded.value = needed
-                    } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                        android.util.Log.w("DashboardViewModel", "PrepaidNeeded fetch fell back: ${e.message}", e)
-                        if (days == 7) {
-                            try {
+                    if (providerState.hasEarthlink || isDemo) {
+                        val days = _prepaidNeededDays.value
+                        try {
+                            var needed = gateway.getPrepaidNeeded(days)
+                            if (days == 7) {
                                 val accounts = kotlinx.coroutines.withContext(ioDispatcher) {
                                     try {
                                         localAccountRepository.getAllAccountsOneShot()
@@ -169,25 +278,47 @@ class DashboardViewModel(
                                         emptyList()
                                     }
                                 }
-                                _prepaidNeeded.value = accounts.sumOf { acc ->
-                                    val diff = acc.currentPriceIqd - acc.advanceIqd
-                                    if (diff > 0.0) diff else 0.0
+                                if (needed == 0.0 && accounts.isNotEmpty()) {
+                                    needed = accounts.sumOf { acc ->
+                                        val diff = acc.currentPriceIqd - acc.advanceIqd
+                                        if (diff > 0.0) diff else 0.0
+                                    }
                                 }
-                            } catch (ex: Exception) { if (ex is kotlinx.coroutines.CancellationException) throw ex;
-                                _prepaidNeeded.value = 0.0
+                            }
+                            _prepaidNeeded.value = needed
+                        } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+                            android.util.Log.w("DashboardViewModel", "PrepaidNeeded fetch fell back: ${e.message}", e)
+                            if (days == 7) {
+                                try {
+                                    val accounts = kotlinx.coroutines.withContext(ioDispatcher) {
+                                        try {
+                                            localAccountRepository.getAllAccountsOneShot()
+                                        } catch (ex: Exception) { if (ex is kotlinx.coroutines.CancellationException) throw ex;
+                                            emptyList()
+                                        }
+                                    }
+                                    _prepaidNeeded.value = accounts.sumOf { acc ->
+                                        val diff = acc.currentPriceIqd - acc.advanceIqd
+                                        if (diff > 0.0) diff else 0.0
+                                    }
+                                } catch (ex: Exception) { if (ex is kotlinx.coroutines.CancellationException) throw ex;
+                                    _prepaidNeeded.value = 0.0
+                                }
                             }
                         }
                     }
                 }
 
-                // Parallel fetch 4: Active Test Users count
+                // Parallel fetch 4: Active Test Users count (EarthLink only)
                 val testCountJob = async {
-                    try {
-                        val tests = gateway.getTestUsersCount()
-                        _testCount.value = tests
-                    } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                        android.util.Log.w("DashboardViewModel", "TestCount fetch fell back: ${e.message}", e)
-                        _testCount.value = null
+                    if (providerState.hasEarthlink || isDemo) {
+                        try {
+                            val tests = gateway.getTestUsersCount()
+                            _testCount.value = tests
+                        } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+                            android.util.Log.w("DashboardViewModel", "TestCount fetch fell back: ${e.message}", e)
+                            _testCount.value = null
+                        }
                     }
                 }
 
@@ -201,6 +332,9 @@ class DashboardViewModel(
     fun setPrepaidNeededDays(days: Int) {
         if (days <= 0) return
         _prepaidNeededDays.value = days
+        val providerState = resolveProviderAccessState()
+        val isDemo = prefs.getDemoMode()
+        if (!providerState.hasEarthlink && !isDemo) return
         viewModelScope.launch {
             _isPrepaidLoading.value = true
             try {
