@@ -1301,22 +1301,22 @@ fun EditLocalAccountDialog(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text(text = "Edit Local File", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text(text = if (isAr) "تعديل الحساب المحلي" else "Edit Local Account", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 HorizontalDivider()
 
-                OutlinedTextField(value = dispName, onValueChange = { dispName = it }, label = { Text("Customer Display Name") }, singleLine = true)
-                OutlinedTextField(value = userlink, onValueChange = {}, readOnly = true, enabled = false, label = { Text("Earthlink Username (ISP Authority)") }, singleLine = true)
-                OutlinedTextField(value = p1, onValueChange = { p1 = it }, label = { Text("Primary Phone Number") }, singleLine = true)
-                OutlinedTextField(value = p2, onValueChange = { p2 = it }, label = { Text("Backup Phone Number") }, singleLine = true)
-                OutlinedTextField(value = pkg, onValueChange = { pkg = it }, label = { Text("Package Name Type") }, singleLine = true)
+                OutlinedTextField(value = dispName, onValueChange = { dispName = it }, label = { Text(if (isAr) "اسم المشترك" else "Customer Display Name") }, singleLine = true)
+                OutlinedTextField(value = userlink, onValueChange = {}, readOnly = true, enabled = false, label = { Text(if (isAr) "اسم مستخدم EarthLink (حساب المزوّد)" else "EarthLink username (ISP account)") }, singleLine = true)
+                OutlinedTextField(value = p1, onValueChange = { p1 = it }, label = { Text(if (isAr) "رقم الهاتف الأساسي" else "Primary Phone Number") }, singleLine = true)
+                OutlinedTextField(value = p2, onValueChange = { p2 = it }, label = { Text(if (isAr) "رقم الهاتف البديل" else "Backup Phone Number") }, singleLine = true)
+                OutlinedTextField(value = pkg, onValueChange = { pkg = it }, label = { Text(if (isAr) "اسم الباقة" else "Package Name") }, singleLine = true)
 
-                OutlinedTextField(value = price, onValueChange = { price = it }, label = { Text("Current Quality Price (IQD)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
-                OutlinedTextField(value = debtLimit, onValueChange = { debtLimit = it }, label = { Text("Current Outstanding Debt (IQD)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
-                OutlinedTextField(value = advanceBalance, onValueChange = { advanceBalance = it }, label = { Text("Advance Prepaid balance (IQD)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
+                OutlinedTextField(value = price, onValueChange = { price = it }, label = { Text(if (isAr) "سعر الاشتراك الحالي (د.ع)" else "Current Subscription Price (IQD)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
+                OutlinedTextField(value = debtLimit, onValueChange = { debtLimit = it }, label = { Text(if (isAr) "الدين المستحق الحالي (د.ع)" else "Current Outstanding Debt (IQD)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
+                OutlinedTextField(value = advanceBalance, onValueChange = { advanceBalance = it }, label = { Text(if (isAr) "الرصيد المدفوع مسبقاً (د.ع)" else "Prepaid Balance (IQD)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
 
-                OutlinedTextField(value = tower, onValueChange = { tower = it }, label = { Text("Tower Node Base") }, singleLine = true)
-                OutlinedTextField(value = addr, onValueChange = { addr = it }, label = { Text("Address details") }, singleLine = true)
-                OutlinedTextField(value = memo, onValueChange = { memo = it }, label = { Text("Memo Node Note") })
+                OutlinedTextField(value = tower, onValueChange = { tower = it }, label = { Text(if (isAr) "اسم البرج" else "Tower Name") }, singleLine = true)
+                OutlinedTextField(value = addr, onValueChange = { addr = it }, label = { Text(if (isAr) "العنوان" else "Address") }, singleLine = true)
+                OutlinedTextField(value = memo, onValueChange = { memo = it }, label = { Text(if (isAr) "ملاحظات" else "Notes") })
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1351,7 +1351,7 @@ fun EditLocalAccountDialog(
                             },
                             modifier = Modifier.heightIn(min = 48.dp)
                         ) {
-                            Text("Save File")
+                            Text(if (isAr) "حفظ" else "Save")
                         }
                     }
                 }

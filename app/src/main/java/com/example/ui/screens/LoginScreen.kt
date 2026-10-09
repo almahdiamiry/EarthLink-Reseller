@@ -703,7 +703,7 @@ fun LoginScreen(viewModel: AuthViewModel) {
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.AccountCircle,
-                                    contentDescription = "Google Logo",
+                                    contentDescription = null,
                                     tint = Color(0xFF38BDF8),
                                     modifier = Modifier.size(20.dp)
                                 )

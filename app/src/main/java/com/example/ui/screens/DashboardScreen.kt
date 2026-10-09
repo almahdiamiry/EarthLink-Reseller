@@ -441,7 +441,7 @@ fun DashboardScreen(
                         ) {
                             Image(
                                 painter = androidx.compose.ui.res.painterResource(id = R.drawable.app_logo),
-                                contentDescription = "EarthLink Logo",
+                                contentDescription = if (lang == "ar") "شعار التطبيق" else "App logo",
                                 contentScale = androidx.compose.ui.layout.ContentScale.Fit,
                                 modifier = Modifier.height(38.dp)
                             )
