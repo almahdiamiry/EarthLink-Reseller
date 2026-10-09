@@ -295,7 +295,7 @@ fun LocalAccountDetailScreen(
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Column {
-                        Text(text = if (isAr) "سعر الاشتراك" else "Assigned Price", fontSize = 11.sp, color = Color.Gray)
+                        Text(text = if (isAr) "سعر الاشتراك" else "Subscription Price", fontSize = 11.sp, color = Color.Gray)
                         Text(text = formatIqd(acc.currentPriceIqd), fontWeight = FontWeight.Bold)
                     }
                     Column {
@@ -303,7 +303,7 @@ fun LocalAccountDetailScreen(
                         Text(text = formatIqd(acc.debtIqd), color = Color(0xFFC62828), fontWeight = FontWeight.Bold)
                     }
                     Column {
-                        Text(text = if (isAr) "الرصيد المسبق" else "Prepaid Balance", fontSize = 11.sp, color = Color.Gray)
+                        Text(text = if (isAr) "الرصيد المدفوع مسبقاً" else "Prepaid Balance", fontSize = 11.sp, color = Color.Gray)
                         Text(text = formatIqd(acc.advanceIqd), color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold)
                     }
                 }
