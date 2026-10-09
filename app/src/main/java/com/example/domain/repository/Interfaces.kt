@@ -142,7 +142,11 @@ interface LocalAccountRepository {
      * @param isFetchComplete If false, aborts immediately without transitions
      * @return List of local account IDs that transitioned to history-only
      */
-    suspend fun reconcileIspDisappearance(authoritativeIspUserIds: Set<String>, isFetchComplete: Boolean): List<String>
+    suspend fun reconcileIspDisappearance(
+        authoritativeIspUserIds: Set<String>,
+        isFetchComplete: Boolean,
+        targetProvider: String = com.example.core.model.SasProviders.EARTHLINK
+    ): List<String>
 }
 
 interface LocalLedgerRepository {

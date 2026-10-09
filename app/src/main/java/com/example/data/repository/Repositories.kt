@@ -1367,7 +1367,11 @@ class LocalAccountRepositoryImpl(
         }
     }
 
-    override suspend fun reconcileIspDisappearance(authoritativeIspUserIds: Set<String>, isFetchComplete: Boolean): List<String> {
+    override suspend fun reconcileIspDisappearance(
+        authoritativeIspUserIds: Set<String>,
+        isFetchComplete: Boolean,
+        targetProvider: String
+    ): List<String> {
         if (!isFetchComplete || authoritativeIspUserIds.isEmpty()) return emptyList()
         return com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
             com.example.core.sync.IspDisappearanceReconciler.reconcile(
@@ -1375,7 +1379,8 @@ class LocalAccountRepositoryImpl(
                 accountDao = accountDao,
                 auditDao = database.auditLogDao(),
                 authoritativeIspUserIds = authoritativeIspUserIds,
-                isFetchComplete = isFetchComplete
+                isFetchComplete = isFetchComplete,
+                targetProvider = targetProvider
             )
         }
     }

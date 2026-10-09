@@ -36,7 +36,8 @@ object IspDisappearanceReconciler {
         accountDao: LocalAccountDao,
         auditDao: AuditLogDao?,
         authoritativeIspUserIds: Set<String>,
-        isFetchComplete: Boolean
+        isFetchComplete: Boolean,
+        targetProvider: String = com.example.core.model.SasProviders.EARTHLINK
     ): List<String> {
         if (!isFetchComplete) {
             return emptyList()
@@ -52,6 +53,11 @@ object IspDisappearanceReconciler {
             val now = System.currentTimeMillis()
 
             for (acc in allAccounts) {
+                // Multi-provider scope guard: only evaluate accounts belonging to target provider
+                if (acc.operationProvider != targetProvider) {
+                    continue
+                }
+
                 val username = acc.earthlinkUsername?.trim()
                 // Rule 2: Exclude accounts with null or blank earthlinkUsername
                 if (username.isNullOrBlank()) {
@@ -86,12 +92,12 @@ object IspDisappearanceReconciler {
                             action = "ISP_SUBSCRIBER_DISAPPEARED",
                             entityType = "local_accounts",
                             entityId = acc.id,
-                            summary = "Subscriber '${acc.displayName}' ($username) is no longer present in authoritative ISP subscriber list. Transitioned to history-only.",
+                            summary = "Subscriber '${acc.displayName}' ($username) is no longer present in authoritative $targetProvider ISP subscriber list. Transitioned to history-only.",
                             createdAt = now,
                             severity = AuditSeverity.WARNING.name,
                             actor = "system",
                             origin = AuditOrigin.SYSTEM_ACTION.name,
-                            metadataJsonMasked = "{\"earthlinkUsername\":\"$username\",\"accountId\":\"${acc.id}\"}"
+                            metadataJsonMasked = "{\"earthlinkUsername\":\"$username\",\"accountId\":\"${acc.id}\",\"provider\":\"$targetProvider\"}"
                         )
                     )
                 }
