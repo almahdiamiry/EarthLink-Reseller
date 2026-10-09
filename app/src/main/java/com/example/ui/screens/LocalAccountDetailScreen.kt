@@ -161,7 +161,7 @@ fun LocalAccountDetailScreen(
         var inputNote by rememberSaveable { mutableStateOf("") }
 
         ConfirmationDialog(
-            title = if (isAr) "تسجيل دين/سلفة للمشترك" else "Log Customer Debt/Loan",
+            title = if (isAr) "تسجيل دين للمشترك" else "Log Customer Debt/Loan",
             message = if (isAr) "يؤدي ذلك إلى زيادة رصيد الدين المحلي لهذا المشترك." else "Increases this subscriber's local debt balance.",
             onCancel = { 
                 focusManager.clearFocus(force = true)
