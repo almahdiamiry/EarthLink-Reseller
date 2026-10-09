@@ -372,7 +372,11 @@ fun LoginScreen(viewModel: AuthViewModel) {
                                     IconButton(onClick = { isTokenVisible = !isTokenVisible }) {
                                         Icon(
                                             imageVector = image,
-                                            contentDescription = if (isTokenVisible) "Hide token" else "Show token",
+                                            contentDescription = if (isTokenVisible) {
+                                                if (currentLang == "ar") "إخفاء رمز الوصول" else "Hide token"
+                                            } else {
+                                                if (currentLang == "ar") "إظهار رمز الوصول" else "Show token"
+                                            },
                                             tint = Color.White.copy(alpha = 0.6f)
                                         )
                                     }

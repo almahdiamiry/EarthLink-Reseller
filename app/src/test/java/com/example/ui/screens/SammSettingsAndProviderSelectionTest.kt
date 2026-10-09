@@ -411,6 +411,23 @@ class SammSettingsAndProviderSelectionTest {
         assertFalse(prefs.isSammConfigured())
     }
 
+    @Test
+    fun apiTokenVisibility_contentDescription_localization() {
+        val resolveTokenDesc = { isTokenVisible: Boolean, lang: String ->
+            val isAr = lang == "ar"
+            if (isTokenVisible) {
+                if (isAr) "إخفاء رمز الوصول" else "Hide token"
+            } else {
+                if (isAr) "إظهار رمز الوصول" else "Show token"
+            }
+        }
+
+        assertEquals("إخفاء رمز الوصول", resolveTokenDesc(true, "ar"))
+        assertEquals("إظهار رمز الوصول", resolveTokenDesc(false, "ar"))
+        assertEquals("Hide token", resolveTokenDesc(true, "en"))
+        assertEquals("Show token", resolveTokenDesc(false, "en"))
+    }
+
     // =========================================================================
     // Test Doubles
     // =========================================================================
