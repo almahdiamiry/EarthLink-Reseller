@@ -40,6 +40,16 @@ interface SammApiService {
         @Path("customer_id") customerId: Int
     ): Response<CustomerResponse>
 
+    /**
+     * Live RADIUS sessions, filterable by username. This is the only SAMM resource that carries
+     * online state; the customer resource itself has no online or session field.
+     */
+    @GET("api/v1/sessions")
+    suspend fun listSessions(
+        @Query("username") username: String? = null,
+        @Query("limit") limit: Int? = 1
+    ): Response<ListResponse<SessionItemDto>>
+
     @POST("api/v1/customers")
     suspend fun createCustomer(
         @Body request: CustomerCreate

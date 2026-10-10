@@ -269,6 +269,56 @@ class ProviderSwitchBackReadTest {
         )
     }
 
+    @Test
+    fun alamiryDetail_reportsLiveSessionAndDemotesExpiredSubscriber() = runTest {
+        db.localAccountDao().insert(roomAccount().copy(operationProvider = SasProviders.ALAMIRY))
+        // SAMM answers "active" even though the expiry is in the past.
+        sammSas.byId["3001"] = subscriber("3001", "ALAMIRY-PLAN", planId = "9")
+            .copy(status = "active", expiresAt = "2020-01-01T00:00:00Z")
+        sammSas.session = com.example.core.network.SasSubscriberSession(
+            isOnline = true,
+            startedAt = "2026-10-10T18:00:00Z",
+            onlineSeconds = 8100L,
+            ip = "10.20.30.40"
+        )
+
+        viewModel.setSelectedProvider(SasProviders.ALAMIRY)
+        viewModel.loadUserDetail(3001, "user1").join()
+        awaitCondition { sammSas.sessionCalls > 0 }
+
+        val detail = viewModel.selectedUser.value
+        assertNotNull("A live session must be attached to the Alamiry detail", detail?.onlineSession)
+        assertEquals(
+            "Online state must come from the provider session, not be hard-coded offline",
+            false,
+            detail?.onlineSession?.onlineStatus?.contains("offline", ignoreCase = true) == true
+        )
+        assertEquals("10.20.30.40", detail?.onlineSession?.userIP)
+        assertEquals("2h 15m", detail?.onlineSessionTime)
+        assertEquals(
+            "An expired subscriber must not be presented as active",
+            "expired",
+            detail?.accountStatus
+        )
+    }
+
+    @Test
+    fun alamiryDetail_withoutSession_reportsOfflineNotCrash() = runTest {
+        db.localAccountDao().insert(roomAccount().copy(operationProvider = SasProviders.ALAMIRY))
+        sammSas.byId["3001"] = subscriber("3001", "ALAMIRY-PLAN", planId = "9")
+            .copy(status = "active", expiresAt = "2030-01-01T00:00:00Z")
+        sammSas.session = null
+
+        viewModel.setSelectedProvider(SasProviders.ALAMIRY)
+        viewModel.loadUserDetail(3001, "user1").join()
+        awaitCondition { sammSas.sessionCalls > 0 }
+
+        val detail = viewModel.selectedUser.value
+        assertNull("No session means offline, not a stale online badge", detail?.onlineSession)
+        assertNull(detail?.onlineSessionTime)
+        assertEquals("A subscriber with a future expiry stays active", "active", detail?.accountStatus)
+    }
+
     // ========================================================================
     // Helpers
     // ========================================================================
@@ -321,7 +371,14 @@ class ProviderSwitchBackReadTest {
         val byId = mutableMapOf<String, SasSubscriberView>()
         var searchCorpus: List<SasSubscriberView> = emptyList()
         var getSubscriberCalls = 0
+        var session: com.example.core.network.SasSubscriberSession? = null
+        var sessionCalls = 0
         val callLog = mutableListOf<String>()
+
+        override suspend fun getSubscriberSession(username: String): com.example.core.network.SasSubscriberSession? {
+            sessionCalls++
+            return session
+        }
 
         override suspend fun getSubscriber(subscriberId: String): SasSubscriberView? {
             getSubscriberCalls++

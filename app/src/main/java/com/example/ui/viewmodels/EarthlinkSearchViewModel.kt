@@ -524,10 +524,20 @@ class EarthlinkSearchViewModel(
                             } else null
                         } else null
 
+                        val expirationMillis = sub.expiresAt?.let { com.example.ui.screens.SubscriberDisplayRules.parseInstantMillis(it) }
                         val resolvedPkg = sub.planName?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
                             ?: _packages.value.find { it.accountIndex.toString() == sub.planId || it.accountIndex == sub.planId?.toIntOrNull() }?.accountName
                             ?: foundLocal?.packageName?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
                             ?: _selectedUser.value?.packageName?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
+
+                        // Online state lives on a provider-specific session resource, not on the
+                        // subscriber payload, so it is read separately and stays optional.
+                        val liveSession = try {
+                            targetGateway.getSubscriberSession(sub.username)
+                        } catch (e: Exception) {
+                            if (e is kotlinx.coroutines.CancellationException) throw e
+                            null
+                        }
 
                         val detail = com.example.core.model.UserDetail(
                             userIndexLower = numIdx,
@@ -538,10 +548,24 @@ class EarthlinkSearchViewModel(
                             mobileNumberLower = sub.phone,
                             packageNameLower = resolvedPkg,
                             accountIndexLower = sub.planId?.toIntOrNull(),
-                            accountStatusLower = sub.status,
+                            accountStatusLower = com.example.ui.screens.SubscriberDisplayRules
+                                .effectiveAccountStatus(sub.status, expirationMillis),
                             expirationDateLower = sub.expiresAt,
                             accountExpirationDateLower = sub.expiresAt,
                             activeDaysLeftLower = daysLeft,
+                            onlineSessionTimeLower = liveSession?.onlineSeconds
+                                ?.let { com.example.ui.screens.SubscriberDisplayRules.formatOnlineDuration(it) },
+                            currentIPLower = liveSession?.ip,
+                            onlineSessionLower = liveSession?.let {
+                                // onlineTime is deliberately left unset: UserDetail.onlineSessionTime
+                                // prefers it over onlineSessionTimeLower, so filling it would show the
+                                // session START stamp where the duration belongs.
+                                com.example.core.model.OnlineSession(
+                                    onlineStatusLower = if (it.isOnline) "Online" else "Offline",
+                                    onlineSinceLower = it.startedAt,
+                                    ipAddressLower = it.ip
+                                )
+                            },
                             originProvider = targetProvider
                         )
                         // A slower earlier request must not clobber a newer operator selection.

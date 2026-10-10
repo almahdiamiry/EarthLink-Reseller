@@ -52,6 +52,14 @@ data class SammAgentLogoutResponse(
 )
 
 @JsonClass(generateAdapter = true)
+data class SessionItemDto(
+    @Json(name = "username") val username: String? = null,
+    @Json(name = "framed_ip") val framedIp: String? = null,
+    @Json(name = "last_session_time") val lastSessionTime: Long? = null,
+    @Json(name = "started_at") val startedAt: String? = null
+)
+
+@JsonClass(generateAdapter = true)
 data class CustomerCreate(
     @Json(name = "username") val username: String,
     @Json(name = "password") val password: String,

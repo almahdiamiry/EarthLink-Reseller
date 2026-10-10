@@ -375,6 +375,7 @@ fun getRemainingTime(expirationDateStr: String?, activeDaysLeftStr: String? = nu
                 "yyyy-MM-dd HH:mm:ss",
                 "yyyy-MM-dd HH:mm:ss a",
                 "yyyy-MM-dd HH:mm a",
+                "yyyy-MM-dd h:mm a",
                 "yyyy-MM-dd",
                 "yyyy/MM/dd HH:mm:ss a",
                 "yyyy/MM/dd HH:mm:ss",

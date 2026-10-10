@@ -6,6 +6,7 @@ import com.example.core.network.SasGateway
 import com.example.core.network.SasGatewayException
 import com.example.core.network.SasInconclusiveException
 import com.example.core.network.SasOperationResult
+import com.example.core.network.SasSubscriberSession
 import com.example.core.network.SasSubscriberView
 import com.example.core.network.SasVerificationOutcome
 import com.example.core.network.toSasGatewayException
@@ -191,6 +192,27 @@ class SammGatewayImpl(
             response.isSuccessful
         } catch (_: Throwable) {
             false
+        }
+    }
+
+    /**
+     * SAMM exposes online state only through live RADIUS sessions; the customer resource has no
+     * online or session field at all. Absence of a session is the offline answer.
+     */
+    override suspend fun getSubscriberSession(username: String): SasSubscriberSession? {
+        val key = username.trim().takeIf { it.isNotEmpty() } ?: return null
+        return try {
+            val response = safeApiCall { apiService.listSessions(username = key, limit = 1) }
+            val session = response.body()?.items?.firstOrNull { it.username.equals(key, ignoreCase = true) }
+                ?: return null
+            SasSubscriberSession(
+                isOnline = true,
+                startedAt = session.startedAt,
+                onlineSeconds = session.lastSessionTime,
+                ip = session.framedIp
+            )
+        } catch (_: SasGatewayException) {
+            null
         }
     }
 

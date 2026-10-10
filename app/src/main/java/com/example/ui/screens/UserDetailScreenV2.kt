@@ -2244,25 +2244,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                         user.accountExpirationDate,
                         user.expirationDate
                     ).firstOrNull { it.isNotBlank() && it != "N/A" }
-                    
-                    if (rawDate != null && rawDate.endsWith("Z")) {
-                        try {
-                            val isoFormat = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
-                            isoFormat.timeZone = java.util.TimeZone.getTimeZone("UTC")
-                            val parsed = isoFormat.parse(rawDate)
-                            if (parsed != null) {
-                                val targetFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
-                                targetFormat.timeZone = java.util.TimeZone.getTimeZone("Asia/Baghdad")
-                                targetFormat.format(parsed)
-                            } else {
-                                rawDate
-                            }
-                        } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                            rawDate
-                        }
-                    } else {
-                        rawDate
-                    }
+                    SubscriberDisplayRules.formatSubscriberExpiration(rawDate)
                 }
                 val remainingTime = remember(finalExpirationStr, user.activeDaysLeft, lang, user.accountStatus) {
                     getRemainingTime(finalExpirationStr, user.activeDaysLeft?.toString(), lang, user.accountStatus)

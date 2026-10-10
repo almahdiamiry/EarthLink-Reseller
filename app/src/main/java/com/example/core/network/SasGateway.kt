@@ -126,6 +126,19 @@ fun Throwable.toSasGatewayException(): SasGatewayException = when (this) {
 // ============================================================================
 
 /**
+ * Normalized live-session view for a subscriber, or null when the provider has no live session.
+ *
+ * Only providers that actually expose session state populate this; EarthLink carries it on the
+ * subscriber payload itself, so the default is null.
+ */
+data class SasSubscriberSession(
+    val isOnline: Boolean,
+    val startedAt: String? = null,
+    val onlineSeconds: Long? = null,
+    val ip: String? = null
+)
+
+/**
  * Normalized domain view of a subscriber across different SAS providers (EarthLink, SAMM).
  * Hides provider-specific wire schemas and types (e.g. numeric ID vs string ID).
  */
@@ -272,4 +285,12 @@ interface SasGateway {
      * Check network connectivity and credentials with the provider gateway.
      */
     suspend fun checkConnection(): Boolean
+
+    /**
+     * Reads the subscriber's live session, when the provider exposes one.
+     *
+     * Defaults to null: a provider that carries session state on its subscriber payload (EarthLink)
+     * needs no extra call, and a provider with no session concept must not be forced to implement one.
+     */
+    suspend fun getSubscriberSession(username: String): SasSubscriberSession? = null
 }
