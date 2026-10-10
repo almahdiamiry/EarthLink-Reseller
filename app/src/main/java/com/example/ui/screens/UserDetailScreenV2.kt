@@ -2851,9 +2851,15 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                         }
 
                         // Package Name
+                        // An ISP-linked account's plan is owned by the provider: the local row may still
+                        // carry the previous provider's plan, so it is only trusted when there is no
+                        // ISP linkage to re-read from.
+                        val localPlanFallback = matchingAccount
+                            ?.takeIf { it.ispUserIndex == null && it.ispSubscriberId == null }
+                            ?.packageName
                         val resolvedPackageName = user.packageName?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
                             ?: packagesList.find { it.accountIndex == user.accountIndex || it.accountIndex.toString() == user.accountIndex?.toString() }?.accountName
-                            ?: matchingAccount?.packageName?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
+                            ?: localPlanFallback?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
                             ?: if (currentLang == "ar") "غير محدد" else "Unknown"
 
                         Row(

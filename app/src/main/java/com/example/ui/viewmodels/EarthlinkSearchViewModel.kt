@@ -59,6 +59,10 @@ class EarthlinkSearchViewModel(
 
     fun setSelectedProvider(provider: String) {
         _selectedProvider.value = provider
+        // The operator's provider choice has to outlive this object: leaving the user page and
+        // closing/reopening the app both rebuild the ViewModel, and a lost choice silently
+        // retargets every later search back to the login provider.
+        prefs.setLastSelectedLoginProvider(provider)
     }
 
     private val _searchQuery = MutableStateFlow("")
@@ -465,29 +469,50 @@ class EarthlinkSearchViewModel(
             if (hasIspLinkage && !isSyntheticLocal) {
                 _isRefreshingDetail.value = true
                 try {
-                    val accountProvider = foundLocal?.operationProvider
+                    // Which provider owns this account is a property of the local account row, never
+                    // of the search/dashboard row the operator happened to tap. That row is
+                    // provider-scoped, so re-entering the page through a SAMM row would otherwise
+                    // re-target the detail to SAMM while the provider badge still reads the local
+                    // row. The username carried by the navigation route is provider-neutral, so it
+                    // is the safe key for resolving that authority.
+                    val authorityAccount = knownUserId?.trim()?.takeIf { it.isNotBlank() }
+                        ?.let { id -> localAccountRepository.findActiveAccountsBySubscriberIdentity(null, id).firstOrNull() }
+                    val identityOwner = foundLocal ?: authorityAccount
+                    val accountProvider = identityOwner?.operationProvider
                     val targetProvider = accountProvider ?: _selectedUser.value?.originProvider ?: currentProvider
                     val targetGateway = sasGatewayRouter.getGateway(targetProvider)
+                    // "The provider has no such subscriber" and "we could not reach the provider" are
+                    // different answers. Only the former may retire the previous provider's display
+                    // snapshot; a transport failure must leave the operator's context untouched.
+                    var transportFailed = false
                     var sub = try {
+                        // The identity to look up must belong to the same provider we are reading,
+                        // so it is taken from the account row, never from the tapped row's index.
                         val specificId = if (targetProvider == com.example.core.model.SasProviders.EARTHLINK) {
-                            foundLocal?.ispUserIndex?.toString() ?: userIndex.takeIf { it > 0 }?.toString()
+                            identityOwner?.ispUserIndex?.toString() ?: userIndex.takeIf { it > 0 }?.toString()
                         } else {
-                            foundLocal?.ispSubscriberId ?: userIndex.takeIf { it > 0 }?.toString()
+                            identityOwner?.ispSubscriberId ?: userIndex.takeIf { it > 0 }?.toString()
                         }
                         if (specificId != null) targetGateway.getSubscriber(specificId) else null
-                    } catch (e: Exception) {
-                        if (e is kotlinx.coroutines.CancellationException) throw e
+                    } catch (e: com.example.core.network.SasNotFoundException) {
+                        null
+                    } catch (e: com.example.core.network.SasBusinessException) {
+                        null
+                    } catch (e: com.example.core.network.SasGatewayException) {
+                        transportFailed = true
                         null
                     }
-                    if (sub == null && !currentUserId.isNullOrBlank()) {
+                    if (sub == null && !transportFailed && !currentUserId.isNullOrBlank()) {
                         try {
                             val candidates = targetGateway.searchSubscribers(query = currentUserId, page = 1, pageSize = 20)
                             val matched = candidates.find { it.username.equals(currentUserId, ignoreCase = true) }
                             if (matched != null) {
-                                sub = try { targetGateway.getSubscriber(matched.subscriberId) ?: matched } catch (_: Exception) { matched }
+                                sub = try { targetGateway.getSubscriber(matched.subscriberId) ?: matched }
+                                    catch (_: com.example.core.network.SasNotFoundException) { matched }
                             }
-                        } catch (e: Exception) {
-                            if (e is kotlinx.coroutines.CancellationException) throw e
+                        } catch (e: com.example.core.network.SasGatewayException) {
+                            transportFailed = e !is com.example.core.network.SasNotFoundException &&
+                                e !is com.example.core.network.SasBusinessException
                         }
                     }
                     if (sub != null) {
@@ -529,7 +554,15 @@ class EarthlinkSearchViewModel(
                         if (foundLocal != null) {
                             try {
                                 if (targetProvider == com.example.core.model.SasProviders.EARTHLINK && detail.userIndex > 0) {
-                                    localAccountRepository.bindIspIdentity(foundLocal.id, detail.userIndex)
+                                    // The identity guard is independent of the provider-scoped field
+                                    // refresh: an ISP identity that was re-created after a departure
+                                    // must not block the plan/type update below.
+                                    try {
+                                        localAccountRepository.bindIspIdentity(foundLocal.id, detail.userIndex)
+                                    } catch (e: Exception) {
+                                        if (e is kotlinx.coroutines.CancellationException) throw e
+                                        Log.w("EarthlinkSearchVM", "ISP identity re-bind skipped: ${e.message}")
+                                    }
                                     if (resolvedPkg != null && resolvedPkg != foundLocal.packageName) {
                                         localAccountRepository.saveAccount(foundLocal.copy(packageName = resolvedPkg))
                                     }
@@ -543,6 +576,24 @@ class EarthlinkSearchViewModel(
                                 if (e is kotlinx.coroutines.CancellationException) throw e
                                 Log.w("EarthlinkSearchVM", "ISP identity binding skipped: ${e.message}")
                             }
+                        }
+                    } else if (!transportFailed) {
+                        // The target provider authoritatively holds no record for this subscriber.
+                        // Retire the previous provider's plan/status/expiry instead of presenting
+                        // them under the newly selected provider.
+                        val still = _selectedUser.value
+                        if (still != null &&
+                            (still.userIndex == userIndex || still.userID.equals(currentUserId, ignoreCase = true))
+                        ) {
+                            _selectedUser.value = still.copy(
+                                packageNameLower = null,
+                                accountIndexLower = null,
+                                accountStatusLower = null,
+                                expirationDateLower = null,
+                                accountExpirationDateLower = null,
+                                activeDaysLeftLower = null,
+                                originProvider = targetProvider
+                            )
                         }
                     }
                 } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
