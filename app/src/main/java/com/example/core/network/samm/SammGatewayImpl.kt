@@ -80,6 +80,8 @@ class SammGatewayImpl(
     // ========================================================================
 
     private val plansCache = java.util.concurrent.ConcurrentHashMap<Int, String>()
+    private val planPricesCache = java.util.concurrent.ConcurrentHashMap<Int, Double>()
+    private val currencyLabelCache = java.util.concurrent.atomic.AtomicReference<String?>(null)
 
     private companion object {
         /** SAMM's hard ceiling for GET /customers?limit=. Exceeding it returns HTTP 422. */
@@ -93,10 +95,55 @@ class SammGatewayImpl(
             val plans = listPlans()
             for (p in plans) {
                 plansCache[p.id] = p.name
+                p.price?.let { planPricesCache[p.id] = it }
             }
             return plansCache[planId]
         } catch (_: Exception) {
             return null
+        }
+    }
+
+    override suspend fun getPlanPrice(planId: String): Double? {
+        val id = planId.trim().toIntOrNull() ?: return null
+        planPricesCache[id]?.let { return it }
+        return try {
+            val plans = listPlans()
+            for (p in plans) {
+                plansCache[p.id] = p.name
+                p.price?.let { planPricesCache[p.id] = it }
+            }
+            planPricesCache[id]
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    override suspend fun listPackages(): List<com.example.core.model.AccountPackage> = try {
+        listPlans().map { p ->
+            plansCache[p.id] = p.name
+            p.price?.let { planPricesCache[p.id] = it }
+            com.example.core.model.AccountPackage(
+                accountIndex = p.id,
+                accountName = p.name,
+                canTest = true,
+                price = p.price
+            )
+        }
+    } catch (_: Exception) {
+        emptyList()
+    }
+
+    override suspend fun getCurrencyLabel(): String? {
+        currencyLabelCache.get()?.let { return it }
+        return try {
+            val settings = safeApiCall { apiService.getSupportSettings() }.body()?.settings.orEmpty()
+            val label = settings.firstOrNull { it.key.equals("currency_symbol", ignoreCase = true) }?.value
+                ?: settings.firstOrNull { it.key.equals("currency_code", ignoreCase = true) }?.value
+            label?.trim()?.takeIf { it.isNotEmpty() }?.also { currencyLabelCache.set(it) }
+        } catch (_: Exception) {
+            // No settings:read scope, or the endpoint failed. Display simply omits a currency
+            // label rather than inventing one.
+            null
         }
     }
 

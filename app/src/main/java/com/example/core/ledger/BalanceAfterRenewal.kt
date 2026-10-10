@@ -43,8 +43,8 @@ object BalanceAfterRenewal {
      * No Compose, no Android, no I/O, no clock — so it is directly callable from a JVM test, which is
      * the whole reason it exists.
      */
-    fun compute(resellerBalance: Double?, packageCost: Double): Result =
-        if (resellerBalance == null) Result.Unknown
+    fun compute(resellerBalance: Double?, packageCost: Double?): Result =
+        if (resellerBalance == null || packageCost == null) Result.Unknown
         else Result.Known(resellerBalance - packageCost)
 
     /**

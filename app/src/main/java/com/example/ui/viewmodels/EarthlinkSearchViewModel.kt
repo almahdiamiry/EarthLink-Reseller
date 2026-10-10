@@ -58,11 +58,14 @@ class EarthlinkSearchViewModel(
     val selectedProvider: StateFlow<String> = _selectedProvider.asStateFlow()
 
     fun setSelectedProvider(provider: String) {
+        if (_selectedProvider.value == provider) return
         _selectedProvider.value = provider
         // The operator's provider choice has to outlive this object: leaving the user page and
         // closing/reopening the app both rebuild the ViewModel, and a lost choice silently
         // retargets every later search back to the login provider.
         prefs.setLastSelectedLoginProvider(provider)
+        // Each provider publishes its own plan list, so the picker must follow the selection.
+        loadPackages()
     }
 
     private val _searchQuery = MutableStateFlow("")
@@ -179,6 +182,26 @@ class EarthlinkSearchViewModel(
 
     suspend fun getAccountCost(accountIndex: Int): Double = withContext(Dispatchers.IO) {
         gateway.getAccountCost(accountIndex)
+    }
+
+    /**
+     * Resolves a plan's price from whichever provider owns [planId], or null when that provider
+     * does not publish one. A returned 0.0 is a real price (a free plan), never a stand-in for
+     * "unknown" - conflating the two is what made a free plan display as a fabricated amount.
+     */
+    suspend fun getProviderPlanCost(planId: String?): Double? {
+        val id = planId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val provider = _selectedProvider.value
+        if (provider == com.example.core.model.SasProviders.ALAMIRY) {
+            return withContext(Dispatchers.IO) {
+                runCatching {
+                    sasGatewayRouter.getGateway(com.example.core.model.SasProviders.ALAMIRY)
+                        .getPlanPrice(id)
+                }.getOrNull()
+            }
+        }
+        val index = id.toIntOrNull() ?: return null
+        return if (index > 0) getAccountCost(index).takeIf { it > 0.0 } else null
     }
 
 
@@ -636,6 +659,23 @@ class EarthlinkSearchViewModel(
     }
 
     private fun loadPackages() {
+        val provider = _selectedProvider.value
+        if (provider == com.example.core.model.SasProviders.ALAMIRY) {
+            // Alamiry's credential is the SAMM API token, not the EarthLink one, so the EarthLink
+            // credential guard below must not gate it: an Alamiry-only login still needs its real
+            // plan list, otherwise the change-plan picker falls back to placeholder plans.
+            if (prefs.getSammToken().isNullOrBlank()) return
+            viewModelScope.launch {
+                _packages.value = runCatching {
+                    sasGatewayRouter.getGateway(com.example.core.model.SasProviders.ALAMIRY).listPackages()
+                }.getOrElse {
+                    Log.e("EarthlinkSearchVM", "Failed to load Alamiry packages: ${it.message}")
+                    emptyList()
+                }
+            }
+            return
+        }
+
         val token = prefs.getAuthToken()
         val isDemo = prefs.getDemoMode()
         if (token.isNullOrEmpty() && !isDemo) return
@@ -651,6 +691,19 @@ class EarthlinkSearchViewModel(
                     Log.e("EarthlinkSearchVM", "Failed to load packages options: ${e.message}")
                 }
             }
+        }
+    }
+
+    /**
+     * The currency label the selected provider reports, or null when it reports none.
+     * Display follows the provider; nothing here assumes a currency.
+     */
+    suspend fun getProviderCurrency(): String? {
+        if (_selectedProvider.value != com.example.core.model.SasProviders.ALAMIRY) return null
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                sasGatewayRouter.getGateway(com.example.core.model.SasProviders.ALAMIRY).getCurrencyLabel()
+            }.getOrNull()
         }
     }
 
@@ -1715,6 +1768,8 @@ class EarthlinkSearchViewModel(
             }
             _selectedProvider.value = newProvider
             _selectedUser.value = _selectedUser.value?.copy(originProvider = newProvider)
+            // The plan picker must offer the NEW provider's plans, not the old provider's list.
+            loadPackages()
 
             _actionSuccess.value = if (prefs.getLanguage() == "ar") {
                 "تم تغيير مزود الخدمة بنجاح."

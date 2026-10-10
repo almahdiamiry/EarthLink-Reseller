@@ -541,4 +541,110 @@ class SammWireContractTest {
         assertFalse("Must never send limit=5000, got '$path'", path.contains("limit=5000"))
     }
 
+    // ========================================================================
+    // Plan price: a price of 0 is a real value (a free plan), not "unknown".
+    // Live reference: plan 10 "Owner" has price 0.0, plan 6 "Economy" has 35.0.
+    // ========================================================================
+
+    @Test
+    fun getPlanPrice_reportsZeroForAFreePlan_andTheRealPriceOtherwise() = runTest {
+        val gateway = SammGatewayImpl(apiService)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """
+                    [
+                      {"id": 10, "name": "Owner",   "price": 0.0,  "enabled": true},
+                      {"id": 6,  "name": "Economy", "price": 35.0, "enabled": true}
+                    ]
+                    """.trimIndent()
+                )
+        )
+
+        assertEquals("A free plan must report 0.0, not null", 0.0, gateway.getPlanPrice("10")!!, 0.001)
+        assertEquals(35.0, gateway.getPlanPrice("6")!!, 0.001)
+    }
+
+    @Test
+    fun getPlanPrice_returnsNullForAnUnknownPlan() = runTest {
+        val gateway = SammGatewayImpl(apiService)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""[{"id": 10, "name": "Owner", "price": 0.0, "enabled": true}]""")
+        )
+
+        assertNull("An unknown plan id must be null, never a fabricated number", gateway.getPlanPrice("999"))
+        assertNull("A blank plan id must be null", gateway.getPlanPrice(""))
+    }
+
+    @Test
+    fun listPackages_mapsRealSamPlansWithTheirPrices_forTheChangePlanDialog() = runTest {
+        // The change-plan dialog used to fall back to hardcoded demo plans whenever the package
+        // list was empty, which is what put a fabricated 40,000 IQD "Economy" on screen.
+        val gateway = SammGatewayImpl(apiService)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """
+                    [
+                      {"id": 6,  "name": "Economy", "price": 20000.0, "enabled": true},
+                      {"id": 10, "name": "Owner",   "price": 0.0,     "enabled": true}
+                    ]
+                    """.trimIndent()
+                )
+        )
+
+        val packages = gateway.listPackages()
+
+        assertEquals("Both real plans must be offered", 2, packages.size)
+        val owner = packages.single { it.accountName == "Owner" }
+        val economy = packages.single { it.accountName == "Economy" }
+        assertEquals(10, owner.accountIndex)
+        assertEquals("A free plan must carry price 0.0, not a fallback", 0.0, owner.price!!, 0.001)
+        assertEquals(6, economy.accountIndex)
+        assertEquals(20000.0, economy.price!!, 0.001)
+    }
+
+    @Test
+    fun getCurrencyLabel_readsTheCurrencySammReports_insteadOfAssumingOne() = runTest {
+        val gateway = SammGatewayImpl(apiService)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """
+                    {
+                      "version": "5.2.4",
+                      "settings": [
+                        {"key": "currency_code",   "value": "IQD", "type": "string"},
+                        {"key": "currency_symbol", "value": "IQD", "type": "string"}
+                      ]
+                    }
+                    """.trimIndent()
+                )
+        )
+
+        assertEquals("IQD", gateway.getCurrencyLabel())
+    }
+
+    @Test
+    fun getCurrencyLabel_returnsNullWhenSammReportsNone() = runTest {
+        val gateway = SammGatewayImpl(apiService)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"version": "5.2.4", "settings": []}""")
+        )
+
+        assertNull("No reported currency must stay null, never a hardcoded one", gateway.getCurrencyLabel())
+    }
+
 }

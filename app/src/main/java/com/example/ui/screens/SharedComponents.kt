@@ -265,6 +265,7 @@ fun getRemainingTime(expirationDateStr: String?, activeDaysLeftStr: String? = nu
     var parsedHasTime = false
 
     val sanitizedExpirationStr = sanitizePresentationDateString(expirationDateStr)
+    val sanitizedActiveDaysLeft = sanitizePresentationDateString(activeDaysLeftStr)
     if (sanitizedExpirationStr != null) {
         val baghdadTz = java.util.TimeZone.getTimeZone("Asia/Baghdad")
 
@@ -494,8 +495,12 @@ fun getRemainingTime(expirationDateStr: String?, activeDaysLeftStr: String? = nu
     } else if (parsedDaysLeft != null && (actDays > 0 || actHours > 0)) {
         finalDays = actDays
         finalHours = actHours
+    } else if (isStatusActive && sanitizedExpirationStr == null && sanitizedActiveDaysLeft == null) {
+        // The provider reported no expiry at all: the subscription is unlimited (an owner plan,
+        // for example). This is NOT a 30-minute grace. SAMM sends expiration_date = null for these.
+        return if (lang == "ar") "بدون انتهاء" else "No expiry"
     } else if (isStatusActive) {
-        // Fallback for active status with unparsed or slightly past expiration
+        // Fallback for active status with unparseable or slightly past expiration
         isLessThanHour = true
         remainingMinutes = 30L
     } else {

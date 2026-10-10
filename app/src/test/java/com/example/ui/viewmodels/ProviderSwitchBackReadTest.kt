@@ -349,8 +349,12 @@ class ProviderSwitchBackReadTest {
         sammSas.byId["3001"] = subscriber("3001", "ALAMIRY-UNIQUE-TYPE", planId = "9")
     }
 
+    // Must also require non-null: prepareUserDetail clears the detail on the way in, so "changed"
+    // alone is satisfied by the transient null before the provider read has even started.
     private suspend fun awaitDetailRepublished(before: Any?) =
-        awaitCondition { viewModel.selectedUser.value !== before }
+        awaitCondition {
+            viewModel.selectedUser.value !== before && viewModel.selectedUser.value != null
+        }
 
     private suspend fun awaitCondition(timeoutMs: Long = 8_000, predicate: suspend () -> Boolean) {
         // Thread.sleep, not delay: runTest advances delay() on VIRTUAL time, so a delay-based poll

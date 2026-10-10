@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -117,6 +118,43 @@ class SubscriberDisplayRulesTest {
         assertEquals("0m", SubscriberDisplayRules.formatOnlineDuration(0))
         assertNull(SubscriberDisplayRules.formatOnlineDuration(null))
         assertNull(SubscriberDisplayRules.formatOnlineDuration(-1))
+    }
+
+    // ========================================================================
+    // Plan price: 0.0 is a free plan, null is unknown. Conflating them is
+    // what made a free plan display as a fabricated 40,000 IQD.
+    // Live reference: SAMM plan 10 "Owner" price 0.0, plan 6 "Economy" 35.0.
+    // ========================================================================
+
+    @Test
+    fun planPrice_zeroReadsAsFreeAndNullReadsAsUnknown() {
+        assertEquals("Free", SubscriberDisplayRules.formatPlanPrice(0.0, "IQD", "en"))
+        assertEquals("Unknown", SubscriberDisplayRules.formatPlanPrice(null, "IQD", "en"))
+        assertEquals("35,000 IQD", SubscriberDisplayRules.formatPlanPrice(35000.0, "IQD", "en"))
+    }
+
+    @Test
+    fun planPrice_usesTheProviderCurrency_andOmitsTheLabelWhenThereIsNone() {
+        // SAMM reports currency_symbol / currency_code; nothing may be hardcoded.
+        assertEquals("20,000 IQD", SubscriberDisplayRules.formatPlanPrice(20000.0, "IQD", "en"))
+        assertEquals("20,000 USD", SubscriberDisplayRules.formatPlanPrice(20000.0, "USD", "en"))
+        assertEquals(
+            "A provider that reports no currency must not have one invented",
+            "20,000",
+            SubscriberDisplayRules.formatPlanPrice(20000.0, null, "en")
+        )
+        assertEquals(
+            "A blank currency label must not render a stray space",
+            "20,000",
+            SubscriberDisplayRules.formatPlanPrice(20000.0, "  ", "en")
+        )
+    }
+
+    @Test
+    fun isFreePlan_distinguishesAnExplicitZeroFromUnknown() {
+        assertTrue(SubscriberDisplayRules.isFreePlan(0.0))
+        assertFalse(SubscriberDisplayRules.isFreePlan(null))
+        assertFalse(SubscriberDisplayRules.isFreePlan(35000.0))
     }
 
     @Test

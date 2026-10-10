@@ -1,5 +1,7 @@
 package com.example.core.network
 
+import com.example.core.model.AccountPackage
+
 /**
  * Core SAS Gateway Provider Seam (com.example.core.network)
  *
@@ -293,4 +295,28 @@ interface SasGateway {
      * needs no extra call, and a provider with no session concept must not be forced to implement one.
      */
     suspend fun getSubscriberSession(username: String): SasSubscriberSession? = null
+
+    /**
+     * Reads the price of a plan, when the provider publishes one.
+     *
+     * Defaults to null: a provider with no notion of plan pricing must not be forced to implement
+     * one. A returned 0.0 is a real price (a free plan) and is deliberately distinguishable from
+     * null, which means "this provider does not price this plan".
+     */
+    suspend fun getPlanPrice(planId: String): Double? = null
+
+    /**
+     * Lists the plans this provider offers, with prices, for the change-plan picker.
+     *
+     * Defaults to empty: a provider that cannot list plans must not be forced to invent them.
+     * An empty list is meaningful and callers must render it as "no plans available" rather than
+     * substituting placeholder plans with placeholder prices.
+     */
+    suspend fun listPackages(): List<AccountPackage> = emptyList()
+
+    /**
+     * The currency label this provider reports (e.g. "IQD"), or null when it does not report one.
+     * Display must follow the provider rather than assume a currency.
+     */
+    suspend fun getCurrencyLabel(): String? = null
 }

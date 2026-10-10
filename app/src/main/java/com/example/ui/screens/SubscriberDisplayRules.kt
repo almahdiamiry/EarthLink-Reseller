@@ -84,6 +84,27 @@ object SubscriberDisplayRules {
     }
 
     /**
+     * Renders a plan price for display.
+     *
+     * 0.0 is a real price - a free plan - and must read as "Free", not as an unknown amount that
+     * gets replaced by a fabricated figure. Live reference: SAMM plan 10 "Owner" has price 0.0.
+     * Only null (the provider does not price this plan) reads as unknown.
+     *
+     * [currency] is whatever the provider reports (SAMM: `currency_symbol`, else `currency_code`).
+     * Nothing here assumes a currency; when the provider reports none, no label is shown.
+     */
+    fun formatPlanPrice(price: Double?, currency: String? = null, lang: String? = null): String {
+        if (price == null) return if (lang == "ar") "غير معروف" else "Unknown"
+        if (price <= 0.0) return if (lang == "ar") "مجاني" else "Free"
+        val amount = com.example.core.ledger.MoneyParser.formatIqdForDisplay(price)
+        val label = currency?.trim()?.takeIf { it.isNotEmpty() }
+        return if (label != null) "$amount $label" else amount
+    }
+
+    /** True when the provider explicitly priced this plan at zero, i.e. it is free. */
+    fun isFreePlan(price: Double?): Boolean = price != null && price <= 0.0
+
+    /**
      * Renders a live-session length as compact `Nh Mm`.
      *
      * [seconds] is RADIUS `Acct-Session-Time`, which RFC 2865 defines in seconds, and SAMM's

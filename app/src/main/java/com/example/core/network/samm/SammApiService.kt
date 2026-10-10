@@ -91,6 +91,13 @@ interface SammApiService {
         @Query("enabled_only") enabledOnly: Boolean? = null
     ): Response<List<PlanResponse>>
 
+    /**
+     * Operator settings, including `currency_code` / `currency_symbol`. The UI must display the
+     * currency the provider reports rather than assuming one.
+     */
+    @GET("api/v1/support/settings")
+    suspend fun getSupportSettings(): Response<SupportSettingsResponse>
+
     @GET("api/v1/commands")
     suspend fun listCommands(
         @Query("applied") applied: Boolean? = null,

@@ -400,9 +400,14 @@ fun UserDetailScreenV2(
             }
             val initialSuggestedPrice = remember(matchingAccount, matchedPackagePrice) {
                 val p = matchingAccount?.currentPriceIqd ?: matchedPackagePrice
-                if (p != null && p > 0.0) {
-                    if (p % 1000.0 == 0.0) "${(p / 1000.0).toLong()}" else "${p / 1000.0}"
-                } else "40"
+                when {
+                    p == null -> ""
+                    // A free plan must not be prefilled with a fabricated amount; leave it empty
+                    // so the operator types the real figure (or skips the top-up entirely).
+                    p <= 0.0 -> ""
+                    p % 1000.0 == 0.0 -> "${(p / 1000.0).toLong()}"
+                    else -> "${p / 1000.0}"
+                }
             }
             var priceInput by rememberSaveable { mutableStateOf(initialSuggestedPrice) }
             var isWasilChecked by rememberSaveable { mutableStateOf(false) }
@@ -420,7 +425,8 @@ fun UserDetailScreenV2(
             }
             
             var resellerBalance by rememberSaveable { mutableStateOf<Double?>(null) }
-            var packageCost by rememberSaveable { mutableStateOf(20000.0) }
+            var packageCost by rememberSaveable { mutableStateOf<Double?>(null) }
+            var packageCurrency by rememberSaveable { mutableStateOf<String?>(null) }
             var isLoadingApiData by rememberSaveable { mutableStateOf(true) }
             
             val currentPackages by viewModel.packages.collectAsStateWithLifecycle()
@@ -455,7 +461,10 @@ fun UserDetailScreenV2(
                     }
                 } else {
                     resellerBalance = null
-                    packageCost = matchingAccount?.currentPriceIqd ?: 40000.0
+                    // Alamiry prices its own plans and reports its own currency; ask the provider
+                    // instead of inventing a figure or a currency.
+                    packageCost = viewModel.getProviderPlanCost(user.accountIndex?.toString())
+                    packageCurrency = viewModel.getProviderCurrency()
                 }
                 isLoadingApiData = false
             }
@@ -688,7 +697,8 @@ fun UserDetailScreenV2(
                                             fontSize = 13.sp
                                         )
                                         Text(
-                                            text = if (isLoadingApiData) "..." else "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(packageCost.toDouble())} د.ع",
+                                            text = if (isLoadingApiData) "..."
+                                            else "\u200E${com.example.ui.screens.SubscriberDisplayRules.formatPlanPrice(packageCost, packageCurrency, currentLang)}",
                                             color = Color.White,
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.Bold
@@ -3072,16 +3082,10 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
 
                 if (showEditPackageDialog) {
                     val packagesList by viewModel.packages.collectAsStateWithLifecycle()
-                    val defaultPackages = remember {
-                        listOf(
-                            com.example.core.model.AccountPackage(1, "Lite", true, 30000.0),
-                            com.example.core.model.AccountPackage(2, "Economy", true, 40000.0),
-                            com.example.core.model.AccountPackage(3, "Active", true, 50000.0),
-                            com.example.core.model.AccountPackage(4, "Turbo", true, 65000.0),
-                            com.example.core.model.AccountPackage(5, "Business", true, 100000.0)
-                        )
-                    }
-                    val displayPackages = if (packagesList.isEmpty()) defaultPackages else packagesList
+                    // Real plans from the account's own provider only. An empty list means the
+                    // provider could not be reached, and inventing placeholder plans with
+                    // placeholder prices is how a free plan came to read as 40,000 IQD.
+                    val displayPackages = packagesList
 
                     var selectedPkg by remember {
                         mutableStateOf(

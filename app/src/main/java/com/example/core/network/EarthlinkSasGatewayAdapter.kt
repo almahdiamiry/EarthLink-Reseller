@@ -1,5 +1,6 @@
 package com.example.core.network
 
+import com.example.core.model.AccountPackage
 import com.example.core.model.SasProviders
 import com.example.core.model.UserDetail
 import com.example.core.model.UserListItem
@@ -103,6 +104,12 @@ class EarthlinkSasGatewayAdapter(
         } catch (_: Throwable) {
             return null
         }
+    }
+
+    override suspend fun listPackages(): List<AccountPackage> = try {
+        delegate.getPackages()
+    } catch (_: Throwable) {
+        emptyList()
     }
 
     private suspend fun UserDetail.toSasSubscriberView(): SasSubscriberView {

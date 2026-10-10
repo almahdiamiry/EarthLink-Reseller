@@ -39,6 +39,25 @@ data class SammAgentInfo(
 )
 
 @JsonClass(generateAdapter = true)
+data class SupportSettingEntry(
+    @Json(name = "key") val key: String? = null,
+    @Json(name = "value") val value: String? = null,
+    @Json(name = "type") val type: String? = null
+)
+
+/**
+ * GET /support/settings is undocumented in the OpenAPI schema (its 200 response is an empty
+ * object), so this mirrors the observed wire shape. Every field is optional so a future shape
+ * change degrades to "no currency reported" instead of a parse failure.
+ */
+@JsonClass(generateAdapter = true)
+data class SupportSettingsResponse(
+    @Json(name = "version") val version: String? = null,
+    @Json(name = "schema_version") val schemaVersion: String? = null,
+    @Json(name = "settings") val settings: List<SupportSettingEntry> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
 data class SessionItemDto(
     @Json(name = "username") val username: String? = null,
     @Json(name = "framed_ip") val framedIp: String? = null,
