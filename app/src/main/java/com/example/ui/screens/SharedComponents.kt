@@ -93,6 +93,29 @@ internal fun normalizeArabicPersianDigits(input: String): String {
     return sb.toString()
 }
 
+private fun needsDateSanitization(str: String): Boolean {
+    val len = str.length
+    var prevSpace = false
+    var hasDot = false
+    for (i in 0 until len) {
+        val c = str[i]
+        if (c == 't' || c == 'z' || c == '\u00A0') return true
+        if (c in '\u200E'..'\u200F' || c in '\u202A'..'\u202E' || c in '\u206E'..'\u206F') return true
+        if (c in '٠'..'٩' || c in '۰'..'۹') return true
+        if (c == ' ') {
+            if (prevSpace) return true
+            prevSpace = true
+        } else {
+            prevSpace = false
+        }
+        if (c == '.') {
+            hasDot = true
+        }
+    }
+    if (hasDot && FRACTIONAL_SECONDS_REGEX.containsMatchIn(str)) return true
+    return false
+}
+
 /**
  * Strips RTL and directional marks, collapses spaces, handles ISO fractional seconds,
  * and converts Arabic/Persian digits to standard ASCII digits. Returns null for null/blank/sentinel inputs.
@@ -102,11 +125,15 @@ internal fun sanitizePresentationDateString(dateStr: String?): String? {
         return null
     }
 
-    var cleanStr = dateStr.trim()
-    cleanStr = cleanStr.replace('t', 'T').replace('z', 'Z')
-    cleanStr = FRACTIONAL_SECONDS_REGEX.replace(cleanStr, "$1")
+    val cleanStr = dateStr.trim()
+    if (!needsDateSanitization(cleanStr)) {
+        return cleanStr
+    }
 
-    cleanStr = cleanStr
+    var processed = cleanStr.replace('t', 'T').replace('z', 'Z')
+    processed = FRACTIONAL_SECONDS_REGEX.replace(processed, "$1")
+
+    processed = processed
         .replace("\u200E", "") // LRM
         .replace("\u200F", "") // RLM
         .replace("\u206F", "")
@@ -120,7 +147,7 @@ internal fun sanitizePresentationDateString(dateStr: String?): String? {
         .replace(MULTIPLE_SPACES_REGEX, " ") // Normalize multiple spaces
         .trim()
 
-    return normalizeArabicPersianDigits(cleanStr)
+    return normalizeArabicPersianDigits(processed)
 }
 
 // Formatting helper for Money
