@@ -9,7 +9,7 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 /**
- * Retrofit interface for SAMM 5.1.15 REST API.
+ * Retrofit interface for the SAMM REST API (live server_version 5.2.4 at the last refresh).
  * Canonical path prefix: /api/v1/
  */
 interface SammApiService {
@@ -17,22 +17,25 @@ interface SammApiService {
     @GET("api/v1/me")
     suspend fun getMe(): Response<MeResponse>
 
-    @POST("api/v1/auth/agent-login")
-    suspend fun agentLogin(
-        @Body request: SammAgentLoginRequest
-    ): Response<SammAgentLoginResponse>
+    /**
+     * NOTE: SAMM has NO username/password login and NO logout endpoint. Its only credential is a
+     * long-lived static bearer token minted from System > API (starts with `samm_`), presented as
+     * `Authorization: Bearer <token>`. Do not reintroduce agent-login/agent-logout here.
+     */
 
-    @POST("api/v1/auth/agent-logout")
-    suspend fun agentLogout(): Response<SammAgentLogoutResponse>
-
+    /**
+     * SAMM paginates with `limit`/`offset` (limit: min 1, max 1000, default 100) — there are no
+     * `page`/`per_page` parameters, and unknown query params are dropped silently, which previously
+     * made the server apply its 100-row default and truncate the result set without any error.
+     */
     @GET("api/v1/customers")
     suspend fun listCustomers(
         @Query("search") search: String? = null,
         @Query("username") username: String? = null,
         @Query("status") status: String? = null,
         @Query("plan_id") planId: Int? = null,
-        @Query("page") page: Int? = 1,
-        @Query("per_page") perPage: Int? = 20
+        @Query("limit") limit: Int? = null,
+        @Query("offset") offset: Int? = null
     ): Response<ListResponse<CustomerListItem>>
 
     @GET("api/v1/customers/{customer_id}")

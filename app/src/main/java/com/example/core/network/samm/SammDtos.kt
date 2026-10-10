@@ -6,7 +6,8 @@ import com.squareup.moshi.JsonClass
 /**
  * SAMM Wire DTOs (Data Transfer Objects)
  *
- * Mapped to SAMM 5.1.15 OpenAPI 3.1.0 specification (docs/samm/openapi.json).
+ * Mapped to SAMM OpenAPI 3.1.0 specification (docs/samm/openapi.json), refreshed from the live
+ * server's /api/v1/openapi.json. Live server_version at the time of refresh: 5.2.4.
  * Strict adherence to SAMM identity contract:
  * - Customer IDs are Integers on wire endpoints (`id: Int`).
  * - Dates are ISO-8601 strings.
@@ -23,32 +24,18 @@ data class MeResponse(
     @Json(name = "token_id") val tokenId: Int? = null
 )
 
-@JsonClass(generateAdapter = true)
-data class SammAgentLoginRequest(
-    @Json(name = "username") val username: String,
-    @Json(name = "password") val password: String
-)
-
+/**
+ * Agent identity attached to a token, read back from GET /me.
+ *
+ * There is no SAMM login/logout DTO: authentication is a static bearer token from System > API,
+ * not a username/password session.
+ */
 @JsonClass(generateAdapter = true)
 data class SammAgentInfo(
     @Json(name = "id") val id: Int,
     @Json(name = "username") val username: String,
     @Json(name = "role") val role: String,
     @Json(name = "reseller_id") val resellerId: Int? = null
-)
-
-@JsonClass(generateAdapter = true)
-data class SammAgentLoginResponse(
-    @Json(name = "token") val token: String,
-    @Json(name = "token_type") val tokenType: String = "bearer",
-    @Json(name = "expires_at") val expiresAt: String? = null,
-    @Json(name = "agent") val agent: SammAgentInfo
-)
-
-@JsonClass(generateAdapter = true)
-data class SammAgentLogoutResponse(
-    @Json(name = "status") val status: String,
-    @Json(name = "message") val message: String
 )
 
 @JsonClass(generateAdapter = true)

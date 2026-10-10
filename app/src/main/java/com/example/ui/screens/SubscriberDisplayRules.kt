@@ -45,7 +45,10 @@ object SubscriberDisplayRules {
      * providers stamp their timestamps); the already-formatted local form is read as Baghdad.
      */
     fun parseInstantMillis(raw: String): Long? {
-        val text = raw.trim()
+        // Drop sub-second precision before parsing: the display is minute-resolution, and
+        // SimpleDateFormat cannot consume the six fractional digits the live server emits
+        // (.455598) regardless of how many S pattern letters are used.
+        val text = stripFraction(raw.trim()).trim()
         if (text.isEmpty()) return null
 
         // Already rendered as a Baghdad-local stamp: read it back without re-shifting.
@@ -56,9 +59,7 @@ object SubscriberDisplayRules {
         val utc = TimeZone.getTimeZone("UTC")
         // Each family is matched in full before parsing: SimpleDateFormat.parse happily accepts a
         // prefix, which would silently mis-read one wire shape as another.
-        if (ISO_MILLIS_Z.matches(text)) return parseWith(text, "yyyy-MM-dd'T'HH:mm:ss.SSSXXX", utc)
         if (ISO_OFFSET.matches(text)) return parseWith(text, "yyyy-MM-dd'T'HH:mm:ssXXX", utc)
-        if (ISO_MILLIS.matches(text)) return parseWith(text, "yyyy-MM-dd'T'HH:mm:ss.SSS", utc)
         if (ISO_PLAIN.matches(text)) return parseWith(text, "yyyy-MM-dd'T'HH:mm:ss", utc)
         return null
     }
@@ -82,7 +83,15 @@ object SubscriberDisplayRules {
         return if (status == "active" && expired) "expired" else status
     }
 
-    /** Renders a live-session length as compact `Nh Mm`. */
+    /**
+     * Renders a live-session length as compact `Nh Mm`.
+     *
+     * [seconds] is RADIUS `Acct-Session-Time`, which RFC 2865 defines in seconds, and SAMM's
+     * sibling usage payloads agree (`today.secs`, `uptime_used_seconds`). No magnitude-based
+     * millisecond fallback is applied: the two units cannot be told apart reliably (2h15m in
+     * milliseconds, 8_100_000, is smaller than a 94-day session expressed in seconds), so a
+     * heuristic would silently corrupt long sessions.
+     */
     fun formatOnlineDuration(seconds: Long?): String? {
         if (seconds == null || seconds < 0) return null
         val hours = seconds / 3600
@@ -91,10 +100,17 @@ object SubscriberDisplayRules {
     }
 
     private val LOCAL_STAMP = Regex("""\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}""")
-    private val ISO_MILLIS_Z = Regex("""\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z""")
     private val ISO_OFFSET = Regex("""\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2}|Z)""")
-    private val ISO_MILLIS = Regex("""\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+""")
     private val ISO_PLAIN = Regex("""\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}""")
+
+    /** Removes the sub-second part of an ISO timestamp, whatever its digit count. */
+    private fun stripFraction(text: String): String {
+        val dot = text.indexOf('.')
+        if (dot < 0) return text
+        var end = dot + 1
+        while (end < text.length && text[end].isDigit()) end++
+        return text.substring(0, dot) + text.substring(end)
+    }
 
     private fun parseWith(text: String, pattern: String, zone: TimeZone): Long? = try {
         val fmt = SimpleDateFormat(pattern, Locale.US)

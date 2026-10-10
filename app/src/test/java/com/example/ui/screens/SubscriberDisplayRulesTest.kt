@@ -112,6 +112,27 @@ class SubscriberDisplayRulesTest {
         assertEquals("1h 0m", SubscriberDisplayRules.formatOnlineDuration(3600))
     }
 
+    @Test
+    fun onlineDuration_aZeroLengthSessionRendersZeroMinutes() {
+        assertEquals("0m", SubscriberDisplayRules.formatOnlineDuration(0))
+        assertNull(SubscriberDisplayRules.formatOnlineDuration(null))
+        assertNull(SubscriberDisplayRules.formatOnlineDuration(-1))
+    }
+
+    @Test
+    fun expiration_microsecondTimestampsAreAccepted() {
+        // The live server emits 6 fractional digits on created_at/exhausted_at.
+        // 21:35+03:00 is already Baghdad local; 18:35Z is 21:35 in Baghdad (UTC+3).
+        assertEquals(
+            "2026-10-03 9:35 PM",
+            SubscriberDisplayRules.formatSubscriberExpiration("2026-10-03T21:35:46.455598+03:00")
+        )
+        assertEquals(
+            "2026-10-03 9:35 PM",
+            SubscriberDisplayRules.formatSubscriberExpiration("2026-10-03T18:35:16.333847+00:00")
+        )
+    }
+
     // ========================================================================
     // Coupling guard: the "Remaining" row parses the very string we now format
     // ========================================================================

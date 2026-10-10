@@ -81,6 +81,11 @@ class SammGatewayImpl(
 
     private val plansCache = java.util.concurrent.ConcurrentHashMap<Int, String>()
 
+    private companion object {
+        /** SAMM's hard ceiling for GET /customers?limit=. Exceeding it returns HTTP 422. */
+        const val MAX_PAGE_SIZE = 1000
+    }
+
     private suspend fun resolvePlanName(planId: Int?): String? {
         if (planId == null) return null
         plansCache[planId]?.let { return it }
@@ -143,11 +148,15 @@ class SammGatewayImpl(
     ): List<SasSubscriberView> {
         val trimmed = query.trim()
         val isExactUsername = trimmed.isNotEmpty() && !trimmed.contains(" ")
+        // SAMM speaks limit/offset, not page/perPage, and rejects limit outside 1..1000 with a 422.
+        // Translating here keeps the provider-neutral page/pageSize contract on SasGateway intact.
+        val limit = pageSize.coerceIn(1, MAX_PAGE_SIZE)
+        val offset = (page.coerceAtLeast(1) - 1).coerceAtLeast(0) * pageSize.coerceAtLeast(1)
         val response = try {
             if (isExactUsername) {
-                apiService.listCustomers(username = trimmed, page = page, perPage = pageSize)
+                apiService.listCustomers(username = trimmed, limit = limit, offset = offset)
             } else {
-                apiService.listCustomers(search = trimmed.ifEmpty { null }, page = page, perPage = pageSize)
+                apiService.listCustomers(search = trimmed.ifEmpty { null }, limit = limit, offset = offset)
             }
         } catch (e: SasGatewayException) {
             throw e

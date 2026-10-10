@@ -112,7 +112,7 @@ class SammWireContractTest {
                 .setBody(jsonResponse)
         )
 
-        val response = apiService.listCustomers(search = "baghdad", page = 1, perPage = 20)
+        val response = apiService.listCustomers(search = "baghdad", limit = 20, offset = 0)
 
         assertTrue(response.isSuccessful)
         val list = response.body()
@@ -126,7 +126,7 @@ class SammWireContractTest {
 
         val recorded = mockServer.takeRequest()
         assertEquals("GET", recorded.method)
-        assertEquals("/api/v1/customers?search=baghdad&page=1&per_page=20", recorded.path)
+        assertEquals("/api/v1/customers?search=baghdad&limit=20&offset=0", recorded.path)
         assertEquals("Bearer $testToken", recorded.getHeader("Authorization"))
     }
 
@@ -475,141 +475,70 @@ class SammWireContractTest {
         )
     }
 
+    // ========================================================================
+    // Pagination contract: SAMM uses limit/offset, never page/per_page.
+    // Sending page/per_page is silently dropped by the server, which then applies its own
+    // default limit of 100 and truncates the result set with no error at all.
+    // ========================================================================
+
     @Test
-    fun agentLogin_verifiesPathMethodBodyAndResponseDeserialization() = runTest {
-        // Claim: Agent login posts username & password to /api/v1/auth/agent-login and returns agent token & info
-        val jsonResponse = """
-            {
-              "token": "samm_agent_secret_token_12345",
-              "token_type": "bearer",
-              "expires_at": null,
-              "agent": {
-                "id": 5,
-                "username": "test_agent_v1",
-                "role": "agent",
-                "reseller_id": 2
-              }
-            }
-        """.trimIndent()
+    fun listCustomers_sendsLimitAndOffset_andNeverPageOrPerPage() = runTest {
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"total": 0, "items": []}""")
+        )
+
+        apiService.listCustomers(limit = 200, offset = 400)
+
+        val recorded = mockServer.takeRequest()
+        val path = recorded.path.orEmpty()
+        assertTrue("limit must be sent, got '$path'", path.contains("limit=200"))
+        assertTrue("offset must be sent, got '$path'", path.contains("offset=400"))
+        assertFalse("SAMM has no 'page' param, got '$path'", path.contains("page="))
+        assertFalse("SAMM has no 'per_page' param, got '$path'", path.contains("per_page="))
+    }
+
+    @Test
+    fun searchSubscribers_translatesPageAndPageSizeIntoLimitAndOffset() = runTest {
+        val gateway = SammGatewayImpl(apiService)
 
         mockServer.enqueue(
             MockResponse()
                 .setResponseCode(200)
                 .setHeader("Content-Type", "application/json")
-                .setBody(jsonResponse)
+                .setBody("""{"total": 0, "items": []}""")
         )
+        gateway.searchSubscribers(query = "abc", page = 3, pageSize = 50)
 
-        val unauthClient = SammNetworkClient.createApiService(mockServer.url("/").toString(), token = null)
-        val response = unauthClient.agentLogin(
-            SammAgentLoginRequest(
-                username = "test_agent_v1",
-                password = "MockAgentPassword#456"
-            )
-        )
-
-        assertTrue(response.isSuccessful)
-        val body = response.body()
-        assertNotNull(body)
-        assertEquals("samm_agent_secret_token_12345", body?.token)
-        assertEquals("bearer", body?.tokenType)
-        assertNull(body?.expiresAt)
-        assertEquals(5, body?.agent?.id)
-        assertEquals("test_agent_v1", body?.agent?.username)
-        assertEquals("agent", body?.agent?.role)
-        assertEquals(2, body?.agent?.resellerId)
-
+        // page 3 of 50 -> offset (3-1)*50 = 100, limit 50
         val recorded = mockServer.takeRequest()
-        assertEquals("POST", recorded.method)
-        assertEquals("/api/v1/auth/agent-login", recorded.path)
-        assertEquals("application/json", recorded.getHeader("Accept"))
-        assertNull("Unauthenticated login must not have Authorization header", recorded.getHeader("Authorization"))
-        val requestBody = recorded.body.readUtf8()
-        assertTrue(requestBody.contains("\"username\":\"test_agent_v1\""))
-        assertTrue(requestBody.contains("\"password\":\"MockAgentPassword#456\""))
+        val path = recorded.path.orEmpty()
+        assertTrue("page 3 at size 50 must offset by 100, got '$path'", path.contains("offset=100"))
+        assertTrue("page size must become limit, got '$path'", path.contains("limit=50"))
+        assertFalse("Must not send page=, got '$path'", path.contains("page="))
+        assertFalse("Must not send per_page=, got '$path'", path.contains("per_page="))
     }
 
     @Test
-    fun agentLogout_verifiesPathMethodHeadersAndResponseDeserialization() = runTest {
-        // Claim: Agent logout posts to /api/v1/auth/agent-logout with Bearer token
-        val jsonResponse = """
-            {
-              "status": "success",
-              "message": "Logged out successfully"
-            }
-        """.trimIndent()
+    fun searchSubscribers_clampsAnOversizedPageSizeToTheServerCeiling() = runTest {
+        // The dashboard asks for pageSize = 5000; SAMM rejects limit > 1000 with HTTP 422, so the
+        // gateway must clamp rather than forward it.
+        val gateway = SammGatewayImpl(apiService)
 
         mockServer.enqueue(
             MockResponse()
                 .setResponseCode(200)
                 .setHeader("Content-Type", "application/json")
-                .setBody(jsonResponse)
+                .setBody("""{"total": 0, "items": []}""")
         )
-
-        val response = apiService.agentLogout()
-
-        assertTrue(response.isSuccessful)
-        val body = response.body()
-        assertNotNull(body)
-        assertEquals("success", body?.status)
-        assertEquals("Logged out successfully", body?.message)
+        gateway.searchSubscribers(query = "", page = 1, pageSize = 5000)
 
         val recorded = mockServer.takeRequest()
-        assertEquals("POST", recorded.method)
-        assertEquals("/api/v1/auth/agent-logout", recorded.path)
-        assertEquals("Bearer $testToken", recorded.getHeader("Authorization"))
+        val path = recorded.path.orEmpty()
+        assertTrue("Oversized limit must be clamped to 1000, got '$path'", path.contains("limit=1000"))
+        assertFalse("Must never send limit=5000, got '$path'", path.contains("limit=5000"))
     }
 
-    @Test
-    fun agentLogin_whenInvalidCredentials_returns401WithGenericFailure() = runTest {
-        // Claim: Agent login failures return HTTP 401 with normalized generic message "Invalid username or password."
-        val jsonError = """{"detail": "Invalid username or password."}"""
-        mockServer.enqueue(
-            MockResponse()
-                .setResponseCode(401)
-                .setHeader("Content-Type", "application/json")
-                .setBody(jsonError)
-        )
-
-        val unauthClient = SammNetworkClient.createApiService(mockServer.url("/").toString(), token = null)
-        val response = unauthClient.agentLogin(
-            SammAgentLoginRequest(
-                username = "invalid_user",
-                password = "invalid_password"
-            )
-        )
-
-        assertFalse(response.isSuccessful)
-        assertEquals(401, response.code())
-        val errorBody = response.errorBody()?.string()
-        assertNotNull(errorBody)
-        assertTrue(errorBody?.contains("Invalid username or password.") == true)
-    }
-
-    @Test
-    fun agentLogin_whenThrottled_returns429TooManyRequestsWithRetryAfter() = runTest {
-        // Claim: Agent login rate limit returns HTTP 429 Too Many Requests with Retry-After header
-        val jsonError = """{"detail": "Too many failed login attempts. Please try again later."}"""
-        mockServer.enqueue(
-            MockResponse()
-                .setResponseCode(429)
-                .setHeader("Content-Type", "application/json")
-                .setHeader("Retry-After", "300")
-                .setBody(jsonError)
-        )
-
-        val unauthClient = SammNetworkClient.createApiService(mockServer.url("/").toString(), token = null)
-        val response = unauthClient.agentLogin(
-            SammAgentLoginRequest(
-                username = "throttled_user",
-                password = "any_password"
-            )
-        )
-
-        assertFalse(response.isSuccessful)
-        assertEquals(429, response.code())
-        assertEquals("300", response.headers()["Retry-After"])
-        val errorBody = response.errorBody()?.string()
-        assertNotNull(errorBody)
-        assertTrue(errorBody?.contains("Too many failed login attempts") == true)
-    }
 }
