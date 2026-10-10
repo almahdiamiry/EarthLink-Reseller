@@ -277,8 +277,10 @@ fun UserDetailScreenV2(
 
     val targetUsername = detail?.userID?.trim() ?: ""
     val matchingAccountFlow = remember(userIndex, targetUsername) {
-        if (targetUsername.isNotEmpty() || (userIndex != null && userIndex > 0)) {
-            viewModel.getAccountByUsernameOrIdForUser(userIndex, targetUsername)
+        if (targetUsername.isNotEmpty()) {
+            viewModel.getAccountByUsernameOrId(targetUsername)
+        } else if (userIndex != null && userIndex > 0) {
+            viewModel.getAccountByUsernameOrIdForUser(userIndex, "")
         } else {
             emptyFlow()
         }
@@ -422,34 +424,38 @@ fun UserDetailScreenV2(
             var isLoadingApiData by rememberSaveable { mutableStateOf(true) }
             
             val currentPackages by viewModel.packages.collectAsStateWithLifecycle()
-            LaunchedEffect(user.userIndex, currentPackages) {
-                // GAP-1: the read and its catch are now one testable call, so the failure branch
-                // is reachable from a JVM test instead of being locked inside a LaunchedEffect.
-                // Behaviour is unchanged: CancellationException is still rethrown, because
-                // BalanceAfterRenewal.readBalance rethrows it exactly as the inline catch did.
-                resellerBalance = com.example.core.ledger.BalanceAfterRenewal.readBalance { viewModel.getResellerBalance() }
-                try {
-                    val name = user.packageName?.trim()?.lowercase() ?: ""
-                    val foundPackage = currentPackages.find { it.accountName.trim().lowercase() == name }
-                    val acctIdx = user.accountIndex ?: foundPackage?.accountIndex
-                    
-                    if (acctIdx != null && acctIdx > 0) {
-                        val fetchedCost = viewModel.getAccountCost(acctIdx)
-                        if (fetchedCost > 0.0) {
-                            packageCost = fetchedCost
+            val currentOpProvider = matchingAccount?.operationProvider
+                ?: user.originProvider
+                ?: viewModel.selectedProvider.value
+            LaunchedEffect(user.userIndex, currentPackages, currentOpProvider) {
+                if (currentOpProvider == com.example.core.model.SasProviders.EARTHLINK) {
+                    resellerBalance = com.example.core.ledger.BalanceAfterRenewal.readBalance { viewModel.getResellerBalance() }
+                    try {
+                        val name = user.packageName?.trim()?.lowercase() ?: ""
+                        val foundPackage = currentPackages.find { it.accountName.trim().lowercase() == name }
+                        val acctIdx = user.accountIndex ?: foundPackage?.accountIndex
+                        
+                        if (acctIdx != null && acctIdx > 0) {
+                            val fetchedCost = viewModel.getAccountCost(acctIdx)
+                            if (fetchedCost > 0.0) {
+                                packageCost = fetchedCost
+                            } else {
+                                val price = foundPackage?.price.takeIf { it != null && it > 0.0 } ?: 0.0
+                                packageCost = price
+                            }
                         } else {
                             val price = foundPackage?.price.takeIf { it != null && it > 0.0 } ?: 0.0
                             packageCost = price
                         }
-                    } else {
+                    } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+                        val name = user.packageName?.trim()?.lowercase() ?: ""
+                        val foundPackage = currentPackages.find { it.accountName.trim().lowercase() == name }
                         val price = foundPackage?.price.takeIf { it != null && it > 0.0 } ?: 0.0
                         packageCost = price
                     }
-                } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                    val name = user.packageName?.trim()?.lowercase() ?: ""
-                    val foundPackage = currentPackages.find { it.accountName.trim().lowercase() == name }
-                    val price = foundPackage?.price.takeIf { it != null && it > 0.0 } ?: 0.0
-                    packageCost = price
+                } else {
+                    resellerBalance = null
+                    packageCost = matchingAccount?.currentPriceIqd ?: 40000.0
                 }
                 isLoadingApiData = false
             }
@@ -462,7 +468,8 @@ fun UserDetailScreenV2(
             val balanceAfter = com.example.core.ledger.BalanceAfterRenewal.compute(resellerBalance, packageCost)
 
             val performRefill: () -> Unit = {
-                if (!viewModel.hasDepositPassword()) {
+                val isEarthlink = currentOpProvider == com.example.core.model.SasProviders.EARTHLINK
+                if (isEarthlink && !viewModel.hasDepositPassword()) {
                     android.widget.Toast.makeText(
                         context,
                         if (currentLang == "ar") "الرجاء ضبط كلمة مرور الصندوق في الإعدادات أولاً!" else "Please set your deposit password in settings first!",
@@ -480,9 +487,6 @@ fun UserDetailScreenV2(
                         focusManager.clearFocus(force = true)
                         keyboardController?.hide()
                         showRefillDialog = false
-                        val currentOpProvider = matchingAccount?.operationProvider
-                            ?: user.originProvider
-                            ?: viewModel.selectedProvider.value
                         val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
                             earthlinkUsername = user.userID,
                             displayName = user.customerFullName ?: user.userID,
@@ -498,13 +502,23 @@ fun UserDetailScreenV2(
                         val isWasil = isWasilChecked
                         val accToUse = matchingAccount ?: finalAcc
 
-                        viewModel.refillUser(
-                            userId = user.userID,
-                            price = parsedPrice,
-                            note = noteVal,
-                            isWasil = isWasil,
-                            account = accToUse
-                        )
+                        if (isEarthlink) {
+                            viewModel.refillUser(
+                                userId = user.userID,
+                                price = parsedPrice,
+                                note = noteVal,
+                                isWasil = isWasil,
+                                account = accToUse
+                            )
+                        } else {
+                            viewModel.renewSammUser(
+                                userId = user.userID,
+                                price = parsedPrice,
+                                note = noteVal,
+                                isWasil = isWasil,
+                                account = accToUse
+                            )
+                        }
                     }
                 }
             }
@@ -681,53 +695,74 @@ fun UserDetailScreenV2(
                                         )
                                     }
                                     
-                                    HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-                                    
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = if (currentLang == "ar") "رصيد اللوحة الحالي" else "Current Panel Balance",
-                                            color = Color(0xFF9CA3AF),
-                                            fontSize = 13.sp
-                                        )
-                                        Text(
-                                            text = if (isLoadingApiData) "..." else if (resellerBalance != null) "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(resellerBalance!!.toDouble())} د.ع" else "—",
-                                            color = Color.White,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                    
-                                    HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-                                    
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = if (currentLang == "ar") "رصيد اللوحة بعد التجديد" else "Balance After Renewal",
-                                            color = Color(0xFF9CA3AF),
-                                            fontSize = 13.sp
-                                        )
-                                        val balanceColor = when (balanceAfter) {
-                                            is com.example.core.ledger.BalanceAfterRenewal.Result.Unknown -> Color.White.copy(alpha = 0.5f)
-                                            is com.example.core.ledger.BalanceAfterRenewal.Result.Known -> if (balanceAfter.amount >= 0) Color(0xFF34D399) else Color(0xFFF87171)
+                                    if (currentOpProvider == com.example.core.model.SasProviders.EARTHLINK) {
+                                        HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+                                        
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = if (currentLang == "ar") "رصيد اللوحة الحالي" else "Current Panel Balance",
+                                                color = Color(0xFF9CA3AF),
+                                                fontSize = 13.sp
+                                            )
+                                            Text(
+                                                text = if (isLoadingApiData) "..." else if (resellerBalance != null) "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(resellerBalance!!.toDouble())} د.ع" else "—",
+                                                color = Color.White,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
                                         }
-                                        Text(
-                                            text = when {
-                                                isLoadingApiData -> "..."
-                                                balanceAfter is com.example.core.ledger.BalanceAfterRenewal.Result.Known ->
-                                                    "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(balanceAfter.amount)} د.ع"
-                                                else -> "—"
-                                            },
-                                            color = balanceColor,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
+                                        
+                                        HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+                                        
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = if (currentLang == "ar") "رصيد اللوحة بعد التجديد" else "Balance After Renewal",
+                                                color = Color(0xFF9CA3AF),
+                                                fontSize = 13.sp
+                                            )
+                                            val balanceColor = when (balanceAfter) {
+                                                is com.example.core.ledger.BalanceAfterRenewal.Result.Unknown -> Color.White.copy(alpha = 0.5f)
+                                                is com.example.core.ledger.BalanceAfterRenewal.Result.Known -> if (balanceAfter.amount >= 0) Color(0xFF34D399) else Color(0xFFF87171)
+                                            }
+                                            Text(
+                                                text = when {
+                                                    isLoadingApiData -> "..."
+                                                    balanceAfter is com.example.core.ledger.BalanceAfterRenewal.Result.Known ->
+                                                        "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(balanceAfter.amount)} د.ع"
+                                                    else -> "—"
+                                                },
+                                                color = balanceColor,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    } else {
+                                        HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = if (currentLang == "ar") "مزود الخدمة" else "Service Provider",
+                                                color = Color(0xFF9CA3AF),
+                                                fontSize = 13.sp
+                                            )
+                                            Text(
+                                                text = if (currentLang == "ar") "العامري (SAMM)" else "Alamiry (SAMM)",
+                                                color = Color(0xFFD1C4E9),
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -832,7 +867,11 @@ fun UserDetailScreenV2(
                                 shape = RoundedCornerShape(24.dp)
                             ) {
                                 Text(
-                                    text = if (currentLang == "ar") "تجديد" else "Renew",
+                                    text = if (currentOpProvider == com.example.core.model.SasProviders.EARTHLINK) {
+                                        if (currentLang == "ar") "تجديد (إيرثلنك)" else "Renew (EarthLink)"
+                                    } else {
+                                        if (currentLang == "ar") "تجديد (العامري)" else "Renew (ALAMIRY)"
+                                    },
                                     color = Color.Black,
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold
@@ -1963,7 +2002,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                         showEditProviderDialog = true
                                     }
                                 )
-                                val currentOpProvider = matchingAccount?.operationProvider ?: com.example.core.model.SasProviders.EARTHLINK
+                                val currentOpProvider = matchingAccount?.operationProvider ?: detail?.originProvider ?: viewModel.selectedProvider.value
                                 if (currentOpProvider == com.example.core.model.SasProviders.EARTHLINK) {
                                     HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.8.dp)
                                     DropdownMenuItem(
@@ -2561,7 +2600,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                         fontSize = 11.5.sp,
                                         color = Color.White.copy(alpha = 0.8f)
                                     )
-                                    val currentOpProvider = matchingAccount?.operationProvider ?: com.example.core.model.SasProviders.EARTHLINK
+                                    val currentOpProvider = matchingAccount?.operationProvider ?: detail?.originProvider ?: viewModel.selectedProvider.value
                                     Surface(
                                         shape = RoundedCornerShape(4.dp),
                                         color = if (currentOpProvider == com.example.core.model.SasProviders.ALAMIRY) Color(0xFF7C4DFF).copy(alpha = 0.35f) else Color.White.copy(alpha = 0.2f),
@@ -2645,7 +2684,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                         // --- GROUP 1: Status & Session Information ---
 
                         // Provider
-                        val currentOpProvider = matchingAccount?.operationProvider ?: com.example.core.model.SasProviders.EARTHLINK
+                        val currentOpProvider = matchingAccount?.operationProvider ?: detail?.originProvider ?: viewModel.selectedProvider.value
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -3033,7 +3072,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                         userId = user.userID,
                         viewModel = viewModel,
                         currentLang = currentLang,
-                        provider = matchingAccount?.operationProvider ?: com.example.core.model.SasProviders.EARTHLINK,
+                        provider = matchingAccount?.operationProvider ?: detail?.originProvider ?: viewModel.selectedProvider.value,
                         onClose = { showPassToolsDialog = false }
                     )
                 }

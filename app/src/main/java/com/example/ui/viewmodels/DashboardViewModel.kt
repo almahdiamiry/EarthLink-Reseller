@@ -260,7 +260,27 @@ class DashboardViewModel(
 
                         val elItems = elSubJob.await()
                         val sammItems = sammSubJob.await()
-                        _subscribersList.value = elItems + sammItems
+
+                        val activeLoginProvider = prefs.getLastSelectedLoginProvider() ?: com.example.core.model.SasProviders.EARTHLINK
+                        val primaryList = if (activeLoginProvider == com.example.core.model.SasProviders.ALAMIRY) sammItems else elItems
+                        val secondaryList = if (activeLoginProvider == com.example.core.model.SasProviders.ALAMIRY) elItems else sammItems
+
+                        val combined = ArrayList<com.example.core.model.UserListItem>(primaryList.size + secondaryList.size)
+                        val seenUsernames = HashSet<String>()
+
+                        for (item in primaryList) {
+                            val key = item.userID.trim().lowercase(java.util.Locale.US)
+                            if (key.isNotEmpty() && seenUsernames.add(key)) {
+                                combined.add(item)
+                            }
+                        }
+                        for (item in secondaryList) {
+                            val key = item.userID.trim().lowercase(java.util.Locale.US)
+                            if (key.isNotEmpty() && seenUsernames.add(key)) {
+                                combined.add(item)
+                            }
+                        }
+                        _subscribersList.value = combined
                     }
                 }
 

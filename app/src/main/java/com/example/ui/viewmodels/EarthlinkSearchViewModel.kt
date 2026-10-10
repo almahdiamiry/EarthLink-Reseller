@@ -468,10 +468,39 @@ class EarthlinkSearchViewModel(
                     val accountProvider = foundLocal?.operationProvider
                     val targetProvider = accountProvider ?: _selectedUser.value?.originProvider ?: currentProvider
                     val targetGateway = sasGatewayRouter.getGateway(targetProvider)
-                    val sub = targetGateway.getSubscriber(userIndex.toString())
+                    var sub = try {
+                        val specificId = if (targetProvider == com.example.core.model.SasProviders.EARTHLINK) {
+                            foundLocal?.ispUserIndex?.toString() ?: userIndex.takeIf { it > 0 }?.toString()
+                        } else {
+                            foundLocal?.ispSubscriberId ?: userIndex.takeIf { it > 0 }?.toString()
+                        }
+                        if (specificId != null) targetGateway.getSubscriber(specificId) else null
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+                        null
+                    }
+                    if (sub == null && !currentUserId.isNullOrBlank()) {
+                        try {
+                            val candidates = targetGateway.searchSubscribers(query = currentUserId, page = 1, pageSize = 20)
+                            val matched = candidates.find { it.username.equals(currentUserId, ignoreCase = true) }
+                            if (matched != null) {
+                                sub = try { targetGateway.getSubscriber(matched.subscriberId) ?: matched } catch (_: Exception) { matched }
+                            }
+                        } catch (e: Exception) {
+                            if (e is kotlinx.coroutines.CancellationException) throw e
+                        }
+                    }
                     if (sub != null) {
+                        val numIdx = sub.subscriberId.toIntOrNull() ?: userIndex
+                        val daysLeft = if (!sub.expiresAt.isNullOrBlank()) {
+                            val expTime = (parseIsoDate(sub.expiresAt) ?: parseBghDate(sub.expiresAt))?.time
+                            if (expTime != null) {
+                                ((expTime - System.currentTimeMillis()) / (1000 * 60 * 60 * 24.0)).coerceAtLeast(0.0)
+                            } else null
+                        } else null
+
                         val detail = com.example.core.model.UserDetail(
-                            userIndexLower = sub.subscriberId.toIntOrNull() ?: userIndex,
+                            userIndexLower = numIdx,
                             userIDLower = sub.username,
                             customerFullNameLower = sub.displayName,
                             customerNameLower = sub.displayName ?: sub.username,
@@ -482,18 +511,23 @@ class EarthlinkSearchViewModel(
                             accountStatusLower = sub.status,
                             expirationDateLower = sub.expiresAt,
                             accountExpirationDateLower = sub.expiresAt,
+                            activeDaysLeftLower = daysLeft,
                             originProvider = targetProvider
                         )
                         // A slower earlier request must not clobber a newer operator selection.
                         // The activity-scoped _selectedUser is shared across navigation, so a late
                         // response for an abandoned subscriber would otherwise resurrect it.
                         val stillSelected = _selectedUser.value
-                        if (stillSelected == null || stillSelected.userIndex == userIndex) {
+                        if (stillSelected == null || stillSelected.userIndex == userIndex || stillSelected.userID.equals(sub.username, ignoreCase = true)) {
                             _selectedUser.value = detail
                         }
-                        if (foundLocal != null && detail.userIndex > 0) {
+                        if (foundLocal != null) {
                             try {
-                                localAccountRepository.bindIspIdentity(foundLocal.id, detail.userIndex)
+                                if (targetProvider == com.example.core.model.SasProviders.EARTHLINK && detail.userIndex > 0) {
+                                    localAccountRepository.bindIspIdentity(foundLocal.id, detail.userIndex)
+                                } else if (targetProvider == com.example.core.model.SasProviders.ALAMIRY) {
+                                    localAccountRepository.saveAccount(foundLocal.copy(ispSubscriberId = sub.subscriberId))
+                                }
                             } catch (e: Exception) {
                                 if (e is kotlinx.coroutines.CancellationException) throw e
                                 Log.w("EarthlinkSearchVM", "ISP identity binding skipped: ${e.message}")
@@ -1289,12 +1323,20 @@ class EarthlinkSearchViewModel(
                     localAccountRepository.findActiveAccountsBySubscriberIdentity(userIndex, userId).firstOrNull()
                         ?: localAccountRepository.findActiveAccountByUsernameOrIdOneShot(userId)
                 }
-                val accountProvider = localAcc?.operationProvider ?: fallbackProvider
+                val accountProvider = localAcc?.operationProvider ?: _selectedUser.value?.originProvider ?: fallbackProvider
                 val targetGateway = sasGatewayRouter.getGateway(accountProvider)
-                val opResult = if (active) {
-                    targetGateway.activateSubscriber(userIndex.toString())
+                val subscriberId = if (accountProvider == com.example.core.model.SasProviders.ALAMIRY) {
+                    localAcc?.ispSubscriberId
+                        ?: if (userIndex > 0 && userIndex.toString() != userIndex.hashCode().toString()) userIndex.toString() else null
+                        ?: targetGateway.searchSubscribers(query = userId, page = 1, pageSize = 10).find { it.username.equals(userId, ignoreCase = true) }?.subscriberId
+                        ?: userIndex.toString()
                 } else {
-                    targetGateway.suspendSubscriber(userIndex.toString())
+                    localAcc?.ispUserIndex?.toString() ?: userIndex.toString()
+                }
+                val opResult = if (active) {
+                    targetGateway.activateSubscriber(subscriberId)
+                } else {
+                    targetGateway.suspendSubscriber(subscriberId)
                 }
                 val success = opResult.isApplied
                 if (success) {
@@ -1306,7 +1348,7 @@ class EarthlinkSearchViewModel(
                         userId,
                         if (active) "Resumed subscriber account" else "Suspended subscriber account"
                     )
-                    loadUserDetail(userIndex, _selectedUser.value?.userIDLower)
+                    loadUserDetail(userIndex, userId)
                 } else {
                     _error.value = "Status update failed."
                 }
@@ -1359,7 +1401,15 @@ class EarthlinkSearchViewModel(
                 } else null
                 val accountProvider = account?.operationProvider ?: localAcc?.operationProvider ?: fallbackProvider
                 val targetGateway = sasGatewayRouter.getGateway(accountProvider)
-                val opResult = targetGateway.changePlan(userIndex.toString(), accountIndex.toString())
+                val subscriberId = if (accountProvider == com.example.core.model.SasProviders.ALAMIRY) {
+                    (account ?: localAcc)?.ispSubscriberId
+                        ?: if (userIndex > 0 && userIndex.toString() != userIndex.hashCode().toString()) userIndex.toString() else null
+                        ?: targetGateway.searchSubscribers(query = userId, page = 1, pageSize = 10).find { it.username.equals(userId, ignoreCase = true) }?.subscriberId
+                        ?: userIndex.toString()
+                } else {
+                    (account ?: localAcc)?.ispUserIndex?.toString() ?: userIndex.toString()
+                }
+                val opResult = targetGateway.changePlan(subscriberId, accountIndex.toString())
                 val success = opResult.isApplied
                 if (success) {
                     val effectiveAccount = account ?: localAcc
@@ -1577,6 +1627,112 @@ class EarthlinkSearchViewModel(
             withContext(Dispatchers.IO) {
                 localAccountRepository.saveAccount(updated)
             }
+            _selectedProvider.value = newProvider
+
+            val username = account.earthlinkUsername ?: _selectedUser.value?.userID ?: ""
+            if (username.isNotBlank()) {
+                try {
+                    val targetGateway = sasGatewayRouter.getGateway(newProvider)
+                    var resolvedSub: com.example.core.network.SasSubscriberView? = null
+
+                    val specificId = if (newProvider == com.example.core.model.SasProviders.EARTHLINK) {
+                        updated.ispUserIndex?.toString()
+                    } else {
+                        updated.ispSubscriberId
+                    }
+                    if (!specificId.isNullOrBlank()) {
+                        try {
+                            val sub = targetGateway.getSubscriber(specificId)
+                            if (sub != null && sub.username.equals(username, ignoreCase = true)) {
+                                resolvedSub = sub
+                            }
+                        } catch (_: Exception) {}
+                    }
+
+                    if (resolvedSub == null) {
+                        try {
+                            val candidates = targetGateway.searchSubscribers(query = username, page = 1, pageSize = 20)
+                            val match = candidates.find { it.username.equals(username, ignoreCase = true) }
+                            if (match != null) {
+                                resolvedSub = try {
+                                    targetGateway.getSubscriber(match.subscriberId) ?: match
+                                } catch (_: Exception) {
+                                    match
+                                }
+                                if (newProvider == com.example.core.model.SasProviders.EARTHLINK) {
+                                    match.subscriberId.toIntOrNull()?.let { newIdx ->
+                                        withContext(Dispatchers.IO) {
+                                            localAccountRepository.bindIspIdentity(updated.id, newIdx)
+                                        }
+                                    }
+                                } else {
+                                    withContext(Dispatchers.IO) {
+                                        localAccountRepository.saveAccount(updated.copy(ispSubscriberId = match.subscriberId))
+                                    }
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
+
+                    if (resolvedSub != null) {
+                        if (newProvider == com.example.core.model.SasProviders.EARTHLINK) {
+                            val newIdx = resolvedSub.subscriberId.toIntOrNull() ?: updated.ispUserIndex
+                            val fullEl: com.example.core.model.UserDetail? = try {
+                                if (newIdx != null && newIdx > 0) gateway.getUserDetail(newIdx) else null
+                            } catch (_: Exception) { null }
+                            _selectedUser.value = fullEl?.copy(originProvider = newProvider) ?: com.example.core.model.UserDetail(
+                                userIndexLower = newIdx ?: resolvedSub.subscriberId.hashCode(),
+                                userIDLower = resolvedSub.username,
+                                customerFullNameLower = resolvedSub.displayName,
+                                customerNameLower = resolvedSub.displayName ?: resolvedSub.username,
+                                displayNameLower = resolvedSub.displayName,
+                                mobileNumberLower = resolvedSub.phone,
+                                packageNameLower = resolvedSub.planName,
+                                accountIndexLower = resolvedSub.planId?.toIntOrNull(),
+                                accountStatusLower = resolvedSub.status,
+                                expirationDateLower = resolvedSub.expiresAt,
+                                accountExpirationDateLower = resolvedSub.expiresAt,
+                                originProvider = newProvider
+                            )
+                        } else {
+                            val daysLeft = if (!resolvedSub.expiresAt.isNullOrBlank()) {
+                                val expTime = (parseIsoDate(resolvedSub.expiresAt) ?: parseBghDate(resolvedSub.expiresAt))?.time
+                                if (expTime != null) {
+                                    ((expTime - System.currentTimeMillis()) / (1000 * 60 * 60 * 24.0)).coerceAtLeast(0.0)
+                                } else null
+                            } else null
+
+                            _selectedUser.value = com.example.core.model.UserDetail(
+                                userIndexLower = resolvedSub.subscriberId.toIntOrNull() ?: resolvedSub.subscriberId.hashCode(),
+                                userIDLower = resolvedSub.username,
+                                customerFullNameLower = resolvedSub.displayName,
+                                customerNameLower = resolvedSub.displayName ?: resolvedSub.username,
+                                displayNameLower = resolvedSub.displayName,
+                                mobileNumberLower = resolvedSub.phone,
+                                packageNameLower = resolvedSub.planName,
+                                accountIndexLower = resolvedSub.planId?.toIntOrNull(),
+                                accountStatusLower = resolvedSub.status,
+                                expirationDateLower = resolvedSub.expiresAt,
+                                accountExpirationDateLower = resolvedSub.expiresAt,
+                                activeDaysLeftLower = daysLeft,
+                                originProvider = newProvider
+                            )
+                        }
+                    } else {
+                        _selectedUser.value = _selectedUser.value?.copy(originProvider = newProvider)
+                    }
+
+                    if (newProvider == com.example.core.model.SasProviders.EARTHLINK) {
+                        loadPackages()
+                    }
+                } catch (ex: Exception) {
+                    if (ex is kotlinx.coroutines.CancellationException) throw ex
+                    _selectedUser.value = _selectedUser.value?.copy(originProvider = newProvider)
+                }
+            } else {
+                _selectedUser.value = _selectedUser.value?.copy(originProvider = newProvider)
+            }
+
             _actionSuccess.value = if (prefs.getLanguage() == "ar") {
                 "تم تغيير مزود الخدمة بنجاح."
             } else {
@@ -1590,6 +1746,206 @@ class EarthlinkSearchViewModel(
             onError(msg)
         } finally {
             _isActionLoading.value = false
+        }
+    }
+
+    fun renewSammUser(
+        userId: String,
+        price: Double? = null,
+        note: String? = null,
+        isWasil: Boolean = false,
+        account: LocalAccount? = null,
+        onSuccessCallback: (suspend (String) -> Unit)? = null
+    ): kotlinx.coroutines.Job {
+        val lock = getAccountLock("${userId}:REFILL")
+
+        return viewModelScope.launch(Dispatchers.IO) {
+            if (!lock.tryLock()) {
+                Log.w("EarthlinkSearchVM", "Duplicate financial operation suppressed: account $userId has an active inflight operation")
+                _error.value = "Operation already in progress or awaiting verification."
+                return@launch
+            }
+            val opIntentId = java.util.UUID.randomUUID().toString()
+            val businessTxId = "charge_" + opIntentId
+            val finalNote = note ?: ""
+
+            try {
+                _isActionLoading.value = true
+                _error.value = null
+
+                val authoritativePrice = price ?: account?.currentPriceIqd ?: 40000.0
+                if (!authoritativePrice.isFinite() || authoritativePrice <= 0.0 ||
+                    authoritativePrice % 1.0 != 0.0 || authoritativePrice % 250.0 != 0.0) {
+                    _error.value = "Invalid, non-authoritative, or missing package price. Operation aborted."
+                    return@launch
+                }
+                val exactAmountIqd = authoritativePrice.toLong()
+
+                val effectiveAcc = if (account != null) {
+                    val existing = localAccountRepository.getAccountByIdOneShot(account.id)?.takeIf { !it.isHistoryOnlySubscriber }
+                    if (existing != null) {
+                        existing
+                    } else {
+                        val toSave = account.copy(currentPriceIqd = exactAmountIqd.toDouble(), operationProvider = com.example.core.model.SasProviders.ALAMIRY)
+                        localAccountRepository.saveAccount(toSave)
+                    }
+                } else {
+                    val existing = localAccountRepository.findActiveAccountByUsernameOrIdOneShot(userId)
+                    if (existing != null) {
+                        existing
+                    } else {
+                        val snapshotUser = _selectedUser.value?.takeIf { it.userID.equals(userId, ignoreCase = true) }
+                        val snapshotListItem = _usersList.value.find { it.userID.equals(userId, ignoreCase = true) }
+                        val displayName = snapshotUser?.customerFullName
+                            ?: snapshotListItem?.customerName
+                            ?: userId
+                        val phone = snapshotUser?.mobileNumber ?: snapshotListItem?.mobileNumber
+                        val pkgName = snapshotUser?.packageName ?: snapshotListItem?.packageName ?: "Default"
+                        val resolvedId = if (localAccountRepository.getAccountByIdOneShot(userId) == null) {
+                            userId
+                        } else {
+                            java.util.UUID.randomUUID().toString()
+                        }
+                        val newAcc = LocalAccount(
+                            id = resolvedId,
+                            earthlinkUsername = userId,
+                            displayName = displayName.ifBlank { userId },
+                            phone1 = phone,
+                            packageName = pkgName,
+                            currentPriceIqd = exactAmountIqd.toDouble(),
+                            debtIqd = 0.0,
+                            operationProvider = com.example.core.model.SasProviders.ALAMIRY
+                        )
+                        localAccountRepository.saveAccount(newAcc)
+                        newAcc
+                    }
+                }
+
+                val payloadJson = org.json.JSONObject().apply {
+                    put("userId", userId)
+                    put("localAccountId", effectiveAcc.id)
+                    put("price", authoritativePrice)
+                    put("note", finalNote)
+                    put("isWasil", isWasil)
+                    put("provider", com.example.core.model.SasProviders.ALAMIRY)
+                }.toString()
+
+                localLedgerRepository.recordPendingOperation(
+                    PendingExternalOperation(
+                        businessTransactionId = businessTxId,
+                        operationIntentId = opIntentId,
+                        accountId = userId,
+                        operationType = "REFILL",
+                        amountIqd = exactAmountIqd,
+                        payloadJson = payloadJson,
+                        status = "PENDING",
+                        dispatchClaimCount = 0,
+                        operationProvider = com.example.core.model.SasProviders.ALAMIRY
+                    )
+                )
+
+                val claimGranted = localLedgerRepository.claimDispatchAuthorization(businessTxId)
+                if (!claimGranted) {
+                    _error.value = "Operation is already processing or awaiting verification."
+                    return@launch
+                }
+
+                val sammGateway = sasGatewayRouter.getGateway(com.example.core.model.SasProviders.ALAMIRY)
+                var sammSubId = effectiveAcc.ispSubscriberId
+                if (sammSubId.isNullOrBlank()) {
+                    val searchCandidates = sammGateway.searchSubscribers(query = userId, page = 1, pageSize = 10)
+                    val match = searchCandidates.find { it.username.equals(userId, ignoreCase = true) }
+                    if (match != null) {
+                        sammSubId = match.subscriberId
+                        localAccountRepository.saveAccount(effectiveAcc.copy(ispSubscriberId = sammSubId))
+                    }
+                }
+                val subscriberIdToUse = sammSubId ?: userId
+
+                val opResult = sammGateway.renewSubscriber(subscriberIdToUse)
+                if (opResult.isApplied) {
+                    try {
+                        val chargeNote = finalNote.trim().ifEmpty { null }
+                        localLedgerRepository.resolvePendingOperationVerifiedSuccess(businessTxId, chargeNote)
+
+                        try {
+                            val chargeNoteToUse = finalNote.trim()
+                            val payNoteToUse = if (isWasil) finalNote.trim() else null
+                            localLedgerRepository.recordAccountRenewal(
+                                account = effectiveAcc,
+                                newPriceIqd = exactAmountIqd.toDouble(),
+                                chargeNote = chargeNoteToUse,
+                                payNote = payNoteToUse,
+                                idempotencyKey = businessTxId
+                            )
+                            syncRepo?.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
+                        } catch (e: Exception) {
+                            if (e is kotlinx.coroutines.CancellationException) throw e
+                            Log.e("EarthlinkSearchVM", "Failed to add ledger entry for SAMM renewal", e)
+                        }
+
+                        onSuccessCallback?.invoke(businessTxId)
+
+                        _actionSuccess.value = if (prefs.getLanguage() == "ar") {
+                            "تم تجديد اشتراك المشترك $userId بنجاح عبر العامري."
+                        } else {
+                            "Subscriber $userId was renewed successfully via ALAMIRY."
+                        }
+
+                        audit.logAction(
+                            action = "REFILL_USER",
+                            entityType = "USER",
+                            entityId = userId,
+                            summary = "Renewed subscription on SAMM at price $authoritativePrice. Note: $finalNote"
+                        )
+
+                        // Refresh subscriber detail from SAMM
+                        try {
+                            val refreshed = sammGateway.getSubscriber(subscriberIdToUse)
+                            if (refreshed != null) {
+                                val numIdx = refreshed.subscriberId.toIntOrNull() ?: refreshed.subscriberId.hashCode()
+                                _selectedUser.value = com.example.core.model.UserDetail(
+                                    userIndexLower = numIdx,
+                                    userIDLower = refreshed.username,
+                                    customerFullNameLower = refreshed.displayName,
+                                    customerNameLower = refreshed.displayName ?: refreshed.username,
+                                    displayNameLower = refreshed.displayName,
+                                    mobileNumberLower = refreshed.phone,
+                                    packageNameLower = refreshed.planName,
+                                    accountIndexLower = refreshed.planId?.toIntOrNull(),
+                                    accountStatusLower = refreshed.status,
+                                    expirationDateLower = refreshed.expiresAt,
+                                    accountExpirationDateLower = refreshed.expiresAt,
+                                    originProvider = com.example.core.model.SasProviders.ALAMIRY
+                                )
+                            }
+                        } catch (_: Exception) {}
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+                        Log.e("EarthlinkSearchVM", "Failed to execute atomic post-call materialization after SAMM renewal", e)
+                        _error.value = if (prefs.getLanguage() == "ar") {
+                            "تم تجديد الاشتراك ولكن فشل تسجيل القيد المحلي."
+                        } else {
+                            "Renewal succeeded on server but local record confirmation failed."
+                        }
+                    }
+                } else {
+                    val failureReason = when (opResult) {
+                        is com.example.core.network.SasOperationResult.Rejected -> opResult.reason
+                        is com.example.core.network.SasOperationResult.Inconclusive -> opResult.reason
+                        is com.example.core.network.SasOperationResult.Unsupported -> opResult.reason
+                        else -> "SAMM renewal failed"
+                    }
+                    localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, failureReason)
+                    _error.value = failureReason
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                _error.value = e.message ?: "Failed to renew SAMM subscriber"
+            } finally {
+                _isActionLoading.value = false
+                lock.unlock()
+            }
         }
     }
 }

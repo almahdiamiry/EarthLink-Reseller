@@ -256,15 +256,19 @@ fun DashboardScreen(
 
             // 1. Add live ISP / demo subscribers
             for (sub in subscribers) {
+                val normUser = sub.userID?.trim()?.lowercase(Locale.US)
+                if (!normUser.isNullOrBlank() && seenUsernames.contains(normUser)) {
+                    continue
+                }
                 val matchingAccount = localAccountMatcher.findMatchingByUsername(sub.userID) ?: localAccountMatcher.findMatching(sub)
                 if (matchingAccount?.isHistoryOnlySubscriber == true) {
                     continue
                 }
                 mergedList.add(sub)
-                sub.userID?.let { if (it.isNotBlank()) seenUsernames.add(it.lowercase(Locale.US)) }
+                if (!normUser.isNullOrBlank()) seenUsernames.add(normUser)
                 matchingAccount?.let { acc ->
                     seenAccountIds.add(acc.id)
-                    acc.earthlinkUsername?.let { if (it.isNotBlank()) seenUsernames.add(it.lowercase(Locale.US)) }
+                    acc.earthlinkUsername?.let { if (it.isNotBlank()) seenUsernames.add(it.trim().lowercase(Locale.US)) }
                 }
             }
 
