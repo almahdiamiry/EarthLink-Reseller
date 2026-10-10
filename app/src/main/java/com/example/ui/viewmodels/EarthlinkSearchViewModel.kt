@@ -499,6 +499,11 @@ class EarthlinkSearchViewModel(
                             } else null
                         } else null
 
+                        val resolvedPkg = sub.planName?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
+                            ?: _packages.value.find { it.accountIndex.toString() == sub.planId || it.accountIndex == sub.planId?.toIntOrNull() }?.accountName
+                            ?: foundLocal?.packageName?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
+                            ?: _selectedUser.value?.packageName?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
+
                         val detail = com.example.core.model.UserDetail(
                             userIndexLower = numIdx,
                             userIDLower = sub.username,
@@ -506,7 +511,7 @@ class EarthlinkSearchViewModel(
                             customerNameLower = sub.displayName ?: sub.username,
                             displayNameLower = sub.displayName,
                             mobileNumberLower = sub.phone,
-                            packageNameLower = sub.planName,
+                            packageNameLower = resolvedPkg,
                             accountIndexLower = sub.planId?.toIntOrNull(),
                             accountStatusLower = sub.status,
                             expirationDateLower = sub.expiresAt,
@@ -525,8 +530,14 @@ class EarthlinkSearchViewModel(
                             try {
                                 if (targetProvider == com.example.core.model.SasProviders.EARTHLINK && detail.userIndex > 0) {
                                     localAccountRepository.bindIspIdentity(foundLocal.id, detail.userIndex)
+                                    if (resolvedPkg != null && resolvedPkg != foundLocal.packageName) {
+                                        localAccountRepository.saveAccount(foundLocal.copy(packageName = resolvedPkg))
+                                    }
                                 } else if (targetProvider == com.example.core.model.SasProviders.ALAMIRY) {
-                                    localAccountRepository.saveAccount(foundLocal.copy(ispSubscriberId = sub.subscriberId))
+                                    localAccountRepository.saveAccount(foundLocal.copy(
+                                        ispSubscriberId = sub.subscriberId,
+                                        packageName = resolvedPkg ?: foundLocal.packageName
+                                    ))
                                 }
                             } catch (e: Exception) {
                                 if (e is kotlinx.coroutines.CancellationException) throw e
@@ -1628,110 +1639,7 @@ class EarthlinkSearchViewModel(
                 localAccountRepository.saveAccount(updated)
             }
             _selectedProvider.value = newProvider
-
-            val username = account.earthlinkUsername ?: _selectedUser.value?.userID ?: ""
-            if (username.isNotBlank()) {
-                try {
-                    val targetGateway = sasGatewayRouter.getGateway(newProvider)
-                    var resolvedSub: com.example.core.network.SasSubscriberView? = null
-
-                    val specificId = if (newProvider == com.example.core.model.SasProviders.EARTHLINK) {
-                        updated.ispUserIndex?.toString()
-                    } else {
-                        updated.ispSubscriberId
-                    }
-                    if (!specificId.isNullOrBlank()) {
-                        try {
-                            val sub = targetGateway.getSubscriber(specificId)
-                            if (sub != null && sub.username.equals(username, ignoreCase = true)) {
-                                resolvedSub = sub
-                            }
-                        } catch (_: Exception) {}
-                    }
-
-                    if (resolvedSub == null) {
-                        try {
-                            val candidates = targetGateway.searchSubscribers(query = username, page = 1, pageSize = 20)
-                            val match = candidates.find { it.username.equals(username, ignoreCase = true) }
-                            if (match != null) {
-                                resolvedSub = try {
-                                    targetGateway.getSubscriber(match.subscriberId) ?: match
-                                } catch (_: Exception) {
-                                    match
-                                }
-                                if (newProvider == com.example.core.model.SasProviders.EARTHLINK) {
-                                    match.subscriberId.toIntOrNull()?.let { newIdx ->
-                                        withContext(Dispatchers.IO) {
-                                            localAccountRepository.bindIspIdentity(updated.id, newIdx)
-                                        }
-                                    }
-                                } else {
-                                    withContext(Dispatchers.IO) {
-                                        localAccountRepository.saveAccount(updated.copy(ispSubscriberId = match.subscriberId))
-                                    }
-                                }
-                            }
-                        } catch (_: Exception) {}
-                    }
-
-                    if (resolvedSub != null) {
-                        if (newProvider == com.example.core.model.SasProviders.EARTHLINK) {
-                            val newIdx = resolvedSub.subscriberId.toIntOrNull() ?: updated.ispUserIndex
-                            val fullEl: com.example.core.model.UserDetail? = try {
-                                if (newIdx != null && newIdx > 0) gateway.getUserDetail(newIdx) else null
-                            } catch (_: Exception) { null }
-                            _selectedUser.value = fullEl?.copy(originProvider = newProvider) ?: com.example.core.model.UserDetail(
-                                userIndexLower = newIdx ?: resolvedSub.subscriberId.hashCode(),
-                                userIDLower = resolvedSub.username,
-                                customerFullNameLower = resolvedSub.displayName,
-                                customerNameLower = resolvedSub.displayName ?: resolvedSub.username,
-                                displayNameLower = resolvedSub.displayName,
-                                mobileNumberLower = resolvedSub.phone,
-                                packageNameLower = resolvedSub.planName,
-                                accountIndexLower = resolvedSub.planId?.toIntOrNull(),
-                                accountStatusLower = resolvedSub.status,
-                                expirationDateLower = resolvedSub.expiresAt,
-                                accountExpirationDateLower = resolvedSub.expiresAt,
-                                originProvider = newProvider
-                            )
-                        } else {
-                            val daysLeft = if (!resolvedSub.expiresAt.isNullOrBlank()) {
-                                val expTime = (parseIsoDate(resolvedSub.expiresAt) ?: parseBghDate(resolvedSub.expiresAt))?.time
-                                if (expTime != null) {
-                                    ((expTime - System.currentTimeMillis()) / (1000 * 60 * 60 * 24.0)).coerceAtLeast(0.0)
-                                } else null
-                            } else null
-
-                            _selectedUser.value = com.example.core.model.UserDetail(
-                                userIndexLower = resolvedSub.subscriberId.toIntOrNull() ?: resolvedSub.subscriberId.hashCode(),
-                                userIDLower = resolvedSub.username,
-                                customerFullNameLower = resolvedSub.displayName,
-                                customerNameLower = resolvedSub.displayName ?: resolvedSub.username,
-                                displayNameLower = resolvedSub.displayName,
-                                mobileNumberLower = resolvedSub.phone,
-                                packageNameLower = resolvedSub.planName,
-                                accountIndexLower = resolvedSub.planId?.toIntOrNull(),
-                                accountStatusLower = resolvedSub.status,
-                                expirationDateLower = resolvedSub.expiresAt,
-                                accountExpirationDateLower = resolvedSub.expiresAt,
-                                activeDaysLeftLower = daysLeft,
-                                originProvider = newProvider
-                            )
-                        }
-                    } else {
-                        _selectedUser.value = _selectedUser.value?.copy(originProvider = newProvider)
-                    }
-
-                    if (newProvider == com.example.core.model.SasProviders.EARTHLINK) {
-                        loadPackages()
-                    }
-                } catch (ex: Exception) {
-                    if (ex is kotlinx.coroutines.CancellationException) throw ex
-                    _selectedUser.value = _selectedUser.value?.copy(originProvider = newProvider)
-                }
-            } else {
-                _selectedUser.value = _selectedUser.value?.copy(originProvider = newProvider)
-            }
+            _selectedUser.value = _selectedUser.value?.copy(originProvider = newProvider)
 
             _actionSuccess.value = if (prefs.getLanguage() == "ar") {
                 "تم تغيير مزود الخدمة بنجاح."
@@ -1739,6 +1647,19 @@ class EarthlinkSearchViewModel(
                 "Account provider updated successfully."
             }
             onSuccess()
+
+            val username = account.earthlinkUsername ?: _selectedUser.value?.userID ?: ""
+            if (username.isNotBlank()) {
+                val userIndexToUse = if (newProvider == com.example.core.model.SasProviders.EARTHLINK) {
+                    updated.ispUserIndex ?: 0
+                } else {
+                    updated.ispSubscriberId?.toIntOrNull() ?: 0
+                }
+                loadUserDetail(userIndexToUse, knownUserId = username)
+                if (newProvider == com.example.core.model.SasProviders.EARTHLINK) {
+                    loadPackages()
+                }
+            }
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             val msg = e.message ?: "Failed to update account provider"

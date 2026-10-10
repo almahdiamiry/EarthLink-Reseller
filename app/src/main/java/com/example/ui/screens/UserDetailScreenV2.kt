@@ -286,6 +286,7 @@ fun UserDetailScreenV2(
         }
     }
     val matchingAccount by matchingAccountFlow.collectAsStateWithLifecycle(initialValue = null)
+    val packagesList by viewModel.packages.collectAsStateWithLifecycle()
 
     var showRefillDialog by rememberSaveable { mutableStateOf(false) }
     var showDepositDialog by rememberSaveable { mutableStateOf(false) }
@@ -392,7 +393,6 @@ fun UserDetailScreenV2(
     if (showRefillDialog) {
         val user = detail
         if (user != null) {
-            val packagesList by viewModel.packages.collectAsStateWithLifecycle()
             val matchedPackagePrice = remember(user.packageName, packagesList) {
                 val name = user.packageName?.trim()?.lowercase() ?: ""
                 val found = packagesList.find { it.accountName.trim().lowercase() == name }
@@ -2851,6 +2851,11 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                         }
 
                         // Package Name
+                        val resolvedPackageName = user.packageName?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
+                            ?: packagesList.find { it.accountIndex == user.accountIndex || it.accountIndex.toString() == user.accountIndex?.toString() }?.accountName
+                            ?: matchingAccount?.packageName?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
+                            ?: if (currentLang == "ar") "غير محدد" else "Unknown"
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -2864,7 +2869,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                 fontSize = 13.5.sp
                             )
                             Text(
-                                text = user.packageName ?: "Unknown",
+                                text = resolvedPackageName,
                                 color = Color(0xFF90CAF9),
                                 fontSize = 13.5.sp,
                                 fontWeight = FontWeight.Bold
@@ -3261,7 +3266,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                     val currentOpProvider = matchingAccount?.operationProvider
                         ?: user.originProvider
                         ?: viewModel.selectedProvider.value
-                    var targetProvider by rememberSaveable { mutableStateOf(currentOpProvider) }
+                    var targetProvider by remember(showEditProviderDialog, currentOpProvider) { mutableStateOf(currentOpProvider) }
                     var providerChangeError by remember { mutableStateOf<String?>(null) }
                     var isCheckingInFlight by remember { mutableStateOf(false) }
                     val coroutineScope = rememberCoroutineScope()
@@ -3407,7 +3412,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                                 onError = { err ->
                                                     providerChangeError = err
                                                 }
-                                            )
+                                            ).join()
                                         } finally {
                                             isCheckingInFlight = false
                                         }

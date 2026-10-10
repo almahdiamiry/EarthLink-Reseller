@@ -78,35 +78,54 @@ class SammGatewayImpl(
     // Domain Mapping Helpers (Ingress Normalization)
     // ========================================================================
 
-    private fun CustomerListItem.toSubscriberView(): SasSubscriberView {
+    private val plansCache = java.util.concurrent.ConcurrentHashMap<Int, String>()
+
+    private suspend fun resolvePlanName(planId: Int?): String? {
+        if (planId == null) return null
+        plansCache[planId]?.let { return it }
+        try {
+            val plans = listPlans()
+            for (p in plans) {
+                plansCache[p.id] = p.name
+            }
+            return plansCache[planId]
+        } catch (_: Exception) {
+            return null
+        }
+    }
+
+    private suspend fun CustomerListItem.toSubscriberView(): SasSubscriberView {
         val fullName = listOfNotNull(firstname?.trim(), lastname?.trim())
             .filter { it.isNotEmpty() }
             .joinToString(" ")
             .ifEmpty { null }
+        val resolvedPlanName = planName?.takeIf { it.isNotBlank() } ?: resolvePlanName(planId)
         return SasSubscriberView(
             subscriberId = id.toString(),
             username = username,
             displayName = fullName,
             status = status ?: "UNKNOWN",
             planId = planId?.toString(),
-            planName = planName,
+            planName = resolvedPlanName,
             expiresAt = expirationDate,
             phone = mobile
         )
     }
 
-    private fun CustomerResponse.toSubscriberView(): SasSubscriberView {
+    private suspend fun CustomerResponse.toSubscriberView(): SasSubscriberView {
         val fullName = listOfNotNull(firstname?.trim(), lastname?.trim())
             .filter { it.isNotEmpty() }
             .joinToString(" ")
             .ifEmpty { null }
+        val effectiveId = effectivePlanId ?: planId
+        val resolvedPlanName = planName?.takeIf { it.isNotBlank() } ?: resolvePlanName(effectiveId)
         return SasSubscriberView(
             subscriberId = id.toString(),
             username = username,
             displayName = fullName,
             status = status ?: "UNKNOWN",
-            planId = (effectivePlanId ?: planId)?.toString(),
-            planName = planName,
+            planId = effectiveId?.toString(),
+            planName = resolvedPlanName,
             expiresAt = expirationDate,
             phone = mobile
         )

@@ -89,18 +89,35 @@ class EarthlinkSasGatewayAdapter(
         )
     }
 
-    private fun UserDetail.toSasSubscriberView(): SasSubscriberView {
+    private val packagesCache = java.util.concurrent.ConcurrentHashMap<Int, String>()
+
+    private suspend fun resolvePackageName(accountIndex: Int?): String? {
+        if (accountIndex == null) return null
+        packagesCache[accountIndex]?.let { return it }
+        try {
+            val pkgs = delegate.getPackages()
+            for (p in pkgs) {
+                packagesCache[p.accountIndex] = p.accountName
+            }
+            return packagesCache[accountIndex]
+        } catch (_: Throwable) {
+            return null
+        }
+    }
+
+    private suspend fun UserDetail.toSasSubscriberView(): SasSubscriberView {
         val fullName = listOfNotNull(customerFullName?.trim(), displayNameLower?.trim(), displayNameUpper?.trim())
             .firstOrNull { it.isNotEmpty() }
         val statusStr = accountStatus ?: if (userActive == true) "Active" else if (userActive == false) "Suspended" else "UNKNOWN"
         val expiry = expirationDate ?: manualExpirationDate ?: accountExpirationDate
+        val resolvedPlanName = packageName?.takeIf { it.isNotBlank() } ?: resolvePackageName(accountIndex)
         return SasSubscriberView(
             subscriberId = userIndex.toString(),
             username = userID,
             displayName = fullName,
             status = statusStr,
             planId = accountIndex?.toString(),
-            planName = packageName,
+            planName = resolvedPlanName,
             expiresAt = expiry,
             phone = mobileNumber
         )
