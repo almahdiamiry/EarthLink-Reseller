@@ -265,9 +265,9 @@ fun SettingsScreen(
                     }
                 }
 
-                // 3. ALAMIRY (SAMM) GATEWAY (بوابة العامري / سام)
+                // 3. SAMM GATEWAY (بوابة سام)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SettingsSectionTitle(text = if (currentLang == "ar") "بوابة العامري (SAMM)" else "ALAMIRY (SAMM) GATEWAY")
+                    SettingsSectionTitle(text = if (currentLang == "ar") "بوابة سام" else "SAMM GATEWAY")
                     
                     SettingsCardGroup {
                         SammSettingsSection(

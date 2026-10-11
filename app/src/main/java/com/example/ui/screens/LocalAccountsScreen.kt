@@ -215,7 +215,7 @@ fun LocalAccountsScreen(
             FilterChip(
                 selected = filterProvider == SasProviders.ALAMIRY,
                 onClick = { viewModel.setFilterProvider(if (filterProvider == SasProviders.ALAMIRY) null else SasProviders.ALAMIRY) },
-                label = { Text("SAMM (Alamiry)") }
+                label = { Text("SAMM") }
             )
         }
 

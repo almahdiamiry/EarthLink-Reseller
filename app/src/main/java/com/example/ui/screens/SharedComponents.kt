@@ -755,7 +755,7 @@ fun ArabicSubscriberCard(
                                 val isAlamiry = effectiveProvider == SasProviders.ALAMIRY
                                 val badgeColor = if (isAlamiry) Color(0xFF5E5CE6) else Color(0xFF0A84FF)
                                 val badgeText = if (isAlamiry) {
-                                    if (lang == "ar") "العامري" else "SAMM"
+                                    if (lang == "ar") "سام" else "SAMM"
                                 } else {
                                     if (lang == "ar") "ايرثلنك" else "EarthLink"
                                 }

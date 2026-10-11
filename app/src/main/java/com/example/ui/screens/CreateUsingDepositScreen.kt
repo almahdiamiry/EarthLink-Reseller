@@ -219,7 +219,7 @@ fun CreateUsingDepositScreen(
                         ) {
                             listOf(
                                 com.example.core.model.SasProviders.EARTHLINK to if (isAr) "إيرثلنك\n(EARTHLINK)" else "EarthLink\n(EARTHLINK)",
-                                com.example.core.model.SasProviders.ALAMIRY to if (isAr) "العامري / سام\n(ALAMIRY)" else "Alamiry / SAMM\n(ALAMIRY)"
+                                com.example.core.model.SasProviders.ALAMIRY to if (isAr) "سام\n(SAMM)" else "SAMM\n(SAMM)"
                             ).forEach { (provKey, provLabel) ->
                                 val isSel = selectedProvider == provKey
                                 Surface(

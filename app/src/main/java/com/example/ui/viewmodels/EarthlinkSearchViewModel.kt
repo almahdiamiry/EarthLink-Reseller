@@ -1999,9 +1999,9 @@ val targetUserId = account?.earthlinkUsername ?: _selectedUser.value?.userID ?: 
                         onSuccessCallback?.invoke(businessTxId)
 
                         _actionSuccess.value = if (prefs.getLanguage() == "ar") {
-                            "تم تجديد اشتراك المشترك $userId بنجاح عبر العامري."
+                            "تم تجديد اشتراك المشترك $userId بنجاح."
                         } else {
-                            "Subscriber $userId was renewed successfully via ALAMIRY."
+                            "Subscriber $userId was renewed successfully."
                         }
 
                         audit.logAction(

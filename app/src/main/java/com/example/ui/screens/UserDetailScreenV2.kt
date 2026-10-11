@@ -783,7 +783,7 @@ fun UserDetailScreenV2(
                                                 fontSize = 13.sp
                                             )
                                             Text(
-                                                text = if (currentLang == "ar") "العامري (SAMM)" else "Alamiry (SAMM)",
+                                                text = if (currentLang == "ar") "سام" else "SAMM",
                                                 color = Color(0xFFD1C4E9),
                                                 fontSize = 13.sp,
                                                 fontWeight = FontWeight.Bold
@@ -893,11 +893,7 @@ fun UserDetailScreenV2(
                                 shape = RoundedCornerShape(24.dp)
                             ) {
                                 Text(
-                                    text = if (currentOpProvider == com.example.core.model.SasProviders.EARTHLINK) {
-                                        if (currentLang == "ar") "تجديد (إيرثلنك)" else "Renew (EarthLink)"
-                                    } else {
-                                        if (currentLang == "ar") "تجديد (العامري)" else "Renew (ALAMIRY)"
-                                    },
+                                    text = if (currentLang == "ar") "تجديد" else "Renew",
                                     color = Color.Black,
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold
@@ -3435,7 +3431,7 @@ if (showExtendDialog) {
 
                                 listOf(
                                     com.example.core.model.SasProviders.EARTHLINK to if (currentLang == "ar") "إيرثلنك (EARTHLINK)" else "EarthLink (EARTHLINK)",
-                                    com.example.core.model.SasProviders.ALAMIRY to if (currentLang == "ar") "العامري / سام (ALAMIRY)" else "Alamiry / SAMM (ALAMIRY)"
+                                    com.example.core.model.SasProviders.ALAMIRY to if (currentLang == "ar") "سام (SAMM)" else "SAMM (SAMM)"
                                 ).forEach { (provKey, provLabel) ->
                                     val isSelected = targetProvider == provKey
                                     Surface(
