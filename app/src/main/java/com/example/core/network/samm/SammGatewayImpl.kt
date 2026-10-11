@@ -157,8 +157,15 @@ override suspend fun extendSubscriberByDays(
         val currentExpiryMillis = current?.expirationDate
             ?.let { com.example.ui.screens.SubscriberDisplayRules.parseInstantMillis(it) }
         val base = maxOf(currentExpiryMillis ?: 0L, nowMs)
-        val fmt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
-        fmt.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        // SAMM only accepts a NAIVE datetime here. Probed against the live server:
+        //   ACCEPTED  "2026-10-21 19:02", "2026-10-21T19:02:00"
+        //   REJECTED  "...Z", "...+00:00", "...+03:00", and anything with fractional seconds
+        // Despite returning "+03:00" on read, a naive write is interpreted in the server's own
+        // timezone (Asia/Baghdad), so the arithmetic MUST be done on the Baghdad wall clock or the
+        // subscription is silently shortened by the UTC offset.
+        val baghdad = java.util.TimeZone.getTimeZone("Asia/Baghdad")
+        val fmt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US)
+        fmt.timeZone = baghdad
         val newExpiry = fmt.format(java.util.Date(base + days * 86_400_000L))
 
         safeApiCall { apiService.updateCustomer(customerId, CustomerUpdate(expirationDate = newExpiry)) }

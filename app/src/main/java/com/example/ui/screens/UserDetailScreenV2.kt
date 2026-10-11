@@ -46,6 +46,8 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.text.KeyboardActions
@@ -291,6 +293,20 @@ fun UserDetailScreenV2(
     var showRefillDialog by rememberSaveable { mutableStateOf(false) }
     var showDepositDialog by rememberSaveable { mutableStateOf(false) }
     var showExtendDialog by rememberSaveable { mutableStateOf(false) }
+
+    // Kept OUTSIDE the dialog's if-block and keyed on the flag, so that flipping the flag re-runs
+    // the initializer. Inside the block the key is always true, so rememberSaveable would restore
+    // the previously typed value from the SaveableStateRegistry instead of starting from 1.
+    // The default is pre-selected (TextRange(0, n)) so the first digit the operator taps REPLACES
+    // it: tapping "3" must give 3 days, not 13.
+    var extendDaysField by rememberSaveable(showExtendDialog, stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(
+            TextFieldValue(
+                text = com.example.ui.viewmodels.EarthlinkSearchViewModel.DEFAULT_EXTEND_DAYS.toString(),
+                selection = TextRange(0, 1)
+            )
+        )
+    }
     var showPassToolsDialog by rememberSaveable { mutableStateOf(false) }
     var showDebtDialog by rememberSaveable { mutableStateOf(false) }
     var showHistoryDialog by rememberSaveable { mutableStateOf(false) }
@@ -1230,8 +1246,12 @@ if (showExtendDialog) {
         if (user != null) {
             val focusManager = LocalFocusManager.current
             val keyboardController = LocalSoftwareKeyboardController.current
-            var daysInput by rememberSaveable { mutableStateOf("1") }
-            var isSubmitting by rememberSaveable { mutableStateOf(false) }
+            // Keyed on showExtendDialog (declared above) so every opening starts from the default.
+            val daysField = extendDaysField
+            val daysInput = daysField.text
+            // Plain remember, not rememberSaveable: a restored "submitting" flag from a previous opening
+            // would leave the OK button permanently disabled.
+            var isSubmitting by remember { mutableStateOf(false) }
 
             val focusRequester = remember { FocusRequester() }
             LaunchedEffect(Unit) {
@@ -1260,8 +1280,18 @@ if (showExtendDialog) {
                             color = Color.White.copy(alpha = 0.85f)
                         )
                         OutlinedTextField(
-                            value = daysInput,
-                            onValueChange = { daysInput = it.filter { ch -> ch.isDigit() }.take(3) },
+                            value = daysField,
+                            onValueChange = { updated ->
+                                val digits = updated.text.filter { it.isDigit() }.take(3)
+                                extendDaysField = if (digits == updated.text) {
+                                    updated
+                                } else {
+                                    TextFieldValue(
+                                        text = digits,
+                                        selection = TextRange(digits.length)
+                                    )
+                                }
+                            },
                             singleLine = true,
                             isError = daysInput.toIntOrNull() == null || (daysInput.toIntOrNull() ?: 0) < 1,
                             keyboardOptions = KeyboardOptions(
@@ -1272,10 +1302,26 @@ if (showExtendDialog) {
                             label = {
                                 Text(
                                     if (currentLang == "ar") "عدد الأيام" else "Days",
-                                    color = Color.White.copy(alpha = 0.7f)
+                                    color = Color(0xFF9CA3AF)
                                 )
                             },
-                            modifier = Modifier.focusRequester(focusRequester)
+                            // Without explicit colours the field inherits the light-theme defaults,
+                            // which render the value light grey on this dark surface - unreadable.
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                cursorColor = Color(0xFF90CAF9),
+                                focusedBorderColor = Color(0xFF3B82F6),
+                                unfocusedBorderColor = Color(0xFF374151),
+                                focusedLabelColor = Color(0xFF90CAF9),
+                                unfocusedLabelColor = Color(0xFF9CA3AF),
+                                focusedContainerColor = Color(0xFF1F2937),
+                                unfocusedContainerColor = Color(0xFF1F2937)
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(focusRequester)
                         )
                     }
                 },
@@ -1297,9 +1343,18 @@ if (showExtendDialog) {
                             showExtendDialog = false
                             viewModel.extendUser(userIndex, user.userID, days = days)
                         },
-                        enabled = !isSubmitting
+                        enabled = !isSubmitting,
+                        modifier = Modifier.height(48.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF90CAF9),
+                            contentColor = Color(0xFF0B1220)
+                        ),
+                        shape = RoundedCornerShape(24.dp)
                     ) {
-                        Text(if (currentLang == "ar") "تأكيد" else "OK")
+                        Text(
+                            text = if (currentLang == "ar") "تمديد $daysInput يوم" else "Extend $daysInput day(s)",
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 },
                 dismissButton = {

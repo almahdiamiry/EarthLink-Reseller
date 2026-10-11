@@ -8,6 +8,7 @@ import com.example.core.network.SasNotFoundException
 import com.example.core.network.SasOperationResult
 import com.example.core.network.SasVerificationOutcome
 import kotlinx.coroutines.test.runTest
+import com.example.core.network.samm.takeRequestOrFail
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
@@ -90,7 +91,7 @@ class SammGatewayImplTest {
         val isConnected = gateway.checkConnection()
 
         assertTrue("Expected checkConnection to return true on HTTP 200", isConnected)
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("GET", recorded.method)
         assertEquals("/api/v1/me", recorded.path)
     }
@@ -167,7 +168,7 @@ class SammGatewayImplTest {
         assertEquals("2026-11-01T00:00:00Z", subscriber.expiresAt)
         assertEquals("+9647801234567", subscriber.phone)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("GET", recorded.method)
         assertTrue(recorded.path!!.contains("username=baghdad_user01"))
         assertFalse(recorded.path!!.contains("search="))
@@ -190,7 +191,7 @@ class SammGatewayImplTest {
         val results = gateway.searchSubscribers("Ali Hassan")
 
         assertTrue(results.isEmpty())
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertTrue(recorded.path!!.contains("search=Ali%20Hassan") || recorded.path!!.contains("search=Ali+Hassan"))
     }
 
@@ -252,7 +253,7 @@ class SammGatewayImplTest {
         assertEquals("3", subscriber.planId)
         assertEquals("+9647700000000", subscriber.phone)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("GET", recorded.method)
         assertEquals("/api/v1/customers/2055", recorded.path)
     }
@@ -360,7 +361,7 @@ class SammGatewayImplTest {
         val applied = result as SasOperationResult.Applied
         assertEquals("3001", applied.evidence)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("POST", recorded.method)
         assertEquals("/api/v1/customers", recorded.path)
         val body = recorded.body.readUtf8()
@@ -411,7 +412,7 @@ class SammGatewayImplTest {
         val result = gateway.suspendSubscriber("100")
 
         assertTrue(result is SasOperationResult.Applied)
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("POST", recorded.method)
         assertEquals("/api/v1/customers/100/suspend", recorded.path)
     }
@@ -449,7 +450,7 @@ class SammGatewayImplTest {
         val result = gateway.activateSubscriber("100")
 
         assertTrue(result is SasOperationResult.Applied)
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("POST", recorded.method)
         assertEquals("/api/v1/customers/100/activate", recorded.path)
     }
@@ -486,7 +487,7 @@ class SammGatewayImplTest {
         val applied = result as SasOperationResult.Applied
         assertEquals("2026-12-01T00:00:00Z", applied.evidence)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("POST", recorded.method)
         assertEquals("/api/v1/customers/100/renew?generate_invoice=false", recorded.path)
     }
@@ -509,7 +510,7 @@ class SammGatewayImplTest {
         val result = gateway.changePlan("100", "15")
 
         assertTrue(result is SasOperationResult.Applied)
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("POST", recorded.method)
         assertEquals("/api/v1/customers/100/assign-plan", recorded.path)
         val body = recorded.body.readUtf8()
@@ -551,7 +552,7 @@ class SammGatewayImplTest {
         val result = gateway.changePassword("100", "super_secret_99")
 
         assertTrue(result is SasOperationResult.Applied)
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("PATCH", recorded.method)
         assertEquals("/api/v1/customers/100", recorded.path)
         val body = recorded.body.readUtf8()
@@ -589,7 +590,7 @@ class SammGatewayImplTest {
         val outcome = gateway.verifyOperationOutcome("ACTIVATION", "verified_user", null)
 
         assertEquals(SasVerificationOutcome.VERIFIED_SUCCESS, outcome)
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertTrue(recorded.path!!.contains("username=verified_user"))
     }
 

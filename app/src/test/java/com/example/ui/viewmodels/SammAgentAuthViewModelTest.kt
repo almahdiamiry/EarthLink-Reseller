@@ -22,6 +22,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import com.example.core.network.samm.takeRequestOrFail
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
@@ -169,7 +170,7 @@ class SammAgentAuthViewModelTest {
         assertTrue("SAMM must be configured", prefs.isSammConfigured())
 
         // Verifies network request to /api/v1/me
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("GET", recorded.method)
         assertEquals("/api/v1/me", recorded.path)
         assertEquals("Bearer samm_valid_secret_token", recorded.getHeader("Authorization"))

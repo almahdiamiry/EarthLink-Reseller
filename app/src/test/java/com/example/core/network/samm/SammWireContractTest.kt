@@ -2,6 +2,8 @@ package com.example.core.network.samm
 
 import kotlinx.coroutines.test.runTest
 import java.util.concurrent.TimeUnit
+import com.example.core.network.SasGatewayException
+import com.example.core.network.samm.takeRequestOrFail
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
@@ -76,7 +78,7 @@ class SammWireContractTest {
         assertEquals(120, body?.rateLimitPerMin)
         assertEquals("5.1.15", body?.serverVersion)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("GET", recorded.method)
         assertEquals("/api/v1/me", recorded.path)
         assertEquals("Bearer $testToken", recorded.getHeader("Authorization"))
@@ -126,7 +128,7 @@ class SammWireContractTest {
         assertEquals("user_baghdad_01", item?.username)
         assertEquals("active", item?.status)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("GET", recorded.method)
         assertEquals("/api/v1/customers?search=baghdad&limit=20&offset=0", recorded.path)
         assertEquals("Bearer $testToken", recorded.getHeader("Authorization"))
@@ -165,7 +167,7 @@ class SammWireContractTest {
         assertEquals(105, response.body()?.id)
         assertEquals("user_baghdad_01", response.body()?.username)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("GET", recorded.method)
         assertEquals("/api/v1/customers/105", recorded.path)
     }
@@ -208,7 +210,7 @@ class SammWireContractTest {
         assertEquals(201, response.code())
         assertEquals(106, response.body()?.id)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("POST", recorded.method)
         assertEquals("/api/v1/customers", recorded.path)
 
@@ -251,7 +253,7 @@ class SammWireContractTest {
         assertTrue(response.isSuccessful)
         assertEquals("AhmedUpdated", response.body()?.firstname)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("PATCH", recorded.method)
         assertEquals("/api/v1/customers/105", recorded.path)
 
@@ -275,7 +277,7 @@ class SammWireContractTest {
         assertTrue(response.isSuccessful)
         assertEquals("suspended", response.body()?.status)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("POST", recorded.method)
         assertEquals("/api/v1/customers/105/suspend", recorded.path)
     }
@@ -295,7 +297,7 @@ class SammWireContractTest {
         assertTrue(response.isSuccessful)
         assertEquals("active", response.body()?.status)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("POST", recorded.method)
         assertEquals("/api/v1/customers/105/activate", recorded.path)
     }
@@ -328,7 +330,7 @@ class SammWireContractTest {
         assertEquals(105, renewBody?.id)
         assertEquals("2026-11-01T10:00:00Z", renewBody?.newExpiration)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("POST", recorded.method)
         assertEquals("/api/v1/customers/105/renew?generate_invoice=false", recorded.path)
     }
@@ -366,7 +368,7 @@ class SammWireContractTest {
         assertTrue(response.isSuccessful)
         assertEquals(15, response.body()?.planId)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("POST", recorded.method)
         assertEquals("/api/v1/customers/105/assign-plan", recorded.path)
 
@@ -406,7 +408,7 @@ class SammWireContractTest {
         assertEquals(1, list?.size)
         assertEquals("Standard 10M", list?.first()?.name)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("GET", recorded.method)
         assertEquals("/api/v1/plans?enabled_only=true", recorded.path)
     }
@@ -447,7 +449,7 @@ class SammWireContractTest {
         assertEquals("reset_limit", cmd?.action)
         assertTrue(cmd?.applied == true)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("GET", recorded.method)
         assertEquals("/api/v1/commands?limit=50&offset=0", recorded.path)
     }
@@ -469,7 +471,7 @@ class SammWireContractTest {
         val response = customClientService.getMe()
         assertTrue(response.isSuccessful)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("/api/v1/me", recorded.path)
         assertFalse(
             "Must never contain duplicate /api/v1/api/v1",
@@ -494,7 +496,7 @@ class SammWireContractTest {
 
         apiService.listCustomers(limit = 200, offset = 400)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         val path = recorded.path.orEmpty()
         assertTrue("limit must be sent, got '$path'", path.contains("limit=200"))
         assertTrue("offset must be sent, got '$path'", path.contains("offset=400"))
@@ -515,7 +517,7 @@ class SammWireContractTest {
         gateway.searchSubscribers(query = "abc", page = 3, pageSize = 50)
 
         // page 3 of 50 -> offset (3-1)*50 = 100, limit 50
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         val path = recorded.path.orEmpty()
         assertTrue("page 3 at size 50 must offset by 100, got '$path'", path.contains("offset=100"))
         assertTrue("page size must become limit, got '$path'", path.contains("limit=50"))
@@ -537,7 +539,7 @@ class SammWireContractTest {
         )
         gateway.searchSubscribers(query = "", page = 1, pageSize = 5000)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         val path = recorded.path.orEmpty()
         assertTrue("Oversized limit must be clamped to 1000, got '$path'", path.contains("limit=1000"))
         assertFalse("Must never send limit=5000, got '$path'", path.contains("limit=5000"))
@@ -651,7 +653,7 @@ class SammWireContractTest {
 
         assertTrue(gateway.changePlan("326", "6").isApplied)
 
-        val body = mockServer.takeRequest().body.readUtf8()
+        val body = mockServer.takeRequestOrFail().body.readUtf8()
         assertTrue("extend_expiration must be explicitly false, body=$body", body.contains("\"extend_expiration\":false"))
         assertTrue("keep_expiration must be explicitly true, body=$body", body.contains("\"keep_expiration\":true"))
         assertTrue("when must be explicitly 'now', body=$body", body.contains("\"when\":\"now\""))
@@ -700,8 +702,14 @@ class SammWireContractTest {
         assertEquals("/api/v1/customers/326", request.path)
         val body = request.body.readUtf8()
         assertTrue(
-            "2026-10-20 plus 5 days is 2026-10-25, body=$body",
-            body.contains("2026-10-25")
+            "2026-10-25 00:00Z is 03:00 in Baghdad, so +5 days is 2026-10-25 03:00, body=$body",
+            body.contains("\"2026-10-25 03:00\"")
+        )
+        // Probed live against SAMM: it accepts ONLY a naive datetime. "Z", "+00:00" and "+03:00"
+        // are all rejected with "expiration_date must be ISO 8601 or 'YYYY-MM-DD HH:MM'".
+        assertFalse(
+            "SAMM rejects any timezone designator, body=$body",
+            Regex("""\"expiration_date\":\"[^\"]*(Z|[+-]\d{2}:?\d{2})[^\"]*\"""").containsMatchIn(body)
         )
     }
 
@@ -730,8 +738,28 @@ class SammWireContractTest {
 
         val body = patchRequest().body.readUtf8()
         assertTrue(
-            "An expired subscriber must be brought forward to now+1 day, body=$body",
-            body.contains("2026-10-11T00:00:00Z")
+            "A lapsed subscriber must be brought forward to now+1 day in Baghdad, body=$body",
+            body.contains("\"2026-10-11 03:00\"")
+        )
+    }
+
+    @Test
+    fun extendSubscriberByDays_rejectsANonNumericSubscriberIdInsteadOfPretending() = runTest {
+        // The caller used to fall back to the username ("admin@sacx") when it could not resolve a
+        // customer id, and parseCustomerId then threw an opaque parse error. It must fail loudly.
+        val gateway = SammGatewayImpl(apiService)
+
+        val thrown = try {
+            gateway.extendSubscriberByDays("admin@sacx", 3)
+            null
+        } catch (e: SasGatewayException) {
+            e
+        }
+
+        assertNotNull("A username must be rejected, not silently accepted", thrown)
+        assertTrue(
+            "The message must name the offending value, got: ${thrown?.message}",
+            thrown?.message?.contains("admin@sacx") == true
         )
     }
 
@@ -762,7 +790,7 @@ class SammWireContractTest {
 
         assertTrue(gateway.updateDisplayName("326", "Ahmad Karim").isApplied)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("PATCH", recorded.method)
         assertEquals("/api/v1/customers/326", recorded.path)
         val body = recorded.body.readUtf8()
@@ -783,7 +811,7 @@ class SammWireContractTest {
 
         assertTrue(gateway.updateDisplayName("326", "Prince").isApplied)
 
-        val body = mockServer.takeRequest().body.readUtf8()
+        val body = mockServer.takeRequestOrFail().body.readUtf8()
         assertTrue("firstname must carry the whole name, body=$body", body.contains("\"firstname\":\"Prince\""))
         assertFalse("lastname must be omitted when absent, body=$body", body.contains("lastname"))
     }

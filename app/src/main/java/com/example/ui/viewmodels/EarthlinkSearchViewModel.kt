@@ -1382,6 +1382,7 @@ class EarthlinkSearchViewModel(
                     return@launch
                 }
 
+                var failureReason: String? = null
                 val success = runCatching {
                     val account = localAccountRepository.findAccountByUsernameOrIdOneShot(userId)
                     val accountProvider = account?.operationProvider ?: _selectedProvider.value
@@ -1395,13 +1396,18 @@ class EarthlinkSearchViewModel(
                         // count, so it cannot satisfy "give them N days". extendSubscriberByDays
                         // sets the absolute expiry instead.
                         val targetGateway = sasGatewayRouter.getGateway(accountProvider)
-                        val subscriberId = account?.ispSubscriberId
+                        val subscriberId = account?.ispSubscriberId?.takeIf { it.isNotBlank() }
                             ?: targetGateway.searchSubscribers(query = userId, page = 1, pageSize = 5)
-                                .firstOrNull { it.username.equals(userId, ignoreCase = true) }?.subscriberId
-                            ?: userId
+                                .firstOrNull { it.username.equals(userId, ignoreCase = true) }
+                                ?.subscriberId
+                            ?: throw SasBusinessException(
+                                statusCode = null,
+                                errorMessage = "Could not resolve the $accountProvider customer id for $userId"
+                            )
                         targetGateway.extendSubscriberByDays(subscriberId, days).isApplied
                     }
-                }.getOrElse { e ->
+                }.onFailure { e -> if (e !is kotlinx.coroutines.CancellationException) failureReason = e.message }
+                .getOrElse { e ->
                     if (e is kotlinx.coroutines.CancellationException) throw e
                     Log.e("EarthlinkSearchVM", "EXTEND failed: ${e.message}")
                     false
@@ -1412,8 +1418,16 @@ class EarthlinkSearchViewModel(
                     audit.logAction("EXTEND_USER", "USER", userId, "Extended subscriber duration")
                     loadUserDetail(userIndex, _selectedUser.value?.userIDLower)
                 } else {
-                    localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, "Extension failed on server")
-                    _error.value = "Extension failed."
+                    // Surface the real reason. A generic "Extension failed" is undiagnosable in the
+                    // field and turns an intermittent provider error into guesswork.
+                    val reason = failureReason?.takeIf { it.isNotBlank() }
+                        ?: "the provider did not confirm the change"
+                    localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, reason)
+                    _error.value = if (prefs.getLanguage() == "ar") {
+                        "فشل التمديد: $reason"
+                    } else {
+                        "Extension failed: $reason"
+                    }
                 }
             } catch (e: EarthlinkBusinessException) {
                 localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, e.errorMessage)
@@ -1755,10 +1769,13 @@ val targetUserId = account?.earthlinkUsername ?: _selectedUser.value?.userID ?: 
                 ?.operationProvider ?: _selectedProvider.value
             val targetGateway = sasGatewayRouter.getGateway(accountProvider)
             val subscriberId = if (accountProvider == com.example.core.model.SasProviders.ALAMIRY) {
-                account?.ispSubscriberId
+                account?.ispSubscriberId?.takeIf { it.isNotBlank() }
                     ?: targetGateway.searchSubscribers(query = targetUserId, page = 1, pageSize = 5)
                         .firstOrNull { it.username.equals(targetUserId, ignoreCase = true) }?.subscriberId
-                    ?: targetUserId
+                    ?: throw SasBusinessException(
+                        statusCode = null,
+                        errorMessage = "Could not resolve the $accountProvider customer id for $targetUserId"
+                    )
             } else {
                 account?.ispUserIndex?.toString() ?: userIndex.toString()
             }
