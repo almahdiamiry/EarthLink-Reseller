@@ -534,7 +534,9 @@ class EarthlinkSearchViewModelSeamTest {
         assertEquals(1, testGateway.updateDisplayNameCalls.get())
 
         // 3. UI error set, success is null
-        assertEquals("Failed to update display name on Earthlink.", vm.error.value)
+        // The message names the provider that failed. It used to hardcode "Earthlink", which
+    // reported an Alamiry failure as an EarthLink failure.
+    assertEquals("Failed to update the display name on EARTHLINK.", vm.error.value)
         assertNull(vm.actionSuccess.value)
 
         // 4. Audit must NOT be logged on remote failure

@@ -315,6 +315,29 @@ interface SasGateway {
     suspend fun listPackages(): List<AccountPackage> = emptyList()
 
     /**
+     * Renames a subscriber at the provider.
+     *
+     * Defaults to Unsupported so a provider that cannot rename cannot silently accept one. This
+     * exists on the seam because the provider-neutral UI offers the action for every provider:
+     * without it, an Alamiry rename fell through to the EarthLink gateway and wrote the SAMM
+     * subscriber id to the wrong ISP.
+     */
+    suspend fun updateDisplayName(subscriberId: String, displayName: String): SasOperationResult =
+        SasOperationResult.Unsupported("Renaming a subscriber is not supported by this provider")
+
+    /**
+     * Extends a subscriber's expiry by an exact number of days.
+     *
+     * Defaults to Unsupported. A provider whose extension is a deposit-authorised operation with
+     * its own duration semantics (EarthLink) must keep using that path rather than this one.
+     *
+     * [days] must be strictly positive; zero or negative is rejected rather than silently
+     * shortening a subscriber's expiry.
+     */
+    suspend fun extendSubscriberByDays(subscriberId: String, days: Int, nowMs: Long = System.currentTimeMillis()): SasOperationResult =
+        SasOperationResult.Unsupported("Extending by a number of days is not supported by this provider")
+
+    /**
      * The currency label this provider reports (e.g. "IQD"), or null when it does not report one.
      * Display must follow the provider rather than assume a currency.
      */

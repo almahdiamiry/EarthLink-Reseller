@@ -45,6 +45,8 @@ class EarthlinkSearchViewModel(
     )
 
     companion object {
+        /** An extension is one day unless the operator asks for more. */
+        const val DEFAULT_EXTEND_DAYS = 1
         private val isoFormat = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
         private val bghFormat = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("Asia/Baghdad") }
         private val bghFormatFull = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("Asia/Baghdad") }
@@ -1330,7 +1332,12 @@ class EarthlinkSearchViewModel(
         }
     }
 
-    fun extendUser(userIndex: Int, userId: String, intentId: String? = null): kotlinx.coroutines.Job {
+    fun extendUser(
+        userIndex: Int,
+        userId: String,
+        intentId: String? = null,
+        days: Int = DEFAULT_EXTEND_DAYS
+    ): kotlinx.coroutines.Job {
         val lock = getAccountLock("${userId}:EXTEND")
 
         return viewModelScope.launch(Dispatchers.IO) {
@@ -1375,7 +1382,30 @@ class EarthlinkSearchViewModel(
                     return@launch
                 }
 
-                val success = gateway.extendUser(userIndex)
+                val success = runCatching {
+                    val account = localAccountRepository.findAccountByUsernameOrIdOneShot(userId)
+                    val accountProvider = account?.operationProvider ?: _selectedProvider.value
+                    if (accountProvider == com.example.core.model.SasProviders.EARTHLINK) {
+                        // EarthLink renewal is deposit-authorized and lives outside the SAS seam
+                        // (EarthlinkSasGatewayAdapter.renewSubscriber fails closed by contract). It
+                        // also has its own duration, so it takes no day count.
+                        gateway.extendUser(userIndex)
+                    } else {
+                        // SAMM's /renew applies the PLAN's duration (a month) and accepts no day
+                        // count, so it cannot satisfy "give them N days". extendSubscriberByDays
+                        // sets the absolute expiry instead.
+                        val targetGateway = sasGatewayRouter.getGateway(accountProvider)
+                        val subscriberId = account?.ispSubscriberId
+                            ?: targetGateway.searchSubscribers(query = userId, page = 1, pageSize = 5)
+                                .firstOrNull { it.username.equals(userId, ignoreCase = true) }?.subscriberId
+                            ?: userId
+                        targetGateway.extendSubscriberByDays(subscriberId, days).isApplied
+                    }
+                }.getOrElse { e ->
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    Log.e("EarthlinkSearchVM", "EXTEND failed: ${e.message}")
+                    false
+                }
                 if (success) {
                     localLedgerRepository.resolvePendingOperationVerifiedSuccess(businessTxId, "[EXTEND]")
                     _actionSuccess.value = "Subscription for $userId extended successfully."
@@ -1707,19 +1737,33 @@ class EarthlinkSearchViewModel(
                         localAccountRepository.saveAccount(updated)
                     }
                 }
-                val targetUserId = account?.earthlinkUsername ?: _selectedUser.value?.userID ?: ""
-                if (isSyntheticLocalIspIdentity(userIndex, targetUserId)) {
-                    _actionSuccess.value = if (prefs.getLanguage() == "ar") {
-                        "تم تعديل اسم المشترك بنجاح."
-                    } else {
-                        "Subscriber display name updated successfully."
-                    }
-                    audit.logAction("UPDATE_DISPLAY_NAME", "USER", userIndex.toString(), "Updated display name to $newName")
-                    loadUserDetail(userIndex, targetUserId)
-                    return@launch
+val targetUserId = account?.earthlinkUsername ?: _selectedUser.value?.userID ?: ""
+            if (isSyntheticLocalIspIdentity(userIndex, targetUserId)) {
+                _actionSuccess.value = if (prefs.getLanguage() == "ar") {
+                    "تم تحديث اسم المشترك بنجاح."
+                } else {
+                    "Subscriber display name updated successfully."
                 }
-                val success = gateway.updateUserDisplayName(userIndex, newName)
-                if (success) {
+                audit.logAction("UPDATE_DISPLAY_NAME", "USER", userIndex.toString(), "Updated display name to $newName")
+                loadUserDetail(userIndex, targetUserId)
+                return@launch
+            }
+
+            // Route through the provider seam: this action is offered for every provider, and
+            // calling the EarthLink gateway directly sent Alamiry subscriber ids to the wrong ISP.
+            val accountProvider = (account ?: localAccountRepository.findAccountByUsernameOrIdOneShot(targetUserId))
+                ?.operationProvider ?: _selectedProvider.value
+            val targetGateway = sasGatewayRouter.getGateway(accountProvider)
+            val subscriberId = if (accountProvider == com.example.core.model.SasProviders.ALAMIRY) {
+                account?.ispSubscriberId
+                    ?: targetGateway.searchSubscribers(query = targetUserId, page = 1, pageSize = 5)
+                        .firstOrNull { it.username.equals(targetUserId, ignoreCase = true) }?.subscriberId
+                    ?: targetUserId
+            } else {
+                account?.ispUserIndex?.toString() ?: userIndex.toString()
+            }
+            val opResult = targetGateway.updateDisplayName(subscriberId, newName)
+            if (opResult.isApplied) {
                     _actionSuccess.value = if (prefs.getLanguage() == "ar") {
                         "تم تعديل اسم المشترك بنجاح."
                     } else {
@@ -1728,7 +1772,7 @@ class EarthlinkSearchViewModel(
                     audit.logAction("UPDATE_DISPLAY_NAME", "USER", userIndex.toString(), "Updated display name to $newName")
                     loadUserDetail(userIndex, _selectedUser.value?.userIDLower)
                 } else {
-                    _error.value = "Failed to update display name on Earthlink."
+                    _error.value = "Failed to update the display name on $accountProvider."
                 }
             } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
                 _error.value = e.message

@@ -133,6 +133,38 @@ class SammGatewayImpl(
         emptyList()
     }
 
+    /**
+     * Extends an expiry by an exact number of days.
+     *
+     * POST /customers/{id}/renew accepts no day count - it pushes the expiry forward by the
+     * PLAN's duration (1 month on the real plans), which is not what an operator asking for
+     * "give them 3 days" means. PATCH /customers/{id} with an absolute expiration_date is the
+     * documented way to control the resulting date.
+     *
+     * The base is max(current expiry, now): extending somebody who lapsed five days ago must
+     * bring them forward, not leave them expired.
+     */
+override suspend fun extendSubscriberByDays(
+        subscriberId: String,
+        days: Int,
+        nowMs: Long
+    ): SasOperationResult {
+        if (days <= 0) {
+            return SasOperationResult.Rejected(reason = "Extension must be at least 1 day")
+        }
+        val customerId = parseCustomerId(subscriberId)
+        val current = safeApiCall { apiService.getCustomer(customerId) }.body()
+        val currentExpiryMillis = current?.expirationDate
+            ?.let { com.example.ui.screens.SubscriberDisplayRules.parseInstantMillis(it) }
+        val base = maxOf(currentExpiryMillis ?: 0L, nowMs)
+        val fmt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
+        fmt.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        val newExpiry = fmt.format(java.util.Date(base + days * 86_400_000L))
+
+        safeApiCall { apiService.updateCustomer(customerId, CustomerUpdate(expirationDate = newExpiry)) }
+        return SasOperationResult.Applied(evidence = newExpiry)
+    }
+
     override suspend fun getCurrencyLabel(): String? {
         currencyLabelCache.get()?.let { return it }
         return try {
@@ -327,6 +359,13 @@ class SammGatewayImpl(
         val numericPlanId = parsePlanId(newPlanId)
         val request = AssignPlanRequest(
             planId = numericPlanId,
+            // "Change Package" must change the plan and nothing else. These four flags are sent
+            // explicitly rather than omitted: left to the server they let a plan change silently
+            // renew the subscriber's expiry.
+            whenMode = "now",
+            invoiceMode = "none",
+            extendExpiration = false,
+            keepExpiration = true,
             generateInvoice = false
         )
         safeApiCall { apiService.assignPlan(customerId, request) }
@@ -336,6 +375,23 @@ class SammGatewayImpl(
     override suspend fun changePassword(subscriberId: String, newPassword: String): SasOperationResult {
         val customerId = parseCustomerId(subscriberId)
         val request = CustomerUpdate(password = newPassword)
+        safeApiCall { apiService.updateCustomer(customerId, request) }
+        return SasOperationResult.Applied()
+    }
+
+    override suspend fun updateDisplayName(subscriberId: String, displayName: String): SasOperationResult {
+        val customerId = parseCustomerId(subscriberId)
+        // SAMM stores the name split across two fields; the seam carries one display name.
+        val trimmed = displayName.trim()
+        val firstSpace = trimmed.indexOf(' ')
+        val request = if (firstSpace > 0) {
+            CustomerUpdate(
+                firstname = trimmed.substring(0, firstSpace),
+                lastname = trimmed.substring(firstSpace + 1).trim()
+            )
+        } else {
+            CustomerUpdate(firstname = trimmed)
+        }
         safeApiCall { apiService.updateCustomer(customerId, request) }
         return SasOperationResult.Applied()
     }

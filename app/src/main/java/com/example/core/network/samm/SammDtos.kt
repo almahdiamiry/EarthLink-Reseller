@@ -120,6 +120,7 @@ data class CustomerUpdate(
     @Json(name = "email") val email: String? = null,
     @Json(name = "mobile") val mobile: String? = null,
     @Json(name = "password") val password: String? = null,
+    @Json(name = "expiration_date") val expirationDate: String? = null,
     @Json(name = "notes") val notes: String? = null
 )
 
@@ -135,6 +136,10 @@ data class CustomerRenewResponse(
 @JsonClass(generateAdapter = true)
 data class AssignPlanRequest(
     @Json(name = "plan_id") val planId: Int,
+    @Json(name = "when") val whenMode: String? = null,
+    @Json(name = "invoice_mode") val invoiceMode: String? = null,
+    @Json(name = "extend_expiration") val extendExpiration: Boolean? = null,
+    @Json(name = "keep_expiration") val keepExpiration: Boolean? = null,
     @Json(name = "generate_invoice") val generateInvoice: Boolean = false,
     @Json(name = "reset_state") val resetState: Boolean = false,
     @Json(name = "reactivate") val reactivate: Boolean = false,

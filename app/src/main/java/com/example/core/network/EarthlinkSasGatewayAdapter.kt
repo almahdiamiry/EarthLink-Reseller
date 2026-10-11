@@ -7,6 +7,8 @@ import com.example.core.model.UserListItem
 import com.example.core.model.UserListResponse
 import com.example.domain.repository.EarthlinkGateway
 
+import com.example.core.network.SasOperationResult
+
 /**
  * EarthLink SAS Gateway Adapter (com.example.core.network)
  *
@@ -111,6 +113,16 @@ class EarthlinkSasGatewayAdapter(
     } catch (_: Throwable) {
         emptyList()
     }
+
+    override suspend fun updateDisplayName(
+        subscriberId: String,
+        displayName: String
+    ): SasOperationResult =
+        if (delegate.updateUserDisplayName(subscriberId.toIntOrNull() ?: -1, displayName)) {
+            SasOperationResult.Applied()
+        } else {
+            SasOperationResult.Rejected(reason = "EarthLink rejected the display name update")
+        }
 
     private suspend fun UserDetail.toSasSubscriberView(): SasSubscriberView {
         val fullName = listOfNotNull(customerFullName?.trim(), displayNameLower?.trim(), displayNameUpper?.trim())

@@ -1,8 +1,10 @@
 package com.example.core.network.samm
 
 import kotlinx.coroutines.test.runTest
+import java.util.concurrent.TimeUnit
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -635,6 +637,105 @@ class SammWireContractTest {
     }
 
     @Test
+    fun changePlan_neverRenewsItOnlyChangesThePlan() = runTest {
+        // The app offers "Change Package", which must change the plan and leave the expiry alone.
+        // AssignPlanRequest previously omitted extend_expiration / keep_expiration / when /
+        // invoice_mode, so the server decided whether the subscriber got renewed as a side effect.
+        val gateway = SammGatewayImpl(apiService)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"id": 326, "username": "admin@sacx", "plan_id": 6, "plan_name": "Economy"}""")
+        )
+
+        assertTrue(gateway.changePlan("326", "6").isApplied)
+
+        val body = mockServer.takeRequest().body.readUtf8()
+        assertTrue("extend_expiration must be explicitly false, body=$body", body.contains("\"extend_expiration\":false"))
+        assertTrue("keep_expiration must be explicitly true, body=$body", body.contains("\"keep_expiration\":true"))
+        assertTrue("when must be explicitly 'now', body=$body", body.contains("\"when\":\"now\""))
+        assertTrue("invoice_mode must be explicitly 'none', body=$body", body.contains("\"invoice_mode\":\"none\""))
+        assertTrue("generate_invoice must stay false, body=$body", body.contains("\"generate_invoice\":false"))
+    }
+
+    /** Drains queued requests and returns the PATCH that writes the new expiry. */
+    private fun patchRequest(): RecordedRequest {
+        var patch: RecordedRequest? = null
+        repeat(10) {
+            val r = mockServer.takeRequest(2, TimeUnit.SECONDS) ?: return patch!!
+            if (r.method == "PATCH") patch = r
+        }
+        return patch!!
+    }
+
+    @Test
+    fun extendSubscriberByDays_setsAnAbsoluteExpiryThatIsNdaysPastTheCurrentOne() = runTest {
+        // /renew pushes the expiry forward by the PLAN's duration (1 month) and accepts no day
+        // count. Extending by an exact number of days is done by setting an absolute expiry, which
+        // the API documents as the only way to control it.
+        val gateway = SammGatewayImpl(apiService)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """{"id": 326, "username": "admin@sacx", "status": "active",
+                        "expiration_date": "2026-10-20T00:00:00+00:00"}""".trimIndent()
+                )
+        )
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"id": 326, "username": "admin@sacx", "status": "active"}""")
+        )
+
+        // 2026-10-10T00:00:00Z, well before the 2026-10-20 expiry.
+        val nowMs = 1_791_590_400_000L
+        val result = gateway.extendSubscriberByDays("326", 5, nowMs = nowMs)
+
+        assertTrue("Extension must be applied, got $result", result.isApplied)
+        val request = patchRequest()
+        assertEquals("/api/v1/customers/326", request.path)
+        val body = request.body.readUtf8()
+        assertTrue(
+            "2026-10-20 plus 5 days is 2026-10-25, body=$body",
+            body.contains("2026-10-25")
+        )
+    }
+
+    @Test
+    fun extendSubscriberByDays_neverShortensAnAlreadyExpiredSubscriber() = runTest {
+        val gateway = SammGatewayImpl(apiService)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """{"id": 326, "username": "admin@sacx", "status": "expired",
+                        "expiration_date": "2020-01-01T00:00:00+00:00"}""".trimIndent()
+                )
+        )
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"id": 326, "username": "admin@sacx", "status": "active"}""")
+        )
+
+        // 2026-10-10T00:00:00Z. Somebody who lapsed in 2020 lands on 2026-10-11, not 2020-01-02.
+        val nowMs = 1_791_590_400_000L
+        gateway.extendSubscriberByDays("326", 1, nowMs = nowMs)
+
+        val body = patchRequest().body.readUtf8()
+        assertTrue(
+            "An expired subscriber must be brought forward to now+1 day, body=$body",
+            body.contains("2026-10-11T00:00:00Z")
+        )
+    }
+
+    @Test
     fun getCurrencyLabel_returnsNullWhenSammReportsNone() = runTest {
         val gateway = SammGatewayImpl(apiService)
         mockServer.enqueue(
@@ -645,6 +746,46 @@ class SammWireContractTest {
         )
 
         assertNull("No reported currency must stay null, never a hardcoded one", gateway.getCurrencyLabel())
+    }
+
+    @Test
+    fun updateDisplayName_splitsTheDisplayNameAcrossSammFirstAndLastName() = runTest {
+        // The app offers rename for every provider; without a SAMM implementation it fell
+        // through to the EarthLink gateway and wrote the SAMM subscriber id to the wrong ISP.
+        val gateway = SammGatewayImpl(apiService)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"id": 326, "username": "admin@sacx", "status": "active"}""")
+        )
+
+        assertTrue(gateway.updateDisplayName("326", "Ahmad Karim").isApplied)
+
+        val recorded = mockServer.takeRequest()
+        assertEquals("PATCH", recorded.method)
+        assertEquals("/api/v1/customers/326", recorded.path)
+        val body = recorded.body.readUtf8()
+        assertTrue("firstname must carry the first part, body=$body", body.contains("\"firstname\":\"Ahmad\""))
+        assertTrue("lastname must carry the rest, body=$body", body.contains("\"lastname\":\"Karim\""))
+        assertFalse("The username must never be rewritten by a rename, body=$body", body.contains("username"))
+    }
+
+    @Test
+    fun updateDisplayName_aSingleWordNameGoesToFirstnameAlone() = runTest {
+        val gateway = SammGatewayImpl(apiService)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"id": 326, "username": "admin@sacx", "status": "active"}""")
+        )
+
+        assertTrue(gateway.updateDisplayName("326", "Prince").isApplied)
+
+        val body = mockServer.takeRequest().body.readUtf8()
+        assertTrue("firstname must carry the whole name, body=$body", body.contains("\"firstname\":\"Prince\""))
+        assertFalse("lastname must be omitted when absent, body=$body", body.contains("lastname"))
     }
 
 }

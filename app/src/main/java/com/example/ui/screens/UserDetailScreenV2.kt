@@ -1225,17 +1225,97 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
         }
     }
 
-    if (showExtendDialog) {
-        ConfirmationDialog(
-            title = if (currentLang == "ar") "تمديد صلاحية الحساب" else "Extend Subscriber Duration",
-            message = if (currentLang == "ar") "تأكيد إضافة وتمديد معايير المدة الزمنية للحساب ${detail?.userID}؟" else "Confirm extending the duration parameter of account ${detail?.userID}?",
-            needsPasswordField = false,
-            onCancel = { showExtendDialog = false },
-            onConfirm = {
-                showExtendDialog = false
-                viewModel.extendUser(userIndex, detail?.userID ?: "")
+if (showExtendDialog) {
+        val user = detail
+        if (user != null) {
+            val focusManager = LocalFocusManager.current
+            val keyboardController = LocalSoftwareKeyboardController.current
+            var daysInput by rememberSaveable { mutableStateOf("1") }
+            var isSubmitting by rememberSaveable { mutableStateOf(false) }
+
+            val focusRequester = remember { FocusRequester() }
+            LaunchedEffect(Unit) {
+                kotlinx.coroutines.delay(200)
+                focusRequester.requestFocus()
+                keyboardController?.show()
             }
-        )
+
+            AlertDialog(
+                onDismissRequest = {
+                    focusManager.clearFocus(force = true)
+                    keyboardController?.hide()
+                    showExtendDialog = false
+                },
+                title = {
+                    Text(
+                        if (currentLang == "ar") "تمديد مدة المشترك" else "Extend Subscriber Duration",
+                        color = Color.White
+                    )
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            if (currentLang == "ar") "كم يومًا تريد إضافة هذه المدة إلى حساب ${user.userID}؟"
+                            else "How many days should be added to ${user.userID}?",
+                            color = Color.White.copy(alpha = 0.85f)
+                        )
+                        OutlinedTextField(
+                            value = daysInput,
+                            onValueChange = { daysInput = it.filter { ch -> ch.isDigit() }.take(3) },
+                            singleLine = true,
+                            isError = daysInput.toIntOrNull() == null || (daysInput.toIntOrNull() ?: 0) < 1,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Done
+                            ),
+                            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(force = true) }),
+                            label = {
+                                Text(
+                                    if (currentLang == "ar") "عدد الأيام" else "Days",
+                                    color = Color.White.copy(alpha = 0.7f)
+                                )
+                            },
+                            modifier = Modifier.focusRequester(focusRequester)
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val days = daysInput.toIntOrNull() ?: 0
+                            if (days < 1) {
+                                android.widget.Toast.makeText(
+                                    context,
+                                    if (currentLang == "ar") "أدخل عدد أيام صحيح!" else "Enter a valid number of days!",
+                                    android.widget.Toast.LENGTH_LONG
+                                ).show()
+                                return@Button
+                            }
+                            isSubmitting = true
+                            focusManager.clearFocus(force = true)
+                            keyboardController?.hide()
+                            showExtendDialog = false
+                            viewModel.extendUser(userIndex, user.userID, days = days)
+                        },
+                        enabled = !isSubmitting
+                    ) {
+                        Text(if (currentLang == "ar") "تأكيد" else "OK")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        focusManager.clearFocus(force = true)
+                        keyboardController?.hide()
+                        showExtendDialog = false
+                    }) {
+                        Text(if (currentLang == "ar") "إلغاء" else "Cancel", color = Color.White.copy(alpha = 0.7f))
+                    }
+                },
+                containerColor = Color(0xFF111827),
+                titleContentColor = Color.White,
+                textContentColor = Color.White
+            )
+        }
     }
 
     if (showDebtDialog) {
@@ -2013,31 +2093,29 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                     }
                                 )
                                 val currentOpProvider = matchingAccount?.operationProvider ?: detail?.originProvider ?: viewModel.selectedProvider.value
-                                if (currentOpProvider == com.example.core.model.SasProviders.EARTHLINK) {
-                                    HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.8.dp)
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                if (currentLang == "ar") "تمديد المشترك" else "Extend User",
-                                                color = Color.White,
-                                                fontWeight = FontWeight.Medium,
-                                                fontSize = 14.sp
-                                            )
-                                        },
-                                        leadingIcon = {
-                                            Icon(
-                                                imageVector = Icons.Default.HourglassTop,
-                                                contentDescription = null,
-                                                tint = Color(0xFFF59E0B),
-                                                modifier = Modifier.size(20.dp)
-                                            )
-                                        },
-                                        onClick = {
-                                            expanded = false
-                                            showExtendDialog = true
-                                        }
-                                    )
-                                }
+                                HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.8.dp)
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            if (currentLang == "ar") "تمديد المشترك" else "Extend User",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 14.sp
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.HourglassTop,
+                                            contentDescription = null,
+                                            tint = Color(0xFFF59E0B),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    },
+                                    onClick = {
+                                        expanded = false
+                                        showExtendDialog = true
+                                    }
+                                )
                                 HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.8.dp)
                                 val isSuspended = detail?.accountStatus?.trim()?.lowercase() == "suspendedbyagent"
                                 DropdownMenuItem(
@@ -3494,14 +3572,16 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                     val currentOpProvider = matchingAccount?.operationProvider
                                         ?: user.originProvider
                                         ?: viewModel.selectedProvider.value
-                                    val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
-                                        earthlinkUsername = user.userID,
-                                        displayName = displayNameToUse,
-                                        phone1 = user.mobileNumber,
-                                        packageName = user.packageName ?: "Economy",
-                                        currentPriceIqd = 45000.0,
-                                        operationProvider = currentOpProvider
-                                    )
+val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
+                            earthlinkUsername = user.userID,
+                            displayName = displayNameToUse,
+                            phone1 = user.mobileNumber,
+                            packageName = user.packageName ?: "Economy",
+                            // No invented price: unknown must read as unknown, like every other
+                            // price fallback in this file.
+                            currentPriceIqd = 0.0,
+                            operationProvider = currentOpProvider
+                        )
                                     viewModel.saveCustomNanoIp(finalAcc, newIp)
                                 }
                             ) {
