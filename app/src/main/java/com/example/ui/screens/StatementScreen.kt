@@ -70,87 +70,91 @@ fun StatementScreen(
     val currentLang by prefs.languageFlow.collectAsStateWithLifecycle()
     val isAr = currentLang == "ar"
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+    CompositionLocalProvider(
+        LocalLayoutDirection provides (if (isAr) LayoutDirection.Rtl else LayoutDirection.Ltr)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Column {
-                Text(
-                    text = if (isAr) "فواتير وكشف الحساب" else "Account Invoices & Statements",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = if (isAr) "سجل تدقيق الفواتير المباشر" else "Real-Time Reseller Billing Audit Log",
-                    fontSize = 12.sp,
-                    color = Color.Gray
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = if (isAr) "فواتير وكشف الحساب" else "Account Invoices & Statements",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = if (isAr) "سجل تدقيق الفواتير المباشر" else "Real-Time Reseller Billing Audit Log",
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    )
+                }
+                IconButton(onClick = { viewModel.loadStatement() }) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = if (isAr) "تحديث" else "Refresh"
+                    )
+                }
             }
-            IconButton(onClick = { viewModel.loadStatement() }) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = if (isAr) "تحديث" else "Refresh"
-                )
-            }
-        }
 
-        if (error != null) {
-            Surface(color = Color(0xFFFFEBEE)) {
-                Text(text = error ?: "", color = Color(0xFFC62828), modifier = Modifier.padding(12.dp))
+            if (error != null) {
+                Surface(color = Color(0xFFFFEBEE)) {
+                    Text(text = error ?: "", color = Color(0xFFC62828), modifier = Modifier.padding(12.dp))
+                }
             }
-        }
 
-        if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize().weight(1f), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-        } else if (items.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize().weight(1f), contentAlignment = Alignment.Center) {
-                Text(
-                    text = if (isAr) "لا توجد فواتير مسجلة في الدورة الحالية." else "No invoices logged in current calendar cycle.",
-                    color = Color.Gray
-                )
-            }
-        } else {
-            LazyColumn(modifier = Modifier.fillMaxSize().weight(1f)) {
-                itemsIndexed(
-                    items = items,
-                    key = { index, tx -> "${tx.occurredAt}_${tx.operation}_${tx.depositAmount}_${tx.withdrawalAmount}_${tx.balanceAfter}_$index" }
-                ) { _, tx ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(text = tx.operation ?: "TRANSACTION", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                val amount = if ((tx.depositAmount ?: 0.0) > 0.0) tx.depositAmount!! else -(tx.withdrawalAmount ?: 0.0)
-                                val color = if (amount >= 0) Color(0xFF2E7D32) else Color(0xFFC62828)
-                                Text(text = (if (amount >= 0) "+" else "") + formatIqd(amount), color = color, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            }
-                            if (tx.note != null) {
-                                Text(text = tx.note, fontSize = 13.sp)
-                            }
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "${if (isAr) "الرصيد:" else "Balance:"} ${formatIqd(tx.balanceAfter ?: 0.0)}",
-                                    color = Color.Gray,
-                                    fontSize = 12.sp
-                                )
-                                Text(text = tx.occurredAt ?: "", color = Color.Gray, fontSize = 11.sp)
+            if (isLoading) {
+                Box(modifier = Modifier.fillMaxSize().weight(1f), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            } else if (items.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize().weight(1f), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = if (isAr) "لا توجد فواتير مسجلة في الدورة الحالية." else "No invoices logged in current calendar cycle.",
+                        color = Color.Gray
+                    )
+                }
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxSize().weight(1f)) {
+                    itemsIndexed(
+                        items = items,
+                        key = { index, tx -> "${tx.occurredAt}_${tx.operation}_${tx.depositAmount}_${tx.withdrawalAmount}_${tx.balanceAfter}_$index" }
+                    ) { _, tx ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(text = tx.operation ?: "TRANSACTION", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    val amount = if ((tx.depositAmount ?: 0.0) > 0.0) tx.depositAmount!! else -(tx.withdrawalAmount ?: 0.0)
+                                    val color = if (amount >= 0) Color(0xFF2E7D32) else Color(0xFFC62828)
+                                    Text(text = (if (amount >= 0) "+" else "") + formatIqd(amount), color = color, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                }
+                                if (tx.note != null) {
+                                    Text(text = tx.note, fontSize = 13.sp)
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "${if (isAr) "الرصيد:" else "Balance:"} ${formatIqd(tx.balanceAfter ?: 0.0)}",
+                                        color = Color.Gray,
+                                        fontSize = 12.sp
+                                    )
+                                    Text(text = tx.occurredAt ?: "", color = Color.Gray, fontSize = 11.sp)
+                                }
                             }
                         }
                     }
