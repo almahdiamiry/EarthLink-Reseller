@@ -1022,4 +1022,41 @@ class UnifiedSubscriberHistoryPresentationTest {
         assertEquals("acc_khalid_dev1_B", txK4Dev1?.accountId)
         assertEquals("acc_khalid_dev1_B", txK4Dev2?.accountId)
     }
+
+    @Test
+    fun testClassifyHistoryItemWithNonSnapshotMap() {
+        val chargeEntry = LocalLedgerEntry(
+            id = "charge_100",
+            accountId = "acc_1",
+            amountIqd = 35000.0,
+            debtAfterIqd = 0.0,
+            typeRaw = "renewal",
+            occurredAt = 1000L,
+            isSnapshotHistory = false
+        )
+        val payEntry = LocalLedgerEntry(
+            id = "pay_charge_100",
+            accountId = "acc_1",
+            amountIqd = 35000.0,
+            debtAfterIqd = 0.0,
+            typeRaw = "payment",
+            occurredAt = 1001L,
+            isSnapshotHistory = false
+        )
+        val fullList = listOf(chargeEntry, payEntry)
+
+        val nonSnapshotMap = HashMap<Pair<String, String>, LocalLedgerEntry>()
+        for (e in fullList) {
+            if (!e.isSnapshotHistory) {
+                nonSnapshotMap[Pair(e.id, e.accountId)] = e
+            }
+        }
+
+        val legacyClassification = HistoryPresentationManager.classifyHistoryItem(payEntry, fullList)
+        val fastClassification = HistoryPresentationManager.classifyHistoryItem(payEntry, fullList, nonSnapshotMap)
+
+        assertEquals("renew_pay", legacyClassification)
+        assertEquals("renew_pay", fastClassification)
+        assertEquals(legacyClassification, fastClassification)
+    }
 }

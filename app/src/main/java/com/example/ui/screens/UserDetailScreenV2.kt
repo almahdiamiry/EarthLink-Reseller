@@ -98,7 +98,8 @@ object HistoryPresentationManager {
 
     fun classifyHistoryItem(
         entry: com.example.core.model.LocalLedgerEntry,
-        fullList: List<com.example.core.model.LocalLedgerEntry> = emptyList()
+        fullList: List<com.example.core.model.LocalLedgerEntry> = emptyList(),
+        nonSnapshotMap: Map<Pair<String, String>, com.example.core.model.LocalLedgerEntry>? = null
     ): String {
         val noteNonNull = entry.note ?: ""
         val isLegacyRenew = noteNonNull.startsWith("[RENEW]")
@@ -117,8 +118,11 @@ object HistoryPresentationManager {
             noteNonNull.contains("(واصل)")
 
         val isPairedRenewalPayment = if (!entry.isSnapshotHistory && entry.id.startsWith("pay_charge_")) {
-            if (fullList.isNotEmpty()) {
-                val expectedChargeId = entry.id.removePrefix("pay_")
+            val expectedChargeId = entry.id.removePrefix("pay_")
+            if (nonSnapshotMap != null) {
+                val matchingCharge = nonSnapshotMap[Pair(expectedChargeId, entry.accountId)]
+                matchingCharge != null && kotlin.math.abs(matchingCharge.amountIqd - entry.amountIqd) < 0.0001
+            } else if (fullList.isNotEmpty()) {
                 fullList.any { charge ->
                     !charge.isSnapshotHistory &&
                     charge.id == expectedChargeId &&
@@ -1514,6 +1518,18 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                     val displayLedgerList = remember(finalLedgerList) {
                         HistoryPresentationManager.prepareDisplayLedgerList(finalLedgerList)
                     }
+                    val nonSnapshotMap = remember(finalLedgerList) {
+                        if (finalLedgerList.isEmpty()) emptyMap()
+                        else {
+                            val map = HashMap<Pair<String, String>, com.example.core.model.LocalLedgerEntry>(finalLedgerList.size)
+                            for (e in finalLedgerList) {
+                                if (!e.isSnapshotHistory) {
+                                    map[Pair(e.id, e.accountId)] = e
+                                }
+                            }
+                            map
+                        }
+                    }
                     if (displayLedgerList.isEmpty()) {
                         Box(
                             modifier = Modifier
@@ -1549,7 +1565,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    val resolvedType = HistoryPresentationManager.classifyHistoryItem(entry, finalLedgerList)
+                                    val resolvedType = HistoryPresentationManager.classifyHistoryItem(entry, finalLedgerList, nonSnapshotMap)
 
                                     // Two Primary Visual States: Paid / Received vs Debt / Unpaid
                                     val isPaidState = resolvedType == "renew_pay" || resolvedType == "payment" || resolvedType == "deposit"
