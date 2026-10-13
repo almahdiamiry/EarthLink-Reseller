@@ -311,6 +311,23 @@ override suspend fun extendSubscriberByDays(
         }
     }
 
+    /**
+     * One bulk read of every live RADIUS session, so a subscriber list can be marked online without
+     * asking per row. The customer resource carries no session field, so /sessions is the only source.
+     */
+    override suspend fun listOnlineUsernames(): Set<String> {
+        return try {
+            safeApiCall { apiService.listSessions(limit = 1000) }
+                .body()?.items.orEmpty()
+                .mapNotNull { it.username?.trim() }
+                .filter { it.isNotEmpty() }
+                .map { it.lowercase() }
+                .toSet()
+        } catch (_: SasGatewayException) {
+            emptySet()
+        }
+    }
+
     // ========================================================================
     // Mutation Operations
     // ========================================================================

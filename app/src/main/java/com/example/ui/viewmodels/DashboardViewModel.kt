@@ -209,22 +209,34 @@ class DashboardViewModel(
                                     val effectiveRouter = getEffectiveRouter()
                                     if (effectiveRouter != null) {
                                         val sammGateway = effectiveRouter.getGateway(com.example.core.model.SasProviders.ALAMIRY)
-                                        val subscribers = sammGateway.searchSubscribers(query = "", page = 1, pageSize = 5000)
-                                        val items = subscribers.map { sub ->
-                                            val numIndex = sub.subscriberId.toIntOrNull() ?: sub.subscriberId.hashCode()
-                                            com.example.core.model.UserListItem(
-                                                userIndexLower = numIndex,
-                                                userIDLower = sub.username,
-                                                customerNameLower = sub.displayName ?: sub.username,
-                                                mobileNumberLower = sub.phone,
-                                                accountStatusLower = sub.status,
-                                                expirationDateLower = sub.expiresAt,
-                                                accountExpirationDateLower = sub.expiresAt,
-                                                displayNameLower = sub.displayName,
-                                                accountNameLower = sub.planName,
-                                                originProvider = com.example.core.model.SasProviders.ALAMIRY
-                                            )
+                                        val sessionsJob = async {
+                                            try {
+                                                sammGateway.listOnlineUsernames()
+                                            } catch (e: Exception) {
+                                                if (e is kotlinx.coroutines.CancellationException) throw e
+                                                emptySet()
+                                            }
                                         }
+                                        val subscribers = sammGateway.searchSubscribers(query = "", page = 1, pageSize = 5000)
+                                        val onlineUsernames = sessionsJob.await()
+                                        val items = com.example.ui.screens.SubscriberDisplayRules.markOnline(
+                                            subscribers.map { sub ->
+                                                val numIndex = sub.subscriberId.toIntOrNull() ?: sub.subscriberId.hashCode()
+                                                com.example.core.model.UserListItem(
+                                                    userIndexLower = numIndex,
+                                                    userIDLower = sub.username,
+                                                    customerNameLower = sub.displayName ?: sub.username,
+                                                    mobileNumberLower = sub.phone,
+                                                    accountStatusLower = sub.status,
+                                                    expirationDateLower = sub.expiresAt,
+                                                    accountExpirationDateLower = sub.expiresAt,
+                                                    displayNameLower = sub.displayName,
+                                                    accountNameLower = sub.planName,
+                                                    originProvider = com.example.core.model.SasProviders.ALAMIRY
+                                                )
+                                            },
+                                            onlineUsernames
+                                        )
                                         if (items.isNotEmpty()) {
                                             val allItemsHaveValidUserId = items.all { it.userID.isNotBlank() }
                                             if (allItemsHaveValidUserId) {

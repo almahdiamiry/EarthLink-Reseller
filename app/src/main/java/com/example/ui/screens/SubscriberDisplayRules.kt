@@ -141,4 +141,26 @@ object SubscriberDisplayRules {
     } catch (_: Exception) {
         null
     }
+
+    /**
+     * Marks list rows Online for usernames present in a provider's live session set.
+     *
+     * SAMM's customer payload carries no session field, so every builder of [com.example.core.model.UserListItem]
+     * must apply this or the subscriber dot silently renders offline. Shared so the search and
+     * dashboard paths cannot drift apart again.
+     */
+    fun markOnline(
+        users: List<com.example.core.model.UserListItem>,
+        onlineUsernames: Set<String>
+    ): List<com.example.core.model.UserListItem> {
+        if (onlineUsernames.isEmpty()) return users
+        val wanted = onlineUsernames.map { it.trim().lowercase() }.toSet()
+        return users.map { user ->
+            if (wanted.contains(user.userID?.trim()?.lowercase())) {
+                user.copy(onlineStatusLower = "Online")
+            } else {
+                user
+            }
+        }
+    }
 }

@@ -286,8 +286,23 @@ class EarthlinkSearchViewModel(
                         accountExpirationDateLower = sub.expiresAt,
                         displayNameLower = sub.displayName,
                         accountNameLower = sub.planName,
+                        onlineStatusLower = sub.onlineStatus ?: "Offline",
                         originProvider = currentProvider
                     )
+                }
+                // Sessions are a second round-trip and never gate the paint: the list shows first,
+                // then live dots fill in. Live sessions are global, not query-scoped, so a late
+                // arrival still marks the right rows in whatever list is current.
+                viewModelScope.launch {
+                    val onlineUsernames = try {
+                        targetGateway.listOnlineUsernames()
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+                        emptySet()
+                    }
+                    if (onlineUsernames.isEmpty()) return@launch
+                    _usersList.value = com.example.ui.screens.SubscriberDisplayRules
+                        .markOnline(_usersList.value, onlineUsernames)
                 }
             } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
                 val isNetworkIssue = e.message?.contains("Network unavailable", ignoreCase = true) == true || 

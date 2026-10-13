@@ -152,7 +152,9 @@ data class SasSubscriberView(
     val planId: String? = null,
     val planName: String? = null,
     val expiresAt: String? = null,
-    val phone: String? = null
+    val phone: String? = null,
+    /** Providers that publish session state on the subscriber payload (EarthLink) supply it here. */
+    val onlineStatus: String? = null
 )
 
 // ============================================================================
@@ -295,6 +297,13 @@ interface SasGateway {
      * needs no extra call, and a provider with no session concept must not be forced to implement one.
      */
     suspend fun getSubscriberSession(username: String): SasSubscriberSession? = null
+
+    /**
+     * Lower-cased usernames of every currently live subscriber, in one call.
+     *
+     * Defaults to empty: providers that carry session state per subscriber need no bulk read.
+     */
+    suspend fun listOnlineUsernames(): Set<String> = emptySet()
 
     /**
      * Reads the price of a plan, when the provider publishes one.

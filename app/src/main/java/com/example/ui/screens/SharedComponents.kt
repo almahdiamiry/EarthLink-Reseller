@@ -703,7 +703,12 @@ fun ArabicSubscriberCard(
                         modifier = Modifier
                             .size(10.dp)
                             .background(
-                                color = if (isOnline) Color(0xFF30D158) else Color(0xFF8E8E93),
+                                color = when {
+                                    isActive && isOnline -> Color(0xFF30D158)
+                                    isActive -> Color(0xFF8E8E93)
+                                    isOnline -> Color(0xFFFF9F0A)
+                                    else -> Color(0xFFFF453A)
+                                },
                                 shape = CircleShape
                             )
                             .border(2.dp, Color(0xFF141922), CircleShape)

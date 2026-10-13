@@ -88,7 +88,8 @@ class EarthlinkSasGatewayAdapter(
             planId = null,
             planName = packageName,
             expiresAt = expiry,
-            phone = mobileNumber
+            phone = mobileNumber,
+            onlineStatus = onlineStatus
         )
     }
 

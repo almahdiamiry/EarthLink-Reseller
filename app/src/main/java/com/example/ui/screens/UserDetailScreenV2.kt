@@ -55,6 +55,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -2687,27 +2689,37 @@ if (showExtendDialog) {
                 
                 // Blue Identity Card
                 Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(132.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF1E88E5)),
                     shape = RoundedCornerShape(14.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .fillMaxSize()
+                            .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 12.dp)
                     ) {
+                        val bannerIsSamm = (matchingAccount?.operationProvider ?: detail?.originProvider ?: viewModel.selectedProvider.value) == com.example.core.model.SasProviders.ALAMIRY
+                        val bannerTip = if (bannerIsSamm) {
+                            if (currentLang == "ar") "مزود الخدمة: سام" else "Provider: SAMM"
+                        } else {
+                            if (currentLang == "ar") "مزود الخدمة: إيرثلنك" else "Provider: EarthLink"
+                        }
+                        val bannerContext = LocalContext.current
                         Text(
-                            text = "E",
+                            text = if (bannerIsSamm) "S" else "E",
                             fontSize = 44.sp,
                             fontWeight = FontWeight.Black,
                             color = Color.White.copy(alpha = 0.22f),
-                            modifier = Modifier.align(Alignment.TopEnd)
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .clickable {
+                                    android.widget.Toast.makeText(bannerContext, bannerTip, android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                                .semantics { contentDescription = bannerTip }
                         )
 
                         Column(
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.SpaceBetween,
                             horizontalAlignment = Alignment.Start
                         ) {
@@ -2721,21 +2733,6 @@ if (showExtendDialog) {
                                         fontSize = 11.5.sp,
                                         color = Color.White.copy(alpha = 0.8f)
                                     )
-                                    val currentOpProvider = matchingAccount?.operationProvider ?: detail?.originProvider ?: viewModel.selectedProvider.value
-                                    Surface(
-                                        shape = RoundedCornerShape(4.dp),
-                                        color = if (currentOpProvider == com.example.core.model.SasProviders.ALAMIRY) Color(0xFF7C4DFF).copy(alpha = 0.35f) else Color.White.copy(alpha = 0.2f),
-                                        border = BorderStroke(0.8.dp, if (currentOpProvider == com.example.core.model.SasProviders.ALAMIRY) Color(0xFFB388FF) else Color.White.copy(alpha = 0.4f)),
-                                        modifier = Modifier.clip(RoundedCornerShape(4.dp)).clickable { showEditProviderDialog = true }
-                                    ) {
-                                        Text(
-                                            text = currentOpProvider,
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp)
-                                        )
-                                    }
                                 }
                                 Text(
                                     text = displayNameToUse,
@@ -2802,47 +2799,7 @@ if (showExtendDialog) {
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        // --- GROUP 1: Status & Session Information ---
-
-                        // Provider
-                        val currentOpProvider = matchingAccount?.operationProvider ?: detail?.originProvider ?: viewModel.selectedProvider.value
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(6.dp))
-                                .clickable { showEditProviderDialog = true }
-                                .padding(vertical = 1.5.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = if (currentLang == "ar") "مزود الخدمة" else "Provider",
-                                color = Color(0xFF8E8E93),
-                                fontSize = 13.5.sp
-                            )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = if (currentOpProvider == com.example.core.model.SasProviders.ALAMIRY) Color(0xFF7C4DFF).copy(alpha = 0.2f) else Color(0xFF0A84FF).copy(alpha = 0.2f),
-                                    border = BorderStroke(1.dp, if (currentOpProvider == com.example.core.model.SasProviders.ALAMIRY) Color(0xFFB388FF).copy(alpha = 0.5f) else Color(0xFF0A84FF).copy(alpha = 0.5f))
-                                ) {
-                                    Text(
-                                        text = currentOpProvider,
-                                        color = if (currentOpProvider == com.example.core.model.SasProviders.ALAMIRY) Color(0xFFD1C4E9) else Color(0xFF90CAF9),
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Icon(
-                                    imageVector = Icons.Default.Edit,
-                                    contentDescription = if (currentLang == "ar") "تعديل" else "Edit",
-                                    tint = Color(0xFF90CAF9),
-                                    modifier = Modifier.size(13.dp)
-                                )
-                            }
-                        }
+// --- GROUP 1: Status & Session Information ---
 
                         // Status
                         Row(
