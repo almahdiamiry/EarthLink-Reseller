@@ -1658,6 +1658,19 @@ class EarthlinkSearchViewModel(
                 _error.value = "Action unavailable for local-only account."
                 return@launch
             }
+            // Only EarthLink's API ever returns a stored password. SAMM never echoes one back and
+            // exposes no reveal endpoint, so calling the EarthLink gateway with a SAMM username
+            // could only ever fail.
+            val accountProvider = localAccountRepository
+                .findActiveAccountByUsernameOrIdOneShot(userId)?.operationProvider
+                ?: _selectedProvider.value
+            if (accountProvider != com.example.core.model.SasProviders.EARTHLINK) {
+                _revealedUserPass.value = null
+                _error.value = if (prefs.getLanguage() == "ar")
+                    "لا يمكن عرض كلمة المرور لمشتركي سام."
+                else "Showing a password is not supported for SAMM accounts."
+                return@launch
+            }
             try {
                 val pass = gateway.showUserPassword(userIndex, userId)
                 if (pass.isNullOrBlank()) {
@@ -1678,6 +1691,16 @@ class EarthlinkSearchViewModel(
             if (isSyntheticLocalIspIdentity(userIndex, userId)) {
                 _revealedAccountPass.value = null
                 _error.value = "Action unavailable for local-only account."
+                return@launch
+            }
+            val accountProvider = localAccountRepository
+                .findActiveAccountByUsernameOrIdOneShot(userId)?.operationProvider
+                ?: _selectedProvider.value
+            if (accountProvider != com.example.core.model.SasProviders.EARTHLINK) {
+                _revealedAccountPass.value = null
+                _error.value = if (prefs.getLanguage() == "ar")
+                    "لا يمكن عرض كلمة المرور لمشتركي سام."
+                else "Showing a password is not supported for SAMM accounts."
                 return@launch
             }
             try {
@@ -1736,7 +1759,15 @@ class EarthlinkSearchViewModel(
             _isActionLoading.value = true
             _error.value = null
             try {
-                val success = gateway.changeAccountPassword(userIndex, userId, newPass)
+                val localAcc = withContext(Dispatchers.IO) {
+                    localAccountRepository.findActiveAccountsBySubscriberIdentity(userIndex, userId).firstOrNull()
+                        ?: localAccountRepository.findActiveAccountByUsernameOrIdOneShot(userId)
+                }
+                // Route through the provider seam. Calling the EarthLink gateway directly here is
+                // what left this button doing nothing for SAMM subscribers.
+                val accountProvider = localAcc?.operationProvider ?: _selectedProvider.value
+                val targetGateway = sasGatewayRouter.getGateway(accountProvider)
+                val success = targetGateway.changePassword(userIndex.toString(), newPass).isApplied
                 if (success) {
                     _revealedAccountPass.value = newPass
                     _actionSuccess.value = if (prefs.getLanguage() == "ar") "تم تغيير كلمة مرور الاشتراك بنجاح." else "Broadband account password changed successfully."

@@ -904,30 +904,44 @@ fun ConfirmationDialog(
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
     var isSubmitting by rememberSaveable { mutableStateOf(false) }
 
-    Dialog(onDismissRequest = {
-        focusManager.clearFocus(force = true)
-        keyboardController?.hide()
-        isSubmitting = false
-        onCancel()
-    }) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .imePadding()
-                .padding(16.dp),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF11161F)),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f))
-        ) {
-            Column(
-                modifier = Modifier
-                    .padding(20.dp)
-                    .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+    // Material3 AlertDialog, the same component the Edit Package and Rename dialogs use. A
+    // hand-built Dialog+Card drifted from them in surface, shape and button treatment.
+    AlertDialog(
+        onDismissRequest = {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+            isSubmitting = false
+            onCancel()
+        },
+        confirmButton = {
+            Button(
+                enabled = !isSubmitting,
+                onClick = {
+                    if (!isSubmitting) {
+                        focusManager.clearFocus(force = true)
+                        keyboardController?.hide()
+                        isSubmitting = true
+                        onConfirm(password)
+                    }
+                }
             ) {
-                Text(text = title, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.White)
-                Text(text = message, fontSize = 14.sp, color = Color.White.copy(alpha = 0.8f))
-
+                Text(if (isAr) "تأكيد" else "Confirm", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = {
+                focusManager.clearFocus(force = true)
+                keyboardController?.hide()
+                isSubmitting = false
+                onCancel()
+            }) {
+                Text(if (isAr) "إلغاء" else "Cancel")
+            }
+        },
+        title = { Text(title, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(message)
                 if (needsPasswordField) {
                     OutlinedTextField(
                         value = password,
@@ -945,59 +959,16 @@ fun ConfirmationDialog(
                                         if (isAr) "إخفاء كلمة المرور" else "Hide password"
                                     } else {
                                         if (isAr) "إظهار كلمة المرور" else "Show password"
-                                    },
-                                    tint = Color.White.copy(alpha = 0.7f)
+                                    }
                                 )
                             }
                         },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color(0xFF0288D1),
-                            unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
-                            focusedLabelColor = Color(0xFF0288D1),
-                            unfocusedLabelColor = Color.White.copy(alpha = 0.6f)
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 52.dp)
+                        modifier = Modifier.fillMaxWidth()
                     )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextButton(onClick = {
-                        focusManager.clearFocus(force = true)
-                        keyboardController?.hide()
-                        isSubmitting = false
-                        onCancel()
-                    }, modifier = Modifier.heightIn(min = 48.dp)) {
-                        Text(if (isAr) "إلغاء" else "Cancel", color = Color.White.copy(alpha = 0.6f))
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(
-                        enabled = !isSubmitting,
-                        onClick = { 
-                            if (!isSubmitting) {
-                                focusManager.clearFocus(force = true)
-                                keyboardController?.hide()
-                                isSubmitting = true
-                                onConfirm(password) 
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0288D1)),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.heightIn(min = 48.dp)
-                    ) {
-                        Text(if (isAr) "تأكيد" else "Confirm", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
                 }
             }
         }
-    }
+    )
 }
 
 // --- LOGIN SCREEN ---
