@@ -589,6 +589,46 @@ class UnifiedSubscriberHistoryPresentationTest {
         assertEquals("payment", classifiedItems["tx_pay_b"])
     }
 
+    @Test
+    fun testClassifyHistoryItem_withNonSnapshotMap_returnsIdenticalClassification() = runBlocking {
+        val entryCharge = LocalLedgerEntry(
+            id = "charge_101",
+            accountId = "acc_test",
+            typeRaw = "renewal",
+            amountIqd = 40000.0,
+            debtAfterIqd = 40000.0,
+            occurredAt = 1000L
+        )
+        val entryPay = LocalLedgerEntry(
+            id = "pay_charge_101",
+            accountId = "acc_test",
+            typeRaw = "gave",
+            amountIqd = 40000.0,
+            debtAfterIqd = 0.0,
+            occurredAt = 1001L
+        )
+        val entryDebt = LocalLedgerEntry(
+            id = "tx_debt_1",
+            accountId = "acc_test",
+            typeRaw = "took",
+            amountIqd = 10000.0,
+            debtAfterIqd = 10000.0,
+            occurredAt = 1002L
+        )
+
+        val fullList = listOf(entryCharge, entryPay, entryDebt)
+        val nonSnapshotMap = fullList.filterNot { it.isSnapshotHistory }.associateBy { Pair(it.id, it.accountId) }
+
+        val classWithoutMap = HistoryPresentationManager.classifyHistoryItem(entryPay, fullList)
+        val classWithMap = HistoryPresentationManager.classifyHistoryItem(entryPay, fullList, nonSnapshotMap)
+
+        assertEquals("renew_pay", classWithoutMap)
+        assertEquals("renew_pay", classWithMap)
+        assertEquals(classWithoutMap, classWithMap)
+
+        assertEquals("debt", HistoryPresentationManager.classifyHistoryItem(entryDebt, fullList, nonSnapshotMap))
+    }
+
     // =========================================================================
     // STEP 12: NEGATIVE REGRESSION — DIFFERENT ISP USER INDEX, SAME USERNAME
     // =========================================================================
