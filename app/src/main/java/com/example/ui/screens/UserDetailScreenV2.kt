@@ -2170,7 +2170,7 @@ if (showExtendDialog) {
                                     }
                                 )
                                 HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.8.dp)
-                                val isSuspended = detail?.accountStatus?.trim()?.lowercase() == "suspendedbyagent"
+                                val isSuspended = SubscriberDisplayRules.isSuspended(detail?.accountStatus)
                                 DropdownMenuItem(
                                     text = { 
                                         Text(
@@ -2392,7 +2392,7 @@ if (showExtendDialog) {
                 }
                 val statusClean = user.accountStatus?.trim()?.lowercase() ?: ""
                 val isExpired = remainingTime.contains("منتهي") || remainingTime.contains("Expired") || remainingTime.contains("expired")
-                val isDeactivated = statusClean == "suspendedbyagent" || statusClean == "expired" || statusClean == "منتهي"
+                val isDeactivated = SubscriberDisplayRules.isSuspended(statusClean) || statusClean == "expired" || statusClean == "منتهي"
                 val isActive = !isExpired && !isDeactivated
                 val isReallyOnline = user.onlineSession != null && 
                     user.onlineSession?.onlineStatus?.trim()?.lowercase()?.contains("offline") != true
@@ -3360,8 +3360,8 @@ if (showExtendDialog) {
                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 // Warning Card with EXACT required text
                                 Surface(
-                                    color = Color(0xFFF59E0B).copy(alpha = 0.12f),
-                                    border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.4f)),
+                                    color = Color(0xFFFF9F0A).copy(alpha = 0.12f),
+                                    border = BorderStroke(1.dp, Color(0xFFFF9F0A).copy(alpha = 0.4f)),
                                     shape = RoundedCornerShape(10.dp),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
@@ -3370,8 +3370,11 @@ if (showExtendDialog) {
                                         verticalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
                                         Text(
-                                            text = "Changing provider changes where future ISP operations are sent.\nThis does not migrate the external subscriber.\nLocal history remains unchanged.\nPending operations keep their original provider.",
-                                            color = Color(0xFFF59E0B),
+                                            text = if (currentLang == "ar")
+                                                "تغيير المزود يحدد أين تُرسَل عمليات مزود الخدمة اللاحقة.\nلا ينقل المشترك إلى المزود الخارجي.\nالسجل المحلي يبقى كما هو.\nالعمليات المعلقة تحتفظ بمزودها الأصلي."
+                                            else
+                                                "Changing provider changes where future ISP operations are sent.\nThis does not migrate the external subscriber.\nLocal history remains unchanged.\nPending operations keep their original provider.",
+                                            color = Color(0xFFFF9F0A),
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Medium,
                                             lineHeight = 17.sp
@@ -3386,22 +3389,31 @@ if (showExtendDialog) {
                                     color = Color.White
                                 )
 
+                                val access = prefs.getProviderAccessState()
                                 listOf(
                                     com.example.core.model.SasProviders.EARTHLINK to if (currentLang == "ar") "إيرثلنك (EARTHLINK)" else "EarthLink (EARTHLINK)",
                                     com.example.core.model.SasProviders.ALAMIRY to if (currentLang == "ar") "سام (SAMM)" else "SAMM (SAMM)"
                                 ).forEach { (provKey, provLabel) ->
-                                    val isSelected = targetProvider == provKey
+                                    // An unconfigured provider has no credentials behind it, so picking it
+                                    // would send later operations nowhere. Show it, but not as a choice.
+                                    val isAvailable = if (provKey == com.example.core.model.SasProviders.EARTHLINK)
+                                        access.hasEarthlink else access.hasSamm
+                                    val isSelected = targetProvider == provKey && isAvailable
                                     Surface(
                                         shape = RoundedCornerShape(10.dp),
                                         color = if (isSelected) Color(0xFF0A84FF).copy(alpha = 0.15f) else Color(0xFF161E27),
                                         border = BorderStroke(
                                             1.dp,
-                                            if (isSelected) Color(0xFF0A84FF) else Color.White.copy(alpha = 0.08f)
+                                            when {
+                                                isSelected -> Color(0xFF0A84FF)
+                                                !isAvailable -> Color.White.copy(alpha = 0.04f)
+                                                else -> Color.White.copy(alpha = 0.08f)
+                                            }
                                         ),
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clip(RoundedCornerShape(10.dp))
-                                            .clickable {
+                                            .clickable(enabled = isAvailable) {
                                                 targetProvider = provKey
                                                 providerChangeError = null
                                             }
@@ -3423,10 +3435,17 @@ if (showExtendDialog) {
                                             )
                                             Text(
                                                 text = provLabel,
-                                                color = Color.White,
+                                                color = if (isAvailable) Color.White else Color.White.copy(alpha = 0.35f),
                                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                                 fontSize = 13.sp
                                             )
+                                            if (!isAvailable) {
+                                                Text(
+                                                    text = if (currentLang == "ar") "غير مسجل الدخول" else "Not logged in",
+                                                    color = Color.White.copy(alpha = 0.4f),
+                                                    fontSize = 11.sp
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -3522,7 +3541,7 @@ if (showExtendDialog) {
                 }
 
                 if (showStopUserDialog) {
-                    val isSuspended = user.accountStatus?.trim()?.lowercase() == "suspendedbyagent"
+                    val isSuspended = com.example.ui.screens.SubscriberDisplayRules.isSuspended(user.accountStatus)
                     ConfirmationDialog(
                         title = if (isSuspended) {
                             if (currentLang == "ar") "تفعيل حساب المشترك" else "Activate Account"

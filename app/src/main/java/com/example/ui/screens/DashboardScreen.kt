@@ -319,7 +319,7 @@ fun DashboardScreen(
                 val expTimestamp = parseExpirationTimestamp(expStr)
                 val statusClean = user.accountStatus?.trim()?.lowercase(Locale.US) ?: ""
 
-                val isExplicitExpired = statusClean == "expired" || statusClean == "منتهي" || statusClean == "suspendedbyagent"
+                val isExplicitExpired = statusClean == "expired" || statusClean == "منتهي" || SubscriberDisplayRules.isSuspended(statusClean)
                 val isDateExpired = expTimestamp != null && expTimestamp < now
                 val isExpired = isExplicitExpired || isDateExpired
 

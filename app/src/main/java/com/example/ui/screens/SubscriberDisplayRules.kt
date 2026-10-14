@@ -84,6 +84,18 @@ object SubscriberDisplayRules {
     }
 
     /**
+     * Whether a provider status means the reseller suspended the subscriber.
+     *
+     * The two providers spell it differently: SAMM reports `suspended`, EarthLink reports
+     * `SuspendedByAgent`. Matching only one left the suspend/enable toggle stuck on "suspend"
+     * for the other provider, so a suspended subscriber could never be re-enabled from the UI.
+     */
+    fun isSuspended(providerStatus: String?): Boolean {
+        val status = providerStatus?.trim()?.lowercase(Locale.US).orEmpty()
+        return status == "suspended" || status == "suspendedbyagent" || status == "suspendedbyadmin"
+    }
+
+    /**
      * Renders a plan price for display.
      *
      * 0.0 is a real price - a free plan - and must read as "Free", not as an unknown amount that

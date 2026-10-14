@@ -637,8 +637,12 @@ fun ArabicSubscriberCard(
     }
     
     val statusClean = user.accountStatus?.trim()?.lowercase(Locale.US) ?: ""
-    val isExpired = remainingTime.contains("منتهي") || remainingTime.contains("Expired") || statusClean == "expired" || statusClean == "منتهي" || statusClean == "suspendedbyagent"
-    val isActive = !isExpired
+    // Suspension is not expiry: a stopped subscriber still holds paid time, so its countdown keeps
+    // running. Folding it into isExpired made the card read منتهي and replaced the remaining time
+    // with a raw date.
+    val isSuspended = SubscriberDisplayRules.isSuspended(statusClean)
+    val isExpired = remainingTime.contains("منتهي") || remainingTime.contains("Expired") || statusClean == "expired" || statusClean == "منتهي"
+    val isActive = !isExpired && !isSuspended
     
     val containerBg = MaterialTheme.colorScheme.surface
     val rowBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
@@ -783,17 +787,23 @@ fun ArabicSubscriberCard(
                             }
 
                             // Status Badge
+                            val badgeInk = when {
+                                isActive -> Color(0xFF30D158)
+                                isSuspended -> Color(0xFFFF453A)
+                                else -> Color(0xFFFF453A)
+                            }
                             Surface(
-                                color = if (isActive) Color(0xFF30D158).copy(alpha = 0.12f) else Color(0xFFFF453A).copy(alpha = 0.12f),
+                                color = badgeInk.copy(alpha = 0.12f),
                                 shape = RoundedCornerShape(8.dp),
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (isActive) Color(0xFF30D158).copy(alpha = 0.3f) else Color(0xFFFF453A).copy(alpha = 0.3f)
-                                )
+                                border = BorderStroke(1.dp, badgeInk.copy(alpha = 0.3f))
                             ) {
                                 Text(
-                                    text = if (isActive) (if (lang == "ar") "نشط" else "Active") else (if (lang == "ar") "منتهي" else "Expired"),
-                                    color = if (isActive) Color(0xFF30D158) else Color(0xFFFF453A),
+                                    text = when {
+                                        isActive -> if (lang == "ar") "نشط" else "Active"
+                                        isSuspended -> if (lang == "ar") "موقوف" else "Suspended"
+                                        else -> if (lang == "ar") "منتهي" else "Expired"
+                                    },
+                                    color = badgeInk,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
@@ -834,7 +844,9 @@ fun ArabicSubscriberCard(
                         }
 
                         // Remaining / Expiration Date
-                        val subDateText = if (isActive) {
+                        // Follows isExpired, not isActive: a suspended subscriber still has paid
+                        // time left, so they keep the countdown instead of a raw date.
+                        val subDateText = if (!isExpired) {
                             remainingTime
                         } else {
                             if (!expirationStr.isNullOrBlank() && expirationStr != "N/A") {

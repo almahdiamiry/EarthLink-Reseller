@@ -1510,6 +1510,7 @@ class EarthlinkSearchViewModel(
     fun toggleUserActive(userIndex: Int, userId: String, active: Boolean): kotlinx.coroutines.Job =
         viewModelScope.launch {
             val fallbackProvider = _selectedProvider.value
+            var actionProvider = fallbackProvider
             if (isSyntheticLocalIspIdentity(userIndex, userId)) {
                 _error.value = "Action unavailable for local-only account."
                 return@launch
@@ -1522,6 +1523,7 @@ class EarthlinkSearchViewModel(
                         ?: localAccountRepository.findActiveAccountByUsernameOrIdOneShot(userId)
                 }
                 val accountProvider = localAcc?.operationProvider ?: _selectedUser.value?.originProvider ?: fallbackProvider
+                actionProvider = accountProvider
                 val targetGateway = sasGatewayRouter.getGateway(accountProvider)
                 val subscriberId = if (accountProvider == com.example.core.model.SasProviders.ALAMIRY) {
                     localAcc?.ispSubscriberId
@@ -1546,7 +1548,9 @@ class EarthlinkSearchViewModel(
                         userId,
                         if (active) "Resumed subscriber account" else "Suspended subscriber account"
                     )
-                    loadUserDetail(userIndex, userId)
+                    // The status change already succeeded. A failed refresh must not be reported as a
+                    // failed suspend, or the operator is told their action did nothing when it did.
+                    runCatching { loadUserDetail(userIndex, userId) }
                 } else {
                     _error.value = "Status update failed."
                 }
@@ -1561,10 +1565,13 @@ class EarthlinkSearchViewModel(
                 if (isNetworkIssue) {
                     val actionTextAr = if (active) "تفعيل الحساب" else "إيقاف الحساب"
                     val actionTextEn = if (active) "Account activation" else "Account suspension"
+                    val onSamm = actionProvider == com.example.core.model.SasProviders.ALAMIRY
                     _error.value = if (prefs.getLanguage() == "ar") {
-                        "فشل الاتصال بالشبكة: تعذر $actionTextAr على خوادم إيرثلنك. يرجى التأكد من الاتصال بالإنترنت وإعادة المحاولة."
+                        if (onSamm) "فشل الاتصال بالشبكة: تعذر $actionTextAr على خادم سام. يرجى التأكد من الاتصال بالإنترنت وإعادة المحاولة."
+                        else "فشل الاتصال بالشبكة: تعذر $actionTextAr على خوادم إيرثلنك. يرجى التأكد من الاتصال بالإنترنت وإعادة المحاولة."
                     } else {
-                        "Network connection failed: $actionTextEn could not be processed on Earthlink servers. Please check your internet connection and try again."
+                        if (onSamm) "Network connection failed: $actionTextEn could not be processed on the SAMM server. Please check your internet connection and try again."
+                        else "Network connection failed: $actionTextEn could not be processed on Earthlink servers. Please check your internet connection and try again."
                     }
                 } else {
                     _error.value = e.message
