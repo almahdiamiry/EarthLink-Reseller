@@ -5,6 +5,7 @@ import com.example.core.network.SasBusinessException
 import com.example.core.network.SasGateway
 import com.example.core.network.SasGatewayException
 import com.example.core.network.SasInconclusiveException
+import com.example.core.network.SasNotFoundException
 import com.example.core.network.SasOperationResult
 import com.example.core.network.SasSubscriberSession
 import com.example.core.network.SasSubscriberView
@@ -145,14 +146,14 @@ class SammGatewayImpl(
      * bring them forward, not leave them expired.
      */
 override suspend fun extendSubscriberByDays(
-        subscriberId: String,
+        username: String,
         days: Int,
         nowMs: Long
     ): SasOperationResult {
         if (days <= 0) {
             return SasOperationResult.Rejected(reason = "Extension must be at least 1 day")
         }
-        val customerId = parseCustomerId(subscriberId)
+        val customerId = requireCustomerId(username)
         val current = safeApiCall { apiService.getCustomer(customerId) }.body()
         val currentExpiryMillis = current?.expirationDate
             ?.let { com.example.ui.screens.SubscriberDisplayRules.parseInstantMillis(it) }
@@ -294,6 +295,39 @@ override suspend fun extendSubscriberByDays(
      * SAMM exposes online state only through live RADIUS sessions; the customer resource has no
      * online or session field at all. Absence of a session is the offline answer.
      */
+    override suspend fun resolveSubscriberId(username: String): String? {
+        val key = username.trim().takeIf { it.isNotEmpty() } ?: return null
+        return try {
+            // ?search=, not ?username= - the SAMM username filter is case-sensitive and silently
+            // returns nothing for a lowercased name. search is case-insensitive but is a substring
+            // filter, so the guard below is what makes this exact.
+            val response = safeApiCall { apiService.listCustomers(search = key, limit = 5) }
+            response.body()?.items.orEmpty()
+                .firstOrNull { it.username.equals(key, ignoreCase = true) }
+                ?.id?.toString()
+        } catch (e: SasGatewayException) {
+            null
+        }
+    }
+
+    /**
+     * The customer id a mutation must be addressed by, resolved from the username that crossed the
+     * seam. Fails closed: an unresolvable username stops before any gateway mutation is dispatched,
+     * because the alternative is dispatching against a guessed customer.
+     */
+    private suspend fun requireCustomerId(username: String): Int {
+        val key = username.trim().takeIf { it.isNotEmpty() }
+            ?: throw SasBusinessException(
+                statusCode = null,
+                errorMessage = "A username is required to address a SAMM customer"
+            )
+        return resolveSubscriberId(key)?.toIntOrNull()
+            ?: throw SasNotFoundException(
+                statusCode = null,
+                message = "Could not resolve the SAMM customer id for $key"
+            )
+    }
+
     override suspend fun getSubscriberSession(username: String): SasSubscriberSession? {
         val key = username.trim().takeIf { it.isNotEmpty() } ?: return null
         return try {
@@ -359,27 +393,27 @@ override suspend fun extendSubscriberByDays(
         return SasOperationResult.Applied(evidence = customer.id.toString())
     }
 
-    override suspend fun suspendSubscriber(subscriberId: String): SasOperationResult {
-        val customerId = parseCustomerId(subscriberId)
+    override suspend fun suspendSubscriber(username: String): SasOperationResult {
+        val customerId = requireCustomerId(username)
         safeApiCall { apiService.suspendCustomer(customerId) }
         return SasOperationResult.Applied()
     }
 
-    override suspend fun activateSubscriber(subscriberId: String): SasOperationResult {
-        val customerId = parseCustomerId(subscriberId)
+    override suspend fun activateSubscriber(username: String): SasOperationResult {
+        val customerId = requireCustomerId(username)
         safeApiCall { apiService.activateCustomer(customerId) }
         return SasOperationResult.Applied()
     }
 
-    override suspend fun renewSubscriber(subscriberId: String): SasOperationResult {
-        val customerId = parseCustomerId(subscriberId)
+    override suspend fun renewSubscriber(username: String): SasOperationResult {
+        val customerId = requireCustomerId(username)
         val response = safeApiCall { apiService.renewCustomer(customerId, generateInvoice = false) }
         val body = response.body()
         return SasOperationResult.Applied(evidence = body?.newExpiration)
     }
 
-    override suspend fun changePlan(subscriberId: String, newPlanId: String): SasOperationResult {
-        val customerId = parseCustomerId(subscriberId)
+    override suspend fun changePlan(username: String, newPlanId: String): SasOperationResult {
+        val customerId = requireCustomerId(username)
         val numericPlanId = parsePlanId(newPlanId)
         val request = AssignPlanRequest(
             planId = numericPlanId,
@@ -396,15 +430,15 @@ override suspend fun extendSubscriberByDays(
         return SasOperationResult.Applied()
     }
 
-    override suspend fun changePassword(subscriberId: String, newPassword: String): SasOperationResult {
-        val customerId = parseCustomerId(subscriberId)
+    override suspend fun changePassword(username: String, newPassword: String): SasOperationResult {
+        val customerId = requireCustomerId(username)
         val request = CustomerUpdate(password = newPassword)
         safeApiCall { apiService.updateCustomer(customerId, request) }
         return SasOperationResult.Applied()
     }
 
-    override suspend fun updateDisplayName(subscriberId: String, displayName: String): SasOperationResult {
-        val customerId = parseCustomerId(subscriberId)
+    override suspend fun updateDisplayName(username: String, displayName: String): SasOperationResult {
+        val customerId = requireCustomerId(username)
         // SAMM stores the name split across two fields; the seam carries one display name.
         val trimmed = displayName.trim()
         val firstSpace = trimmed.indexOf(' ')

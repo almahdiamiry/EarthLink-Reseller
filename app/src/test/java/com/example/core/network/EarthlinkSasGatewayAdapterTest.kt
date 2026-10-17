@@ -32,11 +32,13 @@ import org.junit.Test
  *    - searchSubscribers computes 0-based paging startIndex and normalizes UserListItem to SasSubscriberView.
  *    - getSubscriber converts integer ID, maps UserDetail, returns null on non-numeric or 404.
  * 4. Mutation Operations:
+ *    - Mutations are username-keyed: the adapter resolves the username to the EarthLink userIndex and
+ *      keeps the index inside. No caller supplies a userIndex.
  *    - createSubscriber converts planId, calls createUserUsingDeposit, returns Applied with evidence.
- *    - suspendSubscriber / activateSubscriber convert subscriberId, delegate toggleUserActive.
+ *    - suspendSubscriber / activateSubscriber resolve the username, delegate toggleUserActive.
  *    - renewSubscriber fails closed throwing SasUnsupportedOperationException (requires deposit password).
- *    - changePlan converts subscriberId and planId, delegates changeAccountType.
- *    - changePassword converts subscriberId, delegates changeUserPassword.
+ *    - changePlan resolves the username, converts planId, delegates changeAccountType.
+ *    - changePassword resolves the username, delegates changeUserPassword.
  * 5. Recovery Verification Oracle (verifyOperationOutcome):
  *    - ACTIVATION: Evaluates existence via searchUsers, checkUsernameAvailable, or user detail.
  *    - RENEWAL / REFILL: Evaluates expiration advancement against baseline evidence.
@@ -391,18 +393,32 @@ class EarthlinkSasGatewayAdapterTest {
 
     // ========================================================================
     // 6. Suspend & Activate Subscriber Contracts
+    //
+    // The mutation seam is username-keyed: these tests seed the provider's user directory with a
+    // username -> userIndex row and assert the mutation lands on that index. No test here supplies a
+    // userIndex directly, because that is exactly the leak this contract removes.
     // ========================================================================
 
+    private fun seedUserDirectory(userIndex: Int, userId: String) {
+        fakeGateway.searchResponse = UserListResponse(
+            itemsList = listOf(UserListItem(userIndexLower = userIndex, userIDLower = userId)),
+            totalCount = 1
+        )
+    }
+
     /**
-     * Claim: suspendSubscriber converts subscriberId, delegates toggleUserActive(userIndex, false), and returns Applied.
+     * Claim: suspendSubscriber resolves the username it is given to a userIndex and delegates
+     *        toggleUserActive(userIndex, false), returning Applied.
      * Seam: JVM headless unit test.
-     * Independent Oracle: toggleUserActive(501, false) returning true -> SasOperationResult.Applied.
+     * Independent Oracle: Directory row user_501 -> 501 and toggleUserActive returning true ->
+     *        SasOperationResult.Applied. The index is the fixture literal, not a parsed caller value.
      */
     @Test
     fun suspendSubscriber_success_returnsApplied() = runTest {
+        seedUserDirectory(501, "user_501")
         fakeGateway.toggleUserActiveResult = true
 
-        val result = adapter.suspendSubscriber("501")
+        val result = adapter.suspendSubscriber("user_501")
 
         assertTrue("Expected Applied result", result is SasOperationResult.Applied)
         assertEquals(1, fakeGateway.toggleUserActiveCalls.get())
@@ -417,39 +433,47 @@ class EarthlinkSasGatewayAdapterTest {
      */
     @Test
     fun suspendSubscriber_failure_returnsRejected() = runTest {
+        seedUserDirectory(501, "user_501")
         fakeGateway.toggleUserActiveResult = false
 
-        val result = adapter.suspendSubscriber("501")
+        val result = adapter.suspendSubscriber("user_501")
 
         assertTrue("Expected Rejected result", result is SasOperationResult.Rejected)
     }
 
     /**
-     * Claim: suspendSubscriber fails closed throwing SasBusinessException when subscriberId is non-numeric.
+     * Claim: suspendSubscriber fails closed when the provider does not carry the username: nothing
+     *        is toggled, so no other subscriber can be suspended by mistake.
      * Seam: JVM headless unit test.
-     * Independent Oracle: Non-numeric subscriberId -> SasBusinessException with 0 delegate calls.
+     * Independent Oracle: Empty directory -> SasNotFoundException, 1 lookup and 0 toggle calls.
      */
     @Test
-    fun suspendSubscriber_invalidId_throwsSasBusinessException() = runTest {
+    fun suspendSubscriber_unresolvableUsername_throwsSasNotFoundException() = runTest {
+        fakeGateway.searchResponse = UserListResponse(itemsList = emptyList(), totalCount = 0)
+
         try {
-            adapter.suspendSubscriber("invalid_id")
-            fail("Expected SasBusinessException")
-        } catch (e: SasBusinessException) {
-            assertTrue(e.errorMessage.contains("Invalid EarthLink subscriber ID"))
-            assertEquals(0, fakeGateway.toggleUserActiveCalls.get())
+            adapter.suspendSubscriber("absent_user")
+            fail("Expected SasNotFoundException")
+        } catch (e: SasNotFoundException) {
+            assertTrue(e.message?.contains("absent_user") == true)
         }
+        assertEquals(1, fakeGateway.searchUsersCalls.get())
+        assertEquals(0, fakeGateway.toggleUserActiveCalls.get())
     }
 
     /**
-     * Claim: activateSubscriber converts subscriberId, delegates toggleUserActive(userIndex, true), and returns Applied.
+     * Claim: activateSubscriber resolves the username to a userIndex and delegates
+     *        toggleUserActive(userIndex, true), returning Applied.
      * Seam: JVM headless unit test.
-     * Independent Oracle: toggleUserActive(602, true) returning true -> SasOperationResult.Applied.
+     * Independent Oracle: Directory row user_602 -> 602 and toggleUserActive returning true ->
+     *        SasOperationResult.Applied.
      */
     @Test
     fun activateSubscriber_success_returnsApplied() = runTest {
+        seedUserDirectory(602, "user_602")
         fakeGateway.toggleUserActiveResult = true
 
-        val result = adapter.activateSubscriber("602")
+        val result = adapter.activateSubscriber("user_602")
 
         assertTrue("Expected Applied result", result is SasOperationResult.Applied)
         assertEquals(1, fakeGateway.toggleUserActiveCalls.get())
@@ -464,9 +488,10 @@ class EarthlinkSasGatewayAdapterTest {
      */
     @Test
     fun activateSubscriber_failure_returnsRejected() = runTest {
+        seedUserDirectory(602, "user_602")
         fakeGateway.toggleUserActiveResult = false
 
-        val result = adapter.activateSubscriber("602")
+        val result = adapter.activateSubscriber("user_602")
 
         assertTrue("Expected Rejected result", result is SasOperationResult.Rejected)
     }
@@ -477,18 +502,21 @@ class EarthlinkSasGatewayAdapterTest {
 
     /**
      * Claim: renewSubscriber fails closed throwing SasUnsupportedOperationException per product contract
-     *        because EarthLink renewal strictly requires deposit password authorization.
+     *        because EarthLink renewal strictly requires deposit password authorization. It resolves
+     *        nothing, so the account's username is never looked up.
      * Seam: JVM headless unit test.
-     * Independent Oracle: Throws SasUnsupportedOperationException, 0 refill/renew delegate calls.
+     * Independent Oracle: Throws SasUnsupportedOperationException, 0 refill/renew delegate calls and
+     *        0 directory lookups.
      */
     @Test
     fun renewSubscriber_alwaysThrowsSasUnsupportedOperationException() = runTest {
         try {
-            adapter.renewSubscriber("701")
+            adapter.renewSubscriber("user_701")
             fail("Expected SasUnsupportedOperationException")
         } catch (e: SasUnsupportedOperationException) {
             assertTrue(e.message?.contains("EarthLink subscriber renewal requires deposit password") == true)
             assertEquals(0, fakeGateway.refillUserDepositCalls.get())
+            assertEquals(0, fakeGateway.searchUsersCalls.get())
         }
     }
 
@@ -497,20 +525,23 @@ class EarthlinkSasGatewayAdapterTest {
     // ========================================================================
 
     /**
-     * Claim: changePlan converts subscriberId and planId, delegates changeAccountType, and returns Applied.
+     * Claim: changePlan resolves the username to a userIndex, sends the username as the gateway's
+     *        userId, and delegates changeAccountType, returning Applied.
      * Seam: JVM headless unit test.
-     * Independent Oracle: changeAccountType(301, "301", 7) returning true -> SasOperationResult.Applied.
+     * Independent Oracle: Directory row user_301 -> 301; changeAccountType(301, "user_301", 7)
+     *        returning true -> SasOperationResult.Applied.
      */
     @Test
     fun changePlan_success_returnsApplied() = runTest {
+        seedUserDirectory(301, "user_301")
         fakeGateway.changeAccountTypeResult = true
 
-        val result = adapter.changePlan("301", "7")
+        val result = adapter.changePlan("user_301", "7")
 
         assertTrue("Expected Applied result", result is SasOperationResult.Applied)
         assertEquals(1, fakeGateway.changeAccountTypeCalls.get())
         assertEquals(301, fakeGateway.lastChangeAccountUserIndex)
-        assertEquals("301", fakeGateway.lastChangeAccountUserId)
+        assertEquals("user_301", fakeGateway.lastChangeAccountUserId)
         assertEquals(7, fakeGateway.lastChangeAccountNewIndex)
     }
 
@@ -521,38 +552,42 @@ class EarthlinkSasGatewayAdapterTest {
      */
     @Test
     fun changePlan_failure_returnsRejected() = runTest {
+        seedUserDirectory(301, "user_301")
         fakeGateway.changeAccountTypeResult = false
 
-        val result = adapter.changePlan("301", "7")
+        val result = adapter.changePlan("user_301", "7")
 
         assertTrue("Expected Rejected result", result is SasOperationResult.Rejected)
     }
 
     /**
-     * Claim: changePlan fails closed throwing SasBusinessException when subscriberId or planId is non-numeric.
+     * Claim: changePlan fails closed when the provider does not carry the username: no plan is changed.
      * Seam: JVM headless unit test.
-     * Independent Oracle: Non-numeric subscriberId -> SasBusinessException with 0 delegate calls.
+     * Independent Oracle: Empty directory -> SasNotFoundException, 0 changeAccountType calls.
      */
     @Test
-    fun changePlan_invalidSubscriberId_throwsSasBusinessException() = runTest {
+    fun changePlan_unresolvableUsername_throwsSasNotFoundException() = runTest {
+        fakeGateway.searchResponse = UserListResponse(itemsList = emptyList(), totalCount = 0)
+
         try {
-            adapter.changePlan("invalid_sub", "5")
-            fail("Expected SasBusinessException")
-        } catch (e: SasBusinessException) {
-            assertTrue(e.errorMessage.contains("Invalid EarthLink subscriber ID"))
-            assertEquals(0, fakeGateway.changeAccountTypeCalls.get())
+            adapter.changePlan("absent_user", "5")
+            fail("Expected SasNotFoundException")
+        } catch (e: SasNotFoundException) {
+            assertTrue(e.message?.contains("absent_user") == true)
         }
+        assertEquals(0, fakeGateway.changeAccountTypeCalls.get())
     }
 
     /**
      * Claim: changePlan fails closed throwing SasBusinessException when planId is non-numeric.
      * Seam: JVM headless unit test.
-     * Independent Oracle: Non-numeric planId -> SasBusinessException with 0 delegate calls.
+     * Independent Oracle: Non-numeric planId "pkg_ultra" -> SasBusinessException with 0 delegate calls.
      */
     @Test
     fun changePlan_invalidPlanId_throwsSasBusinessException() = runTest {
+        seedUserDirectory(301, "user_301")
         try {
-            adapter.changePlan("301", "pkg_ultra")
+            adapter.changePlan("user_301", "pkg_ultra")
             fail("Expected SasBusinessException")
         } catch (e: SasBusinessException) {
             assertTrue(e.errorMessage.contains("Invalid EarthLink plan ID"))
@@ -565,20 +600,23 @@ class EarthlinkSasGatewayAdapterTest {
     // ========================================================================
 
     /**
-     * Claim: changePassword converts subscriberId, delegates changeUserPassword, and returns Applied.
+     * Claim: changePassword resolves the username to a userIndex, sends the username as the gateway's
+     *        userId, and delegates changeUserPassword, returning Applied.
      * Seam: JVM headless unit test.
-     * Independent Oracle: changeUserPassword(401, "401", "new_secret") returning true -> SasOperationResult.Applied.
+     * Independent Oracle: Directory row user_401 -> 401;
+     *        changeUserPassword(401, "user_401", "new_secret") returning true -> Applied.
      */
     @Test
     fun changePassword_success_returnsApplied() = runTest {
+        seedUserDirectory(401, "user_401")
         fakeGateway.changeUserPasswordResult = true
 
-        val result = adapter.changePassword("401", "new_secret")
+        val result = adapter.changePassword("user_401", "new_secret")
 
         assertTrue("Expected Applied result", result is SasOperationResult.Applied)
         assertEquals(1, fakeGateway.changeUserPasswordCalls.get())
         assertEquals(401, fakeGateway.lastChangePasswordUserIndex)
-        assertEquals("401", fakeGateway.lastChangePasswordUserId)
+        assertEquals("user_401", fakeGateway.lastChangePasswordUserId)
         assertEquals("new_secret", fakeGateway.lastChangePasswordNewPass)
     }
 
@@ -589,27 +627,31 @@ class EarthlinkSasGatewayAdapterTest {
      */
     @Test
     fun changePassword_failure_returnsRejected() = runTest {
+        seedUserDirectory(401, "user_401")
         fakeGateway.changeUserPasswordResult = false
 
-        val result = adapter.changePassword("401", "new_secret")
+        val result = adapter.changePassword("user_401", "new_secret")
 
         assertTrue("Expected Rejected result", result is SasOperationResult.Rejected)
     }
 
     /**
-     * Claim: changePassword fails closed throwing SasBusinessException when subscriberId is non-numeric.
+     * Claim: changePassword fails closed when the provider does not carry the username: no password is
+     *        sent, to any subscriber.
      * Seam: JVM headless unit test.
-     * Independent Oracle: Non-numeric subscriberId -> SasBusinessException with 0 delegate calls.
+     * Independent Oracle: Empty directory -> SasNotFoundException, 0 changeUserPassword calls.
      */
     @Test
-    fun changePassword_invalidSubscriberId_throwsSasBusinessException() = runTest {
+    fun changePassword_unresolvableUsername_throwsSasNotFoundException() = runTest {
+        fakeGateway.searchResponse = UserListResponse(itemsList = emptyList(), totalCount = 0)
+
         try {
-            adapter.changePassword("bad_id", "pass")
-            fail("Expected SasBusinessException")
-        } catch (e: SasBusinessException) {
-            assertTrue(e.errorMessage.contains("Invalid EarthLink subscriber ID"))
-            assertEquals(0, fakeGateway.changeUserPasswordCalls.get())
+            adapter.changePassword("absent_user", "pass")
+            fail("Expected SasNotFoundException")
+        } catch (e: SasNotFoundException) {
+            assertTrue(e.message?.contains("absent_user") == true)
         }
+        assertEquals(0, fakeGateway.changeUserPasswordCalls.get())
     }
 
     // ========================================================================

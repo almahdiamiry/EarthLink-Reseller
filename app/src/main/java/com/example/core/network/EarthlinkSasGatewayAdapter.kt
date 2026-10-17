@@ -20,7 +20,9 @@ import com.example.core.network.SasOperationResult
  * 1. Provider Identity: providerName is strictly [SasProviders.EARTHLINK].
  * 2. Identity Normalization:
  *    - Ingress: EarthLink integer userIndex normalized to domain String (SasSubscriberView.subscriberId = userIndex.toString()).
- *    - Egress: Domain String subscriberId parsed to integer for EarthlinkGateway endpoints, throwing [SasBusinessException] if non-numeric.
+ *    - Egress: Mutations address the subscriber by username, which [resolveSubscriberId] turns into the
+ *      EarthLink integer userIndex inside this adapter. A userIndex never crosses the seam: it is
+ *      EarthLink-local and means nothing to the other provider.
  * 3. EarthLink-Only Operations Preserved:
  *    - Specialized portal operations (balance, statements, prepaid, test users, refill deposit passwords) remain directly on [EarthlinkGateway].
  * 4. Operation Oracles (verifyOperationOutcome):
@@ -43,11 +45,21 @@ class EarthlinkSasGatewayAdapter(
     // ID Normalization & Safe Call Helpers
     // ========================================================================
 
-    private fun parseSubscriberId(subscriberId: String): Int {
-        return subscriberId.toIntOrNull()
+    /**
+     * The userIndex a mutation must be addressed by, resolved from the username that crossed the
+     * seam. Fails closed: an unresolvable username stops before any gateway mutation is dispatched,
+     * because the alternative is dispatching against a guessed customer.
+     */
+    private suspend fun requireUserIndex(username: String): Int {
+        val key = username.trim().takeIf { it.isNotEmpty() }
             ?: throw SasBusinessException(
                 statusCode = null,
-                errorMessage = "Invalid EarthLink subscriber ID integer: '$subscriberId'"
+                errorMessage = "A username is required to address an EarthLink subscriber"
+            )
+        return resolveSubscriberId(key)?.toIntOrNull()
+            ?: throw SasNotFoundException(
+                statusCode = null,
+                message = "Could not resolve the EarthLink user index for $key"
             )
     }
 
@@ -116,10 +128,10 @@ class EarthlinkSasGatewayAdapter(
     }
 
     override suspend fun updateDisplayName(
-        subscriberId: String,
+        username: String,
         displayName: String
     ): SasOperationResult =
-        if (delegate.updateUserDisplayName(subscriberId.toIntOrNull() ?: -1, displayName)) {
+        if (delegate.updateUserDisplayName(requireUserIndex(username), displayName)) {
             SasOperationResult.Applied()
         } else {
             SasOperationResult.Rejected(reason = "EarthLink rejected the display name update")
@@ -157,6 +169,19 @@ class EarthlinkSasGatewayAdapter(
             delegate.searchUsers(query = query.trim(), startIndex = startIndex, rowCount = pageSize)
         }
         return response.itemsList?.map { it.toSasSubscriberView() } ?: emptyList()
+    }
+
+    override suspend fun resolveSubscriberId(username: String): String? {
+        val key = username.trim().takeIf { it.isNotEmpty() } ?: return null
+        return try {
+            safeGatewayCall {
+                delegate.searchUsers(query = key, startIndex = 0, rowCount = 5)
+            }.itemsList.orEmpty()
+                .firstOrNull { it.userID.trim().equals(key, ignoreCase = true) }
+                ?.userIndex?.toString()
+        } catch (e: SasGatewayException) {
+            null
+        }
     }
 
     override suspend fun getSubscriber(subscriberId: String): SasSubscriberView? {
@@ -219,8 +244,8 @@ class EarthlinkSasGatewayAdapter(
         }
     }
 
-    override suspend fun suspendSubscriber(subscriberId: String): SasOperationResult {
-        val userIndex = parseSubscriberId(subscriberId)
+    override suspend fun suspendSubscriber(username: String): SasOperationResult {
+        val userIndex = requireUserIndex(username)
         val success = safeGatewayCall {
             delegate.toggleUserActive(userIndex, false)
         }
@@ -231,8 +256,8 @@ class EarthlinkSasGatewayAdapter(
         }
     }
 
-    override suspend fun activateSubscriber(subscriberId: String): SasOperationResult {
-        val userIndex = parseSubscriberId(subscriberId)
+    override suspend fun activateSubscriber(username: String): SasOperationResult {
+        val userIndex = requireUserIndex(username)
         val success = safeGatewayCall {
             delegate.toggleUserActive(userIndex, true)
         }
@@ -243,19 +268,20 @@ class EarthlinkSasGatewayAdapter(
         }
     }
 
-    override suspend fun renewSubscriber(subscriberId: String): SasOperationResult {
+    override suspend fun renewSubscriber(username: String): SasOperationResult {
         // EarthLink subscriber renewal requires deposit password authorization via EarthlinkGateway.refillUserDeposit.
-        // Fails closed as SasUnsupportedOperationException per product contract.
+        // Fails closed as SasUnsupportedOperationException per product contract. Nothing is dispatched, so no
+        // userIndex is resolved: the parameter is unused and resolving it would be unreachable work.
         throw SasUnsupportedOperationException(
             "EarthLink subscriber renewal requires deposit password authorization via EarthlinkGateway.refillUserDeposit"
         )
     }
 
-    override suspend fun changePlan(subscriberId: String, newPlanId: String): SasOperationResult {
-        val userIndex = parseSubscriberId(subscriberId)
+    override suspend fun changePlan(username: String, newPlanId: String): SasOperationResult {
+        val userIndex = requireUserIndex(username)
         val accountIndex = parsePlanId(newPlanId)
         val success = safeGatewayCall {
-            delegate.changeAccountType(userIndex, subscriberId, accountIndex)
+            delegate.changeAccountType(userIndex, username.trim(), accountIndex)
         }
         return if (success) {
             SasOperationResult.Applied()
@@ -264,10 +290,10 @@ class EarthlinkSasGatewayAdapter(
         }
     }
 
-    override suspend fun changePassword(subscriberId: String, newPassword: String): SasOperationResult {
-        val userIndex = parseSubscriberId(subscriberId)
+    override suspend fun changePassword(username: String, newPassword: String): SasOperationResult {
+        val userIndex = requireUserIndex(username)
         val success = safeGatewayCall {
-            delegate.changeUserPassword(userIndex, subscriberId, newPassword)
+            delegate.changeUserPassword(userIndex, username.trim(), newPassword)
         }
         return if (success) {
             SasOperationResult.Applied()

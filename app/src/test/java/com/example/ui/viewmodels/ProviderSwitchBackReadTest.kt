@@ -401,11 +401,11 @@ class ProviderSwitchBackReadTest {
             username: String, planId: String, password: String, firstName: String, lastName: String, phone: String?
         ): SasOperationResult = unsupported()
 
-        override suspend fun suspendSubscriber(subscriberId: String): SasOperationResult = unsupported()
-        override suspend fun activateSubscriber(subscriberId: String): SasOperationResult = unsupported()
-        override suspend fun renewSubscriber(subscriberId: String): SasOperationResult = unsupported()
-        override suspend fun changePlan(subscriberId: String, newPlanId: String): SasOperationResult = unsupported()
-        override suspend fun changePassword(subscriberId: String, newPassword: String): SasOperationResult = unsupported()
+        override suspend fun suspendSubscriber(username: String): SasOperationResult = unsupported()
+        override suspend fun activateSubscriber(username: String): SasOperationResult = unsupported()
+        override suspend fun renewSubscriber(username: String): SasOperationResult = unsupported()
+        override suspend fun changePlan(username: String, newPlanId: String): SasOperationResult = unsupported()
+        override suspend fun changePassword(username: String, newPassword: String): SasOperationResult = unsupported()
         override suspend fun verifyOperationOutcome(
             operationType: String, targetIdentifier: String, baselineEvidence: String?
         ): SasVerificationOutcome = SasVerificationOutcome.VERIFIED_SUCCESS

@@ -427,23 +427,23 @@ class SasGatewayContractTest {
                 }
             }
 
-            override suspend fun suspendSubscriber(subscriberId: String): SasOperationResult {
-                return SasOperationResult.Applied(evidence = "suspended-$subscriberId")
+            override suspend fun suspendSubscriber(username: String): SasOperationResult {
+                return SasOperationResult.Applied(evidence = "suspended-$username")
             }
 
-            override suspend fun activateSubscriber(subscriberId: String): SasOperationResult {
-                return SasOperationResult.Applied(evidence = "activated-$subscriberId")
+            override suspend fun activateSubscriber(username: String): SasOperationResult {
+                return SasOperationResult.Applied(evidence = "activated-$username")
             }
 
-            override suspend fun renewSubscriber(subscriberId: String): SasOperationResult {
-                return SasOperationResult.Applied(evidence = "renewed-$subscriberId")
+            override suspend fun renewSubscriber(username: String): SasOperationResult {
+                return SasOperationResult.Applied(evidence = "renewed-$username")
             }
 
-            override suspend fun changePlan(subscriberId: String, newPlanId: String): SasOperationResult {
+            override suspend fun changePlan(username: String, newPlanId: String): SasOperationResult {
                 return SasOperationResult.Applied(evidence = "plan-$newPlanId")
             }
 
-            override suspend fun changePassword(subscriberId: String, newPassword: String): SasOperationResult {
+            override suspend fun changePassword(username: String, newPassword: String): SasOperationResult {
                 return SasOperationResult.Applied(evidence = "password-updated")
             }
 

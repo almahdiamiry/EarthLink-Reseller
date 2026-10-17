@@ -81,11 +81,11 @@ class DashboardViewModelMultiProviderTest {
 
         override suspend fun getSubscriber(subscriberId: String): SasSubscriberView? = null
         override suspend fun createSubscriber(username: String, planId: String, password: String, firstName: String, lastName: String, phone: String?): SasOperationResult = SasOperationResult.Applied()
-        override suspend fun suspendSubscriber(subscriberId: String): SasOperationResult = SasOperationResult.Applied()
-        override suspend fun activateSubscriber(subscriberId: String): SasOperationResult = SasOperationResult.Applied()
-        override suspend fun renewSubscriber(subscriberId: String): SasOperationResult = SasOperationResult.Applied()
-        override suspend fun changePlan(subscriberId: String, newPlanId: String): SasOperationResult = SasOperationResult.Applied()
-        override suspend fun changePassword(subscriberId: String, newPassword: String): SasOperationResult = SasOperationResult.Applied()
+        override suspend fun suspendSubscriber(username: String): SasOperationResult = SasOperationResult.Applied()
+        override suspend fun activateSubscriber(username: String): SasOperationResult = SasOperationResult.Applied()
+        override suspend fun renewSubscriber(username: String): SasOperationResult = SasOperationResult.Applied()
+        override suspend fun changePlan(username: String, newPlanId: String): SasOperationResult = SasOperationResult.Applied()
+        override suspend fun changePassword(username: String, newPassword: String): SasOperationResult = SasOperationResult.Applied()
         override suspend fun verifyOperationOutcome(operationType: String, targetIdentifier: String, baselineEvidence: String?): SasVerificationOutcome = SasVerificationOutcome.VERIFIED_SUCCESS
         override suspend fun checkConnection(): Boolean = true
     }

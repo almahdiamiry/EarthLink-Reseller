@@ -547,27 +547,27 @@ class EarthlinkSearchViewModelProviderRoutingTest {
             return createResult
         }
 
-        override suspend fun suspendSubscriber(subscriberId: String): SasOperationResult {
+        override suspend fun suspendSubscriber(username: String): SasOperationResult {
             suspendSubscriberCalls.incrementAndGet()
             return suspendResult
         }
 
-        override suspend fun activateSubscriber(subscriberId: String): SasOperationResult {
+        override suspend fun activateSubscriber(username: String): SasOperationResult {
             activateSubscriberCalls.incrementAndGet()
             return activateResult
         }
 
-        override suspend fun renewSubscriber(subscriberId: String): SasOperationResult {
+        override suspend fun renewSubscriber(username: String): SasOperationResult {
             renewSubscriberCalls.incrementAndGet()
             return renewResult
         }
 
-        override suspend fun changePlan(subscriberId: String, newPlanId: String): SasOperationResult {
+        override suspend fun changePlan(username: String, newPlanId: String): SasOperationResult {
             changePlanCalls.incrementAndGet()
             return changePlanResult
         }
 
-        override suspend fun changePassword(subscriberId: String, newPassword: String): SasOperationResult {
+        override suspend fun changePassword(username: String, newPassword: String): SasOperationResult {
             changePasswordCalls.incrementAndGet()
             return changePasswordResult
         }

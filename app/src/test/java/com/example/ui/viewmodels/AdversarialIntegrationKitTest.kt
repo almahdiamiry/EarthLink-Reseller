@@ -701,31 +701,31 @@ class AdversarialIntegrationKitTest {
             return createResult
         }
 
-        override suspend fun suspendSubscriber(subscriberId: String): SasOperationResult {
+        override suspend fun suspendSubscriber(username: String): SasOperationResult {
             suspendCalls.incrementAndGet()
             checkError()
             return suspendResult
         }
 
-        override suspend fun activateSubscriber(subscriberId: String): SasOperationResult {
+        override suspend fun activateSubscriber(username: String): SasOperationResult {
             activateCalls.incrementAndGet()
             checkError()
             return activateResult
         }
 
-        override suspend fun renewSubscriber(subscriberId: String): SasOperationResult {
+        override suspend fun renewSubscriber(username: String): SasOperationResult {
             renewCalls.incrementAndGet()
             checkError()
             return renewResult
         }
 
-        override suspend fun changePlan(subscriberId: String, newPlanId: String): SasOperationResult {
+        override suspend fun changePlan(username: String, newPlanId: String): SasOperationResult {
             changePlanCalls.incrementAndGet()
             checkError()
             return changePlanResult
         }
 
-        override suspend fun changePassword(subscriberId: String, newPassword: String): SasOperationResult {
+        override suspend fun changePassword(username: String, newPassword: String): SasOperationResult {
             changePasswordCalls.incrementAndGet()
             checkError()
             return changePasswordResult

@@ -247,29 +247,29 @@ interface SasGateway {
     ): SasOperationResult
 
     /**
-     * Suspend an active subscriber account.
+     * Suspend an active subscriber account, addressed by username.
      */
-    suspend fun suspendSubscriber(subscriberId: String): SasOperationResult
+    suspend fun suspendSubscriber(username: String): SasOperationResult
 
     /**
-     * Activate a suspended subscriber account.
+     * Activate a suspended subscriber account, addressed by username.
      */
-    suspend fun activateSubscriber(subscriberId: String): SasOperationResult
+    suspend fun activateSubscriber(username: String): SasOperationResult
 
     /**
-     * Renew an existing subscriber's current plan.
+     * Renew an existing subscriber's current plan, addressed by username.
      */
-    suspend fun renewSubscriber(subscriberId: String): SasOperationResult
+    suspend fun renewSubscriber(username: String): SasOperationResult
 
     /**
-     * Change a subscriber's plan to newPlanId.
+     * Change a subscriber's plan to newPlanId, addressed by username.
      */
-    suspend fun changePlan(subscriberId: String, newPlanId: String): SasOperationResult
+    suspend fun changePlan(username: String, newPlanId: String): SasOperationResult
 
     /**
-     * Change a subscriber's password.
+     * Change a subscriber's password, addressed by username.
      */
-    suspend fun changePassword(subscriberId: String, newPassword: String): SasOperationResult
+    suspend fun changePassword(username: String, newPassword: String): SasOperationResult
 
     /**
      * Operation-aware verification for recovery sweeps.
@@ -289,6 +289,16 @@ interface SasGateway {
      * Check network connectivity and credentials with the provider gateway.
      */
     suspend fun checkConnection(): Boolean
+
+    /**
+     * Maps a username to this provider's own subscriber id, or null when the provider does not carry it.
+     *
+     * Username is the only identity both providers share. Provider ids are local to one ISP and mean
+     * nothing on the other, so they must never cross the seam: after a subscriber changes provider, the
+     * id stored on the account still belongs to the old ISP, and handing it to the new provider's API
+     * addresses a different customer.
+     */
+    suspend fun resolveSubscriberId(username: String): String? = null
 
     /**
      * Reads the subscriber's live session, when the provider exposes one.
@@ -324,18 +334,18 @@ interface SasGateway {
     suspend fun listPackages(): List<AccountPackage> = emptyList()
 
     /**
-     * Renames a subscriber at the provider.
+     * Renames a subscriber at the provider, addressed by username.
      *
      * Defaults to Unsupported so a provider that cannot rename cannot silently accept one. This
      * exists on the seam because the provider-neutral UI offers the action for every provider:
      * without it, an Alamiry rename fell through to the EarthLink gateway and wrote the SAMM
      * subscriber id to the wrong ISP.
      */
-    suspend fun updateDisplayName(subscriberId: String, displayName: String): SasOperationResult =
+    suspend fun updateDisplayName(username: String, displayName: String): SasOperationResult =
         SasOperationResult.Unsupported("Renaming a subscriber is not supported by this provider")
 
     /**
-     * Extends a subscriber's expiry by an exact number of days.
+     * Extends a subscriber's expiry by an exact number of days, addressed by username.
      *
      * Defaults to Unsupported. A provider whose extension is a deposit-authorised operation with
      * its own duration semantics (EarthLink) must keep using that path rather than this one.
@@ -343,7 +353,7 @@ interface SasGateway {
      * [days] must be strictly positive; zero or negative is rejected rather than silently
      * shortening a subscriber's expiry.
      */
-    suspend fun extendSubscriberByDays(subscriberId: String, days: Int, nowMs: Long = System.currentTimeMillis()): SasOperationResult =
+    suspend fun extendSubscriberByDays(username: String, days: Int, nowMs: Long = System.currentTimeMillis()): SasOperationResult =
         SasOperationResult.Unsupported("Extending by a number of days is not supported by this provider")
 
     /**

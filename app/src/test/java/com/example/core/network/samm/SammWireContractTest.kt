@@ -648,12 +648,19 @@ class SammWireContractTest {
             MockResponse()
                 .setResponseCode(200)
                 .setHeader("Content-Type", "application/json")
+                .setBody("""{"total": 1, "items": [{"id": 326, "username": "admin@sacx"}]}""")
+        )
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
                 .setBody("""{"id": 326, "username": "admin@sacx", "plan_id": 6, "plan_name": "Economy"}""")
         )
 
-        assertTrue(gateway.changePlan("326", "6").isApplied)
+        assertTrue(gateway.changePlan("admin@sacx", "6").isApplied)
 
-        val body = mockServer.takeRequestOrFail().body.readUtf8()
+        mockServer.takeRequestOrFail("username lookup")
+        val body = mockServer.takeRequestOrFail("assign-plan").body.readUtf8()
         assertTrue("extend_expiration must be explicitly false, body=$body", body.contains("\"extend_expiration\":false"))
         assertTrue("keep_expiration must be explicitly true, body=$body", body.contains("\"keep_expiration\":true"))
         assertTrue("when must be explicitly 'now', body=$body", body.contains("\"when\":\"now\""))
@@ -681,6 +688,12 @@ class SammWireContractTest {
             MockResponse()
                 .setResponseCode(200)
                 .setHeader("Content-Type", "application/json")
+                .setBody("""{"total": 1, "items": [{"id": 326, "username": "admin@sacx"}]}""")
+        )
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
                 .setBody(
                     """{"id": 326, "username": "admin@sacx", "status": "active",
                         "expiration_date": "2026-10-20T00:00:00+00:00"}""".trimIndent()
@@ -695,7 +708,7 @@ class SammWireContractTest {
 
         // 2026-10-10T00:00:00Z, well before the 2026-10-20 expiry.
         val nowMs = 1_791_590_400_000L
-        val result = gateway.extendSubscriberByDays("326", 5, nowMs = nowMs)
+        val result = gateway.extendSubscriberByDays("admin@sacx", 5, nowMs = nowMs)
 
         assertTrue("Extension must be applied, got $result", result.isApplied)
         val request = patchRequest()
@@ -720,6 +733,12 @@ class SammWireContractTest {
             MockResponse()
                 .setResponseCode(200)
                 .setHeader("Content-Type", "application/json")
+                .setBody("""{"total": 1, "items": [{"id": 326, "username": "admin@sacx"}]}""")
+        )
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
                 .setBody(
                     """{"id": 326, "username": "admin@sacx", "status": "expired",
                         "expiration_date": "2020-01-01T00:00:00+00:00"}""".trimIndent()
@@ -734,7 +753,7 @@ class SammWireContractTest {
 
         // 2026-10-10T00:00:00Z. Somebody who lapsed in 2020 lands on 2026-10-11, not 2020-01-02.
         val nowMs = 1_791_590_400_000L
-        gateway.extendSubscriberByDays("326", 1, nowMs = nowMs)
+        gateway.extendSubscriberByDays("admin@sacx", 1, nowMs = nowMs)
 
         val body = patchRequest().body.readUtf8()
         assertTrue(
@@ -744,22 +763,35 @@ class SammWireContractTest {
     }
 
     @Test
-    fun extendSubscriberByDays_rejectsANonNumericSubscriberIdInsteadOfPretending() = runTest {
-        // The caller used to fall back to the username ("admin@sacx") when it could not resolve a
-        // customer id, and parseCustomerId then threw an opaque parse error. It must fail loudly.
+    fun extendSubscriberByDays_rejectsAUsernameTheProviderDoesNotCarryInsteadOfPretending() = runTest {
+        // The extension is addressed by username. If SAMM does not carry that username there is no
+        // customer to extend, and guessing an id would write somebody else's expiry. It must fail
+        // loudly, naming the value, and dispatch nothing.
         val gateway = SammGatewayImpl(apiService)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"total": 0, "items": []}""")
+        )
+        val requestsBefore = mockServer.requestCount
 
         val thrown = try {
-            gateway.extendSubscriberByDays("admin@sacx", 3)
+            gateway.extendSubscriberByDays("absent@sacx", 3)
             null
         } catch (e: SasGatewayException) {
             e
         }
 
-        assertNotNull("A username must be rejected, not silently accepted", thrown)
+        assertNotNull("A username the provider does not carry must be rejected", thrown)
         assertTrue(
             "The message must name the offending value, got: ${thrown?.message}",
-            thrown?.message?.contains("admin@sacx") == true
+            thrown?.message?.contains("absent@sacx") == true
+        )
+        assertEquals(
+            "Only the lookup may reach the provider; no expiry may be written",
+            1,
+            mockServer.requestCount - requestsBefore
         )
     }
 
@@ -785,12 +817,19 @@ class SammWireContractTest {
             MockResponse()
                 .setResponseCode(200)
                 .setHeader("Content-Type", "application/json")
+                .setBody("""{"total": 1, "items": [{"id": 326, "username": "admin@sacx"}]}""")
+        )
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
                 .setBody("""{"id": 326, "username": "admin@sacx", "status": "active"}""")
         )
 
-        assertTrue(gateway.updateDisplayName("326", "Ahmad Karim").isApplied)
+        assertTrue(gateway.updateDisplayName("admin@sacx", "Ahmad Karim").isApplied)
 
-        val recorded = mockServer.takeRequestOrFail()
+        mockServer.takeRequestOrFail("username lookup")
+        val recorded = mockServer.takeRequestOrFail("rename")
         assertEquals("PATCH", recorded.method)
         assertEquals("/api/v1/customers/326", recorded.path)
         val body = recorded.body.readUtf8()
@@ -806,12 +845,19 @@ class SammWireContractTest {
             MockResponse()
                 .setResponseCode(200)
                 .setHeader("Content-Type", "application/json")
+                .setBody("""{"total": 1, "items": [{"id": 326, "username": "admin@sacx"}]}""")
+        )
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
                 .setBody("""{"id": 326, "username": "admin@sacx", "status": "active"}""")
         )
 
-        assertTrue(gateway.updateDisplayName("326", "Prince").isApplied)
+        assertTrue(gateway.updateDisplayName("admin@sacx", "Prince").isApplied)
 
-        val body = mockServer.takeRequestOrFail().body.readUtf8()
+        mockServer.takeRequestOrFail("username lookup")
+        val body = mockServer.takeRequestOrFail("rename").body.readUtf8()
         assertTrue("firstname must carry the whole name, body=$body", body.contains("\"firstname\":\"Prince\""))
         assertFalse("lastname must be omitted when absent, body=$body", body.contains("lastname"))
     }

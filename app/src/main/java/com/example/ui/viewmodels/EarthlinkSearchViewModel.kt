@@ -1409,17 +1409,11 @@ class EarthlinkSearchViewModel(
                     } else {
                         // SAMM's /renew applies the PLAN's duration (a month) and accepts no day
                         // count, so it cannot satisfy "give them N days". extendSubscriberByDays
-                        // sets the absolute expiry instead.
+                        // sets the absolute expiry instead. The username is what identifies the
+                        // subscriber: the account's stored provider id belongs to whichever ISP it
+                        // last used, which is not necessarily this one.
                         val targetGateway = sasGatewayRouter.getGateway(accountProvider)
-                        val subscriberId = account?.ispSubscriberId?.takeIf { it.isNotBlank() }
-                            ?: targetGateway.searchSubscribers(query = userId, page = 1, pageSize = 5)
-                                .firstOrNull { it.username.equals(userId, ignoreCase = true) }
-                                ?.subscriberId
-                            ?: throw SasBusinessException(
-                                statusCode = null,
-                                errorMessage = "Could not resolve the $accountProvider customer id for $userId"
-                            )
-                        targetGateway.extendSubscriberByDays(subscriberId, days).isApplied
+                        targetGateway.extendSubscriberByDays(userId, days).isApplied
                     }
                 }.onFailure { e -> if (e !is kotlinx.coroutines.CancellationException) failureReason = e.message }
                 .getOrElse { e ->
@@ -1525,18 +1519,10 @@ class EarthlinkSearchViewModel(
                 val accountProvider = localAcc?.operationProvider ?: _selectedUser.value?.originProvider ?: fallbackProvider
                 actionProvider = accountProvider
                 val targetGateway = sasGatewayRouter.getGateway(accountProvider)
-                val subscriberId = if (accountProvider == com.example.core.model.SasProviders.ALAMIRY) {
-                    localAcc?.ispSubscriberId
-                        ?: if (userIndex > 0 && userIndex.toString() != userIndex.hashCode().toString()) userIndex.toString() else null
-                        ?: targetGateway.searchSubscribers(query = userId, page = 1, pageSize = 10).find { it.username.equals(userId, ignoreCase = true) }?.subscriberId
-                        ?: userIndex.toString()
-                } else {
-                    localAcc?.ispUserIndex?.toString() ?: userIndex.toString()
-                }
                 val opResult = if (active) {
-                    targetGateway.activateSubscriber(subscriberId)
+                    targetGateway.activateSubscriber(userId)
                 } else {
-                    targetGateway.suspendSubscriber(subscriberId)
+                    targetGateway.suspendSubscriber(userId)
                 }
                 val success = opResult.isApplied
                 if (success) {
@@ -1606,15 +1592,7 @@ class EarthlinkSearchViewModel(
                 } else null
                 val accountProvider = account?.operationProvider ?: localAcc?.operationProvider ?: fallbackProvider
                 val targetGateway = sasGatewayRouter.getGateway(accountProvider)
-                val subscriberId = if (accountProvider == com.example.core.model.SasProviders.ALAMIRY) {
-                    (account ?: localAcc)?.ispSubscriberId
-                        ?: if (userIndex > 0 && userIndex.toString() != userIndex.hashCode().toString()) userIndex.toString() else null
-                        ?: targetGateway.searchSubscribers(query = userId, page = 1, pageSize = 10).find { it.username.equals(userId, ignoreCase = true) }?.subscriberId
-                        ?: userIndex.toString()
-                } else {
-                    (account ?: localAcc)?.ispUserIndex?.toString() ?: userIndex.toString()
-                }
-                val opResult = targetGateway.changePlan(subscriberId, accountIndex.toString())
+                val opResult = targetGateway.changePlan(userId, accountIndex.toString())
                 val success = opResult.isApplied
                 if (success) {
                     val effectiveAccount = account ?: localAcc
@@ -1741,7 +1719,7 @@ class EarthlinkSearchViewModel(
                 }
                 val accountProvider = localAcc?.operationProvider ?: fallbackProvider
                 val targetGateway = sasGatewayRouter.getGateway(accountProvider)
-                val opResult = targetGateway.changePassword(userIndex.toString(), newPass)
+                val opResult = targetGateway.changePassword(userId, newPass)
                 val success = opResult.isApplied
                 if (success) {
                     _revealedUserPass.value = newPass
@@ -1774,7 +1752,7 @@ class EarthlinkSearchViewModel(
                 // what left this button doing nothing for SAMM subscribers.
                 val accountProvider = localAcc?.operationProvider ?: _selectedProvider.value
                 val targetGateway = sasGatewayRouter.getGateway(accountProvider)
-                val success = targetGateway.changePassword(userIndex.toString(), newPass).isApplied
+                val success = targetGateway.changePassword(userId, newPass).isApplied
                 if (success) {
                     _revealedAccountPass.value = newPass
                     _actionSuccess.value = if (prefs.getLanguage() == "ar") "تم تغيير كلمة مرور الاشتراك بنجاح." else "Broadband account password changed successfully."
@@ -1821,18 +1799,7 @@ val targetUserId = account?.earthlinkUsername ?: _selectedUser.value?.userID ?: 
             val accountProvider = (account ?: localAccountRepository.findAccountByUsernameOrIdOneShot(targetUserId))
                 ?.operationProvider ?: _selectedProvider.value
             val targetGateway = sasGatewayRouter.getGateway(accountProvider)
-            val subscriberId = if (accountProvider == com.example.core.model.SasProviders.ALAMIRY) {
-                account?.ispSubscriberId?.takeIf { it.isNotBlank() }
-                    ?: targetGateway.searchSubscribers(query = targetUserId, page = 1, pageSize = 5)
-                        .firstOrNull { it.username.equals(targetUserId, ignoreCase = true) }?.subscriberId
-                    ?: throw SasBusinessException(
-                        statusCode = null,
-                        errorMessage = "Could not resolve the $accountProvider customer id for $targetUserId"
-                    )
-            } else {
-                account?.ispUserIndex?.toString() ?: userIndex.toString()
-            }
-            val opResult = targetGateway.updateDisplayName(subscriberId, newName)
+            val opResult = targetGateway.updateDisplayName(targetUserId, newName)
             if (opResult.isApplied) {
                     _actionSuccess.value = if (prefs.getLanguage() == "ar") {
                         "تم تعديل اسم المشترك بنجاح."
@@ -2043,18 +2010,8 @@ val targetUserId = account?.earthlinkUsername ?: _selectedUser.value?.userID ?: 
                 }
 
                 val sammGateway = sasGatewayRouter.getGateway(com.example.core.model.SasProviders.ALAMIRY)
-                var sammSubId = effectiveAcc.ispSubscriberId
-                if (sammSubId.isNullOrBlank()) {
-                    val searchCandidates = sammGateway.searchSubscribers(query = userId, page = 1, pageSize = 10)
-                    val match = searchCandidates.find { it.username.equals(userId, ignoreCase = true) }
-                    if (match != null) {
-                        sammSubId = match.subscriberId
-                        localAccountRepository.saveAccount(effectiveAcc.copy(ispSubscriberId = sammSubId))
-                    }
-                }
-                val subscriberIdToUse = sammSubId ?: userId
 
-                val opResult = sammGateway.renewSubscriber(subscriberIdToUse)
+                val opResult = sammGateway.renewSubscriber(userId)
                 if (opResult.isApplied) {
                     try {
                         val chargeNote = finalNote.trim().ifEmpty { null }
@@ -2091,9 +2048,12 @@ val targetUserId = account?.earthlinkUsername ?: _selectedUser.value?.userID ?: 
                             summary = "Renewed subscription on SAMM at price $authoritativePrice. Note: $finalNote"
                         )
 
-                        // Refresh subscriber detail from SAMM
+                        // Refresh subscriber detail from SAMM. The refresh is a read and still speaks in
+                        // provider ids, so it asks the gateway to resolve the username it was given rather
+                        // than reusing an id cached on the account.
                         try {
-                            val refreshed = sammGateway.getSubscriber(subscriberIdToUse)
+                            val refreshedId = sammGateway.resolveSubscriberId(userId)
+                            val refreshed = refreshedId?.let { sammGateway.getSubscriber(it) }
                             if (refreshed != null) {
                                 val numIdx = refreshed.subscriberId.toIntOrNull() ?: refreshed.subscriberId.hashCode()
                                 _selectedUser.value = com.example.core.model.UserDetail(
