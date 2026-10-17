@@ -24,6 +24,11 @@
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+> **Historical record (Round 13) — not the current baseline.** Everything below is the Round-13
+> measurement, retained verbatim as provenance for the one sanctioned test deletion. The live figure
+> is `CURRENT VERIFIED TEST BASELINE` in the box above; if these numbers ever disagree with it, that
+> box is correct and this record is simply out of date.
+>
 > **Baseline changed from 798 to 797 at Round 13, and the count is not a regression.** The Round-13
 > repair plan sanctioned exactly one deletion — `Phase1FirestoreDocumentIdentityTest.testScenarioJ_counterfactualRawPayloadContainsRawJson`,
 > a tautological control for a control — so 798 − 1 = **797** is arithmetically forced and was
