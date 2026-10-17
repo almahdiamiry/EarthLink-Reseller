@@ -174,8 +174,12 @@ class EarthlinkSasGatewayAdapter(
     override suspend fun resolveSubscriberId(username: String): String? {
         val key = username.trim().takeIf { it.isNotEmpty() } ?: return null
         return try {
+            // EarthLink's user search is a substring filter, so the guard below is what makes this
+            // exact, and the window must be wide enough that the colliders cannot push the exact
+            // row out of the response. Searches come back newest-first, which puts the colliders
+            // first and the exact row last.
             safeGatewayCall {
-                delegate.searchUsers(query = key, startIndex = 0, rowCount = 5)
+                delegate.searchUsers(query = key, startIndex = 0, rowCount = SUBSCRIBER_LOOKUP_WINDOW)
             }.itemsList.orEmpty()
                 .firstOrNull { it.userID.trim().equals(key, ignoreCase = true) }
                 ?.userIndex?.toString()

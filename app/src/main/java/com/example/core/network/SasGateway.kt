@@ -214,6 +214,24 @@ enum class SasVerificationOutcome {
 // ============================================================================
 
 /**
+ * How many rows a [SasGateway.resolveSubscriberId] lookup asks for.
+ *
+ * Both provider user directories are searched with a SUBSTRING filter, so the exact row shares its
+ * response with every username that merely contains the key. A short window lets the colliders crowd
+ * the exact row out of the response entirely: `ahmed@sacx` is a substring of `ahmed2@sacx`,
+ * `ahmed_ali@sacx` and many more, and the resolver would then return null for a subscriber who
+ * exists and cannot be suspended, renewed or extended.
+ *
+ * Ordering makes it worse rather than better: EarthLink searches newest-first (orderDescending), so
+ * the exact row is the one most likely to fall past the end of a short window.
+ *
+ * 100 is SAMM's own documented server default (max 1000), so it is never rejected as out of range,
+ * and it is 10x the window this interface's verification oracle has always used. The cost is one
+ * wider read per mutation, which is not a hot path.
+ */
+internal const val SUBSCRIBER_LOOKUP_WINDOW = 100
+
+/**
  * Minimal common provider seam representing real shared subscriber capabilities
  * across EarthLink and SAMM providers.
  *
@@ -297,6 +315,10 @@ interface SasGateway {
      * nothing on the other, so they must never cross the seam: after a subscriber changes provider, the
      * id stored on the account still belongs to the old ISP, and handing it to the new provider's API
      * addresses a different customer.
+     *
+     * Implementations must search with a window of at least [SUBSCRIBER_LOOKUP_WINDOW] rows: both
+     * provider directories are substring-filtered, so a narrower window lets colliding usernames
+     * push the exact row out of the response.
      */
     suspend fun resolveSubscriberId(username: String): String? = null
 

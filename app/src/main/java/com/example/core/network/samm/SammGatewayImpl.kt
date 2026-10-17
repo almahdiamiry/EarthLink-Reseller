@@ -10,6 +10,7 @@ import com.example.core.network.SasOperationResult
 import com.example.core.network.SasSubscriberSession
 import com.example.core.network.SasSubscriberView
 import com.example.core.network.SasVerificationOutcome
+import com.example.core.network.SUBSCRIBER_LOOKUP_WINDOW
 import com.example.core.network.toSasGatewayException
 import retrofit2.Response
 
@@ -300,8 +301,11 @@ override suspend fun extendSubscriberByDays(
         return try {
             // ?search=, not ?username= - the SAMM username filter is case-sensitive and silently
             // returns nothing for a lowercased name. search is case-insensitive but is a substring
-            // filter, so the guard below is what makes this exact.
-            val response = safeApiCall { apiService.listCustomers(search = key, limit = 5) }
+            // filter, so the guard below is what makes this exact, and the window must be wide
+            // enough that the colliders cannot push the exact row out of the response.
+            val response = safeApiCall {
+                apiService.listCustomers(search = key, limit = SUBSCRIBER_LOOKUP_WINDOW)
+            }
             response.body()?.items.orEmpty()
                 .firstOrNull { it.username.equals(key, ignoreCase = true) }
                 ?.id?.toString()

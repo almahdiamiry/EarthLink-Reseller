@@ -7,8 +7,10 @@ import com.example.core.network.samm.SammNetworkClient
 import com.example.core.network.samm.takeRequestOrFail
 import com.example.domain.repository.EarthlinkGateway
 import kotlinx.coroutines.test.runTest
+import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -320,6 +322,85 @@ class SubscriberIdentityResolutionTest {
         )
     }
 
+    /**
+ * Claim: SammGatewayImpl.resolveSubscriberId still finds the exact account when the username is a
+ *        substring of many others. ?search= is a substring filter, so the colliders crowd the exact
+ *        row; if the lookup window is narrower than the collision set, the exact row is never in the
+ *        response and a subscriber who EXISTS resolves to null - unsuspendable, unrenewable,
+ *        unextendable.
+     * Seam: JVM MockWebServer wire contract. The provider is simulated with a Dispatcher that HONOURS
+     *        `limit` and truncates. A queued static body would return the exact row no matter what the
+     *        client asked for, and would prove nothing about the window.
+     * Independent Oracle: The fixture holds 50 colliders ahead of the exact row, mirroring EarthLink's
+     *        newest-first ordering. The only correct answers are the literal id "379" and a requested
+     *        window larger than the 50-row collision set.
+     */
+    @Test
+    fun samm_resolveSubscriberId_survivesASubstringCollisionFlood() = runTest {
+        val rows = (1..50).map { """{"id": ${9000 + it}, "username": "ahmed${it}_extra@sacx"}""" } +
+            listOf("""{"id": 379, "username": "ahmed@sacx"}""")
+        val provider = TruncatingCustomerSearch(rows)
+        mockServer.dispatcher = provider
+
+        val resolved = sammGateway.resolveSubscriberId("ahmed@sacx")
+
+        assertEquals(
+            "An existing subscriber must resolve even when 50 other usernames contain their name",
+            "379",
+            resolved
+        )
+        assertTrue(
+            "The lookup window must exceed the collision set, requested: ${provider.lastRequestedLimit}",
+            provider.lastRequestedLimit!! > 50
+        )
+    }
+
+    /**
+     * A customer search that behaves like the real server under `limit`: it returns only the first
+     * `limit` rows. MockWebServer's queued responses ignore `limit`, which would let a too-narrow
+     * window still "succeed" and hide the very defect this test exists to catch.
+     */
+    private class TruncatingCustomerSearch(private val rows: List<String>) : Dispatcher() {
+        var lastRequestedLimit: Int? = null
+
+        override fun dispatch(request: RecordedRequest): MockResponse {
+            val limit = request.requestUrl?.queryParameter("limit")?.toIntOrNull() ?: rows.size
+            lastRequestedLimit = limit
+            return MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{ "total": ${rows.size}, "items": [${rows.take(limit).joinToString(",")}] }""")
+        }
+    }
+
+    /**
+     * Claim: EarthlinkSasGatewayAdapter.resolveSubscriberId still finds the exact account when the
+     *        username is a substring of many others. EarthLink's user search is a substring filter and
+     *        returns newest-first, so a short window drops the exact row precisely because it is old.
+     * Seam: JVM headless unit test through a recording fake gateway.
+     * Independent Oracle: 50 colliders are listed ahead of the exact row. The expected answers are the
+     *        literal id 379 and the literal window constant, neither recomputed from the code under test.
+     */
+    @Test
+    fun earthlink_resolveSubscriberId_survivesASubstringCollisionFlood() = runTest {
+        val colliders = (1..50).map {
+            UserListItem(userIndexLower = 9000 + it, userIDLower = "ahmed${it}_extra@sacx")
+        }
+        earthlinkFake.searchResponse = UserListResponse(
+            itemsList = colliders + UserListItem(userIndexLower = 379, userIDLower = "ahmed@sacx"),
+            totalCount = 51
+        )
+
+        val resolved = earthlinkAdapter.resolveSubscriberId("ahmed@sacx")
+
+        assertEquals("379", resolved)
+        assertEquals(SUBSCRIBER_LOOKUP_WINDOW, earthlinkFake.lastSearchRowCount)
+        assertTrue(
+            "The window must exceed a realistic collision set",
+            earthlinkFake.lastSearchRowCount!! > 50
+        )
+    }
+
     private fun enqueueSammSearch(username: String, id: Int) {
         mockServer.enqueue(
             MockResponse()
@@ -347,6 +428,7 @@ class SubscriberIdentityResolutionTest {
 
         var searchResponse: UserListResponse = UserListResponse(itemsList = emptyList(), totalCount = 0)
         var lastSearchQuery: String? = null
+        var lastSearchRowCount: Int? = null
         var lastToggleUserIndex: Int? = null
         var lastToggleActiveState: Boolean? = null
         var lastChangePasswordUserIndex: Int? = null
@@ -357,7 +439,11 @@ class SubscriberIdentityResolutionTest {
 
         override suspend fun searchUsers(query: String, startIndex: Int, rowCount: Int): UserListResponse {
             lastSearchQuery = query
-            return searchResponse
+            lastSearchRowCount = rowCount
+            // Honours rowCount the way a real paginated endpoint does, so a resolver asking for too
+            // narrow a window genuinely loses rows instead of silently seeing all of them.
+            val windowed = searchResponse.itemsList.orEmpty().drop(startIndex).take(rowCount)
+            return UserListResponse(itemsList = windowed, totalCount = searchResponse.totalCount)
         }
 
         override suspend fun toggleUserActive(userIndex: Int, active: Boolean): Boolean {
