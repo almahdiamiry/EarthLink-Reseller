@@ -3389,15 +3389,26 @@ if (showExtendDialog) {
                                     color = Color.White
                                 )
 
-                                val access = prefs.getProviderAccessState()
-                                listOf(
-                                    com.example.core.model.SasProviders.EARTHLINK to if (currentLang == "ar") "إيرثلنك (EARTHLINK)" else "EarthLink (EARTHLINK)",
-                                    com.example.core.model.SasProviders.ALAMIRY to if (currentLang == "ar") "سام (SAMM)" else "SAMM (SAMM)"
-                                ).forEach { (provKey, provLabel) ->
-                                    // An unconfigured provider has no credentials behind it, so picking it
-                                    // would send later operations nowhere. Show it, but not as a choice.
-                                    val isAvailable = if (provKey == com.example.core.model.SasProviders.EARTHLINK)
-                                        access.hasEarthlink else access.hasSamm
+val access = prefs.getProviderAccessState()
+                                    // null = not looked up yet, so the row stays pickable while loading
+                                    var providerPresence by remember { mutableStateOf<Map<String, Boolean>?>(null) }
+                                    LaunchedEffect(showEditProviderDialog, user.userID) {
+                                        providerPresence = if (showEditProviderDialog) {
+                                            viewModel.checkProviderPresence(user.userID)
+                                        } else {
+                                            null
+                                        }
+                                    }
+                                    listOf(
+                                        com.example.core.model.SasProviders.EARTHLINK to if (currentLang == "ar") "إيرثلنك (EARTHLINK)" else "EarthLink (EARTHLINK)",
+                                        com.example.core.model.SasProviders.ALAMIRY to if (currentLang == "ar") "سام (SAMM)" else "SAMM (SAMM)"
+                                    ).forEach { (provKey, provLabel) ->
+                                        // Two independent reasons a row may be unpickable: the provider has no
+                                        // credentials, or it does not carry this username. Both end the same way.
+                                        val isConfigured = if (provKey == com.example.core.model.SasProviders.EARTHLINK)
+                                            access.hasEarthlink else access.hasSamm
+                                        val presence = providerPresence?.get(provKey)
+                                        val isAvailable = isConfigured && (presence == null || presence)
                                     val isSelected = targetProvider == provKey && isAvailable
                                     Surface(
                                         shape = RoundedCornerShape(10.dp),
@@ -3441,7 +3452,11 @@ if (showExtendDialog) {
                                             )
                                             if (!isAvailable) {
                                                 Text(
-                                                    text = if (currentLang == "ar") "غير مسجل الدخول" else "Not logged in",
+                                                    text = if (!isConfigured) {
+                                                        if (currentLang == "ar") "غير مسجل الدخول" else "Not logged in"
+                                                    } else {
+                                                        if (currentLang == "ar") "غير موجود لدى المزود" else "Not on this provider"
+                                                    },
                                                     color = Color.White.copy(alpha = 0.4f),
                                                     fontSize = 11.sp
                                                 )

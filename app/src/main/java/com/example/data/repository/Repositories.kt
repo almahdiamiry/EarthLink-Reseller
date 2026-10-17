@@ -1370,7 +1370,9 @@ class LocalAccountRepositoryImpl(
     override suspend fun reconcileIspDisappearance(
         authoritativeIspUserIds: Set<String>,
         isFetchComplete: Boolean,
-        targetProvider: String
+        targetProvider: String,
+        migrationUsernames: Set<String>,
+        migrationTargetProvider: String?
     ): List<String> {
         if (!isFetchComplete || authoritativeIspUserIds.isEmpty()) return emptyList()
         return com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
@@ -1380,7 +1382,9 @@ class LocalAccountRepositoryImpl(
                 auditDao = database.auditLogDao(),
                 authoritativeIspUserIds = authoritativeIspUserIds,
                 isFetchComplete = isFetchComplete,
-                targetProvider = targetProvider
+                targetProvider = targetProvider,
+                migrationUsernames = migrationUsernames,
+                migrationTargetProvider = migrationTargetProvider
             )
         }
     }

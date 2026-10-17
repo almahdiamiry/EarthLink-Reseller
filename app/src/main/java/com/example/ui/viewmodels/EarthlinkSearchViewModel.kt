@@ -1858,6 +1858,33 @@ val targetUserId = account?.earthlinkUsername ?: _selectedUser.value?.userID ?: 
         }
     }
 
+    /**
+     * Which providers actually carry this username, queried once when the provider dialog opens.
+     *
+     * Moving an account to a provider that does not have the subscriber leaves it pointing at a
+     * dead identity, so the dialog greys out what is not there rather than only what is unconfigured.
+     * A provider that errors reports false: an unverifiable provider is not a safe target.
+     */
+    suspend fun checkProviderPresence(username: String): Map<String, Boolean> {
+        val id = username.trim()
+        if (id.isEmpty()) return emptyMap()
+        val present = mutableMapOf<String, Boolean>()
+        for (prov in listOf(
+            com.example.core.model.SasProviders.EARTHLINK,
+            com.example.core.model.SasProviders.ALAMIRY
+        )) {
+            present[prov] = try {
+                sasGatewayRouter.getGateway(prov)
+                    .searchSubscribers(query = id, page = 1, pageSize = 2)
+                    .any { it.username.equals(id, ignoreCase = true) }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                false
+            }
+        }
+        return present
+    }
+
     fun updateAccountProvider(
         account: LocalAccount,
         newProvider: String,

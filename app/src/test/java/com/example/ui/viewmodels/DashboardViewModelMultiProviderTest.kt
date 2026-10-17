@@ -281,16 +281,22 @@ class DashboardViewModelMultiProviderTest {
         assertEquals(SasProviders.ALAMIRY, sammItem.originProvider)
         assertEquals(1, sammSasGateway.searchSubscribersCallCount)
 
-        // AND: Reconciled per provider
+        // AND: Reconciled per provider, each with the OTHER provider's roster as its migration set,
+        // because a subscriber who vanished from one ISP but is present on the other moved,
+        // rather than becoming historical.
         verify(accountRepo).reconcileIspDisappearance(
             authoritativeIspUserIds = setOf("el_user_1"),
             isFetchComplete = true,
-            targetProvider = SasProviders.EARTHLINK
+            targetProvider = SasProviders.EARTHLINK,
+            migrationUsernames = setOf("samm_user_1"),
+            migrationTargetProvider = SasProviders.ALAMIRY
         )
         verify(accountRepo).reconcileIspDisappearance(
             authoritativeIspUserIds = setOf("samm_user_1"),
             isFetchComplete = true,
-            targetProvider = SasProviders.ALAMIRY
+            targetProvider = SasProviders.ALAMIRY,
+            migrationUsernames = setOf("el_user_1"),
+            migrationTargetProvider = SasProviders.EARTHLINK
         )
     }
 

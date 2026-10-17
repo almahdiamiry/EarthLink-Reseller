@@ -145,7 +145,9 @@ interface LocalAccountRepository {
     suspend fun reconcileIspDisappearance(
         authoritativeIspUserIds: Set<String>,
         isFetchComplete: Boolean,
-        targetProvider: String = com.example.core.model.SasProviders.EARTHLINK
+        targetProvider: String = com.example.core.model.SasProviders.EARTHLINK,
+        migrationUsernames: Set<String> = emptySet(),
+        migrationTargetProvider: String? = null
     ): List<String>
 }
 

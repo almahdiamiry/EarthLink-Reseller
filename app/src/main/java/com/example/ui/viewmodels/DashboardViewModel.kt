@@ -158,6 +158,10 @@ class DashboardViewModel(
                 }
 
                 // Parallel fetch 2: Subscribers (Multi-Provider)
+                // Roster captures. null means "not trustworthy", which is different from "empty":
+                // an unverified or failed fetch must never be read as an ISP with no subscribers.
+                var elAuthoritative: Set<String>? = null
+                var sammAuthoritative: Set<String>? = null
                 val subJob = async {
                     coroutineScope {
                         val elSubJob = async {
@@ -172,19 +176,7 @@ class DashboardViewModel(
                                     if (isComplete) {
                                         val allItemsHaveValidUserId = items.all { it.userID.isNotBlank() }
                                         if (allItemsHaveValidUserId) {
-                                            val authoritativeUsernames = items.map { it.userID.trim() }.toSet()
-                                            kotlinx.coroutines.withContext(ioDispatcher) {
-                                                try {
-                                                    localAccountRepository.reconcileIspDisappearance(
-                                                        authoritativeIspUserIds = authoritativeUsernames,
-                                                        isFetchComplete = true,
-                                                        targetProvider = com.example.core.model.SasProviders.EARTHLINK
-                                                    )
-                                                } catch (e: Exception) {
-                                                    if (e is kotlinx.coroutines.CancellationException) throw e
-                                                    android.util.Log.e("DashboardViewModel", "ISP disappearance reconciliation failed: ${e.message}", e)
-                                                }
-                                            }
+                                            elAuthoritative = items.map { it.userID.trim() }.toSet()
                                         } else {
                                             android.util.Log.w("DashboardViewModel", "ISP disappearance reconciliation skipped: snapshot contains item with blank/invalid userID")
                                         }
@@ -240,19 +232,7 @@ class DashboardViewModel(
                                         if (items.isNotEmpty()) {
                                             val allItemsHaveValidUserId = items.all { it.userID.isNotBlank() }
                                             if (allItemsHaveValidUserId) {
-                                                val authoritativeUsernames = items.map { it.userID.trim() }.toSet()
-                                                kotlinx.coroutines.withContext(ioDispatcher) {
-                                                    try {
-                                                        localAccountRepository.reconcileIspDisappearance(
-                                                            authoritativeIspUserIds = authoritativeUsernames,
-                                                            isFetchComplete = true,
-                                                            targetProvider = com.example.core.model.SasProviders.ALAMIRY
-                                                        )
-                                                    } catch (e: Exception) {
-                                                        if (e is kotlinx.coroutines.CancellationException) throw e
-                                                        android.util.Log.e("DashboardViewModel", "SAMM ISP disappearance reconciliation failed: ${e.message}", e)
-                                                    }
-                                                }
+                                                sammAuthoritative = items.map { it.userID.trim() }.toSet()
                                             } else {
                                                 android.util.Log.w("DashboardViewModel", "SAMM ISP disappearance reconciliation skipped: snapshot contains item with blank/invalid userID")
                                             }
@@ -272,6 +252,46 @@ class DashboardViewModel(
 
                         val elItems = elSubJob.await()
                         val sammItems = sammSubJob.await()
+
+                        // Reconciliation runs only now, with BOTH rosters in hand. Doing it inside each
+                        // fetch job meant the EarthLink pass fired before SAMM's roster existed, so a
+                        // subscriber who moved ISP was indistinguishable from one who vanished - and
+                        // monotonicity would have locked in the wrong answer.
+                        val sammRoster = sammAuthoritative
+                        val elRoster = elAuthoritative
+                        kotlinx.coroutines.withContext(ioDispatcher) {
+                            try {
+                                elRoster?.let { el ->
+                                    localAccountRepository.reconcileIspDisappearance(
+                                        authoritativeIspUserIds = el,
+                                        isFetchComplete = true,
+                                        targetProvider = com.example.core.model.SasProviders.EARTHLINK,
+                                        migrationUsernames = sammRoster ?: emptySet(),
+                                        migrationTargetProvider = if (sammRoster != null) {
+                                            com.example.core.model.SasProviders.ALAMIRY
+                                        } else {
+                                            null
+                                        }
+                                    )
+                                }
+                                sammRoster?.let { samm ->
+                                    localAccountRepository.reconcileIspDisappearance(
+                                        authoritativeIspUserIds = samm,
+                                        isFetchComplete = true,
+                                        targetProvider = com.example.core.model.SasProviders.ALAMIRY,
+                                        migrationUsernames = elRoster ?: emptySet(),
+                                        migrationTargetProvider = if (elRoster != null) {
+                                            com.example.core.model.SasProviders.EARTHLINK
+                                        } else {
+                                            null
+                                        }
+                                    )
+                                }
+                            } catch (e: Exception) {
+                                if (e is kotlinx.coroutines.CancellationException) throw e
+                                android.util.Log.e("DashboardViewModel", "ISP disappearance reconciliation failed: ${e.message}", e)
+                            }
+                        }
 
                         val activeLoginProvider = prefs.getLastSelectedLoginProvider() ?: com.example.core.model.SasProviders.EARTHLINK
                         val primaryList = if (activeLoginProvider == com.example.core.model.SasProviders.ALAMIRY) sammItems else elItems
