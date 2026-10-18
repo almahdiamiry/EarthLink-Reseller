@@ -862,6 +862,136 @@ class SammGatewayImplTest {
     }
 
     /**
+     * Claim: INV-01, INV-04: verifyOperationOutcome with null or blank baseline strictly returns INCONCLUSIVE.
+     * Seam: JVM MockWebServer Wire Contract.
+     * Independent Oracle: baselineEvidence = null -> INCONCLUSIVE without network dispatch.
+     */
+    @Test
+    fun verifyRenewal_nullBaseline_returnsInconclusive() = runTest {
+        val outcome = gateway.verifyOperationOutcome(
+            operationType = "RENEWAL",
+            targetIdentifier = "100",
+            baselineEvidence = null
+        )
+
+        assertEquals(SasVerificationOutcome.INCONCLUSIVE, outcome)
+    }
+
+    /**
+     * Claim: INV-03, INV-04: REFILL alias with username target resolves id via directory and verifies outcome.
+     * Seam: JVM MockWebServer Wire Contract.
+     * Independent Oracle: Directory lookup resolves "user100" -> 100, then getCustomer(100) expiry advanced -> VERIFIED_SUCCESS.
+     */
+    @Test
+    fun verifyRenewal_refillAliasWithUsername_resolvesIdAndVerifiesSuccess() = runTest {
+        // First request: findDirectoryRow(search = "user100")
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """
+                    {
+                      "items": [
+                        {
+                          "id": 100,
+                          "username": "user100",
+                          "firstname": "Test",
+                          "lastname": "User"
+                        }
+                      ],
+                      "total": 1
+                    }
+                    """.trimIndent()
+                )
+        )
+        // Second request: getCustomer(100)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """
+                    {
+                      "id": 100,
+                      "username": "user100",
+                      "expiration_date": "2026-11-01T00:00:00Z"
+                    }
+                    """.trimIndent()
+                )
+        )
+
+        val outcome = gateway.verifyOperationOutcome(
+            operationType = "REFILL",
+            targetIdentifier = "user100",
+            baselineEvidence = "2026-10-01T00:00:00Z"
+        )
+
+        assertEquals(SasVerificationOutcome.VERIFIED_SUCCESS, outcome)
+    }
+
+    /**
+     * Claim: Instant-normalized comparison: Different timezone formatting of the SAME instant evaluates as unchanged -> VERIFIED_FAILURE.
+     * Seam: JVM MockWebServer Wire Contract.
+     * Independent Oracle: Current ("2026-10-01T03:00:00+03:00") is exact same epoch millisecond as baseline ("2026-10-01T00:00:00Z") -> VERIFIED_FAILURE.
+     */
+    @Test
+    fun verifyRenewal_instantNormalizedDifferentFormatsSameInstant_returnsVerifiedFailure() = runTest {
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """
+                    {
+                      "id": 100,
+                      "username": "user100",
+                      "expiration_date": "2026-10-01T03:00:00+03:00"
+                    }
+                    """.trimIndent()
+                )
+        )
+
+        val outcome = gateway.verifyOperationOutcome(
+            operationType = "RENEWAL",
+            targetIdentifier = "100",
+            baselineEvidence = "2026-10-01T00:00:00Z"
+        )
+
+        assertEquals(SasVerificationOutcome.VERIFIED_FAILURE, outcome)
+    }
+
+    /**
+     * Claim: When username is definitively not found in directory during recovery, verifyOperationOutcome returns VERIFIED_FAILURE.
+     * Seam: JVM MockWebServer Wire Contract.
+     * Independent Oracle: Directory returns empty items for username -> VERIFIED_FAILURE.
+     */
+    @Test
+    fun verifyRenewal_usernameNotFoundInDirectory_returnsVerifiedFailure() = runTest {
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """
+                    {
+                      "items": [],
+                      "total": 0
+                    }
+                    """.trimIndent()
+                )
+        )
+
+        val outcome = gateway.verifyOperationOutcome(
+            operationType = "RENEWAL",
+            targetIdentifier = "nonexistent_user",
+            baselineEvidence = "2026-10-01T00:00:00Z"
+        )
+
+        assertEquals(SasVerificationOutcome.VERIFIED_FAILURE, outcome)
+    }
+
+    /**
      * Claim: verifyOperationOutcome for TOGGLE_ACTIVE returns VERIFIED_SUCCESS when customer status
      *        matches expected target status baseline.
      * Seam: JVM MockWebServer Wire Contract.
@@ -972,6 +1102,100 @@ class SammGatewayImplTest {
 
         assertEquals(SasVerificationOutcome.INCONCLUSIVE, outcome)
         assertEquals("Password verification must not perform network calls", 0, mockServer.requestCount)
+    }
+
+    /**
+     * Claim: verifyOperationOutcome for EXTEND returns VERIFIED_FAILURE when customer does not exist (HTTP 404).
+     * Seam: JVM MockWebServer Wire Contract.
+     * Independent Oracle: HTTP 404 -> VERIFIED_FAILURE (negative evidence doctrine).
+     */
+    @Test
+    fun verifyExtend_whenCustomerDoesNotExist_returnsVerifiedFailure() = runTest {
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(404)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"detail": "Customer 100 not found"}""")
+        )
+
+        val outcome = gateway.verifyOperationOutcome(
+            operationType = "EXTEND",
+            targetIdentifier = "100",
+            baselineEvidence = null
+        )
+
+        assertEquals(SasVerificationOutcome.VERIFIED_FAILURE, outcome)
+    }
+
+    /**
+     * Claim: verifyOperationOutcome for EXTEND returns VERIFIED_FAILURE when username is not found in directory.
+     * Seam: JVM MockWebServer Wire Contract.
+     * Independent Oracle: Empty directory items for username -> VERIFIED_FAILURE.
+     */
+    @Test
+    fun verifyExtend_whenUsernameNotFoundInDirectory_returnsVerifiedFailure() = runTest {
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"items": [], "total": 0}""")
+        )
+
+        val outcome = gateway.verifyOperationOutcome(
+            operationType = "EXTEND",
+            targetIdentifier = "missing_user",
+            baselineEvidence = null
+        )
+
+        assertEquals(SasVerificationOutcome.VERIFIED_FAILURE, outcome)
+    }
+
+    /**
+     * Claim: verifyOperationOutcome for EXTEND returns INCONCLUSIVE when customer exists, because extension
+     *        cannot be positively confirmed from read state alone (negative evidence doctrine).
+     * Seam: JVM MockWebServer Wire Contract.
+     * Independent Oracle: Customer exists -> INCONCLUSIVE (avoids phantom debt / premature release).
+     */
+    @Test
+    fun verifyExtend_whenCustomerExists_returnsInconclusive() = runTest {
+        enqueueCustomerLookup("user100", 100)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"id": 100, "username": "user100", "status": "active"}""")
+        )
+
+        val outcome = gateway.verifyOperationOutcome(
+            operationType = "EXTEND",
+            targetIdentifier = "user100",
+            baselineEvidence = null
+        )
+
+        assertEquals(SasVerificationOutcome.INCONCLUSIVE, outcome)
+    }
+
+    /**
+     * Claim: verifyOperationOutcome for EXTEND returns INCONCLUSIVE when a network/server error occurs.
+     * Seam: JVM MockWebServer Wire Contract.
+     * Independent Oracle: HTTP 500 error -> INCONCLUSIVE.
+     */
+    @Test
+    fun verifyExtend_whenTransportFails_returnsInconclusive() = runTest {
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(500)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"detail": "Internal server error"}""")
+        )
+
+        val outcome = gateway.verifyOperationOutcome(
+            operationType = "EXTEND",
+            targetIdentifier = "100",
+            baselineEvidence = null
+        )
+
+        assertEquals(SasVerificationOutcome.INCONCLUSIVE, outcome)
     }
 
     /**

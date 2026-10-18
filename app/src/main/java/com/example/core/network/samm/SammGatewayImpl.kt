@@ -510,9 +510,15 @@ override suspend fun extendSubscriberByDays(
                     SasVerificationOutcome.INCONCLUSIVE
                 }
             }
-            "RENEWAL" -> {
-                val customerId = targetIdentifier.toIntOrNull()
-                    ?: return SasVerificationOutcome.INCONCLUSIVE
+            "RENEWAL", "REFILL" -> {
+                if (baselineEvidence.isNullOrBlank()) {
+                    return SasVerificationOutcome.INCONCLUSIVE
+                }
+                val customerId = targetIdentifier.toIntOrNull() ?: try {
+                    findDirectoryRow(targetIdentifier)?.id ?: return SasVerificationOutcome.VERIFIED_FAILURE
+                } catch (_: Throwable) {
+                    return SasVerificationOutcome.INCONCLUSIVE
+                }
                 try {
                     val response = apiService.getCustomer(customerId)
                     if (response.code() == 404) {
@@ -522,10 +528,21 @@ override suspend fun extendSubscriberByDays(
                         return SasVerificationOutcome.INCONCLUSIVE
                     }
                     val customer = response.body() ?: return SasVerificationOutcome.INCONCLUSIVE
-                    if (customer.expirationDate != null && customer.expirationDate != baselineEvidence) {
-                        SasVerificationOutcome.VERIFIED_SUCCESS
+                    val currentExp = customer.expirationDate ?: return SasVerificationOutcome.INCONCLUSIVE
+                    val currentMillis = com.example.ui.screens.SubscriberDisplayRules.parseInstantMillis(currentExp)
+                    val baselineMillis = com.example.ui.screens.SubscriberDisplayRules.parseInstantMillis(baselineEvidence)
+                    if (currentMillis != null && baselineMillis != null) {
+                        if (currentMillis > baselineMillis) {
+                            SasVerificationOutcome.VERIFIED_SUCCESS
+                        } else {
+                            SasVerificationOutcome.VERIFIED_FAILURE
+                        }
                     } else {
-                        SasVerificationOutcome.VERIFIED_FAILURE
+                        if (currentExp != baselineEvidence) {
+                            SasVerificationOutcome.VERIFIED_SUCCESS
+                        } else {
+                            SasVerificationOutcome.VERIFIED_FAILURE
+                        }
                     }
                 } catch (_: Throwable) {
                     SasVerificationOutcome.INCONCLUSIVE
@@ -576,6 +593,25 @@ override suspend fun extendSubscriberByDays(
             }
             "PASSWORD" -> {
                 SasVerificationOutcome.INCONCLUSIVE
+            }
+            "EXTEND" -> {
+                val customerId = targetIdentifier.toIntOrNull() ?: try {
+                    findDirectoryRow(targetIdentifier)?.id ?: return SasVerificationOutcome.VERIFIED_FAILURE
+                } catch (_: Throwable) {
+                    return SasVerificationOutcome.INCONCLUSIVE
+                }
+                try {
+                    val response = apiService.getCustomer(customerId)
+                    if (response.code() == 404) {
+                        SasVerificationOutcome.VERIFIED_FAILURE
+                    } else if (!response.isSuccessful) {
+                        SasVerificationOutcome.INCONCLUSIVE
+                    } else {
+                        SasVerificationOutcome.INCONCLUSIVE
+                    }
+                } catch (_: Throwable) {
+                    SasVerificationOutcome.INCONCLUSIVE
+                }
             }
             else -> {
                 SasVerificationOutcome.INCONCLUSIVE

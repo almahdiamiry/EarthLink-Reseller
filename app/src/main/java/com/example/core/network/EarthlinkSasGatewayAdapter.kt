@@ -392,6 +392,9 @@ class EarthlinkSasGatewayAdapter(
                 }
             }
             "RENEWAL", "REFILL" -> {
+                if (baselineEvidence.isNullOrBlank()) {
+                    return SasVerificationOutcome.INCONCLUSIVE
+                }
                 val userIndex = targetIdentifier.toIntOrNull()
                 try {
                     val detail = if (userIndex != null) {
@@ -403,7 +406,15 @@ class EarthlinkSasGatewayAdapter(
                         delegate.getUserDetail(item.userIndex)
                     }
                     val currentExpiry = detail.expirationDate ?: detail.manualExpirationDate ?: detail.accountExpirationDate
-                    if (currentExpiry != null && currentExpiry != baselineEvidence) {
+                    val currentMillis = currentExpiry?.let { com.example.ui.screens.SubscriberDisplayRules.parseInstantMillis(it) }
+                    val baselineMillis = com.example.ui.screens.SubscriberDisplayRules.parseInstantMillis(baselineEvidence)
+                    if (currentMillis != null && baselineMillis != null) {
+                        if (currentMillis > baselineMillis) {
+                            SasVerificationOutcome.VERIFIED_SUCCESS
+                        } else {
+                            SasVerificationOutcome.VERIFIED_FAILURE
+                        }
+                    } else if (currentExpiry != null && currentExpiry != baselineEvidence) {
                         SasVerificationOutcome.VERIFIED_SUCCESS
                     } else {
                         SasVerificationOutcome.VERIFIED_FAILURE
@@ -418,6 +429,9 @@ class EarthlinkSasGatewayAdapter(
                 }
             }
             "TOGGLE_ACTIVE" -> {
+                if (baselineEvidence.isNullOrBlank()) {
+                    return SasVerificationOutcome.INCONCLUSIVE
+                }
                 val userIndex = targetIdentifier.toIntOrNull()
                 try {
                     val detail = if (userIndex != null) {
@@ -444,6 +458,9 @@ class EarthlinkSasGatewayAdapter(
                 }
             }
             "CHANGE_PLAN" -> {
+                if (baselineEvidence.isNullOrBlank()) {
+                    return SasVerificationOutcome.INCONCLUSIVE
+                }
                 val userIndex = targetIdentifier.toIntOrNull()
                 try {
                     val detail = if (userIndex != null) {

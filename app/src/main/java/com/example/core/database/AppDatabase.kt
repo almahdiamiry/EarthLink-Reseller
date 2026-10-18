@@ -79,6 +79,24 @@ interface LocalAccountDao {
     @Query("SELECT * FROM local_accounts WHERE isHistoryOnlySubscriber = 0 AND (id = :username OR (earthlinkUsername IS NOT NULL AND LOWER(earthlinkUsername) = LOWER(:username))) LIMIT 1")
     suspend fun findActiveAccountByUsernameOrIdOneShot(username: String): LocalAccount?
 
+    @Query("""
+        SELECT * FROM local_accounts 
+        WHERE isHistoryOnlySubscriber = 0 
+          AND (id = :username OR (earthlinkUsername IS NOT NULL AND LOWER(earthlinkUsername) = LOWER(:username))) 
+        ORDER BY CASE WHEN operationProvider = :provider THEN 0 ELSE 1 END 
+        LIMIT 1
+    """)
+    suspend fun findActiveAccountByUsernameOrIdPreferringProviderOneShot(username: String, provider: String): LocalAccount?
+
+    @Query("""
+        SELECT * FROM local_accounts 
+        WHERE isHistoryOnlySubscriber = 0 
+          AND (id = :username OR (earthlinkUsername IS NOT NULL AND LOWER(earthlinkUsername) = LOWER(:username))) 
+        ORDER BY CASE WHEN operationProvider = :provider THEN 0 ELSE 1 END 
+        LIMIT 1
+    """)
+    fun getActiveAccountByUsernameOrIdPreferringProvider(username: String, provider: String): Flow<LocalAccount?>
+
     /**
      * Resolves all active physical containers bound to the authoritative [userIndex].
      *

@@ -116,8 +116,12 @@ class EarthlinkSearchViewModel(
 
     fun hasDepositPassword(): Boolean = !prefs.getDepositPassword().isNullOrBlank()
 
-    fun getAccountByUsernameOrId(username: String): Flow<LocalAccount?> =
-        localAccountRepository.getActiveAccountByUsernameOrId(username)
+    fun getAccountByUsernameOrId(username: String, provider: String? = null): Flow<LocalAccount?> =
+        if (!provider.isNullOrBlank()) {
+            localAccountRepository.getActiveAccountByUsernameOrIdPreferringProvider(username, provider)
+        } else {
+            localAccountRepository.getActiveAccountByUsernameOrId(username)
+        }
 
     fun getAccountByUsernameOrIdForUser(userIndex: Int?, username: String): Flow<LocalAccount?> =
         localAccountRepository.observeAccountBySubscriberIdentity(userIndex, username)
@@ -1385,6 +1389,12 @@ class EarthlinkSearchViewModel(
                     return@launch
                 }
 
+                val account = withContext(Dispatchers.IO) {
+                    localAccountRepository.findActiveAccountByUsernameOrIdPreferringProviderOneShot(userId, _selectedProvider.value)
+                        ?: localAccountRepository.findAccountByUsernameOrIdOneShot(userId)
+                }
+                val accountProvider = account?.operationProvider ?: _selectedProvider.value
+
                 localLedgerRepository.recordPendingOperation(
                     PendingExternalOperation(
                         businessTransactionId = businessTxId,
@@ -1394,7 +1404,8 @@ class EarthlinkSearchViewModel(
                         amountIqd = 0L,
                         payloadJson = "{\"userIndex\":$userIndex,\"userId\":\"$userId\"}",
                         status = "PENDING",
-                        dispatchClaimCount = 0
+                        dispatchClaimCount = 0,
+                        operationProvider = accountProvider
                     )
                 )
 
@@ -1406,8 +1417,6 @@ class EarthlinkSearchViewModel(
 
                 var failureReason: String? = null
                 val success = runCatching {
-                    val account = localAccountRepository.findAccountByUsernameOrIdOneShot(userId)
-                    val accountProvider = account?.operationProvider ?: _selectedProvider.value
                     if (accountProvider == com.example.core.model.SasProviders.EARTHLINK) {
                         // EarthLink renewal is deposit-authorized and lives outside the SAS seam
                         // (EarthlinkSasGatewayAdapter.renewSubscriber fails closed by contract). It
@@ -1521,7 +1530,7 @@ class EarthlinkSearchViewModel(
             try {
                 val localAcc = withContext(Dispatchers.IO) {
                     localAccountRepository.findActiveAccountsBySubscriberIdentity(userIndex, userId).firstOrNull()
-                        ?: localAccountRepository.findActiveAccountByUsernameOrIdOneShot(userId)
+                        ?: localAccountRepository.findActiveAccountByUsernameOrIdPreferringProviderOneShot(userId, fallbackProvider)
                 }
                 val accountProvider = localAcc?.operationProvider ?: _selectedUser.value?.originProvider ?: fallbackProvider
                 actionProvider = accountProvider
@@ -1594,7 +1603,7 @@ class EarthlinkSearchViewModel(
                 val localAcc = if (account == null) {
                     withContext(Dispatchers.IO) {
                         localAccountRepository.findActiveAccountsBySubscriberIdentity(userIndex, userId).firstOrNull()
-                            ?: localAccountRepository.findActiveAccountByUsernameOrIdOneShot(userId)
+                            ?: localAccountRepository.findActiveAccountByUsernameOrIdPreferringProviderOneShot(userId, fallbackProvider)
                     }
                 } else null
                 val accountProvider = account?.operationProvider ?: localAcc?.operationProvider ?: fallbackProvider
@@ -1965,7 +1974,7 @@ val targetUserId = account?.earthlinkUsername ?: _selectedUser.value?.userID ?: 
                         localAccountRepository.saveAccount(toSave)
                     }
                 } else {
-                    val existing = localAccountRepository.findActiveAccountByUsernameOrIdOneShot(userId)
+                    val existing = localAccountRepository.findActiveAccountByUsernameOrIdPreferringProviderOneShot(userId, com.example.core.model.SasProviders.ALAMIRY)
                     if (existing != null) {
                         existing
                     } else {
@@ -1996,8 +2005,25 @@ val targetUserId = account?.earthlinkUsername ?: _selectedUser.value?.userID ?: 
                     }
                 }
 
+                val sammGateway = sasGatewayRouter.getGateway(com.example.core.model.SasProviders.ALAMIRY)
+                val preSubscriber = try {
+                    sammGateway.getSubscriber(userId)
+                } catch (e: com.example.core.network.SasNotFoundException) {
+                    _error.value = "Subscriber not found on SAMM."
+                    return@launch
+                } catch (e: com.example.core.network.SasGatewayException) {
+                    _error.value = e.message ?: "Failed to read subscriber details from SAMM."
+                    return@launch
+                }
+                if (preSubscriber == null) {
+                    _error.value = "Subscriber not found on SAMM."
+                    return@launch
+                }
+
                 val payloadJson = org.json.JSONObject().apply {
                     put("userId", userId)
+                    put("subscriberId", preSubscriber.subscriberId)
+                    put("baselineExpirationDate", preSubscriber.expiresAt)
                     put("localAccountId", effectiveAcc.id)
                     put("price", authoritativePrice)
                     put("note", finalNote)
@@ -2010,7 +2036,7 @@ val targetUserId = account?.earthlinkUsername ?: _selectedUser.value?.userID ?: 
                         businessTransactionId = businessTxId,
                         operationIntentId = opIntentId,
                         accountId = userId,
-                        operationType = "REFILL",
+                        operationType = "RENEWAL",
                         amountIqd = exactAmountIqd,
                         payloadJson = payloadJson,
                         status = "PENDING",
@@ -2024,8 +2050,6 @@ val targetUserId = account?.earthlinkUsername ?: _selectedUser.value?.userID ?: 
                     _error.value = "Operation is already processing or awaiting verification."
                     return@launch
                 }
-
-                val sammGateway = sasGatewayRouter.getGateway(com.example.core.model.SasProviders.ALAMIRY)
 
                 val opResult = sammGateway.renewSubscriber(userId)
                 if (opResult.isApplied) {
@@ -2103,11 +2127,29 @@ val targetUserId = account?.earthlinkUsername ?: _selectedUser.value?.userID ?: 
                         is com.example.core.network.SasOperationResult.Unsupported -> opResult.reason
                         else -> "SAMM renewal failed"
                     }
-                    localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, failureReason)
+                    if (opResult is com.example.core.network.SasOperationResult.Inconclusive) {
+                        localLedgerRepository.resolvePendingOperationInconclusive(businessTxId, failureReason)
+                    } else {
+                        localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, failureReason)
+                    }
                     _error.value = failureReason
+                }
+            } catch (e: com.example.core.network.SasBusinessException) {
+                localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, e.errorMessage)
+                _error.value = e.errorMessage
+            } catch (e: com.example.core.network.SasAuthException) {
+                localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, "Auth failed: ${e.message}")
+                _error.value = "Session expired. Please log in again."
+            } catch (e: com.example.core.network.SasTransportException) {
+                localLedgerRepository.resolvePendingOperationInconclusive(businessTxId, "Transport uncertainty: ${e.message}")
+                _error.value = if (prefs.getLanguage() == "ar") {
+                    "فشل الاتصال بالشبكة: تعذر تجديد الاشتراك على خوادم سامم. تم حفظ العملية للتحقق."
+                } else {
+                    "Network connection uncertain: Renewal stored for verification."
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
+                localLedgerRepository.resolvePendingOperationInconclusive(businessTxId, "Unexpected error: ${e.message}")
                 _error.value = e.message ?: "Failed to renew SAMM subscriber"
             } finally {
                 _isActionLoading.value = false

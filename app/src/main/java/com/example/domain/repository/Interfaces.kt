@@ -82,6 +82,10 @@ interface LocalAccountRepository {
     suspend fun findAccountByUsernameOrIdOneShot(username: String): LocalAccount?
     fun getActiveAccountByUsernameOrId(username: String): Flow<LocalAccount?>
     suspend fun findActiveAccountByUsernameOrIdOneShot(username: String): LocalAccount?
+    fun getActiveAccountByUsernameOrIdPreferringProvider(username: String, provider: String): Flow<LocalAccount?> =
+        getActiveAccountByUsernameOrId(username)
+    suspend fun findActiveAccountByUsernameOrIdPreferringProviderOneShot(username: String, provider: String): LocalAccount? =
+        findActiveAccountByUsernameOrIdOneShot(username)
 
     /**
      * Resolves all active physical containers representing the subscriber identity.

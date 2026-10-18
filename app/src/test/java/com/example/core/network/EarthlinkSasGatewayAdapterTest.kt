@@ -1002,6 +1002,96 @@ class EarthlinkSasGatewayAdapterTest {
         assertEquals(SasVerificationOutcome.INCONCLUSIVE, outcome)
     }
 
+    /**
+     * Claim: INV-01, INV-04: verifyOperationOutcome for RENEWAL with null or blank baselineEvidence
+     *        strictly returns INCONCLUSIVE to prevent phantom debt materialization.
+     * Seam: JVM headless unit test.
+     * Independent Oracle: baselineEvidence = null -> SasVerificationOutcome.INCONCLUSIVE.
+     */
+    @Test
+    fun verifyOperationOutcome_renewal_nullBaseline_returnsInconclusive() = runTest {
+        fakeGateway.userDetailResult = UserDetail(
+            userIndexLower = 123,
+            userIDLower = "target_user",
+            expirationDateLower = "2026-11-01 12:00:00"
+        )
+
+        val outcome = adapter.verifyOperationOutcome(
+            operationType = "RENEWAL",
+            targetIdentifier = "123",
+            baselineEvidence = null
+        )
+
+        assertEquals(SasVerificationOutcome.INCONCLUSIVE, outcome)
+    }
+
+    /**
+     * Claim: INV-01, INV-04: verifyOperationOutcome for REFILL with blank baselineEvidence
+     *        strictly returns INCONCLUSIVE to prevent phantom debt materialization.
+     * Seam: JVM headless unit test.
+     * Independent Oracle: baselineEvidence = "   " -> SasVerificationOutcome.INCONCLUSIVE.
+     */
+    @Test
+    fun verifyOperationOutcome_refill_blankBaseline_returnsInconclusive() = runTest {
+        fakeGateway.userDetailResult = UserDetail(
+            userIndexLower = 123,
+            userIDLower = "target_user",
+            expirationDateLower = "2026-11-01 12:00:00"
+        )
+
+        val outcome = adapter.verifyOperationOutcome(
+            operationType = "REFILL",
+            targetIdentifier = "123",
+            baselineEvidence = "   "
+        )
+
+        assertEquals(SasVerificationOutcome.INCONCLUSIVE, outcome)
+    }
+
+    /**
+     * Claim: verifyOperationOutcome for TOGGLE_ACTIVE with null baselineEvidence returns INCONCLUSIVE.
+     * Seam: JVM headless unit test.
+     * Independent Oracle: baselineEvidence = null -> SasVerificationOutcome.INCONCLUSIVE.
+     */
+    @Test
+    fun verifyOperationOutcome_toggleActive_nullBaseline_returnsInconclusive() = runTest {
+        fakeGateway.userDetailResult = UserDetail(
+            userIndexLower = 123,
+            userIDLower = "target_user",
+            accountStatusLower = "Active"
+        )
+
+        val outcome = adapter.verifyOperationOutcome(
+            operationType = "TOGGLE_ACTIVE",
+            targetIdentifier = "123",
+            baselineEvidence = null
+        )
+
+        assertEquals(SasVerificationOutcome.INCONCLUSIVE, outcome)
+    }
+
+    /**
+     * Claim: verifyOperationOutcome for CHANGE_PLAN with null baselineEvidence returns INCONCLUSIVE.
+     * Seam: JVM headless unit test.
+     * Independent Oracle: baselineEvidence = null -> SasVerificationOutcome.INCONCLUSIVE.
+     */
+    @Test
+    fun verifyOperationOutcome_changePlan_nullBaseline_returnsInconclusive() = runTest {
+        fakeGateway.userDetailResult = UserDetail(
+            userIndexLower = 123,
+            userIDLower = "target_user",
+            accountIndexLower = 5
+        )
+
+        val outcome = adapter.verifyOperationOutcome(
+            operationType = "CHANGE_PLAN",
+            targetIdentifier = "123",
+            baselineEvidence = null
+        )
+
+        assertEquals(SasVerificationOutcome.INCONCLUSIVE, outcome)
+    }
+
     // ========================================================================
     // 11. Error Propagation Contracts
     // ========================================================================

@@ -501,6 +501,115 @@ class EarthlinkSearchViewModelProviderRoutingTest {
         assertEquals("Recorded provider must be ALAMIRY", SasProviders.ALAMIRY, pendingOp?.operationProvider)
     }
 
+    /**
+     * Claim: INV-03, INV-04: renewSammUser records operationType "RENEWAL" and captures
+     *        pre-dispatch subscriberId and baselineExpirationDate in payloadJson.
+     * Seam: Robolectric ViewModel + Room Database seam.
+     * Independent Oracle: operationType == "RENEWAL", payload has subscriberId="sub_999", baselineExpirationDate="2026-10-20T00:00:00Z".
+     */
+    @Test
+    fun renewSammUser_recordsTypeRenewal_andPersistsSubscriberIdAndBaseline() = runTest {
+        viewModel.setSelectedProvider(SasProviders.ALAMIRY)
+        fakeSammSasGateway.subscriberDetailResult = SasSubscriberView(
+            subscriberId = "sub_999",
+            username = "samm_user",
+            displayName = "Samm User",
+            status = "Active",
+            planId = "1",
+            planName = "Standard",
+            expiresAt = "2026-10-20T00:00:00Z"
+        )
+
+        viewModel.renewSammUser(
+            userId = "samm_user",
+            price = 35_000.0,
+            note = "Renewal Note",
+            isWasil = false
+        ).join()
+
+        val renewalOp = db.pendingExternalOperationDao().getByAccountId("samm_user").firstOrNull()
+        assertNotNull("Must record pending operation for renewSammUser", renewalOp)
+        assertEquals("Operation type must be RENEWAL", "RENEWAL", renewalOp?.operationType)
+        assertEquals("Provider must be ALAMIRY", SasProviders.ALAMIRY, renewalOp?.operationProvider)
+
+        val json = org.json.JSONObject(renewalOp?.payloadJson ?: "{}")
+        assertEquals("Payload must carry subscriberId", "sub_999", json.getString("subscriberId"))
+        assertEquals("Payload must carry baselineExpirationDate", "2026-10-20T00:00:00Z", json.getString("baselineExpirationDate"))
+    }
+
+    /**
+     * Claim: INV-05: renewSammUser catch taxonomy:
+     *        - SasTransportException leaves op as PENDING (inconclusive).
+     *        - SasBusinessException resolves op as FAILED.
+     * Seam: Robolectric ViewModel + Room Database seam.
+     * Independent Oracle: status strings "PENDING" and "FAILED".
+     */
+    @Test
+    fun renewSammUser_catchTaxonomy_correctlyResolvesTerminalOrInconclusive() = runTest {
+        viewModel.setSelectedProvider(SasProviders.ALAMIRY)
+        fakeSammSasGateway.subscriberDetailResult = SasSubscriberView(
+            subscriberId = "sub_999",
+            username = "samm_user_err",
+            displayName = "Samm User",
+            status = "Active",
+            planId = "1",
+            planName = "Standard",
+            expiresAt = "2026-10-20T00:00:00Z"
+        )
+
+        // 1. Transport error -> PENDING
+        fakeSammSasGateway.renewThrowable = com.example.core.network.SasTransportException("Network timeout connecting to SAMM")
+        viewModel.renewSammUser("samm_user_err", 35_000.0, "Test Transport", false).join()
+
+        val op1 = db.pendingExternalOperationDao().getByAccountId("samm_user_err").firstOrNull()
+        assertNotNull(op1)
+        assertEquals("Transport error must leave op in PENDING status", "PENDING", op1?.status)
+        assertTrue("Diagnostic message must indicate transport uncertainty", op1?.lastError?.contains("Transport uncertainty") == true)
+
+        // 2. Business error -> FAILED
+        fakeSammSasGateway.subscriberDetailResult = SasSubscriberView(
+            subscriberId = "sub_999_biz",
+            username = "samm_user_biz",
+            displayName = "Samm User Biz",
+            status = "Active",
+            planId = "1",
+            planName = "Standard",
+            expiresAt = "2026-10-20T00:00:00Z"
+        )
+        fakeSammSasGateway.renewThrowable = com.example.core.network.SasBusinessException(400, "Insufficient reseller balance")
+        viewModel.renewSammUser("samm_user_biz", 35_000.0, "Test Biz", false).join()
+
+        val op2 = db.pendingExternalOperationDao().getByAccountId("samm_user_biz").firstOrNull()
+        assertNotNull(op2)
+        assertEquals("Business rejection must resolve op as FAILED", "FAILED", op2?.status)
+        assertEquals("Insufficient reseller balance", op2?.lastError)
+    }
+
+    /**
+     * Claim: INV-03: extendUser on account with ALAMIRY provider captures operationProvider=ALAMIRY in pending record.
+     * Seam: Robolectric ViewModel + Room Database seam.
+     * Independent Oracle: PendingExternalOperation.operationProvider == "ALAMIRY".
+     */
+    @Test
+    fun extendUser_onSammAccount_recordsOperationProviderAlamiry() = runTest {
+        val sammAccount = LocalAccount(
+            id = "acc_samm_extend",
+            earthlinkUsername = "samm_extend_user",
+            displayName = "SAMM Extend User",
+            currentPriceIqd = 35_000.0,
+            debtIqd = 0.0,
+            operationProvider = SasProviders.ALAMIRY
+        )
+        db.localAccountDao().insert(sammAccount)
+
+        viewModel.extendUser(userIndex = 10, userId = "samm_extend_user", days = 7).join()
+
+        val extendOp = db.pendingExternalOperationDao().getByAccountId("samm_extend_user").firstOrNull { it.operationType == "EXTEND" }
+        assertNotNull("Must record pending operation for extendUser", extendOp)
+        assertEquals("Recorded provider must be ALAMIRY", SasProviders.ALAMIRY, extendOp?.operationProvider)
+        assertEquals("Must dispatch to SAMM gateway", 1, fakeSammSasGateway.extendCalls.get())
+    }
+
     // ========================================================================
     // Test Doubles
     // ========================================================================
@@ -517,11 +626,15 @@ class EarthlinkSearchViewModelProviderRoutingTest {
         val verifyCalls = AtomicInteger(0)
 
         var searchResult: List<SasSubscriberView> = emptyList()
+        val extendCalls = AtomicInteger(0)
         var subscriberDetailResult: SasSubscriberView? = null
         var createResult: SasOperationResult = SasOperationResult.Applied(evidence = "test_evidence")
         var suspendResult: SasOperationResult = SasOperationResult.Applied()
         var activateResult: SasOperationResult = SasOperationResult.Applied()
         var renewResult: SasOperationResult = SasOperationResult.Applied()
+        var renewThrowable: Throwable? = null
+        var getSubscriberThrowable: Throwable? = null
+        var extendResult: SasOperationResult = SasOperationResult.Applied()
         var changePlanResult: SasOperationResult = SasOperationResult.Applied()
         var changePasswordResult: SasOperationResult = SasOperationResult.Applied()
 
@@ -532,6 +645,7 @@ class EarthlinkSearchViewModelProviderRoutingTest {
 
         override suspend fun getSubscriber(subscriberId: String): SasSubscriberView? {
             getSubscriberCalls.incrementAndGet()
+            getSubscriberThrowable?.let { throw it }
             return subscriberDetailResult
         }
 
@@ -559,7 +673,13 @@ class EarthlinkSearchViewModelProviderRoutingTest {
 
         override suspend fun renewSubscriber(username: String): SasOperationResult {
             renewSubscriberCalls.incrementAndGet()
+            renewThrowable?.let { throw it }
             return renewResult
+        }
+
+        override suspend fun extendSubscriberByDays(username: String, days: Int, nowMs: Long): SasOperationResult {
+            extendCalls.incrementAndGet()
+            return extendResult
         }
 
         override suspend fun changePlan(username: String, newPlanId: String): SasOperationResult {

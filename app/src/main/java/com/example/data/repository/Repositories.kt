@@ -1194,6 +1194,12 @@ class LocalAccountRepositoryImpl(
     override suspend fun findActiveAccountByUsernameOrIdOneShot(username: String): LocalAccount? {
         return accountDao.findActiveAccountByUsernameOrIdOneShot(username)
     }
+    override fun getActiveAccountByUsernameOrIdPreferringProvider(username: String, provider: String): Flow<LocalAccount?> {
+        return accountDao.getActiveAccountByUsernameOrIdPreferringProvider(username, provider).distinctUntilChanged()
+    }
+    override suspend fun findActiveAccountByUsernameOrIdPreferringProviderOneShot(username: String, provider: String): LocalAccount? {
+        return accountDao.findActiveAccountByUsernameOrIdPreferringProviderOneShot(username, provider)
+    }
 
     override suspend fun findActiveAccountsBySubscriberIdentity(userIndex: Int?, username: String?): List<LocalAccount> {
         if (userIndex != null && userIndex > 0) {
@@ -1664,7 +1670,7 @@ class LocalLedgerRepositoryImpl(
                         }
                     } else {
                         accountDao.getByIdOneShot(op.accountId)?.takeIf { !it.isHistoryOnlySubscriber }
-                            ?: accountDao.findActiveAccountByUsernameOrIdOneShot(op.accountId)
+                            ?: accountDao.findActiveAccountByUsernameOrIdPreferringProviderOneShot(op.accountId, op.operationProvider)
                             ?: throw IllegalStateException("MISSING_LOCAL_FINANCIAL_TARGET: Cannot materialize financial position for missing local account ${op.accountId}")
                     }
 
@@ -2633,6 +2639,9 @@ class LocalLedgerRepositoryImpl(
 
         for (op in unresolved) {
             if (graceWindowMs > 0 && (now - op.createdAt < graceWindowMs)) {
+                continue
+            }
+            if (op.operationProvider != com.example.core.model.SasProviders.EARTHLINK) {
                 continue
             }
 
