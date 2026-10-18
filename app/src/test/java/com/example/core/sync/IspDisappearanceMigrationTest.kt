@@ -10,6 +10,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -25,9 +26,13 @@ import org.robolectric.annotation.Config
  * Core Triad:
  * 1. Claim - a username absent from the target roster but present in the migration roster has its
  *    operationProvider rewritten and is NOT marked history-only. A username absent from both is.
- * 2. Seam - ROBOLECTRIC, in-memory Room.
- * 3. Oracle - literal expected provider per account, asserted by reloading the entity. Expected
- *    values are written out by hand from the contract, not computed from the code under test.
+ *    Debt, loan and ledger entries survive the re-point byte for byte, and the re-point writes both
+ *    an ISP_SUBSCRIBER_MIGRATED audit record and a local_accounts outbox row, because it re-points a
+ *    financially-affecting account and the audit trail is the evidence for it.
+ * 2. Seam - ROBOLECTRIC, in-memory Room, real AuditLogDao.
+ * 3. Oracle - literal expected provider and literal money amounts per account, asserted by reloading
+ * the entity. Expected values are written out by hand from the contract, not computed from the code
+ * under test.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(manifest = Config.NONE)
@@ -50,6 +55,9 @@ class IspDisappearanceMigrationTest {
     @Test
     fun goneFromEarthLinkButAliveOnSamm_migratesProviderAndStaysLive() = runTest {
         val dao = database.localAccountDao()
+        // Non-zero money on purpose: an assertion that debt and loan "survive" is vacuous when the
+        // fixture seeds 0/0, because 0 is what a naive `assertEquals(0.0, ...)` would also accept
+        // from an account that had simply been wiped.
         dao.insertAll(
             listOf(
                 LocalAccount(
@@ -57,14 +65,18 @@ class IspDisappearanceMigrationTest {
                     displayName = "Moved Person",
                     earthlinkUsername = "moved_user",
                     operationProvider = SasProviders.EARTHLINK,
-                    isHistoryOnlySubscriber = false
+                    isHistoryOnlySubscriber = false,
+                    debtIqd = 125000.0,
+                    loanIqd = 40000.0
                 ),
                 LocalAccount(
                     id = "dead",
                     displayName = "Gone From Both",
                     earthlinkUsername = "gone_user",
                     operationProvider = SasProviders.EARTHLINK,
-                    isHistoryOnlySubscriber = false
+                    isHistoryOnlySubscriber = false,
+                    debtIqd = 7500.0,
+                    loanIqd = 0.0
                 )
             )
         )
@@ -74,7 +86,7 @@ class IspDisappearanceMigrationTest {
         val transitioned = IspDisappearanceReconciler.reconcile(
             database = database,
             accountDao = dao,
-            auditDao = null,
+            auditDao = database.auditLogDao(),
             authoritativeIspUserIds = setOf("someone_else"),
             isFetchComplete = true,
             targetProvider = SasProviders.EARTHLINK,
@@ -95,6 +107,124 @@ class IspDisappearanceMigrationTest {
         // Dead: genuinely historical on EarthLink.
         assertEquals(SasProviders.EARTHLINK, dead!!.operationProvider)
         assertTrue("account absent from both providers must become history-only", dead.isHistoryOnlySubscriber)
+
+        // The re-point is a financial re-target, so the money must come through untouched.
+        assertEquals(
+            "Migration must not silently clear the moved subscriber's debt",
+            125000.0,
+            moved.debtIqd,
+            0.001
+        )
+        assertEquals(
+            "Migration must not silently clear the moved subscriber's loan",
+            40000.0,
+            moved.loanIqd,
+            0.001
+        )
+        assertEquals(7500.0, dead.debtIqd, 0.001)
+    }
+
+    /**
+     * Claim: the migration writes an ISP_SUBSCRIBER_MIGRATED audit record. Passing auditDao = null
+     *        skipped this path entirely, which is precisely the evidence trail for a re-point that
+     *        changes where future financially-affecting operations are sent.
+     * Seam: ROBOLECTRIC, in-memory Room with the real AuditLogDao.
+     * Independent Oracle: One record whose action, entityId, severity and from/to metadata are
+     *        literal values read out of the migration contract, not recomputed from the code.
+     */
+    @Test
+    fun goneFromEarthLinkButAliveOnSamm_writesTheMigrationAuditTrail() = runTest {
+        val dao = database.localAccountDao()
+        dao.insert(
+            LocalAccount(
+                id = "moved",
+                displayName = "Moved Person",
+                earthlinkUsername = "moved_user",
+                operationProvider = SasProviders.EARTHLINK,
+                isHistoryOnlySubscriber = false,
+                debtIqd = 125000.0
+            )
+        )
+
+        IspDisappearanceReconciler.reconcile(
+            database = database,
+            accountDao = dao,
+            auditDao = database.auditLogDao(),
+            authoritativeIspUserIds = setOf("someone_else"),
+            isFetchComplete = true,
+            targetProvider = SasProviders.EARTHLINK,
+            migrationUsernames = setOf("moved_user"),
+            migrationTargetProvider = SasProviders.ALAMIRY
+        )
+
+        val audits = database.auditLogDao().getAllSync()
+        val migration = audits.firstOrNull { it.action == "ISP_SUBSCRIBER_MIGRATED" }
+        assertNotNull(
+            "A financially-affecting re-point must leave an audit record. Saw: ${audits.map { it.action }}",
+            migration
+        )
+        assertEquals("moved", migration!!.entityId)
+        assertEquals("local_accounts", migration.entityType)
+        assertEquals("WARNING", migration.severity)
+        assertTrue(
+            "The record must name the account that moved: ${migration.metadataJsonMasked}",
+            migration.metadataJsonMasked!!.contains("\"from\":\"EARTHLINK\"") &&
+                migration.metadataJsonMasked!!.contains("\"to\":\"ALAMIRY\"") &&
+                migration.metadataJsonMasked!!.contains("\"accountId\":\"moved\"")
+        )
+
+        // And the new provider tag must reach the cloud, or every other device keeps routing this
+        // account's operations at the ISP that no longer has the subscriber.
+        val outbox = database.syncOutboxDao().getByEntity("moved", "local_accounts")
+        assertEquals(
+            "The re-pointed account must be queued for sync",
+            1,
+            outbox.size
+        )
+        assertTrue(
+            "The queued payload must carry the NEW provider: ${outbox.first().payloadJson}",
+            outbox.first().payloadJson.contains("\"operationProvider\":\"ALAMIRY\"")
+        )
+    }
+
+    /**
+     * Claim: an incomplete fetch aborts before any transition, audit or outbox write (INV-12).
+     * Seam: ROBOLECTRIC, in-memory Room with the real AuditLogDao.
+     * Independent Oracle: Zero returned transitions, zero audit records and zero outbox rows are the
+     *        only outcomes consistent with an abort; the account must be byte-for-byte untouched.
+     */
+    @Test
+    fun incompleteFetch_abortsWithoutAnyWrite() = runTest {
+        val dao = database.localAccountDao()
+        dao.insert(
+            LocalAccount(
+                id = "moved",
+                displayName = "Moved Person",
+                earthlinkUsername = "moved_user",
+                operationProvider = SasProviders.EARTHLINK,
+                isHistoryOnlySubscriber = false,
+                debtIqd = 125000.0
+            )
+        )
+
+        val transitioned = IspDisappearanceReconciler.reconcile(
+            database = database,
+            accountDao = dao,
+            auditDao = database.auditLogDao(),
+            authoritativeIspUserIds = setOf("someone_else"),
+            isFetchComplete = false,
+            targetProvider = SasProviders.EARTHLINK,
+            migrationUsernames = setOf("moved_user"),
+            migrationTargetProvider = SasProviders.ALAMIRY
+        )
+
+        assertEquals(emptyList<String>(), transitioned)
+        val moved = dao.getByIdOneShot("moved")!!
+        assertEquals(SasProviders.EARTHLINK, moved.operationProvider)
+        assertFalse(moved.isHistoryOnlySubscriber)
+        assertEquals(125000.0, moved.debtIqd, 0.001)
+        assertEquals(emptyList<Any>(), database.auditLogDao().getAllSync())
+        assertEquals(0, database.syncOutboxDao().getByEntity("moved", "local_accounts").size)
     }
 
     @Test
@@ -107,7 +237,9 @@ class IspDisappearanceMigrationTest {
                     displayName = "Gone",
                     earthlinkUsername = "gone_user",
                     operationProvider = SasProviders.EARTHLINK,
-                    isHistoryOnlySubscriber = false
+                    isHistoryOnlySubscriber = false,
+                    debtIqd = 30000.0,
+                    loanIqd = 5000.0
                 )
             )
         )
@@ -116,7 +248,7 @@ class IspDisappearanceMigrationTest {
         val transitioned = IspDisappearanceReconciler.reconcile(
             database = database,
             accountDao = dao,
-            auditDao = null,
+            auditDao = database.auditLogDao(),
             authoritativeIspUserIds = setOf("someone_else"),
             isFetchComplete = true,
             targetProvider = SasProviders.EARTHLINK
@@ -126,5 +258,8 @@ class IspDisappearanceMigrationTest {
         val gone = dao.getByIdOneShot("gone")
         assertTrue(gone!!.isHistoryOnlySubscriber)
         assertEquals(SasProviders.EARTHLINK, gone.operationProvider)
+        // History-only is a routing decision, never a financial one (INV-02).
+        assertEquals(30000.0, gone.debtIqd, 0.001)
+        assertEquals(5000.0, gone.loanIqd, 0.001)
     }
 }

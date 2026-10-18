@@ -46,22 +46,30 @@ class EarthlinkSasGatewayAdapter(
     // ========================================================================
 
     /**
-     * The userIndex a mutation must be addressed by, resolved from the username that crossed the
+     * The directory row a mutation must be addressed by, resolved from the username that crossed the
      * seam. Fails closed: an unresolvable username stops before any gateway mutation is dispatched,
      * because the alternative is dispatching against a guessed customer.
+     *
+     * A failed lookup surfaces as [SasNotFoundException] here, exactly as it did when this went
+     * through [resolveSubscriberId]. That is deliberate and unchanged: the mutation path has always
+     * reported "could not resolve" with this one signal, and the presence read (which must keep the
+     * two apart) goes through [findDirectoryRow] directly instead.
      */
-    private suspend fun requireUserIndex(username: String): Int {
+    private suspend fun requireDirectoryRow(username: String): UserListItem {
         val key = username.trim().takeIf { it.isNotEmpty() }
             ?: throw SasBusinessException(
                 statusCode = null,
                 errorMessage = "A username is required to address an EarthLink subscriber"
             )
-        return resolveSubscriberId(key)?.toIntOrNull()
+        val row = try { findDirectoryRow(key) } catch (_: SasGatewayException) { null }
             ?: throw SasNotFoundException(
                 statusCode = null,
                 message = "Could not resolve the EarthLink user index for $key"
             )
+        return row
     }
+
+    private suspend fun requireUserIndex(username: String): Int = requireDirectoryRow(username).userIndex
 
     private fun parsePlanId(planId: String): Int {
         return planId.toIntOrNull()
@@ -171,25 +179,50 @@ class EarthlinkSasGatewayAdapter(
         return response.itemsList?.map { it.toSasSubscriberView() } ?: emptyList()
     }
 
+    /**
+     * The one directory read every username-addressed operation goes through.
+     *
+     * EarthLink's user search is a substring filter, so the guard below is what makes this exact, and
+     * the window must be wide enough that the colliders cannot push the exact row out of the response.
+     * Searches come back newest-first, which puts the colliders first and the exact row last.
+     *
+     * Returns null only when the provider was successfully asked and definitively has no such row;
+     * a failed read propagates as [SasGatewayException] so callers can tell the two apart.
+     */
+    private suspend fun findDirectoryRow(key: String): UserListItem? =
+        safeGatewayCall {
+            delegate.searchUsers(query = key, startIndex = 0, rowCount = SUBSCRIBER_LOOKUP_WINDOW)
+        }.itemsList.orEmpty()
+            .firstOrNull { it.userID.trim().equals(key, ignoreCase = true) }
+
     override suspend fun resolveSubscriberId(username: String): String? {
         val key = username.trim().takeIf { it.isNotEmpty() } ?: return null
         return try {
-            // EarthLink's user search is a substring filter, so the guard below is what makes this
-            // exact, and the window must be wide enough that the colliders cannot push the exact
-            // row out of the response. Searches come back newest-first, which puts the colliders
-            // first and the exact row last.
-            safeGatewayCall {
-                delegate.searchUsers(query = key, startIndex = 0, rowCount = SUBSCRIBER_LOOKUP_WINDOW)
-            }.itemsList.orEmpty()
-                .firstOrNull { it.userID.trim().equals(key, ignoreCase = true) }
-                ?.userIndex?.toString()
+            findDirectoryRow(key)?.userIndex?.toString()
         } catch (e: SasGatewayException) {
             null
         }
     }
 
-    override suspend fun getSubscriber(subscriberId: String): SasSubscriberView? {
-        val userIndex = subscriberId.toIntOrNull() ?: return null
+    override suspend fun resolveSubscriberPresence(username: String): SasSubscriberPresence {
+        val key = username.trim().takeIf { it.isNotEmpty() } ?: return SasSubscriberPresence.UNKNOWN
+        return try {
+            if (findDirectoryRow(key) != null) SasSubscriberPresence.PRESENT
+            else SasSubscriberPresence.ABSENT
+        } catch (e: SasGatewayException) {
+            // A transport failure, a 401 and a 500 are all "we could not ask", never "not there".
+            SasSubscriberPresence.UNKNOWN
+        }
+    }
+
+    override suspend fun getSubscriber(username: String): SasSubscriberView? {
+        // Resolved, never parsed: an account's cached userIndex is stale by design after an ISP move,
+        // so it must not be able to address a live subscriber here.
+        // findDirectoryRow is used directly rather than resolveSubscriberId so that a FAILED lookup
+        // propagates: this method returns null for "the provider definitively has no such
+        // subscriber", and returning null for "we could not ask" would say the same thing twice.
+        val key = username.trim().takeIf { it.isNotEmpty() } ?: return null
+        val userIndex = findDirectoryRow(key)?.userIndex ?: return null
         return try {
             val detail = delegate.getUserDetail(userIndex)
             detail.toSasSubscriberView()
@@ -282,10 +315,13 @@ class EarthlinkSasGatewayAdapter(
     }
 
     override suspend fun changePlan(username: String, newPlanId: String): SasOperationResult {
-        val userIndex = requireUserIndex(username)
+        val row = requireDirectoryRow(username)
         val accountIndex = parsePlanId(newPlanId)
         val success = safeGatewayCall {
-            delegate.changeAccountType(userIndex, username.trim(), accountIndex)
+            // The pair must describe ONE row: userIndex and userId both come from the resolved
+            // directory row. Sending the caller's spelling of the username alongside a provider index
+            // would describe two different strings whenever local and provider casing differ.
+            delegate.changeAccountType(row.userIndex, row.userID, accountIndex)
         }
         return if (success) {
             SasOperationResult.Applied()
@@ -295,9 +331,9 @@ class EarthlinkSasGatewayAdapter(
     }
 
     override suspend fun changePassword(username: String, newPassword: String): SasOperationResult {
-        val userIndex = requireUserIndex(username)
+        val row = requireDirectoryRow(username)
         val success = safeGatewayCall {
-            delegate.changeUserPassword(userIndex, username.trim(), newPassword)
+            delegate.changeUserPassword(row.userIndex, row.userID, newPassword)
         }
         return if (success) {
             SasOperationResult.Applied()

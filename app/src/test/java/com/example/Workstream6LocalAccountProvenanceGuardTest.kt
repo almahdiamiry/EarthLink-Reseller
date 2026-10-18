@@ -83,6 +83,17 @@ class Workstream6LocalAccountProvenanceGuardTest {
     private class ProvenanceSpyGateway : EarthlinkGateway {
         val getUserDetailCallCount = AtomicInteger(0)
 
+        /**
+         * The seam addresses a read by USERNAME and resolves it to a userIndex through this directory
+         * before calling getUserDetail - the same directory the mutation methods have always used. A
+         * spy that answers no search can never be reached by a read, so it must carry its subscribers.
+         */
+        val userDirectory = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
+        fun carrySubscriber(userIndex: Int, userId: String) {
+            userDirectory[userId] = userIndex
+        }
+
         override suspend fun login(username: String, password: String): LoginResponse = throw NotImplementedError()
         override suspend fun getBalance(): Double = 100000.0
         override suspend fun getTestUsersCount(affiliateIndex: Int?): Int = 0
@@ -90,7 +101,13 @@ class Workstream6LocalAccountProvenanceGuardTest {
         override suspend fun getPrepaidNeeded(): Double = 0.0
         override suspend fun getPackages(): List<AccountPackage> = emptyList()
         override suspend fun getAccountCost(accountIndex: Int): Double = 35000.0
-        override suspend fun searchUsers(query: String, startIndex: Int, rowCount: Int): UserListResponse = UserListResponse(itemsList = emptyList())
+        override suspend fun searchUsers(query: String, startIndex: Int, rowCount: Int): UserListResponse =
+            UserListResponse(
+                itemsList = userDirectory.entries
+                    .filter { it.key.contains(query, ignoreCase = true) }
+                    .map { UserListItem(userIndexLower = it.value, userIDLower = it.key) },
+                totalCount = userDirectory.size
+            )
         override suspend fun getUserDetail(userIndex: Int): UserDetail {
             getUserDetailCallCount.incrementAndGet()
             return UserDetail(userIndexLower = userIndex, userIDLower = "isp_user_$userIndex", accountStatusLower = "Active", activeDaysLeftLower = 30.0)
@@ -156,7 +173,7 @@ class Workstream6LocalAccountProvenanceGuardTest {
         )
         accountRepo.saveAccount(ispAcc)
 
-        val spyGateway = ProvenanceSpyGateway()
+        val spyGateway = ProvenanceSpyGateway().apply { carrySubscriber(12345, "real_isp_user") }
         val viewModel = EarthlinkSearchViewModel(
             gateway = spyGateway,
             audit = auditRepo,

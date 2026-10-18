@@ -30,7 +30,7 @@ import org.junit.Test
  * 2. Connectivity: checkConnection delegates to getBalance(), handling 200, 401 auth, and transport failures.
  * 3. Read Operations:
  *    - searchSubscribers computes 0-based paging startIndex and normalizes UserListItem to SasSubscriberView.
- *    - getSubscriber converts integer ID, maps UserDetail, returns null on non-numeric or 404.
+ *    - getSubscriber resolves a username to a directory row, maps UserDetail, returns null when absent or on 404.
  * 4. Mutation Operations:
  *    - Mutations are username-keyed: the adapter resolves the username to the EarthLink userIndex and
  *      keeps the index inside. No caller supplies a userIndex.
@@ -208,13 +208,20 @@ class EarthlinkSasGatewayAdapterTest {
     // ========================================================================
 
     /**
-     * Claim: getSubscriber parses subscriberId integer, invokes getUserDetail, and normalizes UserDetail into SasSubscriberView.
+     * Claim: getSubscriber addresses the subscriber by USERNAME. The provider index comes from the
+     *        directory row the username resolves to, never from the argument itself.
      * Seam: JVM headless unit test.
-     * Independent Oracle: UserDetail with userIndex 702 and accountIndex 5 maps to subscriberId "702" and planId "5".
+     * Independent Oracle: The directory fixture is a literal row (userID "test_sub_702" -> userIndex
+     *        702). "702" appears in the USERNAME but is not the index, so an implementation that
+     *        read the argument as an index would resolve to a different customer or to nothing.
      */
     @Test
-    fun getSubscriber_validId_mapsUserDetailToSasSubscriberView() = runTest {
-        val detail = UserDetail(
+    fun getSubscriber_resolvesUsernameToADirectoryRow() = runTest {
+        fakeGateway.searchResponse = UserListResponse(
+            itemsList = listOf(UserListItem(userIndexLower = 702, userIDLower = "test_sub_702")),
+            totalCount = 1
+        )
+        fakeGateway.userDetailResult = UserDetail(
             userIndexLower = 702,
             userIDLower = "test_sub_702",
             customerFullNameLower = "Zaid Ali",
@@ -225,9 +232,8 @@ class EarthlinkSasGatewayAdapterTest {
             mobileNumberLower = "07809876543",
             userActiveLower = true
         )
-        fakeGateway.userDetailResult = detail
 
-        val subscriber = adapter.getSubscriber("702")
+        val subscriber = adapter.getSubscriber("test_sub_702")
 
         assertNotNull("Expected non-null subscriber", subscriber)
         assertEquals("702", subscriber!!.subscriberId)
@@ -239,47 +245,85 @@ class EarthlinkSasGatewayAdapterTest {
         assertEquals("2026-12-15T00:00:00", subscriber.expiresAt)
         assertEquals("07809876543", subscriber.phone)
         assertEquals(702, fakeGateway.lastUserDetailIndex)
+        assertEquals("test_sub_702", fakeGateway.lastSearchQuery)
     }
 
     /**
-     * Claim: getSubscriber returns null without calling delegate when subscriberId is non-numeric.
+     * Claim: getSubscriber never reinterprets its argument as a provider index, even when the
+     *        argument is numeric. A stale userIndex cached on the account is stale BY DESIGN after an
+     *        ISP move, so reading it back here would address a different customer.
      * Seam: JVM headless unit test.
-     * Independent Oracle: Non-numeric subscriberId "alpha_numeric" -> null, 0 delegate calls.
+     * Independent Oracle: The directory maps the literal username "909090" to the literal index 31415.
+     *        The only correct answer is 31415; anything else means the argument was used as an index.
      */
     @Test
-    fun getSubscriber_nonNumericId_returnsNull() = runTest {
+    fun getSubscriber_numericUsernameIsNeverUsedAsAnIndex() = runTest {
+        fakeGateway.searchResponse = UserListResponse(
+            itemsList = listOf(UserListItem(userIndexLower = 31415, userIDLower = "909090")),
+            totalCount = 1
+        )
+        fakeGateway.userDetailResult = UserDetail(userIndexLower = 31415, userIDLower = "909090")
+
+        val subscriber = adapter.getSubscriber("909090")
+
+        assertEquals(31415, fakeGateway.lastUserDetailIndex)
+        assertEquals("31415", subscriber?.subscriberId)
+    }
+
+    /**
+     * Claim: getSubscriber returns null without calling the detail endpoint when the provider
+     *        definitively does not carry the username.
+     * Seam: JVM headless unit test.
+     * Independent Oracle: An empty directory is the only outcome consistent with "no such row";
+     *        0 detail calls proves no guessed index was ever dispatched.
+     */
+    @Test
+    fun getSubscriber_unknownUsername_returnsNullWithoutDetailCall() = runTest {
+        fakeGateway.searchResponse = UserListResponse(itemsList = emptyList(), totalCount = 0)
+
         val result = adapter.getSubscriber("alpha_numeric")
 
-        assertNull("Expected null for non-numeric subscriber ID", result)
+        assertNull("Expected null for a username the provider does not carry", result)
         assertEquals(0, fakeGateway.getUserDetailCalls.get())
     }
 
     /**
-     * Claim: getSubscriber returns null when delegate throws EarthlinkBusinessException with 404 status.
+     * Claim: getSubscriber returns null when the detail endpoint answers 404 for the resolved row.
      * Seam: JVM headless unit test.
      * Independent Oracle: 404 status code -> null result.
      */
     @Test
     fun getSubscriber_notFound404_returnsNull() = runTest {
+        fakeGateway.searchResponse = UserListResponse(
+            itemsList = listOf(UserListItem(userIndexLower = 999, userIDLower = "ghost_sub")),
+            totalCount = 1
+        )
         fakeGateway.userDetailException = EarthlinkBusinessException(statusCode = 404, errorMessage = "User not found")
 
-        val result = adapter.getSubscriber("999")
+        val result = adapter.getSubscriber("ghost_sub")
 
         assertNull("Expected null when user not found (404)", result)
+        assertEquals(999, fakeGateway.lastUserDetailIndex)
         assertEquals(1, fakeGateway.getUserDetailCalls.get())
     }
 
     /**
-     * Claim: getSubscriber propagates SasGatewayException when delegate throws non-404 business exception.
+     * Claim: getSubscriber propagates SasGatewayException when the detail endpoint answers 5xx.
+     *        A transport failure must never be reported as "this subscriber does not exist".
      * Seam: JVM headless unit test.
-     * Independent Oracle: EarthlinkBusinessException with 500 status -> propagated exception.
+     * Independent Oracle: A 500 carries the literal body message "Internal Error", which must survive
+     *        the mapping rather than being flattened into null.
      */
     @Test
     fun getSubscriber_serverError_propagatesSasGatewayException() = runTest {
+        fakeGateway.searchResponse = UserListResponse(
+            itemsList = listOf(UserListItem(userIndexLower = 888, userIDLower = "boom_sub")),
+            totalCount = 1
+        )
         fakeGateway.userDetailException = EarthlinkBusinessException(statusCode = 500, errorMessage = "Internal Error")
 
         try {
-            adapter.getSubscriber("888")
+            adapter.getSubscriber("boom_sub")
             fail("Expected SasBusinessException")
         } catch (e: SasGatewayException) {
             assertTrue(e.message?.contains("Internal Error") == true)

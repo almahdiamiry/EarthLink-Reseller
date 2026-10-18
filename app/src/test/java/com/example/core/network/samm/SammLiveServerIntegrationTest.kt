@@ -121,8 +121,8 @@ class SammLiveServerIntegrationTest {
         assertEquals("379", subscriber.subscriberId)
         assertEquals("sub_lab_01", subscriber.username)
 
-        val detail = gateway.getSubscriber("379")
-        assertNotNull("Expected customer detail for 379", detail)
+        val detail = gateway.getSubscriber("sub_lab_01")
+        assertNotNull("Expected customer detail for sub_lab_01", detail)
         assertEquals("sub_lab_01", detail?.username)
         assertEquals("6", detail?.planId)
     }
@@ -149,7 +149,7 @@ class SammLiveServerIntegrationTest {
         assertEquals(SasVerificationOutcome.VERIFIED_SUCCESS, activateOutcome)
 
         // 3. Renew customer 379
-        val beforeRenew = gateway.getSubscriber("379")
+        val beforeRenew = gateway.getSubscriber("sub_lab_01")
         val baselineExp = beforeRenew?.expiresAt
 
         val renewResult = gateway.renewSubscriber("sub_lab_01")
@@ -220,8 +220,8 @@ class SammLiveServerIntegrationTest {
         // Verify providerName invariant
         assertEquals(com.example.core.model.SasProviders.ALAMIRY, liveGateway.providerName)
 
-        // Verify subscriber 379 can be fetched through the live gateway
-        val user = liveGateway.getSubscriber("379")
+        // Verify subscriber sub_lab_01 can be fetched through the live gateway
+        val user = liveGateway.getSubscriber("sub_lab_01")
         assertNotNull(user)
         assertEquals("sub_lab_01", user?.username)
     }

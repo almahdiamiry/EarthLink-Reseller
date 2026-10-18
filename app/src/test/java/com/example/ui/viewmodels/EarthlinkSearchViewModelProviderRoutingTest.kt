@@ -229,7 +229,7 @@ class EarthlinkSearchViewModelProviderRoutingTest {
         )
 
         viewModel.setSelectedProvider(SasProviders.ALAMIRY)
-        val detail = viewModel.getUserDetail(101)
+        val detail = viewModel.getUserDetail(101, "samm_detail_user")
 
         assertEquals("SAMM gateway must receive exactly 1 getSubscriber call", 1, fakeSammSasGateway.getSubscriberCalls.get())
         assertEquals("EarthLink SAS gateway must receive 0 getSubscriber calls", 0, fakeEarthlinkSasGateway.getSubscriberCalls.get())
@@ -259,7 +259,7 @@ class EarthlinkSearchViewModelProviderRoutingTest {
         )
 
         viewModel.setSelectedProvider(SasProviders.EARTHLINK)
-        val detail = viewModel.getUserDetail(202)
+        val detail = viewModel.getUserDetail(202, "earth_detail_user")
 
         assertEquals("EarthLink SAS gateway must receive exactly 1 getSubscriber call", 1, fakeEarthlinkSasGateway.getSubscriberCalls.get())
         assertEquals("SAMM gateway must receive 0 getSubscriber calls", 0, fakeSammSasGateway.getSubscriberCalls.get())

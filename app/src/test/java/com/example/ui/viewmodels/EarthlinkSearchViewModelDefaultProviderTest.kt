@@ -228,7 +228,7 @@ class EarthlinkSearchViewModelDefaultProviderTest {
         )
         vm.prepareUserDetail(42, partialItem)
 
-        val detail = vm.getUserDetail(42)
+        val detail = vm.getUserDetail(42, "alamiry_user_42")
 
         assertEquals("SAMM gateway must receive getSubscriber call", 1, fakeSammSasGateway.getSubscriberCalls.get())
         assertEquals("EarthLink gateway must not receive getSubscriber call", 0, fakeEarthlinkSasGateway.getSubscriberCalls.get())

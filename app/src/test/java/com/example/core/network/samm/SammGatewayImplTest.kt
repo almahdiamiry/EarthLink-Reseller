@@ -3,6 +3,7 @@ package com.example.core.network.samm
 import com.example.core.model.SasProviders
 import com.example.core.network.SasAuthException
 import com.example.core.network.SasBusinessException
+import com.example.core.network.SasGatewayException
 import com.example.core.network.SasInconclusiveException
 import com.example.core.network.SasNotFoundException
 import com.example.core.network.SasOperationResult
@@ -238,14 +239,17 @@ class SammGatewayImplTest {
         assertTrue(results.isEmpty())
     }
 
-    /**
-     * Claim: getSubscriber fetches customer by numeric ID, formats integer path parameter `/customers/{id}`,
-     *        and normalizes wire integer ID into domain String.
+/**
+     * Claim: getSubscriber resolves a username through the directory and reads the detail of THAT
+     *        customer. The argument is never used as a customer id.
      * Seam: JVM MockWebServer Wire Contract.
-     * Independent Oracle: Path is `/api/v1/customers/2055`, returned view has subscriberId="2055".
+     * Independent Oracle: The search body is a literal row {id: 379, username: "sub_lab_01"}. The only
+     *        correct detail path is therefore /api/v1/customers/379, derived from the search response
+     *        and not from the argument.
      */
     @Test
-    fun getSubscriber_validIntegerId_normalizesIdAndMapsFields() = runTest {
+    fun getSubscriber_resolvesUsernameThenReadsThatCustomer() = runTest {
+        enqueueCustomerLookup("sub_lab_01", 379)
         mockServer.enqueue(
             MockResponse()
                 .setResponseCode(200)
@@ -253,8 +257,8 @@ class SammGatewayImplTest {
                 .setBody(
                     """
                     {
-                      "id": 2055,
-                      "username": "user2055",
+                      "id": 379,
+                      "username": "sub_lab_01",
                       "firstname": "Karim",
                       "lastname": null,
                       "mobile": "+9647700000000",
@@ -267,28 +271,81 @@ class SammGatewayImplTest {
                 )
         )
 
-        val subscriber = gateway.getSubscriber("2055")
+        val subscriber = gateway.getSubscriber("sub_lab_01")
 
         assertNotNull(subscriber)
-        assertEquals("2055", subscriber!!.subscriberId)
-        assertEquals("user2055", subscriber.username)
+        assertEquals("379", subscriber!!.subscriberId)
+        assertEquals("sub_lab_01", subscriber.username)
         assertEquals("Karim", subscriber.displayName)
         assertEquals("active", subscriber.status)
         assertEquals("3", subscriber.planId)
         assertEquals("+9647700000000", subscriber.phone)
 
-        val recorded = mockServer.takeRequestOrFail()
-        assertEquals("GET", recorded.method)
-        assertEquals("/api/v1/customers/2055", recorded.path)
+        val search = mockServer.takeRequestOrFail()
+        assertTrue(
+            "Resolution must go through the case-insensitive ?search= filter. Actual: ${search.path}",
+            search.path!!.contains("search=sub_lab_01")
+        )
+        val detail = mockServer.takeRequestOrFail()
+        assertEquals("GET", detail.method)
+        assertEquals("/api/v1/customers/379", detail.path)
     }
 
     /**
-     * Claim: getSubscriber returns null when provider responds with HTTP 404 Not Found.
+     * Claim: getSubscriber never reinterprets its argument as a customer id, even a numeric one. An
+     *        account's cached customer id is stale BY DESIGN after an ISP move.
+     * Seam: JVM MockWebServer Wire Contract.
+     * Independent Oracle: The literal username "909090" is served by the literal id 31415. Dispatching
+     *        /api/v1/customers/909090 would mean the argument was treated as an id.
+     */
+    @Test
+    fun getSubscriber_numericUsernameIsNeverUsedAsACustomerId() = runTest {
+        enqueueCustomerLookup("909090", 31415)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{ "id": 31415, "username": "909090", "status": "active" }""")
+        )
+
+        val subscriber = gateway.getSubscriber("909090")
+
+        mockServer.takeRequestOrFail()
+        val detail = mockServer.takeRequestOrFail()
+        assertEquals("/api/v1/customers/31415", detail.path)
+        assertEquals("31415", subscriber?.subscriberId)
+    }
+
+    /**
+     * Claim: getSubscriber returns null without a detail call when the provider definitively does
+     *        not carry the username.
+     * Seam: JVM MockWebServer Wire Contract.
+     * Independent Oracle: An empty search result is the only outcome consistent with absence, and
+     *        exactly one request may have been made.
+     */
+    @Test
+    fun getSubscriber_usernameNotCarried_returnsNullWithoutDetailCall() = runTest {
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{ "total": 0, "items": [] }""")
+        )
+
+        val subscriber = gateway.getSubscriber("absent_user")
+
+        assertNull(subscriber)
+        assertEquals(1, mockServer.requestCount)
+    }
+
+    /**
+     * Claim: getSubscriber returns null when the provider answers HTTP 404 for the resolved customer.
      * Seam: JVM MockWebServer Wire Contract.
      * Independent Oracle: HTTP 404 response yields null return value without throwing exception.
      */
     @Test
     fun getSubscriber_on404_returnsNull() = runTest {
+        enqueueCustomerLookup("ghost_user", 9999)
         mockServer.enqueue(
             MockResponse()
                 .setResponseCode(404)
@@ -296,27 +353,38 @@ class SammGatewayImplTest {
                 .setBody("""{"detail": "Customer not found"}""")
         )
 
-        val subscriber = gateway.getSubscriber("9999")
+        val subscriber = gateway.getSubscriber("ghost_user")
 
         assertNull(subscriber)
     }
 
     /**
-     * Claim: getSubscriber throws SasBusinessException immediately when subscriberId is not a valid integer,
-     *        preventing invalid wire requests from reaching the provider.
-     * Seam: JVM Unit Test.
-     * Independent Oracle: Throws SasBusinessException with exact message "Invalid SAMM customer ID integer: 'not_an_int'".
+     * Claim: a FAILED lookup is never reported as "no such subscriber". An HTTP 500 on the search
+     *        propagates as a typed SasGatewayException instead of degrading to a silent null.
+     * Seam: JVM MockWebServer Wire Contract.
+     * Independent Oracle: The mocked body carries the literal message "directory exploded", which
+     *        must reach the caller rather than being flattened into a null "not found". A 5xx maps to
+     *        SasInconclusiveException by the seam's own error taxonomy, so the assertion is written
+     *        against the SasGatewayException contract and the literal message, not one subclass.
      */
     @Test
-    fun getSubscriber_invalidNonIntegerId_throwsSasBusinessException() = runTest {
+    fun getSubscriber_searchFails_propagatesInsteadOfReportingAbsence() = runTest {
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(500)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"detail": "directory exploded"}""")
+        )
+
         try {
-            gateway.getSubscriber("not_an_int")
-            fail("Expected SasBusinessException for non-integer subscriber ID")
-        } catch (e: SasBusinessException) {
-            assertEquals("Invalid SAMM customer ID integer: 'not_an_int'", e.errorMessage)
-            assertNull(e.statusCode)
+            val subscriber = gateway.getSubscriber("sub_lab_01")
+            fail("Expected the lookup failure to propagate, not to report absence. Got: $subscriber")
+        } catch (e: SasGatewayException) {
+            assertTrue(
+                "The provider's own reason must survive: ${e.message}",
+                e.message?.contains("directory exploded") == true
+            )
         }
-        assertEquals("No network requests should have been dispatched", 0, mockServer.requestCount)
     }
 
     /**

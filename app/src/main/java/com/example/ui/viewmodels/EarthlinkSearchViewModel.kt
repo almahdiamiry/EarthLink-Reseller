@@ -391,10 +391,17 @@ class EarthlinkSearchViewModel(
         }
     }
 
-    suspend fun getUserDetail(userIndex: Int, accountProvider: String? = null): com.example.core.model.UserDetail? {
+    suspend fun getUserDetail(
+        userIndex: Int,
+        username: String,
+        accountProvider: String? = null
+    ): com.example.core.model.UserDetail? {
         val targetProvider = accountProvider ?: _selectedUser.value?.originProvider ?: _selectedProvider.value
         val targetGateway = sasGatewayRouter.getGateway(targetProvider)
-        val sub = targetGateway.getSubscriber(userIndex.toString()) ?: return null
+        // Addressed by username, never by the caller-held userIndex: that index belongs to whichever
+        // ISP served the account before it moved, so reading it back can return the wrong customer
+        // or none at all.
+        val sub = targetGateway.getSubscriber(username) ?: return null
         return com.example.core.model.UserDetail(
             userIndexLower = sub.subscriberId.toIntOrNull() ?: userIndex,
             userIDLower = sub.username,
@@ -525,29 +532,29 @@ class EarthlinkSearchViewModel(
                     // different answers. Only the former may retire the previous provider's display
                     // snapshot; a transport failure must leave the operator's context untouched.
                     var transportFailed = false
-                    var sub = try {
-                        // The identity to look up must belong to the same provider we are reading,
-                        // so it is taken from the account row, never from the tapped row's index.
-                        val specificId = if (targetProvider == com.example.core.model.SasProviders.EARTHLINK) {
-                            identityOwner?.ispUserIndex?.toString() ?: userIndex.takeIf { it > 0 }?.toString()
-                        } else {
-                            identityOwner?.ispSubscriberId ?: userIndex.takeIf { it > 0 }?.toString()
+                    var sub = if (!currentUserId.isNullOrBlank()) {
+                        try {
+                            // Read the account's own provider by the provider-neutral username.
+                            // identityOwner.ispUserIndex / ispSubscriberId are deliberately NOT used:
+                            // they are stale by design the moment the subscriber moves ISP, which is
+                            // exactly the transition this branch made possible, and the tapped row's
+                            // userIndex belongs to whichever provider that row came from.
+                            targetGateway.getSubscriber(currentUserId)
+                        } catch (e: com.example.core.network.SasNotFoundException) {
+                            null
+                        } catch (e: com.example.core.network.SasBusinessException) {
+                            null
+                        } catch (e: com.example.core.network.SasGatewayException) {
+                            transportFailed = true
+                            null
                         }
-                        if (specificId != null) targetGateway.getSubscriber(specificId) else null
-                    } catch (e: com.example.core.network.SasNotFoundException) {
-                        null
-                    } catch (e: com.example.core.network.SasBusinessException) {
-                        null
-                    } catch (e: com.example.core.network.SasGatewayException) {
-                        transportFailed = true
-                        null
-                    }
+                    } else null
                     if (sub == null && !transportFailed && !currentUserId.isNullOrBlank()) {
                         try {
                             val candidates = targetGateway.searchSubscribers(query = currentUserId, page = 1, pageSize = 20)
                             val matched = candidates.find { it.username.equals(currentUserId, ignoreCase = true) }
                             if (matched != null) {
-                                sub = try { targetGateway.getSubscriber(matched.subscriberId) ?: matched }
+                                sub = try { targetGateway.getSubscriber(matched.username) ?: matched }
                                     catch (_: com.example.core.network.SasNotFoundException) { matched }
                             }
                         } catch (e: com.example.core.network.SasGatewayException) {
@@ -1828,25 +1835,34 @@ val targetUserId = account?.earthlinkUsername ?: _selectedUser.value?.userID ?: 
     /**
      * Which providers actually carry this username, queried once when the provider dialog opens.
      *
-     * Moving an account to a provider that does not have the subscriber leaves it pointing at a
-     * dead identity, so the dialog greys out what is not there rather than only what is unconfigured.
-     * A provider that errors reports false: an unverifiable provider is not a safe target.
+     * Moving an account to a provider that does not have the subscriber leaves it pointing at a dead
+     * identity, so the dialog greys out what is not there rather than only what is unconfigured.
+     *
+     * The answer is three-valued on purpose. A provider that could not be asked (offline, expired
+     * token, 500) reports [SasSubscriberPresence.UNKNOWN], never [SasSubscriberPresence.ABSENT]: a
+     * failed lookup is not evidence that the subscriber moved, and rendering it as a confirmed
+     * absence is how both rows end up greyed out with the dialog asserting the subscriber is on
+     * neither ISP.
      */
-    suspend fun checkProviderPresence(username: String): Map<String, Boolean> {
+    suspend fun checkProviderPresence(username: String): Map<String, SasSubscriberPresence> {
         val id = username.trim()
         if (id.isEmpty()) return emptyMap()
-        val present = mutableMapOf<String, Boolean>()
+        val present = mutableMapOf<String, SasSubscriberPresence>()
         for (prov in listOf(
             com.example.core.model.SasProviders.EARTHLINK,
             com.example.core.model.SasProviders.ALAMIRY
         )) {
             present[prov] = try {
-                sasGatewayRouter.getGateway(prov)
-                    .searchSubscribers(query = id, page = 1, pageSize = 2)
-                    .any { it.username.equals(id, ignoreCase = true) }
+                // The seam owns the lookup, so the directory window and the exact-username guard are
+                // the ones every other username-addressed operation uses. Re-searching here with a
+                // short window is what previously let colliding usernames hide a subscriber that
+                // actually exists.
+                sasGatewayRouter.getGateway(prov).resolveSubscriberPresence(id)
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                false
+                // Includes "provider not configured", which the dialog already renders as
+                // "Not logged in" from the credentials state, so it must not read as absence here.
+                SasSubscriberPresence.UNKNOWN
             }
         }
         return present
@@ -2048,12 +2064,11 @@ val targetUserId = account?.earthlinkUsername ?: _selectedUser.value?.userID ?: 
                             summary = "Renewed subscription on SAMM at price $authoritativePrice. Note: $finalNote"
                         )
 
-                        // Refresh subscriber detail from SAMM. The refresh is a read and still speaks in
-                        // provider ids, so it asks the gateway to resolve the username it was given rather
-                        // than reusing an id cached on the account.
+                        // Refresh subscriber detail from SAMM. The refresh is a read, and like every other
+                        // username-addressed call it re-resolves the identity rather than reusing an id
+                        // cached on the account, which is stale once the subscriber moves ISP.
                         try {
-                            val refreshedId = sammGateway.resolveSubscriberId(userId)
-                            val refreshed = refreshedId?.let { sammGateway.getSubscriber(it) }
+                            val refreshed = sammGateway.getSubscriber(userId)
                             if (refreshed != null) {
                                 val numIdx = refreshed.subscriberId.toIntOrNull() ?: refreshed.subscriberId.hashCode()
                                 _selectedUser.value = com.example.core.model.UserDetail(

@@ -792,6 +792,7 @@ class EarthlinkSearchViewModelSeamTest {
         db.localAccountDao().insert(LocalAccount(id = "UUID_B1", earthlinkUsername = "alice", ispUserIndex = 2002))
         db.localAccountDao().insert(LocalAccount(id = "UUID_B2", earthlinkUsername = "alice", ispUserIndex = 2002))
 
+        testGateway.carrySubscriber(2002, "alice")
         val vm = createViewModel()
         val job = vm.loadUserDetail(2002, "alice")
         job.join()
@@ -1141,6 +1142,7 @@ class EarthlinkSearchViewModelSeamTest {
         )
         accountRepo.saveAccount(localAccountA)
         accountRepo.saveAccount(realAccountB)
+        testGateway.carrySubscriber(collisionIndex, "real_user")
 
         val vm = createViewModel()
 

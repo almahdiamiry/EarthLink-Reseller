@@ -7,6 +7,7 @@ import com.example.core.network.SasGatewayException
 import com.example.core.network.SasInconclusiveException
 import com.example.core.network.SasNotFoundException
 import com.example.core.network.SasOperationResult
+import com.example.core.network.SasSubscriberPresence
 import com.example.core.network.SasSubscriberSession
 import com.example.core.network.SasSubscriberView
 import com.example.core.network.SasVerificationOutcome
@@ -24,7 +25,9 @@ import retrofit2.Response
  * 1. Provider Identity: providerName is strictly [SasProviders.ALAMIRY].
  * 2. Identity Normalization:
  *    - Ingress: SAMM integer customer ID (dto.id: Int) normalized to domain String (SasSubscriberView.subscriberId = dto.id.toString()).
- *    - Egress: Domain String subscriber ID parsed to integer for SAMM wire endpoints, throwing [SasBusinessException] if invalid.
+ *    - Egress: Mutations and reads address the customer by username, which is resolved to the SAMM
+ *      integer id inside this class at call time. A customer id never crosses the seam: it is
+ *      SAMM-local, and an account's cached copy is stale by design once the subscriber moves ISP.
  * 3. Exact Operation Oracles:
  *    - ACTIVATION: Exact username lookup via GET /customers?username=<user>. Found -> VERIFIED_SUCCESS, Not found -> VERIFIED_FAILURE.
  *    - RENEWAL: Expiration advance comparison against baseline evidence. Changed -> VERIFIED_SUCCESS, Unchanged -> VERIFIED_FAILURE.
@@ -46,14 +49,6 @@ class SammGatewayImpl(
     // ========================================================================
     // ID Normalization Helpers
     // ========================================================================
-
-    private fun parseCustomerId(subscriberId: String): Int {
-        return subscriberId.toIntOrNull()
-            ?: throw SasBusinessException(
-                statusCode = null,
-                errorMessage = "Invalid SAMM customer ID integer: '$subscriberId'"
-            )
-    }
 
     private fun parsePlanId(planId: String): Int {
         return planId.toIntOrNull()
@@ -260,8 +255,14 @@ override suspend fun extendSubscriberByDays(
         return response.body()?.items?.map { it.toSubscriberView() } ?: emptyList()
     }
 
-    override suspend fun getSubscriber(subscriberId: String): SasSubscriberView? {
-        val customerId = parseCustomerId(subscriberId)
+    override suspend fun getSubscriber(username: String): SasSubscriberView? {
+        // Resolved, never parsed: an account's cached customer id is stale by design after an ISP
+        // move, so it must not be able to address a live customer here.
+        // findDirectoryRow is used directly rather than resolveSubscriberId so that a FAILED lookup
+        // propagates: this method returns null for "the provider definitively has no such
+        // subscriber", and returning null for "we could not ask" would say the same thing twice.
+        val key = username.trim().takeIf { it.isNotEmpty() } ?: return null
+        val customerId = findDirectoryRow(key)?.id ?: return null
         val response = try {
             apiService.getCustomer(customerId)
         } catch (e: SasGatewayException) {
@@ -296,21 +297,40 @@ override suspend fun extendSubscriberByDays(
      * SAMM exposes online state only through live RADIUS sessions; the customer resource has no
      * online or session field at all. Absence of a session is the offline answer.
      */
+    /**
+     * The one directory read every username-addressed operation goes through.
+     *
+     * ?search=, not ?username= - the SAMM username filter is case-sensitive and silently returns
+     * nothing for a lowercased name. search is case-insensitive but is a substring filter, so the
+     * guard below is what makes this exact, and the window must be wide enough that the colliders
+     * cannot push the exact row out of the response.
+     *
+     * Returns null only when the provider was successfully asked and definitively has no such row;
+     * a failed read propagates as [SasGatewayException] so callers can tell the two apart.
+     */
+    private suspend fun findDirectoryRow(key: String): CustomerListItem? =
+        safeApiCall {
+            apiService.listCustomers(search = key, limit = SUBSCRIBER_LOOKUP_WINDOW)
+        }.body()?.items.orEmpty()
+            .firstOrNull { it.username.equals(key, ignoreCase = true) }
+
     override suspend fun resolveSubscriberId(username: String): String? {
         val key = username.trim().takeIf { it.isNotEmpty() } ?: return null
         return try {
-            // ?search=, not ?username= - the SAMM username filter is case-sensitive and silently
-            // returns nothing for a lowercased name. search is case-insensitive but is a substring
-            // filter, so the guard below is what makes this exact, and the window must be wide
-            // enough that the colliders cannot push the exact row out of the response.
-            val response = safeApiCall {
-                apiService.listCustomers(search = key, limit = SUBSCRIBER_LOOKUP_WINDOW)
-            }
-            response.body()?.items.orEmpty()
-                .firstOrNull { it.username.equals(key, ignoreCase = true) }
-                ?.id?.toString()
+            findDirectoryRow(key)?.id?.toString()
         } catch (e: SasGatewayException) {
             null
+        }
+    }
+
+    override suspend fun resolveSubscriberPresence(username: String): SasSubscriberPresence {
+        val key = username.trim().takeIf { it.isNotEmpty() } ?: return SasSubscriberPresence.UNKNOWN
+        return try {
+            if (findDirectoryRow(key) != null) SasSubscriberPresence.PRESENT
+            else SasSubscriberPresence.ABSENT
+        } catch (e: SasGatewayException) {
+            // A transport failure, a 401 and a 500 are all "we could not ask", never "not there".
+            SasSubscriberPresence.UNKNOWN
         }
     }
 
@@ -318,6 +338,11 @@ override suspend fun extendSubscriberByDays(
      * The customer id a mutation must be addressed by, resolved from the username that crossed the
      * seam. Fails closed: an unresolvable username stops before any gateway mutation is dispatched,
      * because the alternative is dispatching against a guessed customer.
+     *
+     * A failed lookup surfaces as [SasNotFoundException] here, exactly as it did when this went
+     * through [resolveSubscriberId]. That is deliberate and unchanged: the mutation path has always
+     * reported "could not resolve" with this one signal, and the presence read (which must keep the
+     * two apart) goes through [findDirectoryRow] directly instead.
      */
     private suspend fun requireCustomerId(username: String): Int {
         val key = username.trim().takeIf { it.isNotEmpty() }
@@ -325,11 +350,12 @@ override suspend fun extendSubscriberByDays(
                 statusCode = null,
                 errorMessage = "A username is required to address a SAMM customer"
             )
-        return resolveSubscriberId(key)?.toIntOrNull()
+        val row = try { findDirectoryRow(key) } catch (_: SasGatewayException) { null }
             ?: throw SasNotFoundException(
                 statusCode = null,
                 message = "Could not resolve the SAMM customer id for $key"
             )
+        return row.id
     }
 
     override suspend fun getSubscriberSession(username: String): SasSubscriberSession? {

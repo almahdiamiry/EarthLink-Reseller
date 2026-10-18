@@ -45,7 +45,7 @@ import org.robolectric.annotation.Config
  *
  * 2. Seam / Environment:
  *    ROBOLECTRIC tier, in-memory Room [AppDatabase] with the real [LocalAccountRepositoryImpl]
- *    and [LocalLedgerRepositoryImpl], and an id-addressed [SasGateway] double per provider.
+ *    and [LocalLedgerRepositoryImpl], and a username-addressed [SasGateway] double per provider.
  *
  * 3. Independent Oracle:
  *    Each gateway is seeded with a provider-exclusive literal plan name ("EARTHLINK-ONLY-PLAN" /
@@ -64,8 +64,8 @@ class ProviderSwitchBackReadTest {
     private lateinit var ledgerRepo: LocalLedgerRepositoryImpl
     private lateinit var auditRepo: AuditRepositoryImpl
 
-    private lateinit var earthSas: IdAddressedGateway
-    private lateinit var sammSas: IdAddressedGateway
+    private lateinit var earthSas: UsernameAddressedGateway
+    private lateinit var sammSas: UsernameAddressedGateway
     private lateinit var viewModel: EarthlinkSearchViewModel
 
     @Before
@@ -95,8 +95,8 @@ class ProviderSwitchBackReadTest {
         )
         auditRepo = AuditRepositoryImpl(db, db.auditLogDao())
 
-        earthSas = IdAddressedGateway(SasProviders.EARTHLINK)
-        sammSas = IdAddressedGateway(SasProviders.ALAMIRY)
+        earthSas = UsernameAddressedGateway(SasProviders.EARTHLINK)
+        sammSas = UsernameAddressedGateway(SasProviders.ALAMIRY)
 
         viewModel = EarthlinkSearchViewModel(
             gateway = TestEarthlinkGateway(),
@@ -120,7 +120,7 @@ class ProviderSwitchBackReadTest {
         seedAlamiryOperatedAccount()
 
         // The subscriber returned to EarthLink under a NEW identity (42 was the pre-departure row).
-        earthSas.byId["900"] = subscriber("900", "EARTHLINK-ONLY-PLAN", planId = "3")
+        earthSas.byUsername["user1"] = subscriber("900", "EARTHLINK-ONLY-PLAN", planId = "3")
         earthSas.searchCorpus = listOf(subscriber("900", "EARTHLINK-ONLY-PLAN", planId = "3"))
 
         viewModel.setSelectedProvider(SasProviders.ALAMIRY)
@@ -154,7 +154,7 @@ class ProviderSwitchBackReadTest {
     fun switchingBackToEarthlink_rendersEarthlinkPlan_whenOriginalIndexStillValid() = runTest {
         seedAlamiryOperatedAccount()
 
-        earthSas.byId["42"] = subscriber("42", "EARTHLINK-ONLY-PLAN", planId = "3")
+        earthSas.byUsername["user1"] = subscriber("42", "EARTHLINK-ONLY-PLAN", planId = "3")
 
         viewModel.setSelectedProvider(SasProviders.ALAMIRY)
         viewModel.loadUserDetail(3001, "user1").join()
@@ -177,7 +177,7 @@ class ProviderSwitchBackReadTest {
     fun switchingBackToEarthlink_dropsAlamiryPlanFromDisplay_whenEarthlinkHasNoRecord() = runTest {
         seedAlamiryOperatedAccount()
         // EarthLink gateway returns nothing for this username.
-        earthSas.byId.clear()
+        earthSas.byUsername.clear()
         earthSas.searchCorpus = emptyList()
 
         viewModel.setSelectedProvider(SasProviders.ALAMIRY)
@@ -213,8 +213,8 @@ class ProviderSwitchBackReadTest {
         db.localAccountDao().insert(
             roomAccount().copy(operationProvider = SasProviders.EARTHLINK)
         )
-        earthSas.byId["42"] = subscriber("42", "EARTHLINK-ONLY-PLAN", planId = "3")
-        sammSas.byId["3001"] = subscriber("3001", "ALAMIRY-UNIQUE-TYPE", planId = "9")
+        earthSas.byUsername["user1"] = subscriber("42", "EARTHLINK-ONLY-PLAN", planId = "3")
+        sammSas.byUsername["user1"] = subscriber("3001", "ALAMIRY-UNIQUE-TYPE", planId = "9")
 
         // ...but the operator reaches it from a search/dashboard row that is SAMM-scoped, which is
         // what MainActivity hands to prepareUserDetail before navigating.
@@ -273,7 +273,7 @@ class ProviderSwitchBackReadTest {
     fun alamiryDetail_reportsLiveSessionAndDemotesExpiredSubscriber() = runTest {
         db.localAccountDao().insert(roomAccount().copy(operationProvider = SasProviders.ALAMIRY))
         // SAMM answers "active" even though the expiry is in the past.
-        sammSas.byId["3001"] = subscriber("3001", "ALAMIRY-PLAN", planId = "9")
+        sammSas.byUsername["user1"] = subscriber("3001", "ALAMIRY-PLAN", planId = "9")
             .copy(status = "active", expiresAt = "2020-01-01T00:00:00Z")
         sammSas.session = com.example.core.network.SasSubscriberSession(
             isOnline = true,
@@ -305,7 +305,7 @@ class ProviderSwitchBackReadTest {
     @Test
     fun alamiryDetail_withoutSession_reportsOfflineNotCrash() = runTest {
         db.localAccountDao().insert(roomAccount().copy(operationProvider = SasProviders.ALAMIRY))
-        sammSas.byId["3001"] = subscriber("3001", "ALAMIRY-PLAN", planId = "9")
+        sammSas.byUsername["user1"] = subscriber("3001", "ALAMIRY-PLAN", planId = "9")
             .copy(status = "active", expiresAt = "2030-01-01T00:00:00Z")
         sammSas.session = null
 
@@ -346,7 +346,7 @@ class ProviderSwitchBackReadTest {
 
     private suspend fun seedAlamiryOperatedAccount() {
         db.localAccountDao().insert(roomAccount())
-        sammSas.byId["3001"] = subscriber("3001", "ALAMIRY-UNIQUE-TYPE", planId = "9")
+        sammSas.byUsername["user1"] = subscriber("3001", "ALAMIRY-UNIQUE-TYPE", planId = "9")
     }
 
     // Must also require non-null: prepareUserDetail clears the detail on the way in, so "changed"
@@ -368,11 +368,15 @@ class ProviderSwitchBackReadTest {
     }
 
     /**
-     * Minimal id-addressed read double. Mutating operations are not exercised by these read-path
+     * Minimal username-addressed read double. Mutating operations are not exercised by these read-path
      * claims and fail loudly if they are ever reached by accident.
+     *
+     * Keyed by username because the seam no longer accepts a provider id: an account's cached
+     * ispUserIndex / ispSubscriberId is stale by design once the subscriber moves ISP, so a read
+     * addressed by one of those can only ever return the wrong customer.
      */
-    private class IdAddressedGateway(override val providerName: String) : SasGateway {
-        val byId = mutableMapOf<String, SasSubscriberView>()
+    private class UsernameAddressedGateway(override val providerName: String) : SasGateway {
+        val byUsername = mutableMapOf<String, SasSubscriberView>()
         var searchCorpus: List<SasSubscriberView> = emptyList()
         var getSubscriberCalls = 0
         var session: com.example.core.network.SasSubscriberSession? = null
@@ -384,10 +388,10 @@ class ProviderSwitchBackReadTest {
             return session
         }
 
-        override suspend fun getSubscriber(subscriberId: String): SasSubscriberView? {
+        override suspend fun getSubscriber(username: String): SasSubscriberView? {
             getSubscriberCalls++
-            val hit = byId[subscriberId]
-            callLog += "getSubscriber($subscriberId)->${hit?.planName ?: "null"}"
+            val hit = byUsername[username.lowercase()]
+            callLog += "getSubscriber($username)->${hit?.planName ?: "null"}"
             return hit
         }
 

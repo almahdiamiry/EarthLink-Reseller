@@ -67,8 +67,47 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.EarthlinkApp
 import com.alamiry.earthlinkreseller.R
 import com.example.ui.viewmodels.EarthlinkSearchViewModel
+import com.example.core.network.SasSubscriberPresence
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
+
+/**
+ * Whether a provider row in the "Change provider" dialog may be picked.
+ *
+ * Two independent reasons a row may be unpickable: the provider has no credentials (a local fact
+ * that cannot be transiently false), or the provider was successfully asked and definitively does
+ * not carry this username. [SasSubscriberPresence.UNKNOWN] is deliberately NOT a third reason: the
+ * lookup failed, which establishes nothing about the subscriber, and greying the row out on it is
+ * how an offline device ends up telling the operator that a subscriber is on neither ISP. An unknown
+ * row therefore stays pickable and carries an explicit "could not verify" notice instead.
+ */
+internal fun isProviderRowSelectable(isConfigured: Boolean, presence: SasSubscriberPresence?): Boolean =
+    isConfigured && presence != SasSubscriberPresence.ABSENT
+
+/**
+ * The trailing notice on a provider row, or null when there is nothing to report.
+ *
+ * "Could not verify" and "not on this provider" must stay different sentences: an operator who reads
+ * the first knows to try again, an operator who reads the second has been told a fact the app never
+ * established.
+ */
+internal fun providerRowNotice(
+    isConfigured: Boolean,
+    presence: SasSubscriberPresence?,
+    currentLang: String
+): String? = when {
+    !isConfigured -> if (currentLang == "ar") "غير مسجل الدخول" else "Not logged in"
+    presence == SasSubscriberPresence.ABSENT ->
+        if (currentLang == "ar") "غير موجود لدى المزود" else "Not on this provider"
+    presence == SasSubscriberPresence.UNKNOWN ->
+        if (currentLang == "ar") "تعذّر التحقق" else "Could not verify"
+    else -> null
+}
+
+/** An unverified row is warned about rather than greyed out, so it needs its own colour. */
+internal fun providerNoticeColor(isConfigured: Boolean, presence: SasSubscriberPresence?): Color =
+    if (isConfigured && presence == SasSubscriberPresence.UNKNOWN) Color(0xFFFF9F0A)
+    else Color.White.copy(alpha = 0.4f)
 
 object HistoryPresentationManager {
     fun prepareDisplayLedgerList(rawList: List<com.example.core.model.LocalLedgerEntry>): List<com.example.core.model.LocalLedgerEntry> {
@@ -3390,8 +3429,8 @@ if (showExtendDialog) {
                                 )
 
 val access = prefs.getProviderAccessState()
-                                    // null = not looked up yet, so the row stays pickable while loading
-                                    var providerPresence by remember { mutableStateOf<Map<String, Boolean>?>(null) }
+                                    // null map = not looked up yet, so the row stays pickable while loading.
+                                    var providerPresence by remember { mutableStateOf<Map<String, SasSubscriberPresence>?>(null) }
                                     LaunchedEffect(showEditProviderDialog, user.userID) {
                                         providerPresence = if (showEditProviderDialog) {
                                             viewModel.checkProviderPresence(user.userID)
@@ -3403,12 +3442,10 @@ val access = prefs.getProviderAccessState()
                                         com.example.core.model.SasProviders.EARTHLINK to if (currentLang == "ar") "إيرثلنك (EARTHLINK)" else "EarthLink (EARTHLINK)",
                                         com.example.core.model.SasProviders.ALAMIRY to if (currentLang == "ar") "سام (SAMM)" else "SAMM (SAMM)"
                                     ).forEach { (provKey, provLabel) ->
-                                        // Two independent reasons a row may be unpickable: the provider has no
-                                        // credentials, or it does not carry this username. Both end the same way.
                                         val isConfigured = if (provKey == com.example.core.model.SasProviders.EARTHLINK)
                                             access.hasEarthlink else access.hasSamm
                                         val presence = providerPresence?.get(provKey)
-                                        val isAvailable = isConfigured && (presence == null || presence)
+                                        val isAvailable = isProviderRowSelectable(isConfigured, presence)
                                     val isSelected = targetProvider == provKey && isAvailable
                                     Surface(
                                         shape = RoundedCornerShape(10.dp),
@@ -3450,14 +3487,10 @@ val access = prefs.getProviderAccessState()
                                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                                 fontSize = 13.sp
                                             )
-                                            if (!isAvailable) {
+                                            providerRowNotice(isConfigured, presence, currentLang)?.let { notice ->
                                                 Text(
-                                                    text = if (!isConfigured) {
-                                                        if (currentLang == "ar") "غير مسجل الدخول" else "Not logged in"
-                                                    } else {
-                                                        if (currentLang == "ar") "غير موجود لدى المزود" else "Not on this provider"
-                                                    },
-                                                    color = Color.White.copy(alpha = 0.4f),
+                                                    text = notice,
+                                                    color = providerNoticeColor(isConfigured, presence),
                                                     fontSize = 11.sp
                                                 )
                                             }

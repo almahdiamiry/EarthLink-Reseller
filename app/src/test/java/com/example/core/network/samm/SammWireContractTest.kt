@@ -862,4 +862,40 @@ class SammWireContractTest {
         assertFalse("lastname must be omitted when absent, body=$body", body.contains("lastname"))
     }
 
+    /**
+     * Claim: an @-bearing username reaches the SAMM directory lookup query byte-for-byte, so
+     * [SammGatewayImpl.findDirectoryRow] can resolve the provider row the rest of the
+     * username-keyed dispatch depends on.
+     * Seam: JVM MockWebServer wire contract (real OkHttp dispatch).
+     * Independent Oracle: the recorded lookup request's decoded `search` parameter must equal the
+     * exact username "admin@sacx" (RFC 3986 query decoding, not production code); double encoding
+     * or a dropped '@' would decode to a different key and fail this pin.
+     */
+    @Test
+    fun getSubscriber_anAtBearingUsernameReachesTheDirectoryLookupIntact() = runTest {
+        val gateway = SammGatewayImpl(apiService)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"total": 1, "items": [{"id": 326, "username": "admin@sacx"}]}""")
+        )
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"id": 326, "username": "admin@sacx", "status": "active"}""")
+        )
+
+        assertEquals("admin@sacx", gateway.getSubscriber("admin@sacx")?.username)
+
+        val lookup = mockServer.takeRequestOrFail("directory lookup")
+        assertEquals(
+            "The '@' prints the exact key the provider directory carries; re-encoding or dropping " +
+                "it would make the provider resolve a different or absent subscriber.",
+            "admin@sacx",
+            lookup.requestUrl?.queryParameter("search")
+        )
+    }
+
 }

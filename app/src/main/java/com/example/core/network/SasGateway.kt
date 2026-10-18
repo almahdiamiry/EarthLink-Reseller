@@ -144,6 +144,25 @@ data class SasSubscriberSession(
  * Normalized domain view of a subscriber across different SAS providers (EarthLink, SAMM).
  * Hides provider-specific wire schemas and types (e.g. numeric ID vs string ID).
  */
+/**
+ * What a provider directory search could actually establish about a username.
+ *
+ * [UNKNOWN] is not a weaker [ABSENT]. "The provider does not carry this subscriber" and "the lookup
+ * never completed" are different facts about the world, and the app is allowed to say only the first
+ * one. Collapsing the second into the first is how an offline device ends up telling an operator
+ * that a subscriber is on neither ISP.
+ */
+enum class SasSubscriberPresence {
+    /** The provider's own directory returned the exact row. */
+    PRESENT,
+
+    /** The provider was successfully asked and definitively does not carry this username. */
+    ABSENT,
+
+    /** The provider could not be asked, or answered in a way that does not establish presence. */
+    UNKNOWN
+}
+
 data class SasSubscriberView(
     val subscriberId: String,
     val username: String,
@@ -225,9 +244,11 @@ enum class SasVerificationOutcome {
  * Ordering makes it worse rather than better: EarthLink searches newest-first (orderDescending), so
  * the exact row is the one most likely to fall past the end of a short window.
  *
- * 100 is SAMM's own documented server default (max 1000), so it is never rejected as out of range,
- * and it is 10x the window this interface's verification oracle has always used. The cost is one
- * wider read per mutation, which is not a hot path.
+ * 100 is accepted by BOTH providers, at no extra cost on either: it is SAMM's own documented server
+ * default (its hard ceiling is 1000, so it is never out of range), and it is exactly what SAMM's
+ * verification oracle already gets today by sending no `limit` at all. On EarthLink it is 10x the
+ * `rowCount = 10` that its verification oracle has always sent. The cost is one wider read per
+ * mutation, which is not a hot path.
  */
 internal const val SUBSCRIBER_LOOKUP_WINDOW = 100
 
@@ -248,9 +269,13 @@ interface SasGateway {
     suspend fun searchSubscribers(query: String, page: Int = 1, pageSize: Int = 20): List<SasSubscriberView>
 
     /**
-     * Retrieve subscriber by ID. Returns null if subscriber does not exist.
+     * Retrieve a subscriber by USERNAME. Returns null if the provider definitively does not carry it.
+     *
+     * Addressed by username for the same reason the mutation methods are: a provider id is local to
+     * one ISP and is stale by design once the subscriber moves ISP, so a cached id read back from the
+     * account would address a different customer or nobody at all.
      */
-    suspend fun getSubscriber(subscriberId: String): SasSubscriberView?
+    suspend fun getSubscriber(username: String): SasSubscriberView?
 
     /**
      * Create a new subscriber account.
@@ -321,6 +346,21 @@ interface SasGateway {
      * push the exact row out of the response.
      */
     suspend fun resolveSubscriberId(username: String): String? = null
+
+    /**
+     * Whether this provider's directory carries [username], as a three-valued answer.
+     *
+     * [resolveSubscriberId] cannot serve this question because it maps BOTH "no such subscriber" and
+     * "the lookup failed" to null, and those two answers must not reach an operator as the same
+     * sentence. Implementations must answer [SasSubscriberPresence.UNKNOWN] — never
+     * [SasSubscriberPresence.ABSENT] — whenever the provider could not be asked.
+     *
+     * Defaults to UNKNOWN so a provider that cannot answer reports the honest third state instead of
+     * silently claiming the subscriber is absent. Implementations resolve through the same wide,
+     * exact-guarded directory search as [resolveSubscriberId], so the two never disagree.
+     */
+    suspend fun resolveSubscriberPresence(username: String): SasSubscriberPresence =
+        SasSubscriberPresence.UNKNOWN
 
     /**
      * Reads the subscriber's live session, when the provider exposes one.
