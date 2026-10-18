@@ -88,7 +88,10 @@ fun SettingsScreen(
         SyncStatusViewModel(
             syncRepo = app.syncRepository,
             audit = app.auditRepository,
-            prefs = app.preferenceManager
+            prefs = app.preferenceManager,
+            ledgerRepo = app.localLedgerRepository,
+            sasGatewayRouter = app.sasGatewayRouter,
+            earthlinkGateway = app.earthlinkGateway
         )
     }
 

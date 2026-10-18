@@ -2261,10 +2261,12 @@ if (showExtendDialog) {
                                     }
                                 )
                                 HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.8.dp)
+                                val isSamm = currentOpProvider == com.example.core.model.SasProviders.ALAMIRY
                                 DropdownMenuItem(
                                     text = {
                                         Text(
-                                            if (currentLang == "ar") "تعديل كلمات المرور" else "Edit Passwords",
+                                            if (currentLang == "ar") (if (isSamm) "تعديل كلمة المرور" else "تعديل كلمات المرور")
+                                            else (if (isSamm) "Edit Password" else "Edit Passwords"),
                                             color = Color.White,
                                             fontWeight = FontWeight.Medium,
                                             fontSize = 14.sp

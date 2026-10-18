@@ -249,4 +249,52 @@ class ManualVerificationResolutionTest {
         val verifyOp = pendingDao.getByBusinessTransactionId(txId)
         assertEquals("IN_PROGRESS", verifyOp?.status)
     }
+
+    /**
+     * Claim: resolvePendingOperationVerifiedSuccess refuses to materialize financial debt when
+     *        the operation has already been resolved as FAILED (prevents FAILED -> COMPLETED rewrite hole).
+     * Seam: Robolectric in-memory SQLite Room transaction.
+     * Independent Oracle: Returns null, zero ledger entries created, account debt unmodified at 0.0,
+     *                     status remains FAILED.
+     */
+    @Test
+    fun testResolvePendingOperationVerifiedSuccess_whenStatusIsFailed_returnsNullAndPreventsDebt() = runBlocking {
+        val txId = "tx_" + UUID.randomUUID()
+        val accountId = "acc_failed_guard"
+        val amount = 40000L
+
+        val account = LocalAccount(
+            id = accountId,
+            displayName = "Failed Guard Account",
+            debtIqd = 0.0
+        )
+        accountDao.insert(account)
+
+        val pending = PendingExternalOperation(
+            businessTransactionId = txId,
+            accountId = accountId,
+            operationType = "RENEWAL",
+            amountIqd = amount,
+            status = "FAILED",
+            lastError = "Provider rejected: 422 Unprocessable"
+        )
+        pendingDao.insert(pending)
+
+        // Attempting to resolve a FAILED operation as verified success must return null
+        val result = ledgerRepository.resolvePendingOperationVerifiedSuccess(txId, "[MANUAL VERIFIED]")
+        assertNull("Must refuse to materialize debt for FAILED operation", result)
+
+        // Verify account debt was NOT modified
+        val updatedAccount = accountDao.getByIdOneShot(accountId)
+        assertEquals(0.0, updatedAccount?.debtIqd ?: 0.0, 0.001)
+
+        // Verify no ledger entry exists
+        val ledgerEntry = ledgerDao.getByIdOneShot(txId)
+        assertNull("No ledger entry should exist for FAILED operation", ledgerEntry)
+
+        // Verify status remains FAILED
+        val retrievedOp = pendingDao.getByBusinessTransactionId(txId)
+        assertEquals("FAILED", retrievedOp?.status)
+    }
 }
+

@@ -1558,6 +1558,10 @@ class LocalLedgerRepositoryImpl(
         return pendingDao.getUnresolvedOperations()
     }
 
+    override fun getPendingOperationsFlow(): Flow<List<PendingExternalOperation>> {
+        return pendingDao.getPendingFlow()
+    }
+
     override suspend fun markPendingOperationFailed(businessTransactionId: String, error: String) {
         com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
             database.withTransaction {
@@ -1602,6 +1606,9 @@ class LocalLedgerRepositoryImpl(
                 val op = pendingDao.getByBusinessTransactionId(businessTransactionId) ?: return@withTransaction null
                 if (op.status == "COMPLETED") {
                     return@withTransaction ledgerDao.getByIdOneShot(businessTransactionId)
+                }
+                if (op.status == "FAILED") {
+                    return@withTransaction null
                 }
 
                 

@@ -122,8 +122,16 @@ fun PasswordToolsScreen(
 
     if (showResetAccPass) {
         ConfirmationDialog(
-            title = if (currentLang == "ar") "تأكيد تغيير كلمة مرور حساب PPPoE" else "Confirm PPPoE Account Password Change",
-            message = if (currentLang == "ar") "هل أنت متأكد من رغبتك في تغيير كلمة مرور اشتراك الـ PPPoE للمشترك $userId؟" else "Are you sure you want to change the PPPoE broadband password for $userId?",
+            title = if (isEarthlink) {
+                if (currentLang == "ar") "تأكيد تغيير كلمة مرور حساب PPPoE" else "Confirm PPPoE Account Password Change"
+            } else {
+                if (currentLang == "ar") "تأكيد تغيير كلمة مرور المشترك" else "Confirm Subscriber Password Change"
+            },
+            message = if (isEarthlink) {
+                if (currentLang == "ar") "هل أنت متأكد من رغبتك في تغيير كلمة مرور اشتراك الـ PPPoE للمشترك $userId؟" else "Are you sure you want to change the PPPoE broadband password for $userId?"
+            } else {
+                if (currentLang == "ar") "هل أنت متأكد من رغبتك في تغيير كلمة مرور المشترك $userId؟" else "Are you sure you want to change the password for subscriber $userId?"
+            },
             needsPasswordField = false,
             onCancel = { showResetAccPass = false },
             onConfirm = {
@@ -154,7 +162,11 @@ fun PasswordToolsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = if (currentLang == "ar") "أدوات كلمة المرور" else "Password Tools",
+                            text = if (isEarthlink) {
+                                if (currentLang == "ar") "أدوات كلمة المرور" else "Password Tools"
+                            } else {
+                                if (currentLang == "ar") "تعديل كلمة المرور" else "Edit Password"
+                            },
                             fontWeight = FontWeight.Bold,
                             fontSize = 20.sp
                         )
@@ -281,7 +293,11 @@ Text(
 
                     // --- Part 2: Broadband Account ---
                     Text(
-                        text = if (currentLang == "ar") "حساب الاشتراك المنزلي (PPPoE)" else "Broadband account (PPPoE)",
+                        text = if (isEarthlink) {
+                            if (currentLang == "ar") "حساب الاشتراك المنزلي (PPPoE)" else "Broadband account (PPPoE)"
+                        } else {
+                            if (currentLang == "ar") "كلمة مرور المشترك" else "Subscriber Password"
+                        },
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 14.sp
                     )
@@ -326,7 +342,11 @@ Text(
                     }
 
                     Text(
-                            text = if (currentLang == "ar") "حفظ كلمة مرور الخط" else "Save line password",
+                            text = if (isEarthlink) {
+                                if (currentLang == "ar") "حفظ كلمة مرور الخط" else "Save line password"
+                            } else {
+                                if (currentLang == "ar") "تعديل كلمة المرور" else "Change password"
+                            },
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(bottom = 2.dp)
@@ -334,7 +354,15 @@ Text(
                         OutlinedTextField(
                             value = inputAccResetPass,
                             onValueChange = { inputAccResetPass = it },
-                            label = { Text(if (currentLang == "ar") "كلمة مرور الخط الجديدة" else "New Line Pass") },
+                            label = {
+                                Text(
+                                    if (isEarthlink) {
+                                        if (currentLang == "ar") "كلمة مرور الخط الجديدة" else "New Line Pass"
+                                    } else {
+                                        if (currentLang == "ar") "كلمة المرور الجديدة" else "New Password"
+                                    }
+                                )
+                            },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )

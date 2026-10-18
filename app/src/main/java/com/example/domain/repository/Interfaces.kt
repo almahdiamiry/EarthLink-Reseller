@@ -215,6 +215,7 @@ interface LocalLedgerRepository {
     suspend fun getPendingSyntheticHistory(): List<LocalLedgerEntry>
     suspend fun sweepAndResolvePendingOperations(gateway: EarthlinkGateway, graceWindowMs: Long = 5000L): List<PendingOperationResolution>
     suspend fun sweepAndResolvePendingOperations(router: SasGatewayRouter, graceWindowMs: Long = 5000L): List<PendingOperationResolution> = emptyList()
+    fun getPendingOperationsFlow(): Flow<List<PendingExternalOperation>> = kotlinx.coroutines.flow.emptyFlow()
 }
 
 interface UtowerImportRepository {
