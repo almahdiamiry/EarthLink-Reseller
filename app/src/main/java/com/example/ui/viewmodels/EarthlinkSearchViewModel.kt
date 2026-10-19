@@ -10,6 +10,7 @@ import com.example.domain.repository.SyncStatusState
 import com.example.domain.repository.UtowerImportPreview
 import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -538,6 +539,19 @@ class EarthlinkSearchViewModel(
                     // "The provider has no such subscriber" and "we could not reach the provider" are
                     // different answers. Only the former may retire the previous provider's display
                     // snapshot; a transport failure must leave the operator's context untouched.
+                    // Start session fetch concurrently with subscriber fetch so network latency
+                    // is max(T_sub, T_session) rather than T_sub + T_session.
+                    val sessionDeferred = if (!currentUserId.isNullOrBlank()) {
+                        async {
+                            try {
+                                targetGateway.getSubscriberSession(currentUserId)
+                            } catch (e: Exception) {
+                                if (e is kotlinx.coroutines.CancellationException) throw e
+                                null
+                            }
+                        }
+                    } else null
+
                     var transportFailed = false
                     var sub = if (!currentUserId.isNullOrBlank()) {
                         try {
@@ -585,13 +599,20 @@ class EarthlinkSearchViewModel(
                             ?: _selectedUser.value?.packageName?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
 
                         // Online state lives on a provider-specific session resource, not on the
-                        // subscriber payload, so it is read separately and stays optional.
-                        val liveSession = try {
-                            targetGateway.getSubscriberSession(sub.username)
-                        } catch (e: Exception) {
-                            if (e is kotlinx.coroutines.CancellationException) throw e
-                            null
-                        }
+                        // subscriber payload. Awaited concurrently from the deferred launched above.
+                        val liveSession = if (sessionDeferred != null) {
+                            if (sub.username.equals(currentUserId, ignoreCase = true)) {
+                                sessionDeferred.await()
+                            } else {
+                                // If the canonical username differed from currentUserId, fetch for sub.username
+                                try {
+                                    targetGateway.getSubscriberSession(sub.username)
+                                } catch (e: Exception) {
+                                    if (e is kotlinx.coroutines.CancellationException) throw e
+                                    null
+                                }
+                            }
+                        } else null
 
                         val detail = com.example.core.model.UserDetail(
                             userIndexLower = numIdx,
@@ -720,6 +741,13 @@ class EarthlinkSearchViewModel(
                     Log.w("EarthlinkSearchVM", "Session expired. Skipping packages load.")
                 } else {
                     Log.e("EarthlinkSearchVM", "Failed to load packages options: ${e.message}")
+                }
+            }
+            // If SAMM is also configured, pre-warm SAMM packages in the background so its
+            // plansCache is primed and entering subscriber detail incurs zero first-visit lag.
+            if (!prefs.getSammToken().isNullOrBlank()) {
+                runCatching {
+                    sasGatewayRouter.getGateway(com.example.core.model.SasProviders.ALAMIRY).listPackages()
                 }
             }
         }

@@ -262,9 +262,12 @@ override suspend fun extendSubscriberByDays(
         // propagates: this method returns null for "the provider definitively has no such
         // subscriber", and returning null for "we could not ask" would say the same thing twice.
         val key = username.trim().takeIf { it.isNotEmpty() } ?: return null
-        val customerId = findDirectoryRow(key)?.id ?: return null
+        val row = findDirectoryRow(key) ?: return null
+        if (row.status != null) {
+            return row.toSubscriberView()
+        }
         val response = try {
-            apiService.getCustomer(customerId)
+            apiService.getCustomer(row.id)
         } catch (e: SasGatewayException) {
             throw e
         } catch (t: Throwable) {

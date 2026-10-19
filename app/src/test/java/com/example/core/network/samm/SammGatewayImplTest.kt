@@ -339,6 +339,56 @@ class SammGatewayImplTest {
     }
 
     /**
+     * Claim: getSubscriber returns immediately from directory row when it contains status, avoiding
+     *        redundant getCustomer HTTP roundtrip.
+     * Seam: JVM MockWebServer Wire Contract.
+     * Independent Oracle: Exactly 1 HTTP request (/customers?search=) is made; 0 /customers/{id} calls.
+     */
+    @Test
+    fun getSubscriber_whenDirectoryRowHasStatus_returnsImmediatelyWithoutGetCustomer() = runTest {
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """
+                    {
+                      "total": 1,
+                      "items": [
+                        {
+                          "id": 555,
+                          "username": "fast_user",
+                          "firstname": "Fast",
+                          "lastname": "Subscriber",
+                          "mobile": "+9647701112233",
+                          "status": "active",
+                          "plan_id": 2,
+                          "plan_name": "Ultra 50M",
+                          "expiration_date": "2026-11-15T12:00:00Z"
+                        }
+                      ]
+                    }
+                    """.trimIndent()
+                )
+        )
+
+        val subscriber = gateway.getSubscriber("fast_user")
+
+        assertNotNull(subscriber)
+        assertEquals("555", subscriber!!.subscriberId)
+        assertEquals("fast_user", subscriber.username)
+        assertEquals("Fast Subscriber", subscriber.displayName)
+        assertEquals("active", subscriber.status)
+        assertEquals("2", subscriber.planId)
+        assertEquals("Ultra 50M", subscriber.planName)
+        assertEquals("+9647701112233", subscriber.phone)
+
+        assertEquals("Only 1 request (search) should be made, avoiding getCustomer", 1, mockServer.requestCount)
+        val search = mockServer.takeRequestOrFail()
+        assertTrue(search.path!!.contains("search=fast_user"))
+    }
+
+    /**
      * Claim: getSubscriber returns null when the provider answers HTTP 404 for the resolved customer.
      * Seam: JVM MockWebServer Wire Contract.
      * Independent Oracle: HTTP 404 response yields null return value without throwing exception.
