@@ -392,7 +392,11 @@ fun LocalAccountsScreen(
                     )
                     Divider(modifier = Modifier.padding(vertical = 4.dp))
                     Text(
-                        text = "Changing provider changes where future ISP operations are sent.\n" +
+                        text = if (isAr) "تغيير المزود يغيّر وجهة عمليات الإنترنت المستقبلية.\n" +
+                               "لا يؤدي ذلك إلى نقل المشترك لدى المزود الخارجي.\n" +
+                               "السجل المحلي يبقى دون تغيير.\n" +
+                               "العمليات قيد التنفيذ تحتفظ بمزودها الأصلي."
+                        else "Changing provider changes where future ISP operations are sent.\n" +
                                "This does not migrate the external subscriber.\n" +
                                "Local history remains unchanged.\n" +
                                "Pending operations keep their original provider.",

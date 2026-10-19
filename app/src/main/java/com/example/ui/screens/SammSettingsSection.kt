@@ -328,7 +328,7 @@ fun SammSettingsSection(
                 },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text(if (isAr) "رابط الخادم (Server URL)" else "Server URL", fontSize = 12.sp) },
-                placeholder = { Text("domain or IP address", fontSize = 12.sp, color = Color.White.copy(alpha = 0.3f)) },
+                placeholder = { Text(if (isAr) "النطاق أو عنوان IP" else "domain or IP address", fontSize = 12.sp, color = Color.White.copy(alpha = 0.3f)) },
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White,

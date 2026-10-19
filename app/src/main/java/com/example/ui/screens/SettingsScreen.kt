@@ -17,6 +17,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
@@ -1654,7 +1655,7 @@ private fun DisplayAndPricingSection(
                     color = Color.White
                 )
             }
-            Icon(Icons.Default.ChevronLeft, contentDescription = null, tint = Color(0xFF8E8E93), modifier = Modifier.size(18.dp))
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Color(0xFF8E8E93), modifier = Modifier.size(18.dp))
         }
 
         HorizontalDivider(color = Color.White.copy(alpha = 0.06f), modifier = Modifier.padding(vertical = 2.dp))
