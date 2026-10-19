@@ -223,9 +223,14 @@ class ProviderIndependentLoginTest {
         val canCreateTrialUser = state.hasEarthlink
         assertFalse("Trial user creation must be disabled in SAMM-only mode", canCreateTrialUser)
 
-        // 2. Paid Subscriber creation is available for both
+        // 2. Paid Subscriber creation is available for both, but only configured provider chips are enabled
         val canCreatePaidUser = state.hasSamm || state.hasEarthlink
         assertTrue("Paid user creation must remain available", canCreatePaidUser)
+
+        val isEarthlinkChipEnabled = state.hasEarthlink
+        val isSammChipEnabled = state.hasSamm
+        assertFalse("EarthLink chip must be disabled in SAMM-only mode", isEarthlinkChipEnabled)
+        assertTrue("SAMM chip must be enabled in SAMM-only mode", isSammChipEnabled)
     }
 
     @Test
