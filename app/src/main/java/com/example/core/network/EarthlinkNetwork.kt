@@ -299,15 +299,17 @@ class NetworkClient(private val context: Context) {
 
         val token = prefManager.getAuthToken()
         val isGoogleUser = token?.startsWith("google_oauth_session_") == true
+        val hasIspCredentials = !prefManager.getIspAdminUsername().isNullOrBlank() && !prefManager.getIspAdminPassword().isNullOrBlank()
+        val usesIspAdminAuth = isGoogleUser || (token.isNullOrEmpty() && hasIspCredentials)
 
         synchronized(tokenLock) {
-            val currentToken = if (isGoogleUser) prefManager.getEarthlinkApiToken() else prefManager.getAuthToken()
+            val currentToken = if (usesIspAdminAuth) prefManager.getEarthlinkApiToken() else prefManager.getAuthToken()
             val requestHeaderToken = request.header("Authorization")?.removePrefix("Bearer ")
 
             val newToken = if (!currentToken.isNullOrEmpty() && currentToken != requestHeaderToken) {
                 currentToken
             } else {
-                refreshEarthlinkToken(isGoogleUser = isGoogleUser)
+                refreshEarthlinkToken(isGoogleUser = usesIspAdminAuth)
             }
 
             if (!newToken.isNullOrEmpty()) {
@@ -338,17 +340,18 @@ class NetworkClient(private val context: Context) {
             .header("User-Agent", "Android 9; Resellers 40001; KotlinCompose")
             .header("Accept", "application/json, text/plain, */*")
 
-        // Add bearer token if logged in
+        // Add bearer token if logged in or ISP admin credentials are configured
         val token = prefManager.getAuthToken()
         val isGoogleUser = token?.startsWith("google_oauth_session_") == true
+        val hasIspCredentials = !prefManager.getIspAdminUsername().isNullOrBlank() && !prefManager.getIspAdminPassword().isNullOrBlank()
 
-        val actualToken = if (isGoogleUser) {
+        val actualToken = if (isGoogleUser || (token.isNullOrEmpty() && hasIspCredentials)) {
             var apiToken = prefManager.getEarthlinkApiToken()
             if (apiToken.isNullOrEmpty()) {
                 synchronized(tokenLock) {
                     apiToken = prefManager.getEarthlinkApiToken()
                     if (apiToken.isNullOrEmpty()) {
-                        apiToken = refreshEarthlinkToken()
+                        apiToken = refreshEarthlinkToken(isGoogleUser = true)
                     }
                 }
             }

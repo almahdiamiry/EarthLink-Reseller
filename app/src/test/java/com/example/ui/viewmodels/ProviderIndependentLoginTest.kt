@@ -247,5 +247,37 @@ class ProviderIndependentLoginTest {
         assertNull("SAMM token must be null", preferenceManager.getSammToken())
         assertFalse("isLoggedInFlow must be false", preferenceManager.isLoggedInFlow.value)
     }
+
+    @Test
+    fun testSammFirstThenSaveEarthlinkIspCredentialsUnlocksBothProviders() {
+        // Operator configures SAMM first
+        preferenceManager.saveSammBaseUrl("http://192.168.1.100:8000")
+        preferenceManager.saveSammToken("samm_token_secret_xyz")
+
+        val initialSammState = preferenceManager.getProviderAccessState()
+        assertEquals(ProviderAccessState.SAMM_ONLY, initialSammState)
+        assertTrue(initialSammState.isAppUnlocked)
+        assertFalse(initialSammState.hasEarthlink)
+        assertTrue(initialSammState.hasSamm)
+
+        // Operator enters EarthLink ISP Admin credentials in Settings
+        preferenceManager.saveIspAdminUsername("earthlink_admin_user")
+        preferenceManager.saveIspAdminPassword("earthlink_admin_pass")
+
+        // Should immediately transition to BOTH providers configured
+        val dualState = preferenceManager.getProviderAccessState()
+        assertEquals(ProviderAccessState.BOTH, dualState)
+        assertTrue("EarthLink should now be configured", dualState.hasEarthlink)
+        assertTrue("SAMM should still be configured", dualState.hasSamm)
+        assertTrue("isEarthlinkConfigured should return true", preferenceManager.isEarthlinkConfigured())
+
+        // Removing EarthLink credentials reverts back to SAMM_ONLY
+        preferenceManager.clearEarthlinkCredentials()
+        val afterClearState = preferenceManager.getProviderAccessState()
+        assertEquals(ProviderAccessState.SAMM_ONLY, afterClearState)
+        assertFalse("EarthLink should be cleared", afterClearState.hasEarthlink)
+        assertTrue("SAMM should remain configured", afterClearState.hasSamm)
+    }
 }
+
 
