@@ -435,8 +435,7 @@ class EarthlinkSearchViewModel(
             _error.value = null
             
             if (sanitizedUserId != null && _selectedUser.value?.userID?.isNotBlank() == true && 
-                !_selectedUser.value?.userID.equals(sanitizedUserId, ignoreCase = true) &&
-                _selectedUser.value?.userIndex != userIndex
+                !_selectedUser.value?.userID.equals(sanitizedUserId, ignoreCase = true)
             ) {
                 _selectedUser.value = null
             }
