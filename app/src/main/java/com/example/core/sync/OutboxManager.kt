@@ -306,25 +306,6 @@ object OutboxManager {
     }
 
     /**
-     * Retrieves all outbox records that are retryable.
-     * Per INV-13 and P1-G2-REQ-01, all pending and failed obligations remain durable and retryable indefinitely.
-     */
-    suspend fun getRetryable(outboxDao: SyncOutboxDao): List<SyncOutbox> {
-        return outboxDao.getPending()
-    }
-
-    /**
-     * Clears pending outbox entries, optionally filtered by [entityType].
-     */
-    suspend fun clear(outboxDao: SyncOutboxDao, entityType: String? = null) {
-        if (entityType != null) {
-            outboxDao.clearPendingByEntityType(entityType)
-        } else {
-            outboxDao.resetSyncingToPending()
-        }
-    }
-
-    /**
      * Clears pending outbox entries for a specific entity.
      */
     suspend fun clearByEntity(outboxDao: SyncOutboxDao, entityId: String, entityType: String) {
@@ -343,13 +324,6 @@ object OutboxManager {
      */
     suspend fun getByEntity(outboxDao: SyncOutboxDao, entityId: String, entityType: String): List<SyncOutbox> {
         return outboxDao.getByEntity(entityId, entityType)
-    }
-
-    /**
-     * Resets stuck 'syncing' entries back to 'pending' upon startup / crash recovery.
-     */
-    suspend fun resetInFlight(outboxDao: SyncOutboxDao): Int {
-        return outboxDao.resetSyncingToPending()
     }
 
     /**

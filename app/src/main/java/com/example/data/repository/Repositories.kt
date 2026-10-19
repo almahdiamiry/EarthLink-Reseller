@@ -1019,7 +1019,6 @@ class LocalAccountRepositoryImpl(
 
     private val moshi = Moshi.Builder().build()
     private val adapter = moshi.adapter(LocalAccount::class.java)
-    private val ledgerAdapter = moshi.adapter(LocalLedgerEntry::class.java)
 
     init {
         // Initialization without destructive background deduplication
@@ -1400,15 +1399,8 @@ class LocalLedgerRepositoryImpl(
     private val ledgerDao: LocalLedgerEntryDao,
     private val accountDao: LocalAccountDao,
     private val outboxDao: SyncOutboxDao,
-    private val pendingDao: PendingExternalOperationDao = database.pendingExternalOperationDao(),
-    private val preferenceManager: com.example.core.security.PreferenceManager? = null
+    private val pendingDao: PendingExternalOperationDao = database.pendingExternalOperationDao()
 ) : LocalLedgerRepository {
-
-    private fun routerForGateway(gateway: EarthlinkGateway): SasGatewayRouter =
-        SasGatewayRouter(
-            earthlinkAdapter = EarthlinkSasGatewayAdapter(gateway),
-            preferenceManager = preferenceManager
-        )
 
     private val moshi = Moshi.Builder().build()
     private val ledgerAdapter = moshi.adapter(LocalLedgerEntry::class.java)
@@ -1422,13 +1414,6 @@ class LocalLedgerRepositoryImpl(
         if (validIds.isEmpty()) return kotlinx.coroutines.flow.flowOf(emptyList())
         if (validIds.size == 1) return ledgerDao.getByAccountId(validIds.first()).distinctUntilChanged()
         return ledgerDao.getByAccountIds(validIds).distinctUntilChanged()
-    }
-
-    override suspend fun getLedgerForAccountsOneShot(accountIds: List<String>): List<LocalLedgerEntry> {
-        val validIds = accountIds.filter { it.isNotBlank() }.distinct()
-        if (validIds.isEmpty()) return emptyList()
-        if (validIds.size == 1) return ledgerDao.getByAccountIdOneShot(validIds.first())
-        return ledgerDao.getByAccountIdsOneShot(validIds)
     }
 
     override suspend fun recordPendingOperation(operation: PendingExternalOperation): PendingExternalOperation {
@@ -1566,20 +1551,6 @@ class LocalLedgerRepositoryImpl(
         com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
             database.withTransaction {
                 pendingDao.updateStatus(businessTransactionId, "FAILED", System.currentTimeMillis(), error)
-            }
-        }
-    }
-
-    /**
-     * LEGACY HELPER: Directly marks a pending operation as completed without canonical materialization.
-     * Production external operations MUST use [resolvePendingOperationVerifiedSuccess] to avoid canonical
-     * financial materializer bypass (RED Invariant 4).
-     */
-    @Deprecated("Legacy helper: production external operations MUST use resolvePendingOperationVerifiedSuccess to avoid canonical financial materializer bypass.")
-    override suspend fun completePendingOperation(businessTransactionId: String, accountId: String, ledgerEntryId: String?) {
-        com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
-            database.withTransaction {
-                pendingDao.updateStatus(businessTransactionId, "COMPLETED", System.currentTimeMillis())
             }
         }
     }
@@ -3110,32 +3081,6 @@ class LocalLedgerRepositoryImpl(
         correctTransaction(originalEntryId = id, intendedAmount = 0.0, note = "[FULL REVERSAL for $id]")
     }
 
-    /**
-     * LEGACY / MAINTENANCE-ONLY: Enqueues outbox tombstones for all local ledger entries and zeros account balances.
-     * Must NOT be used for normal production financial flows; production financial history is strictly additive
-     * (RED Invariant 2). Full dataset wipes must use [clearAllData].
-     */
-    override suspend fun deleteAllLedgerEntries() {
-        com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
-            database.withTransaction {
-                val allLedgers = ledgerDao.getAllOneShot(limit = Int.MAX_VALUE)
-                val allAccounts = accountDao.getAllOneShot(limit = Int.MAX_VALUE)
-                OutboxManager.deleteWithTombstoneBatch(outboxDao, "local_ledger_entries", allLedgers.map { it.id }, "{}")
-                for (account in allAccounts) {
-                    if (account.debtIqd > 0.0 || account.advanceIqd > 0.0 || account.loanIqd > 0.0) {
-                        val updatedAccount = account.copy(
-                            debtIqd = 0.0,
-                            loanIqd = 0.0,
-                            advanceIqd = 0.0,
-                            updatedAt = System.currentTimeMillis()
-                        )
-                        accountDao.update(updatedAccount)
-                        OutboxManager.upsertWithOutbox(outboxDao, "local_accounts", updatedAccount.id, accountAdapter.toJson(updatedAccount))
-                    }
-                }
-            }
-        }
-    }
 }
 class UtowerImportRepositoryImpl(
     private val context: android.content.Context,

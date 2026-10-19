@@ -158,19 +158,12 @@ interface LocalAccountRepository {
 interface LocalLedgerRepository {
     fun getLedgerForAccount(accountId: String): Flow<List<LocalLedgerEntry>>
     fun getLedgerForAccounts(accountIds: List<String>): Flow<List<LocalLedgerEntry>>
-    suspend fun getLedgerForAccountsOneShot(accountIds: List<String>): List<LocalLedgerEntry>
     suspend fun addPayment(accountId: String, amount: Double, note: String?, idempotencyKey: String? = null): LocalLedgerEntry
     suspend fun addDebt(accountId: String, amount: Double, note: String?, idempotencyKey: String? = null): LocalLedgerEntry
     suspend fun addNoteTransaction(accountId: String, note: String): LocalLedgerEntry
     suspend fun correctTransaction(originalEntryId: String, intendedAmount: Double, note: String? = null, idempotencyKey: String? = null): LocalLedgerEntry
     suspend fun deleteTransaction(id: String)
 
-    /**
-     * LEGACY / MAINTENANCE-ONLY: Enqueues outbox tombstones for all local ledger entries and zeros account balances.
-     * Must NOT be used for normal production financial flows; production financial history is strictly additive
-     * (RED Invariant 2). Full dataset wipes must use [clearAllData].
-     */
-    suspend fun deleteAllLedgerEntries()
     suspend fun recordAccountRenewal(account: LocalAccount, newPriceIqd: Double, chargeNote: String, payNote: String?, idempotencyKey: String? = null): LocalLedgerEntry
     suspend fun recordAccountPayment(account: LocalAccount, amount: Double, note: String?, idempotencyKey: String? = null): LocalLedgerEntry
     suspend fun recordAccountDebt(account: LocalAccount, amount: Double, note: String?, idempotencyKey: String? = null): LocalLedgerEntry
@@ -188,13 +181,6 @@ interface LocalLedgerRepository {
     suspend fun getUnresolvedPendingOperations(): List<PendingExternalOperation>
     suspend fun markPendingOperationFailed(businessTransactionId: String, error: String)
 
-    /**
-     * LEGACY HELPER: Directly marks a pending operation as completed without canonical materialization.
-     * Production external operations MUST use [resolvePendingOperationVerifiedSuccess] to avoid canonical
-     * financial materializer bypass (RED Invariant 4).
-     */
-    @Deprecated("Legacy helper: production external operations MUST use resolvePendingOperationVerifiedSuccess to avoid canonical financial materializer bypass.")
-    suspend fun completePendingOperation(businessTransactionId: String, accountId: String, ledgerEntryId: String? = null)
 
     /**
      * MAINTENANCE-ONLY: Physically deletes a pending external operation record.

@@ -163,10 +163,6 @@ class SammNetworkClient(
             return SammNetworkClient(baseUrl, token).apiService
         }
 
-        fun createApiService(baseUrl: String, tokenProvider: () -> String?): SammApiService {
-            return SammNetworkClient(baseUrl, tokenProvider).apiService
-        }
-
         /**
          * Extracts human-readable error detail from JSON error body.
          * Handles both string detail (e.g. {"detail": "Not authenticated"}) and
@@ -204,8 +200,6 @@ class SammNetworkClient(
                 errorBody
             }
         }
-
-        fun parseErrorDetail(errorBody: String?): String? = extractErrorMessage(errorBody)
 
         /**
          * Maps Retrofit HTTP error response to typed fail-closed SasGatewayException hierarchy:
@@ -280,7 +274,4 @@ class SammNetworkClient(
     }
 }
 
-fun normalizeBaseUrl(rawUrl: String): String = SammNetworkClient.normalizeBaseUrl(rawUrl)
 fun parseSammError(response: Response<*>): SasGatewayException = SammNetworkClient.parseSammError(response)
-fun parseSammError(statusCode: Int, errorBody: String? = null, headers: Headers? = null): SasGatewayException =
-    SammNetworkClient.parseSammError(statusCode, errorBody, headers)

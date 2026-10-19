@@ -161,8 +161,7 @@ class SyncStatusViewModelPendingOperationsTest {
             ledgerDao = db.localLedgerEntryDao(),
             accountDao = db.localAccountDao(),
             outboxDao = db.syncOutboxDao(),
-            pendingDao = db.pendingExternalOperationDao(),
-            preferenceManager = prefs
+            pendingDao = db.pendingExternalOperationDao()
         )
         spyRepo = SpyLocalLedgerRepository(realRepo)
         fakeSyncRepo = FakeSyncRepository()

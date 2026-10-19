@@ -649,7 +649,7 @@ fun CreateChooserScreen(
     onDismiss: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val prefs = remember { com.example.core.security.PreferenceManager(context) }
+    val prefs = remember { (context.applicationContext as EarthlinkApp).preferenceManager }
     val currentLang by prefs.languageFlow.collectAsStateWithLifecycle(initialValue = prefs.getLanguage())
     val isAr = currentLang == "ar"
     val providerAccessState by prefs.providerAccessStateFlow.collectAsStateWithLifecycle(initialValue = prefs.getProviderAccessState())

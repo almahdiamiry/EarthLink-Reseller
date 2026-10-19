@@ -86,7 +86,7 @@ class Phase1OutboxDurabilityTest {
         assertEquals(1, outboxDao.getAllUnsyncedCount())
     }
 
-    // 2. Long-running failure keeps the row retryable in getPending() and getRetryable()
+    // 2. Long-running failure keeps the row retryable in getPending()
     @Test
     fun case2_longRunningFailure_remainsRetryableInGetPending() = runBlocking {
         val entityId = "tx_durability_50"
@@ -114,7 +114,7 @@ class Phase1OutboxDurabilityTest {
         assertEquals(entityId, pendingList.first().entityId)
         assertEquals(50, pendingList.first().attemptCount)
 
-        val retryableList = OutboxManager.getRetryable(outboxDao)
+        val retryableList = OutboxManager.getPending(outboxDao)
         assertEquals(1, retryableList.size)
         assertEquals(entityId, retryableList.first().entityId)
 

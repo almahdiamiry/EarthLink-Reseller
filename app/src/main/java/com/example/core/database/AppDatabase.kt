@@ -44,13 +44,6 @@ interface LocalAccountDao {
         }
     }
 
-    @Transaction
-    suspend fun upsertAll(accounts: List<LocalAccount>) {
-        for (account in accounts) {
-            upsert(account)
-        }
-    }
-
     @Query("SELECT * FROM local_accounts WHERE sourceBatchId = :batchId")
     suspend fun getByBatchId(batchId: String): List<LocalAccount>
 
@@ -139,12 +132,6 @@ interface LocalAccountDao {
         LIMIT :limit OFFSET :offset
     """)
     suspend fun searchAccounts(query: String, limit: Int = 100, offset: Int = 0): List<LocalAccount>
-
-    @Query("""
-        SELECT COUNT(*) FROM local_accounts 
-        WHERE isHistoryOnlySubscriber = 0 AND (:query = '' OR displayName LIKE :query || '%' OR earthlinkUsername LIKE :query || '%' OR phone1 LIKE :query || '%' OR phone2 LIKE :query || '%')
-    """)
-    suspend fun getSearchCount(query: String): Int
 
     @Query("SELECT COUNT(*) FROM local_accounts WHERE isHistoryOnlySubscriber = 0")
     suspend fun getActiveTotalCount(): Int

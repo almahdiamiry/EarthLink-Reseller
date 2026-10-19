@@ -393,9 +393,7 @@ class Phase3SameLineageFinancialMutationTest {
         assertEquals("PENDING", opAfterInconclusive?.status)
         assertEquals("Generation must remain 1L after resolvePendingOperationInconclusive", 1L, db.getGeneration())
 
-        // 5. Complete, mark failed, delete pending ops
-        ledgerRepo.completePendingOperation("biz_ref_03", "acc_g1_01")
-        assertEquals(1L, db.getGeneration())
+        // 5. Delete pending operation
         ledgerRepo.deletePendingOperation("biz_ref_03")
         assertEquals(1L, db.getGeneration())
         assertNull(ledgerRepo.getPendingOperationByTransactionId("biz_ref_03"))

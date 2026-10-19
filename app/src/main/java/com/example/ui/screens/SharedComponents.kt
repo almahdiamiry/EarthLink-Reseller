@@ -938,7 +938,7 @@ fun ConfirmationDialog(
     onConfirm: (password: String) -> Unit
 ) {
     val context = LocalContext.current
-    val prefs = remember { com.example.core.security.PreferenceManager(context) }
+    val prefs = remember { (context.applicationContext as EarthlinkApp).preferenceManager }
     val currentLang by prefs.languageFlow.collectAsStateWithLifecycle(initialValue = prefs.getLanguage())
     val isAr = currentLang == "ar"
 
@@ -1261,7 +1261,7 @@ fun ConfirmationDialog(
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
-    val prefs = remember { com.example.core.security.PreferenceManager(context) }
+    val prefs = remember { (context.applicationContext as EarthlinkApp).preferenceManager }
     val currentLang by prefs.languageFlow.collectAsStateWithLifecycle(initialValue = prefs.getLanguage())
     val isAr = currentLang == "ar"
     var isSubmitting by rememberSaveable { mutableStateOf(false) }
@@ -1314,7 +1314,7 @@ fun EditLocalAccountDialog(
     onDelete: () -> Unit
 ) {
     val context = LocalContext.current
-    val prefs = remember { com.example.core.security.PreferenceManager(context) }
+    val prefs = remember { (context.applicationContext as EarthlinkApp).preferenceManager }
     val currentLang by prefs.languageFlow.collectAsStateWithLifecycle(initialValue = prefs.getLanguage())
     val isAr = currentLang == "ar"
     var dispName by rememberSaveable { mutableStateOf(account.displayName) }

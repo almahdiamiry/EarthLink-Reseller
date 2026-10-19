@@ -175,7 +175,7 @@ class Phase1ItemIsolationTest {
         assertTrue(remaining.first().lastError?.contains("PERMISSION_DENIED") == true)
     }
 
-    // 3. Stale syncing crash recovery: resetInFlight resets all in-flight items to pending
+    // 3. Stale syncing crash recovery: resetSyncingToPending resets all in-flight items to pending
     @Test
     fun testStaleSyncingRecovery_processDeath_resetsToPendingWithoutDataLossOrDuplication() = runBlocking {
         val i1 = OutboxManager.enqueue(outboxDao, "local_accounts", "acc_crash_01", "upsert", """{"id":"acc_crash_01"}""")
@@ -186,7 +186,7 @@ class Phase1ItemIsolationTest {
         assertEquals(3, outboxDao.getInFlightCount())
 
         // Simulate crash / restart recovery
-        val recoveredCount = OutboxManager.resetInFlight(outboxDao)
+        val recoveredCount = OutboxManager.resetSyncingToPending(outboxDao)
         assertEquals(3, recoveredCount)
         assertEquals(0, outboxDao.getInFlightCount())
 

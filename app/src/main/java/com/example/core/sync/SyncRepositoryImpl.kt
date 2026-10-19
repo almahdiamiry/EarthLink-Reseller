@@ -1751,14 +1751,13 @@ class SyncRepositoryImpl(
                     }
                 }
                 try {
-                    val prefs = com.example.core.security.PreferenceManager(context)
-                    prefs.saveUsername("")
-                    prefs.savePassword("")
-                    prefs.saveDepositPassword("")
-                    prefs.saveIspAdminUsername("")
-                    prefs.saveIspAdminPassword("")
-                    prefs.saveAuthToken("")
-                    prefs.saveEarthlinkApiToken(null)
+                    prefManager.saveUsername("")
+                    prefManager.savePassword("")
+                    prefManager.saveDepositPassword("")
+                    prefManager.saveIspAdminUsername("")
+                    prefManager.saveIspAdminPassword("")
+                    prefManager.saveAuthToken("")
+                    prefManager.saveEarthlinkApiToken(null)
                 } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
                     Log.e("FirebaseSync", "Failed to clear ISP credentials on sign out", e)
                 }
