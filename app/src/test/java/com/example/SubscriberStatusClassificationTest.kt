@@ -450,23 +450,24 @@ class SubscriberStatusClassificationTest {
         // Independent expected counts at fixedNow:
         // ACTIVE: u1, u2, u3 (3)
         // ONLINE: u1, u3 (2)
-        // OFFLINE: u2 (1) -- u6 is suspended by agent (expired), u4/u5 are date expired
+// OFFLINE: u2 (1) -- u6 is suspended with time remaining, u4/u5 are date expired
         // EXPIRING_SOON: u3 (1)
         // RECENTLY_EXPIRED: u4 (1)
-        // EXPIRED: u4, u5, u6 (3)
+        // EXPIRED: u4, u5 (2) -- u6 is suspended but still holds 10 days, so it is NOT expired;
+        // suspension is a stop, not an expiry.
         assertEquals(3, DashboardStatusClassifier.countFiltered(batch, matcher, DashboardStatusFilter.ACTIVE, fixedNow))
         assertEquals(2, DashboardStatusClassifier.countFiltered(batch, matcher, DashboardStatusFilter.ONLINE, fixedNow))
         assertEquals(1, DashboardStatusClassifier.countFiltered(batch, matcher, DashboardStatusFilter.OFFLINE, fixedNow))
         assertEquals(1, DashboardStatusClassifier.countFiltered(batch, matcher, DashboardStatusFilter.EXPIRING_SOON, fixedNow))
         assertEquals(1, DashboardStatusClassifier.countFiltered(batch, matcher, DashboardStatusFilter.RECENTLY_EXPIRED, fixedNow))
-        assertEquals(3, DashboardStatusClassifier.countFiltered(batch, matcher, DashboardStatusFilter.EXPIRED, fixedNow))
+        assertEquals(2, DashboardStatusClassifier.countFiltered(batch, matcher, DashboardStatusFilter.EXPIRED, fixedNow))
 
         // Time advancement of 2 days: u3 (previously expiring soon at +24h) is now expired (-24h)
         val advancedNow = fixedNow + 2 * ONE_DAY
         assertEquals(2, DashboardStatusClassifier.countFiltered(batch, matcher, DashboardStatusFilter.ACTIVE, advancedNow)) // u1, u2
         assertEquals(0, DashboardStatusClassifier.countFiltered(batch, matcher, DashboardStatusFilter.EXPIRING_SOON, advancedNow))
         assertEquals(2, DashboardStatusClassifier.countFiltered(batch, matcher, DashboardStatusFilter.RECENTLY_EXPIRED, advancedNow)) // u4, u3
-        assertEquals(4, DashboardStatusClassifier.countFiltered(batch, matcher, DashboardStatusFilter.EXPIRED, advancedNow)) // u4, u5, u6, u3
+        assertEquals(3, DashboardStatusClassifier.countFiltered(batch, matcher, DashboardStatusFilter.EXPIRED, advancedNow)) // u4, u5, u3
     }
 
     @Test

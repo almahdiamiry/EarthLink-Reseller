@@ -256,15 +256,19 @@ fun DashboardScreen(
 
             // 1. Add live ISP / demo subscribers
             for (sub in subscribers) {
+                val normUser = sub.userID?.trim()?.lowercase(Locale.US)
+                if (!normUser.isNullOrBlank() && seenUsernames.contains(normUser)) {
+                    continue
+                }
                 val matchingAccount = localAccountMatcher.findMatchingByUsername(sub.userID) ?: localAccountMatcher.findMatching(sub)
                 if (matchingAccount?.isHistoryOnlySubscriber == true) {
                     continue
                 }
                 mergedList.add(sub)
-                sub.userID?.let { if (it.isNotBlank()) seenUsernames.add(it.lowercase(Locale.US)) }
+                if (!normUser.isNullOrBlank()) seenUsernames.add(normUser)
                 matchingAccount?.let { acc ->
                     seenAccountIds.add(acc.id)
-                    acc.earthlinkUsername?.let { if (it.isNotBlank()) seenUsernames.add(it.lowercase(Locale.US)) }
+                    acc.earthlinkUsername?.let { if (it.isNotBlank()) seenUsernames.add(it.trim().lowercase(Locale.US)) }
                 }
             }
 
@@ -288,7 +292,8 @@ fun DashboardScreen(
                     } else "Active",
                     expirationDateLower = acc.expiresAt ?: "",
                     displayNameLower = acc.displayName,
-                    accountNameLower = acc.packageName
+                    accountNameLower = acc.packageName,
+                    originProvider = acc.operationProvider
                 )
                 mergedList.add(item)
                 seenAccountIds.add(acc.id)
@@ -314,7 +319,7 @@ fun DashboardScreen(
                 val expTimestamp = parseExpirationTimestamp(expStr)
                 val statusClean = user.accountStatus?.trim()?.lowercase(Locale.US) ?: ""
 
-                val isExplicitExpired = statusClean == "expired" || statusClean == "منتهي" || statusClean == "suspendedbyagent"
+                val isExplicitExpired = statusClean == "expired" || statusClean == "منتهي" || SubscriberDisplayRules.isSuspended(statusClean)
                 val isDateExpired = expTimestamp != null && expTimestamp < now
                 val isExpired = isExplicitExpired || isDateExpired
 

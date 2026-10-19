@@ -40,7 +40,10 @@ import org.robolectric.annotation.Config
  * be B. Nothing about A's response is permitted to change the operator's choice.
  *
  * The gateway hook lets us hold A's response open while B is selected, then release
- * it — deterministic ordering with no sleeps.
+ * it — deterministic ordering with no sleeps. The hook sits inside [ControlledDetailGateway.getUserDetail];
+ * since the gateway adapter resolves `getSubscriber` through the fake's directory before that
+ * call, the fixture registers both subscriber rows in the directory via `carrySubscriber`
+ * so the detail request actually reaches the gate.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -100,6 +103,8 @@ class BugSrch02StaleSelectionOverwriteTest {
         )
         auditRepo = AuditRepositoryImpl(db, db.auditLogDao())
         gateway = ControlledDetailGateway()
+        gateway.delegate.carrySubscriber(indexA, "sub_$indexA")
+        gateway.delegate.carrySubscriber(indexB, "sub_$indexB")
     }
 
     @After

@@ -169,7 +169,7 @@ fun SammSettingsSection(
             }
             Column {
                 Text(
-                    text = if (isAr) "بيانات بوابة العامري (SAMM)" else "Alamiry (SAMM) Gateway",
+                    text = if (isAr) "بيانات بوابة سام" else "SAMM Gateway",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = Color.White
@@ -201,7 +201,7 @@ fun SammSettingsSection(
                                 .background(Color(0xFF30D158), RoundedCornerShape(5.dp))
                         )
                         Text(
-                            text = if (isAr) "بوابة العامري مهيأة ومتصلة" else "Alamiry Gateway Configured",
+                            text = if (isAr) "بوابة سام مهيأة ومتصلة" else "SAMM Gateway Configured",
                             color = Color(0xFF30D158),
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp
@@ -328,7 +328,7 @@ fun SammSettingsSection(
                 },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text(if (isAr) "رابط الخادم (Server URL)" else "Server URL", fontSize = 12.sp) },
-                placeholder = { Text("https://isp.alamiry.com", fontSize = 12.sp, color = Color.White.copy(alpha = 0.3f)) },
+                placeholder = { Text("domain or IP address", fontSize = 12.sp, color = Color.White.copy(alpha = 0.3f)) },
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White,

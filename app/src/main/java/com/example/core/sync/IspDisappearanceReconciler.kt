@@ -36,13 +36,18 @@ object IspDisappearanceReconciler {
         accountDao: LocalAccountDao,
         auditDao: AuditLogDao?,
         authoritativeIspUserIds: Set<String>,
-        isFetchComplete: Boolean
+        isFetchComplete: Boolean,
+targetProvider: String = com.example.core.model.SasProviders.EARTHLINK,
+        migrationUsernames: Set<String> = emptySet(),
+        migrationTargetProvider: String? = null
     ): List<String> {
-        if (!isFetchComplete) {
-            return emptyList()
-        }
+    if (!isFetchComplete) {
+    return emptyList()
+    }
 
-        val normalizedIspUserIds = authoritativeIspUserIds.map { it.trim().lowercase() }.toSet()
+    val normalizedIspUserIds = authoritativeIspUserIds.map { it.trim().lowercase() }.toSet()
+    val normalizedMigration = migrationUsernames.map { it.trim().lowercase() }.toSet()
+    val canMigrate = migrationTargetProvider != null && migrationTargetProvider != targetProvider
         val transitionedAccountIds = mutableListOf<String>()
         val moshi = Moshi.Builder().build()
         val accountAdapter = moshi.adapter(LocalAccount::class.java)
@@ -52,6 +57,11 @@ object IspDisappearanceReconciler {
             val now = System.currentTimeMillis()
 
             for (acc in allAccounts) {
+                // Multi-provider scope guard: only evaluate accounts belonging to target provider
+                if (acc.operationProvider != targetProvider) {
+                    continue
+                }
+
                 val username = acc.earthlinkUsername?.trim()
                 // Rule 2: Exclude accounts with null or blank earthlinkUsername
                 if (username.isNullOrBlank()) {
@@ -64,8 +74,40 @@ object IspDisappearanceReconciler {
                 }
 
                 // Check if username is present in ISP
-                if (!normalizedIspUserIds.contains(username.lowercase())) {
-                    val updated = acc.copy(
+if (!normalizedIspUserIds.contains(username.lowercase())) {
+
+            // Gone from this provider but present on the other one: the subscriber MOVED ISP.
+            // They are not historical, so their history must stay live under the new provider.
+            // This runs before the history-only write because monotonicity can never undo that.
+            if (canMigrate && normalizedMigration.contains(username.lowercase())) {
+                val moved = acc.copy(
+                    operationProvider = migrationTargetProvider!!,
+                    updatedAt = now
+                )
+                accountDao.update(moved)
+                OutboxManager.upsertWithOutbox(
+                    database.syncOutboxDao(),
+                    "local_accounts",
+                    moved.id,
+                    accountAdapter.toJson(moved)
+                )
+                auditDao?.insert(
+                    AuditLog(
+                        action = "ISP_SUBSCRIBER_MIGRATED",
+                        entityType = "local_accounts",
+                        entityId = acc.id,
+                        summary = "Subscriber '${acc.displayName}' ($username) disappeared from $targetProvider but is present on $migrationTargetProvider. Re-pointed to the new provider; local history preserved.",
+                        createdAt = now,
+                        severity = AuditSeverity.WARNING.name,
+                        actor = "system",
+                        origin = AuditOrigin.SYSTEM_ACTION.name,
+                        metadataJsonMasked = "{\"earthlinkUsername\":\"$username\",\"accountId\":\"${acc.id}\",\"from\":\"$targetProvider\",\"to\":\"$migrationTargetProvider\"}"
+                    )
+                )
+                continue
+            }
+
+            val updated = acc.copy(
                         isHistoryOnlySubscriber = true,
                         updatedAt = now
                     )
@@ -86,12 +128,12 @@ object IspDisappearanceReconciler {
                             action = "ISP_SUBSCRIBER_DISAPPEARED",
                             entityType = "local_accounts",
                             entityId = acc.id,
-                            summary = "Subscriber '${acc.displayName}' ($username) is no longer present in authoritative ISP subscriber list. Transitioned to history-only.",
+                            summary = "Subscriber '${acc.displayName}' ($username) is no longer present in authoritative $targetProvider ISP subscriber list. Transitioned to history-only.",
                             createdAt = now,
                             severity = AuditSeverity.WARNING.name,
                             actor = "system",
                             origin = AuditOrigin.SYSTEM_ACTION.name,
-                            metadataJsonMasked = "{\"earthlinkUsername\":\"$username\",\"accountId\":\"${acc.id}\"}"
+                            metadataJsonMasked = "{\"earthlinkUsername\":\"$username\",\"accountId\":\"${acc.id}\",\"provider\":\"$targetProvider\"}"
                         )
                     )
                 }

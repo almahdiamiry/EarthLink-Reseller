@@ -121,8 +121,8 @@ class SammLiveServerIntegrationTest {
         assertEquals("379", subscriber.subscriberId)
         assertEquals("sub_lab_01", subscriber.username)
 
-        val detail = gateway.getSubscriber("379")
-        assertNotNull("Expected customer detail for 379", detail)
+        val detail = gateway.getSubscriber("sub_lab_01")
+        assertNotNull("Expected customer detail for sub_lab_01", detail)
         assertEquals("sub_lab_01", detail?.username)
         assertEquals("6", detail?.planId)
     }
@@ -133,7 +133,7 @@ class SammLiveServerIntegrationTest {
         val gateway = createGateway()
 
         // 1. Suspend customer 379
-        val suspendResult = gateway.suspendSubscriber("379")
+        val suspendResult = gateway.suspendSubscriber("sub_lab_01")
         assertTrue("Suspend should be Applied", suspendResult is SasOperationResult.Applied)
 
         // Verify status oracle
@@ -141,7 +141,7 @@ class SammLiveServerIntegrationTest {
         assertEquals(SasVerificationOutcome.VERIFIED_SUCCESS, suspendOutcome)
 
         // 2. Activate customer 379
-        val activateResult = gateway.activateSubscriber("379")
+        val activateResult = gateway.activateSubscriber("sub_lab_01")
         assertTrue("Activate should be Applied", activateResult is SasOperationResult.Applied)
 
         // Verify status oracle
@@ -149,10 +149,10 @@ class SammLiveServerIntegrationTest {
         assertEquals(SasVerificationOutcome.VERIFIED_SUCCESS, activateOutcome)
 
         // 3. Renew customer 379
-        val beforeRenew = gateway.getSubscriber("379")
+        val beforeRenew = gateway.getSubscriber("sub_lab_01")
         val baselineExp = beforeRenew?.expiresAt
 
-        val renewResult = gateway.renewSubscriber("379")
+        val renewResult = gateway.renewSubscriber("sub_lab_01")
         assertTrue("Renew should be Applied", renewResult is SasOperationResult.Applied)
 
         // Verify renewal advance oracle
@@ -160,14 +160,14 @@ class SammLiveServerIntegrationTest {
         assertEquals(SasVerificationOutcome.VERIFIED_SUCCESS, renewOutcome)
 
         // 4. Change plan to Plus (ID 7)
-        val changePlanResult = gateway.changePlan("379", "7")
+        val changePlanResult = gateway.changePlan("sub_lab_01", "7")
         assertTrue("Change plan should be Applied", changePlanResult is SasOperationResult.Applied)
 
         val planOutcome = gateway.verifyOperationOutcome("CHANGE_PLAN", "379", "7")
         assertEquals(SasVerificationOutcome.VERIFIED_SUCCESS, planOutcome)
 
         // 5. Restore back to Economy (ID 6)
-        val restorePlanResult = gateway.changePlan("379", "6")
+        val restorePlanResult = gateway.changePlan("sub_lab_01", "6")
         assertTrue("Restore plan should be Applied", restorePlanResult is SasOperationResult.Applied)
 
         val restoreOutcome = gateway.verifyOperationOutcome("CHANGE_PLAN", "379", "6")
@@ -205,7 +205,7 @@ class SammLiveServerIntegrationTest {
         Assume.assumeTrue("Live SAMM server and token are configured and reachable", isServerAvailable)
         val gateway = createGateway()
 
-        val passwordResult = gateway.changePassword("379", "UpdatedLabPass2026!")
+        val passwordResult = gateway.changePassword("sub_lab_01", "UpdatedLabPass2026!")
         assertTrue("Change password should be Applied", passwordResult is SasOperationResult.Applied)
 
         val outcome = gateway.verifyOperationOutcome("PASSWORD", "379", null)
@@ -220,8 +220,8 @@ class SammLiveServerIntegrationTest {
         // Verify providerName invariant
         assertEquals(com.example.core.model.SasProviders.ALAMIRY, liveGateway.providerName)
 
-        // Verify subscriber 379 can be fetched through the live gateway
-        val user = liveGateway.getSubscriber("379")
+        // Verify subscriber sub_lab_01 can be fetched through the live gateway
+        val user = liveGateway.getSubscriber("sub_lab_01")
         assertNotNull(user)
         assertEquals("sub_lab_01", user?.username)
     }

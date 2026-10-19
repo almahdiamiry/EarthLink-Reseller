@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.core.database.AppDatabase
+import com.example.core.model.AccountPackage
 import com.example.core.model.LocalAccount
 import com.example.core.model.LocalLedgerEntry
 import com.example.core.model.PendingExternalOperation
@@ -671,9 +672,17 @@ class AdversarialIntegrationKitTest {
         var changePlanResult: SasOperationResult = SasOperationResult.Applied()
         var changePasswordResult: SasOperationResult = SasOperationResult.Applied()
         var outcomeToReturn: SasVerificationOutcome = SasVerificationOutcome.VERIFIED_SUCCESS
+        var packagesList: List<AccountPackage> = listOf(
+            AccountPackage(accountIndex = 12, accountName = "SAMM Standard", price = 35000.0)
+        )
 
         private fun checkError() {
             errorToThrow?.let { throw it }
+        }
+
+        override suspend fun listPackages(): List<AccountPackage> {
+            checkError()
+            return packagesList
         }
 
         override suspend fun searchSubscribers(query: String, page: Int, pageSize: Int): List<SasSubscriberView> {
@@ -682,7 +691,7 @@ class AdversarialIntegrationKitTest {
             return searchResult
         }
 
-        override suspend fun getSubscriber(subscriberId: String): SasSubscriberView? {
+        override suspend fun getSubscriber(username: String): SasSubscriberView? {
             getSubscriberCalls.incrementAndGet()
             checkError()
             return subscriberDetailResult
@@ -701,31 +710,31 @@ class AdversarialIntegrationKitTest {
             return createResult
         }
 
-        override suspend fun suspendSubscriber(subscriberId: String): SasOperationResult {
+        override suspend fun suspendSubscriber(username: String): SasOperationResult {
             suspendCalls.incrementAndGet()
             checkError()
             return suspendResult
         }
 
-        override suspend fun activateSubscriber(subscriberId: String): SasOperationResult {
+        override suspend fun activateSubscriber(username: String): SasOperationResult {
             activateCalls.incrementAndGet()
             checkError()
             return activateResult
         }
 
-        override suspend fun renewSubscriber(subscriberId: String): SasOperationResult {
+        override suspend fun renewSubscriber(username: String): SasOperationResult {
             renewCalls.incrementAndGet()
             checkError()
             return renewResult
         }
 
-        override suspend fun changePlan(subscriberId: String, newPlanId: String): SasOperationResult {
+        override suspend fun changePlan(username: String, newPlanId: String): SasOperationResult {
             changePlanCalls.incrementAndGet()
             checkError()
             return changePlanResult
         }
 
-        override suspend fun changePassword(subscriberId: String, newPassword: String): SasOperationResult {
+        override suspend fun changePassword(username: String, newPassword: String): SasOperationResult {
             changePasswordCalls.incrementAndGet()
             checkError()
             return changePasswordResult

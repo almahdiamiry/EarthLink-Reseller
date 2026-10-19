@@ -84,8 +84,8 @@ fun PasswordToolsScreen(
         viewModel.clearRevealedPasswords()
         if (isEarthlink) {
             viewModel.revealUserPassword(userIndex, userId)
+            viewModel.revealAccountPassword(userIndex, userId)
         }
-        viewModel.revealAccountPassword(userIndex, userId)
     }
 
     // Auto dismiss and clear inputs on successful action
@@ -122,8 +122,16 @@ fun PasswordToolsScreen(
 
     if (showResetAccPass) {
         ConfirmationDialog(
-            title = if (currentLang == "ar") "تأكيد تغيير كلمة مرور حساب PPPoE" else "Confirm PPPoE Account Password Change",
-            message = if (currentLang == "ar") "هل أنت متأكد من رغبتك في تغيير كلمة مرور اشتراك الـ PPPoE للمشترك $userId؟" else "Are you sure you want to change the PPPoE broadband password for $userId?",
+            title = if (isEarthlink) {
+                if (currentLang == "ar") "تأكيد تغيير كلمة مرور حساب PPPoE" else "Confirm PPPoE Account Password Change"
+            } else {
+                if (currentLang == "ar") "تأكيد تغيير كلمة مرور المشترك" else "Confirm Subscriber Password Change"
+            },
+            message = if (isEarthlink) {
+                if (currentLang == "ar") "هل أنت متأكد من رغبتك في تغيير كلمة مرور اشتراك الـ PPPoE للمشترك $userId؟" else "Are you sure you want to change the PPPoE broadband password for $userId?"
+            } else {
+                if (currentLang == "ar") "هل أنت متأكد من رغبتك في تغيير كلمة مرور المشترك $userId؟" else "Are you sure you want to change the password for subscriber $userId?"
+            },
             needsPasswordField = false,
             onCancel = { showResetAccPass = false },
             onConfirm = {
@@ -142,7 +150,7 @@ fun PasswordToolsScreen(
                     .fillMaxWidth()
                     .padding(16.dp)
                     .verticalScroll(rememberScrollState()),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(24.dp)
             ) {
                 Column(
                     modifier = Modifier.padding(20.dp),
@@ -154,9 +162,13 @@ fun PasswordToolsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = if (currentLang == "ar") "أدوات كلمة المرور" else "Password Tools",
+                            text = if (isEarthlink) {
+                                if (currentLang == "ar") "أدوات كلمة المرور" else "Password Tools"
+                            } else {
+                                if (currentLang == "ar") "تعديل كلمة المرور" else "Edit Password"
+                            },
                             fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp
+                            fontSize = 20.sp
                         )
                         IconButton(onClick = onClose) {
                             Icon(
@@ -247,42 +259,51 @@ fun PasswordToolsScreen(
                             }
                         }
 
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+Text(
+                            text = if (currentLang == "ar") "حفظ كلمة مرور البوابة" else "Save portal password",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(bottom = 2.dp)
+                        )
+                        OutlinedTextField(
+                            value = inputUserResetPass,
+                            onValueChange = { inputUserResetPass = it },
+                            label = { Text(if (currentLang == "ar") "كلمة مرور البوابة الجديدة" else "New Portal Pass") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Button(
+                            onClick = { showResetUserPass = true },
+                            enabled = inputUserResetPass.isNotEmpty() && !isActionLoading,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF90CAF9)),
+                            shape = RoundedCornerShape(24.dp)
                         ) {
-                            OutlinedTextField(
-                                value = inputUserResetPass,
-                                onValueChange = { inputUserResetPass = it },
-                                label = { Text(if (currentLang == "ar") "كلمة مرور البوابة الجديدة" else "New Portal Pass") },
-                                singleLine = true,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .heightIn(min = 48.dp)
+                            Text(
+                                text = if (currentLang == "ar") "حفظ" else "Save",
+                                color = Color.White,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
                             )
-                            IconButton(
-                                onClick = { showResetUserPass = true },
-                                enabled = inputUserResetPass.isNotEmpty() && !isActionLoading,
-                                modifier = Modifier.size(48.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Save,
-                                    contentDescription = if (currentLang == "ar") "حفظ كلمة مرور البوابة" else "Save portal password"
-                                )
-                            }
-                        }
+}
 
-                        HorizontalDivider()
                     }
 
                     // --- Part 2: Broadband Account ---
                     Text(
-                        text = if (currentLang == "ar") "حساب الاشتراك المنزلي (PPPoE)" else "Broadband account (PPPoE)",
+                        text = if (isEarthlink) {
+                            if (currentLang == "ar") "حساب الاشتراك المنزلي (PPPoE)" else "Broadband account (PPPoE)"
+                        } else {
+                            if (currentLang == "ar") "كلمة مرور المشترك" else "Subscriber Password"
+                        },
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 14.sp
                     )
                     val rAcc = revealedAcc
-                    Row(
+                    if (isEarthlink) {
+                        Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
@@ -317,32 +338,52 @@ fun PasswordToolsScreen(
                                 color = if (isEmpty) Color(0xFF8E8E93) else MaterialTheme.colorScheme.primary
                             )
                         }
+                        }
                     }
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+                    Text(
+                            text = if (isEarthlink) {
+                                if (currentLang == "ar") "حفظ كلمة مرور الخط" else "Save line password"
+                            } else {
+                                if (currentLang == "ar") "تعديل كلمة المرور" else "Change password"
+                            },
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(bottom = 2.dp)
+                        )
                         OutlinedTextField(
                             value = inputAccResetPass,
                             onValueChange = { inputAccResetPass = it },
-                            label = { Text(if (currentLang == "ar") "كلمة مرور الخط الجديدة" else "New Line Pass") },
+                            label = {
+                                Text(
+                                    if (isEarthlink) {
+                                        if (currentLang == "ar") "كلمة مرور الخط الجديدة" else "New Line Pass"
+                                    } else {
+                                        if (currentLang == "ar") "كلمة المرور الجديدة" else "New Password"
+                                    }
+                                )
+                            },
                             singleLine = true,
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 48.dp)
+                            modifier = Modifier.fillMaxWidth()
                         )
-                        IconButton(
+                        // Same pill as the Renew action (UserDetailScreenV2), so the app has one
+                        // button language rather than a Material default next to it.
+                        Button(
                             onClick = { showResetAccPass = true },
                             enabled = inputAccResetPass.isNotEmpty() && !isActionLoading,
-                            modifier = Modifier.size(48.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF90CAF9)),
+                            shape = RoundedCornerShape(24.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Save,
-                                contentDescription = if (currentLang == "ar") "حفظ كلمة مرور الخط" else "Save line password"
+                            Text(
+                                text = if (currentLang == "ar") "حفظ" else "Save",
+                                color = Color.White,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
                             )
                         }
-                    }
                 }
             }
         }

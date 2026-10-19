@@ -18,12 +18,17 @@
 ├────────────────────────────────────────────────────────────────────────────────────────┤
 │ OPERATING MODE:                 POST-V1 / STABLE MAINTENANCE                           │
 │ ACTIVE WORKSTREAM:              NONE — SYSTEM IDLE                                     │
-│ CURRENT VERIFIED TEST BASELINE: 1049 TOTAL (1042 PASSED, 0 FAIL, 0 ERR, 7 SKIPPED)    │
-│ CURRENT CHECKPOINT:             HEAD                                                   │
+│ CURRENT VERIFIED TEST BASELINE: 1193 TOTAL (1186 PASSED, 0 FAIL, 0 ERR, 7 SKIPPED)  │
+│ CURRENT CHECKPOINT:             21550d196b692d1105cc695d6f6b70a4f333316e             │
 │ GOVERNING PLAYBOOK:             OPERATIONAL TESTING PLAYBOOK (AGENTS.md §9)            │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+> **Historical record (Round 13) — not the current baseline.** Everything below is the Round-13
+> measurement, retained verbatim as provenance for the one sanctioned test deletion. The live figure
+> is `CURRENT VERIFIED TEST BASELINE` in the box above; if these numbers ever disagree with it, that
+> box is correct and this record is simply out of date.
+>
 > **Baseline changed from 798 to 797 at Round 13, and the count is not a regression.** The Round-13
 > repair plan sanctioned exactly one deletion — `Phase1FirestoreDocumentIdentityTest.testScenarioJ_counterfactualRawPayloadContainsRawJson`,
 > a tautological control for a control — so 798 − 1 = **797** is arithmetically forced and was

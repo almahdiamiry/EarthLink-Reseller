@@ -265,6 +265,7 @@ fun getRemainingTime(expirationDateStr: String?, activeDaysLeftStr: String? = nu
     var parsedHasTime = false
 
     val sanitizedExpirationStr = sanitizePresentationDateString(expirationDateStr)
+    val sanitizedActiveDaysLeft = sanitizePresentationDateString(activeDaysLeftStr)
     if (sanitizedExpirationStr != null) {
         val baghdadTz = java.util.TimeZone.getTimeZone("Asia/Baghdad")
 
@@ -375,6 +376,7 @@ fun getRemainingTime(expirationDateStr: String?, activeDaysLeftStr: String? = nu
                 "yyyy-MM-dd HH:mm:ss",
                 "yyyy-MM-dd HH:mm:ss a",
                 "yyyy-MM-dd HH:mm a",
+                "yyyy-MM-dd h:mm a",
                 "yyyy-MM-dd",
                 "yyyy/MM/dd HH:mm:ss a",
                 "yyyy/MM/dd HH:mm:ss",
@@ -493,8 +495,12 @@ fun getRemainingTime(expirationDateStr: String?, activeDaysLeftStr: String? = nu
     } else if (parsedDaysLeft != null && (actDays > 0 || actHours > 0)) {
         finalDays = actDays
         finalHours = actHours
+    } else if (isStatusActive && sanitizedExpirationStr == null && sanitizedActiveDaysLeft == null) {
+        // The provider reported no expiry at all: the subscription is unlimited (an owner plan,
+        // for example). This is NOT a 30-minute grace. SAMM sends expiration_date = null for these.
+        return if (lang == "ar") "بدون انتهاء" else "No expiry"
     } else if (isStatusActive) {
-        // Fallback for active status with unparsed or slightly past expiration
+        // Fallback for active status with unparseable or slightly past expiration
         isLessThanHour = true
         remainingMinutes = 30L
     } else {
@@ -631,8 +637,12 @@ fun ArabicSubscriberCard(
     }
     
     val statusClean = user.accountStatus?.trim()?.lowercase(Locale.US) ?: ""
-    val isExpired = remainingTime.contains("منتهي") || remainingTime.contains("Expired") || statusClean == "expired" || statusClean == "منتهي" || statusClean == "suspendedbyagent"
-    val isActive = !isExpired
+    // Suspension is not expiry: a stopped subscriber still holds paid time, so its countdown keeps
+    // running. Folding it into isExpired made the card read منتهي and replaced the remaining time
+    // with a raw date.
+    val isSuspended = SubscriberDisplayRules.isSuspended(statusClean)
+    val isExpired = remainingTime.contains("منتهي") || remainingTime.contains("Expired") || statusClean == "expired" || statusClean == "منتهي"
+    val isActive = !isExpired && !isSuspended
     
     val containerBg = MaterialTheme.colorScheme.surface
     val rowBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
@@ -697,7 +707,12 @@ fun ArabicSubscriberCard(
                         modifier = Modifier
                             .size(10.dp)
                             .background(
-                                color = if (isOnline) Color(0xFF30D158) else Color(0xFF8E8E93),
+                                color = when {
+                                    isActive && isOnline -> Color(0xFF30D158)
+                                    isActive -> Color(0xFF8E8E93)
+                                    isOnline -> Color(0xFFFF9F0A)
+                                    else -> Color(0xFFFF453A)
+                                },
                                 shape = CircleShape
                             )
                             .border(2.dp, Color(0xFF141922), CircleShape)
@@ -739,22 +754,61 @@ fun ArabicSubscriberCard(
                             )
                         }
 
-                        // Status Badge
-                        Surface(
-                            color = if (isActive) Color(0xFF30D158).copy(alpha = 0.12f) else Color(0xFFFF453A).copy(alpha = 0.12f),
-                            shape = RoundedCornerShape(8.dp),
-                            border = BorderStroke(
-                                1.dp,
-                                if (isActive) Color(0xFF30D158).copy(alpha = 0.3f) else Color(0xFFFF453A).copy(alpha = 0.3f)
-                            )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Text(
-                                text = if (isActive) (if (lang == "ar") "نشط" else "Active") else (if (lang == "ar") "منتهي" else "Expired"),
-                                color = if (isActive) Color(0xFF30D158) else Color(0xFFFF453A),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                            )
+                            // Provider Badge
+                            val effectiveProvider = matchingAccount?.operationProvider ?: user.originProvider
+                            if (effectiveProvider != null) {
+                                val isAlamiry = effectiveProvider == SasProviders.ALAMIRY
+                                val badgeColor = if (isAlamiry) Color(0xFF5E5CE6) else Color(0xFF0A84FF)
+                                val badgeText = if (isAlamiry) {
+                                    if (lang == "ar") "سام" else "SAMM"
+                                } else {
+                                    if (lang == "ar") "ايرثلنك" else "EarthLink"
+                                }
+                                Surface(
+                                    color = badgeColor.copy(alpha = 0.12f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = BorderStroke(
+                                        1.dp,
+                                        badgeColor.copy(alpha = 0.3f)
+                                    )
+                                ) {
+                                    Text(
+                                        text = badgeText,
+                                        color = badgeColor,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+
+                            // Status Badge
+                            val badgeInk = when {
+                                isActive -> Color(0xFF30D158)
+                                isSuspended -> Color(0xFFFF453A)
+                                else -> Color(0xFFFF453A)
+                            }
+                            Surface(
+                                color = badgeInk.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, badgeInk.copy(alpha = 0.3f))
+                            ) {
+                                Text(
+                                    text = when {
+                                        isActive -> if (lang == "ar") "نشط" else "Active"
+                                        isSuspended -> if (lang == "ar") "موقوف" else "Suspended"
+                                        else -> if (lang == "ar") "منتهي" else "Expired"
+                                    },
+                                    color = badgeInk,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
                         }
                     }
 
@@ -790,7 +844,9 @@ fun ArabicSubscriberCard(
                         }
 
                         // Remaining / Expiration Date
-                        val subDateText = if (isActive) {
+                        // Follows isExpired, not isActive: a suspended subscriber still has paid
+                        // time left, so they keep the countdown instead of a raw date.
+                        val subDateText = if (!isExpired) {
                             remainingTime
                         } else {
                             if (!expirationStr.isNullOrBlank() && expirationStr != "N/A") {
@@ -845,6 +901,7 @@ fun ConfirmationDialog(
     title: String,
     message: String,
     needsPasswordField: Boolean = false,
+    passwordLabel: String? = null,
     onCancel: () -> Unit,
     onConfirm: (password: String) -> Unit
 ) {
@@ -860,35 +917,49 @@ fun ConfirmationDialog(
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
     var isSubmitting by rememberSaveable { mutableStateOf(false) }
 
-    Dialog(onDismissRequest = {
-        focusManager.clearFocus(force = true)
-        keyboardController?.hide()
-        isSubmitting = false
-        onCancel()
-    }) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .imePadding()
-                .padding(16.dp),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF11161F)),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f))
-        ) {
-            Column(
-                modifier = Modifier
-                    .padding(20.dp)
-                    .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+    // Material3 AlertDialog, the same component the Edit Package and Rename dialogs use. A
+    // hand-built Dialog+Card drifted from them in surface, shape and button treatment.
+    AlertDialog(
+        onDismissRequest = {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+            isSubmitting = false
+            onCancel()
+        },
+        confirmButton = {
+            Button(
+                enabled = !isSubmitting,
+                onClick = {
+                    if (!isSubmitting) {
+                        focusManager.clearFocus(force = true)
+                        keyboardController?.hide()
+                        isSubmitting = true
+                        onConfirm(password)
+                    }
+                }
             ) {
-                Text(text = title, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.White)
-                Text(text = message, fontSize = 14.sp, color = Color.White.copy(alpha = 0.8f))
-
+                Text(if (isAr) "تأكيد" else "Confirm", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = {
+                focusManager.clearFocus(force = true)
+                keyboardController?.hide()
+                isSubmitting = false
+                onCancel()
+            }) {
+                Text(if (isAr) "إلغاء" else "Cancel")
+            }
+        },
+        title = { Text(title, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(message)
                 if (needsPasswordField) {
                     OutlinedTextField(
                         value = password,
                         onValueChange = { password = it },
-                        label = { Text(if (isAr) "أدخل كلمة مرور الصندوق" else "Enter Deposit Password") },
+                        label = { Text(passwordLabel ?: if (isAr) "أدخل كلمة مرور الصندوق" else "Enter Deposit Password") },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
@@ -901,59 +972,16 @@ fun ConfirmationDialog(
                                         if (isAr) "إخفاء كلمة المرور" else "Hide password"
                                     } else {
                                         if (isAr) "إظهار كلمة المرور" else "Show password"
-                                    },
-                                    tint = Color.White.copy(alpha = 0.7f)
+                                    }
                                 )
                             }
                         },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color(0xFF0288D1),
-                            unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
-                            focusedLabelColor = Color(0xFF0288D1),
-                            unfocusedLabelColor = Color.White.copy(alpha = 0.6f)
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 52.dp)
+                        modifier = Modifier.fillMaxWidth()
                     )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextButton(onClick = {
-                        focusManager.clearFocus(force = true)
-                        keyboardController?.hide()
-                        isSubmitting = false
-                        onCancel()
-                    }, modifier = Modifier.heightIn(min = 48.dp)) {
-                        Text(if (isAr) "إلغاء" else "Cancel", color = Color.White.copy(alpha = 0.6f))
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(
-                        enabled = !isSubmitting,
-                        onClick = { 
-                            if (!isSubmitting) {
-                                focusManager.clearFocus(force = true)
-                                keyboardController?.hide()
-                                isSubmitting = true
-                                onConfirm(password) 
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0288D1)),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.heightIn(min = 48.dp)
-                    ) {
-                        Text(if (isAr) "تأكيد" else "Confirm", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
                 }
             }
         }
-    }
+    )
 }
 
 // --- LOGIN SCREEN ---

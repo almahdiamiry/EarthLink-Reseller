@@ -15,6 +15,11 @@ import com.example.core.network.SasOperationResult
 import com.example.core.network.SasSubscriberView
 import com.example.core.network.SasTransportException
 import com.example.core.network.SasVerificationOutcome
+import com.example.core.model.AccountStatementItem
+import com.example.core.model.UserDetail
+import com.example.core.model.UserListItem
+import com.example.core.model.UserListResponse
+import com.example.domain.repository.EarthlinkGateway
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -129,11 +134,11 @@ class DurableOperationsProviderTest {
         override suspend fun searchSubscribers(query: String, page: Int, pageSize: Int): List<SasSubscriberView> = emptyList()
         override suspend fun getSubscriber(subscriberId: String): SasSubscriberView? = null
         override suspend fun createSubscriber(username: String, planId: String, password: String, firstName: String, lastName: String, phone: String?): SasOperationResult = SasOperationResult.Applied()
-        override suspend fun suspendSubscriber(subscriberId: String): SasOperationResult = SasOperationResult.Applied()
-        override suspend fun activateSubscriber(subscriberId: String): SasOperationResult = SasOperationResult.Applied()
-        override suspend fun renewSubscriber(subscriberId: String): SasOperationResult = SasOperationResult.Applied()
-        override suspend fun changePlan(subscriberId: String, newPlanId: String): SasOperationResult = SasOperationResult.Applied()
-        override suspend fun changePassword(subscriberId: String, newPassword: String): SasOperationResult = SasOperationResult.Applied()
+        override suspend fun suspendSubscriber(username: String): SasOperationResult = SasOperationResult.Applied()
+        override suspend fun activateSubscriber(username: String): SasOperationResult = SasOperationResult.Applied()
+        override suspend fun renewSubscriber(username: String): SasOperationResult = SasOperationResult.Applied()
+        override suspend fun changePlan(username: String, newPlanId: String): SasOperationResult = SasOperationResult.Applied()
+        override suspend fun changePassword(username: String, newPassword: String): SasOperationResult = SasOperationResult.Applied()
     }
 
     // ========================================================================
@@ -579,5 +584,219 @@ class DurableOperationsProviderTest {
         assertEquals(UnknownOutcomeResolutionResult.VERIFIED_SUCCESS, resolution.result)
         assertEquals("Must query SAMM gateway because op.operationProvider was ALAMIRY", 1, fakeSammGateway.verifyCalls.size)
         assertEquals("Must NOT query EarthLink gateway even though account is now EARTHLINK", 0, fakeEarthlinkGateway.verifyCalls.size)
+    }
+
+    // ========================================================================
+    // T6: Sweep Order & Provider Isolation (EL Sweep ignores SAMM)
+    // ========================================================================
+
+    /**
+     * Claim: INV-03 & INV-05. sweepAndResolvePendingOperations(EarthlinkGateway) strictly ignores
+     * non-EarthLink operations (e.g. ALAMIRY), resolving EarthLink operations via statement
+     * without touching or double-booking ALAMIRY operations.
+     * Seam: ROBOLECTRIC tier.
+     * Independent Oracle:
+     * - EARTHLINK op resolved to COMPLETED with 1 ledger debt entry.
+     * - ALAMIRY op remains untouched in PENDING status.
+     * - mockEarthlinkGateway called only for EARTHLINK op query.
+     */
+    @Test
+    fun test09_sweepAndResolvePendingOperations_ignoresNonEarthlinkOperations() = runTest {
+        val opTime = 1_768_476_600_000L
+
+        val accEl = LocalAccount(
+            id = "user_el_sweep",
+            earthlinkUsername = "user_el_sweep",
+            displayName = "EL Sweep User",
+            currentPriceIqd = 35_000.0,
+            debtIqd = 0.0,
+            operationProvider = SasProviders.EARTHLINK
+        )
+        val accSamm = LocalAccount(
+            id = "user_samm_sweep",
+            earthlinkUsername = "user_samm_sweep",
+            displayName = "SAMM Sweep User",
+            currentPriceIqd = 45_000.0,
+            debtIqd = 0.0,
+            operationProvider = SasProviders.ALAMIRY
+        )
+        db.localAccountDao().insert(accEl)
+        db.localAccountDao().insert(accSamm)
+
+        // EL pending op with claim=1
+        val opEl = PendingExternalOperation(
+            businessTransactionId = "tx_el_sweep",
+            operationIntentId = "intent_el_sweep",
+            accountId = accEl.id,
+            operationType = "RENEWAL",
+            amountIqd = 35_000L,
+            payloadJson = "{}",
+            status = "PENDING",
+            dispatchClaimCount = 1,
+            createdAt = opTime,
+            operationProvider = SasProviders.EARTHLINK
+        )
+        // ALAMIRY pending op with claim=1
+        val opSamm = PendingExternalOperation(
+            businessTransactionId = "tx_samm_sweep",
+            operationIntentId = "intent_samm_sweep",
+            accountId = accSamm.id,
+            operationType = "RENEWAL",
+            amountIqd = 45_000L,
+            payloadJson = "{}",
+            status = "PENDING",
+            dispatchClaimCount = 1,
+            createdAt = opTime,
+            operationProvider = SasProviders.ALAMIRY
+        )
+        ledgerRepo.recordPendingOperation(opEl)
+        ledgerRepo.recordPendingOperation(opSamm)
+
+        // Mock EarthlinkGateway that returns matching statement for EL user
+        val mockElGateway = object : EarthlinkGateway by com.example.Phase1DuplicateInitiationProtectionTest.TestEarthlinkGateway() {
+            override suspend fun searchUsers(
+                query: String,
+                startIndex: Int,
+                rowCount: Int
+            ): UserListResponse = UserListResponse(
+                itemsList = listOf(UserListItem(userIndexLower = 999, userIDLower = accEl.id))
+            )
+
+            override suspend fun getUserDetail(userIndex: Int): UserDetail = UserDetail(
+                userIndexLower = 999,
+                userIDLower = accEl.id,
+                accountStatusLower = "Active",
+                expirationDateLower = null
+            )
+
+            override suspend fun getAccountStatement(
+                startIndex: Int,
+                rowCount: Int,
+                query: String
+            ): List<AccountStatementItem> {
+                return if (query == accEl.id) {
+                    listOf(
+                        AccountStatementItem(
+                            occurredAt = "2026-01-15 14:30:00",
+                            operation = "Withdraw",
+                            depositAmount = 0.0,
+                            withdrawalAmount = 35_000.0,
+                            userIDLower = accEl.id
+                        )
+                    )
+                } else {
+                    emptyList()
+                }
+            }
+        }
+
+        // Run sweep with 0 grace window
+        val resolutions = ledgerRepo.sweepAndResolvePendingOperations(mockElGateway, graceWindowMs = 0L)
+
+        // Verify: EL op resolved to VERIFIED_SUCCESS
+        val resolvedEl = ledgerRepo.getPendingOperationByTransactionId(opEl.businessTransactionId)
+        assertNotNull(resolvedEl)
+        assertEquals("COMPLETED", resolvedEl!!.status)
+
+        // Verify: ALAMIRY op was NOT resolved by EL sweep and remains PENDING
+        val untouchedSamm = ledgerRepo.getPendingOperationByTransactionId(opSamm.businessTransactionId)
+        assertNotNull(untouchedSamm)
+        assertEquals("PENDING", untouchedSamm!!.status)
+
+        // Verify: Exactly 1 debt entry was created (for EL account)
+        val entries = db.localLedgerEntryDao().getByAccountIdOneShot(accEl.id)
+        assertEquals(1, entries.size)
+        assertEquals(35_000.0, entries[0].amountIqd, 0.0)
+
+        val sammEntries = db.localLedgerEntryDao().getByAccountIdOneShot(accSamm.id)
+        assertEquals(0, sammEntries.size)
+    }
+
+    // ========================================================================
+    // T8: Dual-Account Provider Preference Query & Materializer Resolution
+    // ========================================================================
+
+    /**
+     * Claim: When two active accounts share the exact same username across different providers,
+     * findActiveAccountByUsernameOrIdPreferringProviderOneShot and resolvePendingOperationVerifiedSuccess
+     * correctly pick and attach debt to the account corresponding to the operation's operationProvider.
+     * Seam: ROBOLECTRIC tier.
+     * Independent Oracle:
+     * - Query with provider "ALAMIRY" returns the SAMM account row (id "acc_dual_samm").
+     * - Query with provider "EARTHLINK" returns the EL account row (id "acc_dual_el").
+     * - resolvePendingOperationVerifiedSuccess for ALAMIRY operation creates ledger entry under "acc_dual_samm".
+     */
+    @Test
+    fun test10_dualAccount_preferringProvider_resolvesAndAttachesDebtToCorrectAccount() = runTest {
+        val sharedUsername = "dual_reseller_user"
+
+        val accEl = LocalAccount(
+            id = "acc_dual_el",
+            earthlinkUsername = sharedUsername,
+            displayName = "Dual EL User",
+            currentPriceIqd = 35_000.0,
+            debtIqd = 0.0,
+            isHistoryOnlySubscriber = false,
+            operationProvider = SasProviders.EARTHLINK
+        )
+        val accSamm = LocalAccount(
+            id = "acc_dual_samm",
+            earthlinkUsername = sharedUsername,
+            displayName = "Dual SAMM User",
+            currentPriceIqd = 35_000.0,
+            debtIqd = 0.0,
+            isHistoryOnlySubscriber = false,
+            operationProvider = SasProviders.ALAMIRY
+        )
+        db.localAccountDao().insert(accEl)
+        db.localAccountDao().insert(accSamm)
+
+        // 1. Verify DAO query directly
+        val foundEl = db.localAccountDao().findActiveAccountByUsernameOrIdPreferringProviderOneShot(
+            username = sharedUsername,
+            provider = SasProviders.EARTHLINK
+        )
+        assertNotNull(foundEl)
+        assertEquals("acc_dual_el", foundEl!!.id)
+        assertEquals(SasProviders.EARTHLINK, foundEl.operationProvider)
+
+        val foundSamm = db.localAccountDao().findActiveAccountByUsernameOrIdPreferringProviderOneShot(
+            username = sharedUsername,
+            provider = SasProviders.ALAMIRY
+        )
+        assertNotNull(foundSamm)
+        assertEquals("acc_dual_samm", foundSamm!!.id)
+        assertEquals(SasProviders.ALAMIRY, foundSamm.operationProvider)
+
+        // 2. Verify materializer fallback: op.accountId = sharedUsername (username fallback branch)
+        val opSamm = PendingExternalOperation(
+            businessTransactionId = "tx_dual_samm",
+            operationIntentId = "intent_dual_samm",
+            accountId = sharedUsername,
+            operationType = "RENEWAL",
+            amountIqd = 35_000L,
+            payloadJson = "{}",
+            status = "PENDING",
+            dispatchClaimCount = 1,
+            operationProvider = SasProviders.ALAMIRY
+        )
+        ledgerRepo.recordPendingOperation(opSamm)
+
+        // Materialize verified success
+        val resolution = ledgerRepo.resolvePendingOperationVerifiedSuccess(
+            businessTransactionId = opSamm.businessTransactionId,
+            chargeNote = "Verified via SAMM gateway"
+        )
+        assertNotNull(resolution)
+        assertEquals("acc_dual_samm", resolution!!.accountId)
+        assertEquals(35_000.0, resolution.amountIqd, 0.0)
+
+        // Assert ledger entry was saved to acc_dual_samm, NOT acc_dual_el
+        val sammEntries = db.localLedgerEntryDao().getByAccountIdOneShot("acc_dual_samm")
+        assertEquals(1, sammEntries.size)
+        assertEquals(35_000.0, sammEntries[0].amountIqd, 0.0)
+
+        val elEntries = db.localLedgerEntryDao().getByAccountIdOneShot("acc_dual_el")
+        assertEquals(0, elEntries.size)
     }
 }

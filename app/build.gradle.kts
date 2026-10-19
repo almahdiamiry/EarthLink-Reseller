@@ -1,3 +1,4 @@
+import java.time.Duration
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
@@ -109,6 +110,10 @@ android {
       isIncludeAndroidResources = true
       all { testTask ->
         testTask.maxHeapSize = "2048m"
+        // A wedged test must fail the build, not hang it. The full suite takes ~3 minutes, so
+        // 30 minutes is far beyond normal and only trips on a genuinely blocked test (e.g. a
+        // MockWebServer request read that never arrives).
+        testTask.timeout.set(Duration.ofMinutes(30))
         testTask.jvmArgs(
           "-XX:+EnableDynamicAgentLoading",
           "-Dnet.bytebuddy.experimental=true"

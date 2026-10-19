@@ -52,8 +52,11 @@ object DashboardStatusClassifier {
     fun isUserExpired(user: UserListItem, matchingAccount: LocalAccount?, nowMs: Long): Boolean {
         if (isFreeAdminAccount(user)) return false
         val statusClean = user.accountStatus?.trim()?.lowercase(Locale.US) ?: ""
+// Suspension is not expiry: a stopped subscriber still holds paid time, so counting them here
+        // inflated the expired total and hid the real suspended count. They stay visible in the
+        // unfiltered list; they are neither active nor expired.
         if (statusClean in setOf(
-                "expired", "منتهي", "suspendedbyagent", "suspended",
+                "expired", "منتهي",
                 "recentlyexpired", "inactive", "disabled", "blocked"
             )
         ) {

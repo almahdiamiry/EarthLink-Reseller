@@ -656,8 +656,15 @@ open class PreferenceManager(private val context: Context) {
     private val _providerAccessStateFlow by lazy { MutableStateFlow(getProviderAccessState()) }
     val providerAccessStateFlow by lazy { _providerAccessStateFlow.asStateFlow() }
 
+    fun isEarthlinkConfigured(): Boolean {
+        return !getAuthToken().isNullOrEmpty() ||
+            !getEarthlinkApiToken().isNullOrEmpty() ||
+            (!getIspAdminUsername().isNullOrBlank() && !getIspAdminPassword().isNullOrBlank()) ||
+            (AppBuildConfig.DEBUG && prefs.getBoolean(KEY_DEMO_MODE, false))
+    }
+
     fun getProviderAccessState(): ProviderAccessState {
-        val hasEl = !getAuthToken().isNullOrEmpty() || (AppBuildConfig.DEBUG && prefs.getBoolean(KEY_DEMO_MODE, false))
+        val hasEl = isEarthlinkConfigured()
         val hasSamm = isSammConfigured()
         return when {
             hasEl && hasSamm -> ProviderAccessState.BOTH
@@ -872,6 +879,7 @@ open class PreferenceManager(private val context: Context) {
         prefs.edit().putString(KEY_ISP_ADMIN_USERNAME, username).apply()
         markIspCredentialOwner()
         if (!fromRemote) recordSettingsLocalMutation()
+        refreshProviderAccessState()
     }
 
     fun getIspAdminUsername(): String? {
@@ -882,6 +890,7 @@ open class PreferenceManager(private val context: Context) {
         prefs.edit().putString(KEY_ISP_ADMIN_PASSWORD, password).apply()
         markIspCredentialOwner()
         if (!fromRemote) recordSettingsLocalMutation()
+        refreshProviderAccessState()
     }
 
     fun getIspAdminPassword(): String? {
@@ -924,6 +933,7 @@ open class PreferenceManager(private val context: Context) {
         } else {
             prefs.edit().putString(KEY_EARTHLINK_API_TOKEN, token).apply()
         }
+        refreshProviderAccessState()
     }
 
     fun getEarthlinkApiToken(): String? {

@@ -20,12 +20,24 @@ private val SophisticatedDarkColorScheme = darkColorScheme(
     onSecondary = Color(0xFFFFFFFF),
     secondaryContainer = Color(0xFF171E29),
     onSecondaryContainer = Color(0xFFFFFFFF),
-    background = Color(0xFF0B0F14),
+    background = Color(0xFF0E131B),
     onBackground = Color(0xFFFFFFFF),
-    surface = Color(0xFF11161F),
+    surface = Color(0xFF141922),
     onSurface = Color(0xFFFFFFFF),
     surfaceVariant = Color(0xFF171E29),
     onSurfaceVariant = Color(0xFF94A3B8),
+    // darkColorScheme() leaves the surface-container tokens at Material3's own baseline greys, which
+    // appear nowhere in this app. Every composite component reads one of these - AlertDialog uses
+    // surfaceContainerHigh, ModalBottomSheet uses surfaceContainerLow - so they are mapped onto the
+    // three greys the UI actually uses instead.
+    surfaceTint = Color.Transparent,
+    surfaceDim = Color(0xFF0E131B),
+    surfaceBright = Color(0xFF171E29),
+    surfaceContainerLowest = Color(0xFF0E131B),
+    surfaceContainerLow = Color(0xFF0E131B),
+    surfaceContainer = Color(0xFF141922),
+    surfaceContainerHigh = Color(0xFF141922),
+    surfaceContainerHighest = Color(0xFF171E29),
     outline = Color(0xFF242E3D),
     outlineVariant = Color(0xFF1E2836),
     error = Color(0xFFEF4444),

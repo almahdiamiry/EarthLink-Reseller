@@ -1,5 +1,7 @@
 package com.example.core.network
 
+import com.example.core.model.AccountPackage
+
 /**
  * Core SAS Gateway Provider Seam (com.example.core.network)
  *
@@ -126,9 +128,41 @@ fun Throwable.toSasGatewayException(): SasGatewayException = when (this) {
 // ============================================================================
 
 /**
+ * Normalized live-session view for a subscriber, or null when the provider has no live session.
+ *
+ * Only providers that actually expose session state populate this; EarthLink carries it on the
+ * subscriber payload itself, so the default is null.
+ */
+data class SasSubscriberSession(
+    val isOnline: Boolean,
+    val startedAt: String? = null,
+    val onlineSeconds: Long? = null,
+    val ip: String? = null
+)
+
+/**
  * Normalized domain view of a subscriber across different SAS providers (EarthLink, SAMM).
  * Hides provider-specific wire schemas and types (e.g. numeric ID vs string ID).
  */
+/**
+ * What a provider directory search could actually establish about a username.
+ *
+ * [UNKNOWN] is not a weaker [ABSENT]. "The provider does not carry this subscriber" and "the lookup
+ * never completed" are different facts about the world, and the app is allowed to say only the first
+ * one. Collapsing the second into the first is how an offline device ends up telling an operator
+ * that a subscriber is on neither ISP.
+ */
+enum class SasSubscriberPresence {
+    /** The provider's own directory returned the exact row. */
+    PRESENT,
+
+    /** The provider was successfully asked and definitively does not carry this username. */
+    ABSENT,
+
+    /** The provider could not be asked, or answered in a way that does not establish presence. */
+    UNKNOWN
+}
+
 data class SasSubscriberView(
     val subscriberId: String,
     val username: String,
@@ -137,7 +171,9 @@ data class SasSubscriberView(
     val planId: String? = null,
     val planName: String? = null,
     val expiresAt: String? = null,
-    val phone: String? = null
+    val phone: String? = null,
+    /** Providers that publish session state on the subscriber payload (EarthLink) supply it here. */
+    val onlineStatus: String? = null
 )
 
 // ============================================================================
@@ -197,6 +233,26 @@ enum class SasVerificationOutcome {
 // ============================================================================
 
 /**
+ * How many rows a [SasGateway.resolveSubscriberId] lookup asks for.
+ *
+ * Both provider user directories are searched with a SUBSTRING filter, so the exact row shares its
+ * response with every username that merely contains the key. A short window lets the colliders crowd
+ * the exact row out of the response entirely: `ahmed@sacx` is a substring of `ahmed2@sacx`,
+ * `ahmed_ali@sacx` and many more, and the resolver would then return null for a subscriber who
+ * exists and cannot be suspended, renewed or extended.
+ *
+ * Ordering makes it worse rather than better: EarthLink searches newest-first (orderDescending), so
+ * the exact row is the one most likely to fall past the end of a short window.
+ *
+ * 100 is accepted by BOTH providers, at no extra cost on either: it is SAMM's own documented server
+ * default (its hard ceiling is 1000, so it is never out of range), and it is exactly what SAMM's
+ * verification oracle already gets today by sending no `limit` at all. On EarthLink it is 10x the
+ * `rowCount = 10` that its verification oracle has always sent. The cost is one wider read per
+ * mutation, which is not a hot path.
+ */
+internal const val SUBSCRIBER_LOOKUP_WINDOW = 100
+
+/**
  * Minimal common provider seam representing real shared subscriber capabilities
  * across EarthLink and SAMM providers.
  *
@@ -213,9 +269,13 @@ interface SasGateway {
     suspend fun searchSubscribers(query: String, page: Int = 1, pageSize: Int = 20): List<SasSubscriberView>
 
     /**
-     * Retrieve subscriber by ID. Returns null if subscriber does not exist.
+     * Retrieve a subscriber by USERNAME. Returns null if the provider definitively does not carry it.
+     *
+     * Addressed by username for the same reason the mutation methods are: a provider id is local to
+     * one ISP and is stale by design once the subscriber moves ISP, so a cached id read back from the
+     * account would address a different customer or nobody at all.
      */
-    suspend fun getSubscriber(subscriberId: String): SasSubscriberView?
+    suspend fun getSubscriber(username: String): SasSubscriberView?
 
     /**
      * Create a new subscriber account.
@@ -230,29 +290,29 @@ interface SasGateway {
     ): SasOperationResult
 
     /**
-     * Suspend an active subscriber account.
+     * Suspend an active subscriber account, addressed by username.
      */
-    suspend fun suspendSubscriber(subscriberId: String): SasOperationResult
+    suspend fun suspendSubscriber(username: String): SasOperationResult
 
     /**
-     * Activate a suspended subscriber account.
+     * Activate a suspended subscriber account, addressed by username.
      */
-    suspend fun activateSubscriber(subscriberId: String): SasOperationResult
+    suspend fun activateSubscriber(username: String): SasOperationResult
 
     /**
-     * Renew an existing subscriber's current plan.
+     * Renew an existing subscriber's current plan, addressed by username.
      */
-    suspend fun renewSubscriber(subscriberId: String): SasOperationResult
+    suspend fun renewSubscriber(username: String): SasOperationResult
 
     /**
-     * Change a subscriber's plan to newPlanId.
+     * Change a subscriber's plan to newPlanId, addressed by username.
      */
-    suspend fun changePlan(subscriberId: String, newPlanId: String): SasOperationResult
+    suspend fun changePlan(username: String, newPlanId: String): SasOperationResult
 
     /**
-     * Change a subscriber's password.
+     * Change a subscriber's password, addressed by username.
      */
-    suspend fun changePassword(subscriberId: String, newPassword: String): SasOperationResult
+    suspend fun changePassword(username: String, newPassword: String): SasOperationResult
 
     /**
      * Operation-aware verification for recovery sweeps.
@@ -272,4 +332,95 @@ interface SasGateway {
      * Check network connectivity and credentials with the provider gateway.
      */
     suspend fun checkConnection(): Boolean
+
+    /**
+     * Maps a username to this provider's own subscriber id, or null when the provider does not carry it.
+     *
+     * Username is the only identity both providers share. Provider ids are local to one ISP and mean
+     * nothing on the other, so they must never cross the seam: after a subscriber changes provider, the
+     * id stored on the account still belongs to the old ISP, and handing it to the new provider's API
+     * addresses a different customer.
+     *
+     * Implementations must search with a window of at least [SUBSCRIBER_LOOKUP_WINDOW] rows: both
+     * provider directories are substring-filtered, so a narrower window lets colliding usernames
+     * push the exact row out of the response.
+     */
+    suspend fun resolveSubscriberId(username: String): String? = null
+
+    /**
+     * Whether this provider's directory carries [username], as a three-valued answer.
+     *
+     * [resolveSubscriberId] cannot serve this question because it maps BOTH "no such subscriber" and
+     * "the lookup failed" to null, and those two answers must not reach an operator as the same
+     * sentence. Implementations must answer [SasSubscriberPresence.UNKNOWN] — never
+     * [SasSubscriberPresence.ABSENT] — whenever the provider could not be asked.
+     *
+     * Defaults to UNKNOWN so a provider that cannot answer reports the honest third state instead of
+     * silently claiming the subscriber is absent. Implementations resolve through the same wide,
+     * exact-guarded directory search as [resolveSubscriberId], so the two never disagree.
+     */
+    suspend fun resolveSubscriberPresence(username: String): SasSubscriberPresence =
+        SasSubscriberPresence.UNKNOWN
+
+    /**
+     * Reads the subscriber's live session, when the provider exposes one.
+     *
+     * Defaults to null: a provider that carries session state on its subscriber payload (EarthLink)
+     * needs no extra call, and a provider with no session concept must not be forced to implement one.
+     */
+    suspend fun getSubscriberSession(username: String): SasSubscriberSession? = null
+
+    /**
+     * Lower-cased usernames of every currently live subscriber, in one call.
+     *
+     * Defaults to empty: providers that carry session state per subscriber need no bulk read.
+     */
+    suspend fun listOnlineUsernames(): Set<String> = emptySet()
+
+    /**
+     * Reads the price of a plan, when the provider publishes one.
+     *
+     * Defaults to null: a provider with no notion of plan pricing must not be forced to implement
+     * one. A returned 0.0 is a real price (a free plan) and is deliberately distinguishable from
+     * null, which means "this provider does not price this plan".
+     */
+    suspend fun getPlanPrice(planId: String): Double? = null
+
+    /**
+     * Lists the plans this provider offers, with prices, for the change-plan picker.
+     *
+     * Defaults to empty: a provider that cannot list plans must not be forced to invent them.
+     * An empty list is meaningful and callers must render it as "no plans available" rather than
+     * substituting placeholder plans with placeholder prices.
+     */
+    suspend fun listPackages(): List<AccountPackage> = emptyList()
+
+    /**
+     * Renames a subscriber at the provider, addressed by username.
+     *
+     * Defaults to Unsupported so a provider that cannot rename cannot silently accept one. This
+     * exists on the seam because the provider-neutral UI offers the action for every provider:
+     * without it, an Alamiry rename fell through to the EarthLink gateway and wrote the SAMM
+     * subscriber id to the wrong ISP.
+     */
+    suspend fun updateDisplayName(username: String, displayName: String): SasOperationResult =
+        SasOperationResult.Unsupported("Renaming a subscriber is not supported by this provider")
+
+    /**
+     * Extends a subscriber's expiry by an exact number of days, addressed by username.
+     *
+     * Defaults to Unsupported. A provider whose extension is a deposit-authorised operation with
+     * its own duration semantics (EarthLink) must keep using that path rather than this one.
+     *
+     * [days] must be strictly positive; zero or negative is rejected rather than silently
+     * shortening a subscriber's expiry.
+     */
+    suspend fun extendSubscriberByDays(username: String, days: Int, nowMs: Long = System.currentTimeMillis()): SasOperationResult =
+        SasOperationResult.Unsupported("Extending by a number of days is not supported by this provider")
+
+    /**
+     * The currency label this provider reports (e.g. "IQD"), or null when it does not report one.
+     * Display must follow the provider rather than assume a currency.
+     */
+    suspend fun getCurrencyLabel(): String? = null
 }

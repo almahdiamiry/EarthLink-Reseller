@@ -46,6 +46,8 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.text.KeyboardActions
@@ -53,6 +55,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -63,8 +67,47 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.EarthlinkApp
 import com.alamiry.earthlinkreseller.R
 import com.example.ui.viewmodels.EarthlinkSearchViewModel
+import com.example.core.network.SasSubscriberPresence
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
+
+/**
+ * Whether a provider row in the "Change provider" dialog may be picked.
+ *
+ * Two independent reasons a row may be unpickable: the provider has no credentials (a local fact
+ * that cannot be transiently false), or the provider was successfully asked and definitively does
+ * not carry this username. [SasSubscriberPresence.UNKNOWN] is deliberately NOT a third reason: the
+ * lookup failed, which establishes nothing about the subscriber, and greying the row out on it is
+ * how an offline device ends up telling the operator that a subscriber is on neither ISP. An unknown
+ * row therefore stays pickable and carries an explicit "could not verify" notice instead.
+ */
+internal fun isProviderRowSelectable(isConfigured: Boolean, presence: SasSubscriberPresence?): Boolean =
+    isConfigured && presence != SasSubscriberPresence.ABSENT
+
+/**
+ * The trailing notice on a provider row, or null when there is nothing to report.
+ *
+ * "Could not verify" and "not on this provider" must stay different sentences: an operator who reads
+ * the first knows to try again, an operator who reads the second has been told a fact the app never
+ * established.
+ */
+internal fun providerRowNotice(
+    isConfigured: Boolean,
+    presence: SasSubscriberPresence?,
+    currentLang: String
+): String? = when {
+    !isConfigured -> if (currentLang == "ar") "غير مسجل الدخول" else "Not logged in"
+    presence == SasSubscriberPresence.ABSENT ->
+        if (currentLang == "ar") "غير موجود لدى المزود" else "Not on this provider"
+    presence == SasSubscriberPresence.UNKNOWN ->
+        if (currentLang == "ar") "تعذّر التحقق" else "Could not verify"
+    else -> null
+}
+
+/** An unverified row is warned about rather than greyed out, so it needs its own colour. */
+internal fun providerNoticeColor(isConfigured: Boolean, presence: SasSubscriberPresence?): Color =
+    if (isConfigured && presence == SasSubscriberPresence.UNKNOWN) Color(0xFFFF9F0A)
+    else Color.White.copy(alpha = 0.4f)
 
 object HistoryPresentationManager {
     fun prepareDisplayLedgerList(rawList: List<com.example.core.model.LocalLedgerEntry>): List<com.example.core.model.LocalLedgerEntry> {
@@ -214,6 +257,50 @@ object HistoryPresentationManager {
     }
 }
 
+object AccountMaterializationHelper {
+    /**
+     * Resolves the target operation provider when materializing or working with a subscriber account.
+     * Hierarchy:
+     * 1. matchingAccount?.operationProvider (preserves existing provider for persisted accounts)
+     * 2. originProvider (preserves provider identity of external subscriber, e.g. from SAMM/ALAMIRY or EARTHLINK)
+     * 3. fallbackSelectedProvider (e.g. viewModel.selectedProvider.value)
+     */
+    fun resolveOperationProvider(
+        matchingAccount: com.example.core.model.LocalAccount?,
+        originProvider: String?,
+        fallbackSelectedProvider: String
+    ): String {
+        return matchingAccount?.operationProvider
+            ?: originProvider
+            ?: fallbackSelectedProvider
+    }
+
+    /**
+     * Helper to materialize a LocalAccount from UserDetail when matchingAccount is null.
+     */
+    fun materialize(
+        matchingAccount: com.example.core.model.LocalAccount?,
+        user: com.example.core.model.UserDetail,
+        fallbackSelectedProvider: String,
+        displayName: String = user.customerFullName ?: user.userID,
+        packageName: String = user.packageName ?: "Default",
+        currentPriceIqd: Double = 0.0,
+        id: String? = null
+    ): com.example.core.model.LocalAccount {
+        return matchingAccount ?: com.example.core.model.LocalAccount(
+            id = id ?: java.util.UUID.randomUUID().toString(),
+            earthlinkUsername = user.userID,
+            displayName = displayName,
+            phone1 = user.mobileNumber,
+            packageName = packageName,
+            currentPriceIqd = currentPriceIqd,
+            operationProvider = resolveOperationProvider(matchingAccount, user.originProvider, fallbackSelectedProvider),
+            createdAt = System.currentTimeMillis()
+        )
+    }
+}
+
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UserDetailScreenV2(
@@ -232,18 +319,36 @@ fun UserDetailScreenV2(
     val success by viewModel.actionSuccess.collectAsStateWithLifecycle()
 
     val targetUsername = detail?.userID?.trim() ?: ""
-    val matchingAccountFlow = remember(userIndex, targetUsername) {
-        if (targetUsername.isNotEmpty() || (userIndex != null && userIndex > 0)) {
-            viewModel.getAccountByUsernameOrIdForUser(userIndex, targetUsername)
+    val targetProvider = detail?.originProvider ?: viewModel.selectedProvider.value
+    val matchingAccountFlow = remember(userIndex, targetUsername, targetProvider) {
+        if (targetUsername.isNotEmpty()) {
+            viewModel.getAccountByUsernameOrId(targetUsername, targetProvider)
+        } else if (userIndex != null && userIndex > 0) {
+            viewModel.getAccountByUsernameOrIdForUser(userIndex, "")
         } else {
             emptyFlow()
         }
     }
     val matchingAccount by matchingAccountFlow.collectAsStateWithLifecycle(initialValue = null)
+    val packagesList by viewModel.packages.collectAsStateWithLifecycle()
 
     var showRefillDialog by rememberSaveable { mutableStateOf(false) }
     var showDepositDialog by rememberSaveable { mutableStateOf(false) }
     var showExtendDialog by rememberSaveable { mutableStateOf(false) }
+
+    // Kept OUTSIDE the dialog's if-block and keyed on the flag, so that flipping the flag re-runs
+    // the initializer. Inside the block the key is always true, so rememberSaveable would restore
+    // the previously typed value from the SaveableStateRegistry instead of starting from 1.
+    // The default is pre-selected (TextRange(0, n)) so the first digit the operator taps REPLACES
+    // it: tapping "3" must give 3 days, not 13.
+    var extendDaysField by rememberSaveable(showExtendDialog, stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(
+            TextFieldValue(
+                text = com.example.ui.viewmodels.EarthlinkSearchViewModel.DEFAULT_EXTEND_DAYS.toString(),
+                selection = TextRange(0, 1)
+            )
+        )
+    }
     var showPassToolsDialog by rememberSaveable { mutableStateOf(false) }
     var showDebtDialog by rememberSaveable { mutableStateOf(false) }
     var showHistoryDialog by rememberSaveable { mutableStateOf(false) }
@@ -346,7 +451,6 @@ fun UserDetailScreenV2(
     if (showRefillDialog) {
         val user = detail
         if (user != null) {
-            val packagesList by viewModel.packages.collectAsStateWithLifecycle()
             val matchedPackagePrice = remember(user.packageName, packagesList) {
                 val name = user.packageName?.trim()?.lowercase() ?: ""
                 val found = packagesList.find { it.accountName.trim().lowercase() == name }
@@ -354,9 +458,14 @@ fun UserDetailScreenV2(
             }
             val initialSuggestedPrice = remember(matchingAccount, matchedPackagePrice) {
                 val p = matchingAccount?.currentPriceIqd ?: matchedPackagePrice
-                if (p != null && p > 0.0) {
-                    if (p % 1000.0 == 0.0) "${(p / 1000.0).toLong()}" else "${p / 1000.0}"
-                } else "40"
+                when {
+                    p == null -> ""
+                    // A free plan must not be prefilled with a fabricated amount; leave it empty
+                    // so the operator types the real figure (or skips the top-up entirely).
+                    p <= 0.0 -> ""
+                    p % 1000.0 == 0.0 -> "${(p / 1000.0).toLong()}"
+                    else -> "${p / 1000.0}"
+                }
             }
             var priceInput by rememberSaveable { mutableStateOf(initialSuggestedPrice) }
             var isWasilChecked by rememberSaveable { mutableStateOf(false) }
@@ -374,38 +483,46 @@ fun UserDetailScreenV2(
             }
             
             var resellerBalance by rememberSaveable { mutableStateOf<Double?>(null) }
-            var packageCost by rememberSaveable { mutableStateOf(20000.0) }
+            var packageCost by rememberSaveable { mutableStateOf<Double?>(null) }
+            var packageCurrency by rememberSaveable { mutableStateOf<String?>(null) }
             var isLoadingApiData by rememberSaveable { mutableStateOf(true) }
             
             val currentPackages by viewModel.packages.collectAsStateWithLifecycle()
-            LaunchedEffect(user.userIndex, currentPackages) {
-                // GAP-1: the read and its catch are now one testable call, so the failure branch
-                // is reachable from a JVM test instead of being locked inside a LaunchedEffect.
-                // Behaviour is unchanged: CancellationException is still rethrown, because
-                // BalanceAfterRenewal.readBalance rethrows it exactly as the inline catch did.
-                resellerBalance = com.example.core.ledger.BalanceAfterRenewal.readBalance { viewModel.getResellerBalance() }
-                try {
-                    val name = user.packageName?.trim()?.lowercase() ?: ""
-                    val foundPackage = currentPackages.find { it.accountName.trim().lowercase() == name }
-                    val acctIdx = user.accountIndex ?: foundPackage?.accountIndex
-                    
-                    if (acctIdx != null && acctIdx > 0) {
-                        val fetchedCost = viewModel.getAccountCost(acctIdx)
-                        if (fetchedCost > 0.0) {
-                            packageCost = fetchedCost
+            val currentOpProvider = matchingAccount?.operationProvider
+                ?: user.originProvider
+                ?: viewModel.selectedProvider.value
+            LaunchedEffect(user.userIndex, currentPackages, currentOpProvider) {
+                if (currentOpProvider == com.example.core.model.SasProviders.EARTHLINK) {
+                    resellerBalance = com.example.core.ledger.BalanceAfterRenewal.readBalance { viewModel.getResellerBalance() }
+                    try {
+                        val name = user.packageName?.trim()?.lowercase() ?: ""
+                        val foundPackage = currentPackages.find { it.accountName.trim().lowercase() == name }
+                        val acctIdx = user.accountIndex ?: foundPackage?.accountIndex
+                        
+                        if (acctIdx != null && acctIdx > 0) {
+                            val fetchedCost = viewModel.getAccountCost(acctIdx)
+                            if (fetchedCost > 0.0) {
+                                packageCost = fetchedCost
+                            } else {
+                                val price = foundPackage?.price.takeIf { it != null && it > 0.0 } ?: 0.0
+                                packageCost = price
+                            }
                         } else {
                             val price = foundPackage?.price.takeIf { it != null && it > 0.0 } ?: 0.0
                             packageCost = price
                         }
-                    } else {
+                    } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+                        val name = user.packageName?.trim()?.lowercase() ?: ""
+                        val foundPackage = currentPackages.find { it.accountName.trim().lowercase() == name }
                         val price = foundPackage?.price.takeIf { it != null && it > 0.0 } ?: 0.0
                         packageCost = price
                     }
-                } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                    val name = user.packageName?.trim()?.lowercase() ?: ""
-                    val foundPackage = currentPackages.find { it.accountName.trim().lowercase() == name }
-                    val price = foundPackage?.price.takeIf { it != null && it > 0.0 } ?: 0.0
-                    packageCost = price
+                } else {
+                    resellerBalance = null
+                    // Alamiry prices its own plans and reports its own currency; ask the provider
+                    // instead of inventing a figure or a currency.
+                    packageCost = viewModel.getProviderPlanCost(user.accountIndex?.toString())
+                    packageCurrency = viewModel.getProviderCurrency()
                 }
                 isLoadingApiData = false
             }
@@ -418,7 +535,8 @@ fun UserDetailScreenV2(
             val balanceAfter = com.example.core.ledger.BalanceAfterRenewal.compute(resellerBalance, packageCost)
 
             val performRefill: () -> Unit = {
-                if (!viewModel.hasDepositPassword()) {
+                val isEarthlink = currentOpProvider == com.example.core.model.SasProviders.EARTHLINK
+                if (isEarthlink && !viewModel.hasDepositPassword()) {
                     android.widget.Toast.makeText(
                         context,
                         if (currentLang == "ar") "الرجاء ضبط كلمة مرور الصندوق في الإعدادات أولاً!" else "Please set your deposit password in settings first!",
@@ -442,6 +560,7 @@ fun UserDetailScreenV2(
                             phone1 = user.mobileNumber,
                             packageName = user.packageName ?: "Default",
                             currentPriceIqd = parsedPrice,
+                            operationProvider = currentOpProvider,
                             createdAt = System.currentTimeMillis()
                         )
                         
@@ -450,13 +569,23 @@ fun UserDetailScreenV2(
                         val isWasil = isWasilChecked
                         val accToUse = matchingAccount ?: finalAcc
 
-                        viewModel.refillUser(
-                            userId = user.userID,
-                            price = parsedPrice,
-                            note = noteVal,
-                            isWasil = isWasil,
-                            account = accToUse
-                        )
+                        if (isEarthlink) {
+                            viewModel.refillUser(
+                                userId = user.userID,
+                                price = parsedPrice,
+                                note = noteVal,
+                                isWasil = isWasil,
+                                account = accToUse
+                            )
+                        } else {
+                            viewModel.renewSammUser(
+                                userId = user.userID,
+                                price = parsedPrice,
+                                note = noteVal,
+                                isWasil = isWasil,
+                                account = accToUse
+                            )
+                        }
                     }
                 }
             }
@@ -626,60 +755,82 @@ fun UserDetailScreenV2(
                                             fontSize = 13.sp
                                         )
                                         Text(
-                                            text = if (isLoadingApiData) "..." else "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(packageCost.toDouble())} د.ع",
+                                            text = if (isLoadingApiData) "..."
+                                            else "\u200E${com.example.ui.screens.SubscriberDisplayRules.formatPlanPrice(packageCost, packageCurrency, currentLang)}",
                                             color = Color.White,
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.Bold
                                         )
                                     }
                                     
-                                    HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-                                    
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = if (currentLang == "ar") "رصيد اللوحة الحالي" else "Current Panel Balance",
-                                            color = Color(0xFF9CA3AF),
-                                            fontSize = 13.sp
-                                        )
-                                        Text(
-                                            text = if (isLoadingApiData) "..." else if (resellerBalance != null) "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(resellerBalance!!.toDouble())} د.ع" else "—",
-                                            color = Color.White,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                    
-                                    HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-                                    
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = if (currentLang == "ar") "رصيد اللوحة بعد التجديد" else "Balance After Renewal",
-                                            color = Color(0xFF9CA3AF),
-                                            fontSize = 13.sp
-                                        )
-                                        val balanceColor = when (balanceAfter) {
-                                            is com.example.core.ledger.BalanceAfterRenewal.Result.Unknown -> Color.White.copy(alpha = 0.5f)
-                                            is com.example.core.ledger.BalanceAfterRenewal.Result.Known -> if (balanceAfter.amount >= 0) Color(0xFF34D399) else Color(0xFFF87171)
+                                    if (currentOpProvider == com.example.core.model.SasProviders.EARTHLINK) {
+                                        HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+                                        
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = if (currentLang == "ar") "رصيد اللوحة الحالي" else "Current Panel Balance",
+                                                color = Color(0xFF9CA3AF),
+                                                fontSize = 13.sp
+                                            )
+                                            Text(
+                                                text = if (isLoadingApiData) "..." else if (resellerBalance != null) "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(resellerBalance!!.toDouble())} د.ع" else "—",
+                                                color = Color.White,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
                                         }
-                                        Text(
-                                            text = when {
-                                                isLoadingApiData -> "..."
-                                                balanceAfter is com.example.core.ledger.BalanceAfterRenewal.Result.Known ->
-                                                    "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(balanceAfter.amount)} د.ع"
-                                                else -> "—"
-                                            },
-                                            color = balanceColor,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
+                                        
+                                        HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+                                        
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = if (currentLang == "ar") "رصيد اللوحة بعد التجديد" else "Balance After Renewal",
+                                                color = Color(0xFF9CA3AF),
+                                                fontSize = 13.sp
+                                            )
+                                            val balanceColor = when (balanceAfter) {
+                                                is com.example.core.ledger.BalanceAfterRenewal.Result.Unknown -> Color.White.copy(alpha = 0.5f)
+                                                is com.example.core.ledger.BalanceAfterRenewal.Result.Known -> if (balanceAfter.amount >= 0) Color(0xFF34D399) else Color(0xFFF87171)
+                                            }
+                                            Text(
+                                                text = when {
+                                                    isLoadingApiData -> "..."
+                                                    balanceAfter is com.example.core.ledger.BalanceAfterRenewal.Result.Known ->
+                                                        "\u200E${com.example.core.ledger.MoneyParser.formatIqdForDisplay(balanceAfter.amount)} د.ع"
+                                                    else -> "—"
+                                                },
+                                                color = balanceColor,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    } else {
+                                        HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = if (currentLang == "ar") "مزود الخدمة" else "Service Provider",
+                                                color = Color(0xFF9CA3AF),
+                                                fontSize = 13.sp
+                                            )
+                                            Text(
+                                                text = if (currentLang == "ar") "سام" else "SAMM",
+                                                color = Color(0xFFD1C4E9),
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -830,11 +981,15 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                 } else {
                     focusManager.clearFocus(force = true)
                     keyboardController?.hide()
+                    val currentOpProvider = matchingAccount?.operationProvider
+                        ?: user.originProvider
+                        ?: viewModel.selectedProvider.value
                     val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
                         earthlinkUsername = user.userID,
                         displayName = user.customerFullName ?: user.userID,
                         phone1 = user.mobileNumber,
                         packageName = user.packageName ?: "Default",
+                        operationProvider = currentOpProvider,
                         createdAt = System.currentTimeMillis()
                     )
                     
@@ -1124,17 +1279,136 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
         }
     }
 
-    if (showExtendDialog) {
-        ConfirmationDialog(
-            title = if (currentLang == "ar") "تمديد صلاحية الحساب" else "Extend Subscriber Duration",
-            message = if (currentLang == "ar") "تأكيد إضافة وتمديد معايير المدة الزمنية للحساب ${detail?.userID}؟" else "Confirm extending the duration parameter of account ${detail?.userID}?",
-            needsPasswordField = false,
-            onCancel = { showExtendDialog = false },
-            onConfirm = {
-                showExtendDialog = false
-                viewModel.extendUser(userIndex, detail?.userID ?: "")
+if (showExtendDialog) {
+        val user = detail
+        if (user != null) {
+            val focusManager = LocalFocusManager.current
+            val keyboardController = LocalSoftwareKeyboardController.current
+            // Keyed on showExtendDialog (declared above) so every opening starts from the default.
+            val daysField = extendDaysField
+            val daysInput = daysField.text
+            // Plain remember, not rememberSaveable: a restored "submitting" flag from a previous opening
+            // would leave the OK button permanently disabled.
+            var isSubmitting by remember { mutableStateOf(false) }
+
+            val focusRequester = remember { FocusRequester() }
+            LaunchedEffect(Unit) {
+                kotlinx.coroutines.delay(200)
+                focusRequester.requestFocus()
+                keyboardController?.show()
             }
-        )
+
+            AlertDialog(
+                onDismissRequest = {
+                    focusManager.clearFocus(force = true)
+                    keyboardController?.hide()
+                    showExtendDialog = false
+                },
+                title = {
+                    Text(
+                        if (currentLang == "ar") "تمديد مدة المشترك" else "Extend Subscriber Duration",
+                        color = Color.White
+                    )
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            if (currentLang == "ar") "كم يومًا تريد إضافة هذه المدة إلى حساب ${user.userID}؟"
+                            else "How many days should be added to ${user.userID}?",
+                            color = Color.White.copy(alpha = 0.85f)
+                        )
+                        OutlinedTextField(
+                            value = daysField,
+                            onValueChange = { updated ->
+                                val digits = updated.text.filter { it.isDigit() }.take(3)
+                                extendDaysField = if (digits == updated.text) {
+                                    updated
+                                } else {
+                                    TextFieldValue(
+                                        text = digits,
+                                        selection = TextRange(digits.length)
+                                    )
+                                }
+                            },
+                            singleLine = true,
+                            isError = daysInput.toIntOrNull() == null || (daysInput.toIntOrNull() ?: 0) < 1,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Done
+                            ),
+                            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(force = true) }),
+                            label = {
+                                Text(
+                                    if (currentLang == "ar") "عدد الأيام" else "Days",
+                                    color = Color(0xFF9CA3AF)
+                                )
+                            },
+                            // Without explicit colours the field inherits the light-theme defaults,
+                            // which render the value light grey on this dark surface - unreadable.
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                cursorColor = Color(0xFF90CAF9),
+                                focusedBorderColor = Color(0xFF3B82F6),
+                                unfocusedBorderColor = Color(0xFF374151),
+                                focusedLabelColor = Color(0xFF90CAF9),
+                                unfocusedLabelColor = Color(0xFF9CA3AF),
+                                focusedContainerColor = Color(0xFF1F2937),
+                                unfocusedContainerColor = Color(0xFF1F2937)
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(focusRequester)
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val days = daysInput.toIntOrNull() ?: 0
+                            if (days < 1) {
+                                android.widget.Toast.makeText(
+                                    context,
+                                    if (currentLang == "ar") "أدخل عدد أيام صحيح!" else "Enter a valid number of days!",
+                                    android.widget.Toast.LENGTH_LONG
+                                ).show()
+                                return@Button
+                            }
+                            isSubmitting = true
+                            focusManager.clearFocus(force = true)
+                            keyboardController?.hide()
+                            showExtendDialog = false
+                            viewModel.extendUser(userIndex, user.userID, days = days)
+                        },
+                        enabled = !isSubmitting,
+                        modifier = Modifier.height(48.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF90CAF9),
+                            contentColor = Color(0xFF0B1220)
+                        ),
+                        shape = RoundedCornerShape(24.dp)
+                    ) {
+                        Text(
+                            text = if (currentLang == "ar") "تمديد $daysInput يوم" else "Extend $daysInput day(s)",
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        focusManager.clearFocus(force = true)
+                        keyboardController?.hide()
+                        showExtendDialog = false
+                    }) {
+                        Text(if (currentLang == "ar") "إلغاء" else "Cancel", color = Color.White.copy(alpha = 0.7f))
+                    }
+                },
+                containerColor = Color(0xFF111827),
+                titleContentColor = Color.White,
+                textContentColor = Color.White
+            )
+        }
     }
 
     if (showDebtDialog) {
@@ -1178,11 +1452,15 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                 } else {
                     focusManager.clearFocus(force = true)
                     keyboardController?.hide()
+                    val currentOpProvider = matchingAccount?.operationProvider
+                        ?: user.originProvider
+                        ?: viewModel.selectedProvider.value
                     val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
                         earthlinkUsername = user.userID,
                         displayName = user.customerFullName ?: user.userID,
                         phone1 = user.mobileNumber,
                         packageName = user.packageName ?: "Default",
+                        operationProvider = currentOpProvider,
                         createdAt = System.currentTimeMillis()
                     )
                     
@@ -1485,12 +1763,16 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                             },
                             actions = {
                                 IconButton(onClick = {
+                                    val currentOpProvider = matchingAccount?.operationProvider
+                                        ?: detail?.originProvider
+                                        ?: viewModel.selectedProvider.value
                                     val accountToExport = matchingAccount ?: com.example.core.model.LocalAccount(
                                         id = "temp_acc",
                                         earthlinkUsername = detail?.userID ?: "demo_user",
                                         displayName = detail?.customerFullName ?: detail?.userID ?: "Demo User",
                                         phone1 = detail?.mobileNumber,
                                         packageName = detail?.packageName ?: "Default",
+                                        operationProvider = currentOpProvider,
                                         createdAt = System.currentTimeMillis()
                                     )
                                     com.example.core.sync.PdfStatementGenerator.generateAndShare(
@@ -1723,11 +2005,15 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                         keyboardController?.hide()
                         val user = detail
                         if (user != null) {
+                            val currentOpProvider = matchingAccount?.operationProvider
+                                ?: user.originProvider
+                                ?: viewModel.selectedProvider.value
                             val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
                                 earthlinkUsername = user.userID,
                                 displayName = user.customerFullName ?: user.userID,
                                 phone1 = user.mobileNumber,
                                 packageName = user.packageName ?: "Default",
+                                operationProvider = currentOpProvider,
                                 createdAt = System.currentTimeMillis()
                              )
                             viewModel.saveCustomerNote(finalAcc, noteText)
@@ -1899,34 +2185,32 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                         showEditProviderDialog = true
                                     }
                                 )
-                                val currentOpProvider = matchingAccount?.operationProvider ?: com.example.core.model.SasProviders.EARTHLINK
-                                if (currentOpProvider == com.example.core.model.SasProviders.EARTHLINK) {
-                                    HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.8.dp)
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                if (currentLang == "ar") "تمديد المشترك" else "Extend User",
-                                                color = Color.White,
-                                                fontWeight = FontWeight.Medium,
-                                                fontSize = 14.sp
-                                            )
-                                        },
-                                        leadingIcon = {
-                                            Icon(
-                                                imageVector = Icons.Default.HourglassTop,
-                                                contentDescription = null,
-                                                tint = Color(0xFFF59E0B),
-                                                modifier = Modifier.size(20.dp)
-                                            )
-                                        },
-                                        onClick = {
-                                            expanded = false
-                                            showExtendDialog = true
-                                        }
-                                    )
-                                }
+                                val currentOpProvider = matchingAccount?.operationProvider ?: detail?.originProvider ?: viewModel.selectedProvider.value
                                 HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.8.dp)
-                                val isSuspended = detail?.accountStatus?.trim()?.lowercase() == "suspendedbyagent"
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            if (currentLang == "ar") "تمديد المشترك" else "Extend User",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 14.sp
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.HourglassTop,
+                                            contentDescription = null,
+                                            tint = Color(0xFFF59E0B),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    },
+                                    onClick = {
+                                        expanded = false
+                                        showExtendDialog = true
+                                    }
+                                )
+                                HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.8.dp)
+                                val isSuspended = SubscriberDisplayRules.isSuspended(detail?.accountStatus)
                                 DropdownMenuItem(
                                     text = { 
                                         Text(
@@ -1977,10 +2261,12 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                     }
                                 )
                                 HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.8.dp)
+                                val isSamm = currentOpProvider == com.example.core.model.SasProviders.ALAMIRY
                                 DropdownMenuItem(
                                     text = {
                                         Text(
-                                            if (currentLang == "ar") "تعديل كلمات المرور" else "Edit Passwords",
+                                            if (currentLang == "ar") (if (isSamm) "تعديل كلمة المرور" else "تعديل كلمات المرور")
+                                            else (if (isSamm) "Edit Password" else "Edit Passwords"),
                                             color = Color.White,
                                             fontWeight = FontWeight.Medium,
                                             fontSize = 14.sp
@@ -2141,32 +2427,14 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                         user.accountExpirationDate,
                         user.expirationDate
                     ).firstOrNull { it.isNotBlank() && it != "N/A" }
-                    
-                    if (rawDate != null && rawDate.endsWith("Z")) {
-                        try {
-                            val isoFormat = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
-                            isoFormat.timeZone = java.util.TimeZone.getTimeZone("UTC")
-                            val parsed = isoFormat.parse(rawDate)
-                            if (parsed != null) {
-                                val targetFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
-                                targetFormat.timeZone = java.util.TimeZone.getTimeZone("Asia/Baghdad")
-                                targetFormat.format(parsed)
-                            } else {
-                                rawDate
-                            }
-                        } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                            rawDate
-                        }
-                    } else {
-                        rawDate
-                    }
+                    SubscriberDisplayRules.formatSubscriberExpiration(rawDate)
                 }
                 val remainingTime = remember(finalExpirationStr, user.activeDaysLeft, lang, user.accountStatus) {
                     getRemainingTime(finalExpirationStr, user.activeDaysLeft?.toString(), lang, user.accountStatus)
                 }
                 val statusClean = user.accountStatus?.trim()?.lowercase() ?: ""
                 val isExpired = remainingTime.contains("منتهي") || remainingTime.contains("Expired") || remainingTime.contains("expired")
-                val isDeactivated = statusClean == "suspendedbyagent" || statusClean == "expired" || statusClean == "منتهي"
+                val isDeactivated = SubscriberDisplayRules.isSuspended(statusClean) || statusClean == "expired" || statusClean == "منتهي"
                 val isActive = !isExpired && !isDeactivated
                 val isReallyOnline = user.onlineSession != null && 
                     user.onlineSession?.onlineStatus?.trim()?.lowercase()?.contains("offline") != true
@@ -2463,27 +2731,37 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                 
                 // Blue Identity Card
                 Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(132.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF1E88E5)),
                     shape = RoundedCornerShape(14.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .fillMaxSize()
+                            .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 12.dp)
                     ) {
+                        val bannerIsSamm = (matchingAccount?.operationProvider ?: detail?.originProvider ?: viewModel.selectedProvider.value) == com.example.core.model.SasProviders.ALAMIRY
+                        val bannerTip = if (bannerIsSamm) {
+                            if (currentLang == "ar") "مزود الخدمة: سام" else "Provider: SAMM"
+                        } else {
+                            if (currentLang == "ar") "مزود الخدمة: إيرثلنك" else "Provider: EarthLink"
+                        }
+                        val bannerContext = LocalContext.current
                         Text(
-                            text = "E",
+                            text = if (bannerIsSamm) "S" else "E",
                             fontSize = 44.sp,
                             fontWeight = FontWeight.Black,
                             color = Color.White.copy(alpha = 0.22f),
-                            modifier = Modifier.align(Alignment.TopEnd)
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .clickable {
+                                    android.widget.Toast.makeText(bannerContext, bannerTip, android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                                .semantics { contentDescription = bannerTip }
                         )
 
                         Column(
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.SpaceBetween,
                             horizontalAlignment = Alignment.Start
                         ) {
@@ -2497,21 +2775,6 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                         fontSize = 11.5.sp,
                                         color = Color.White.copy(alpha = 0.8f)
                                     )
-                                    val currentOpProvider = matchingAccount?.operationProvider ?: com.example.core.model.SasProviders.EARTHLINK
-                                    Surface(
-                                        shape = RoundedCornerShape(4.dp),
-                                        color = if (currentOpProvider == com.example.core.model.SasProviders.ALAMIRY) Color(0xFF7C4DFF).copy(alpha = 0.35f) else Color.White.copy(alpha = 0.2f),
-                                        border = BorderStroke(0.8.dp, if (currentOpProvider == com.example.core.model.SasProviders.ALAMIRY) Color(0xFFB388FF) else Color.White.copy(alpha = 0.4f)),
-                                        modifier = Modifier.clip(RoundedCornerShape(4.dp)).clickable { showEditProviderDialog = true }
-                                    ) {
-                                        Text(
-                                            text = currentOpProvider,
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp)
-                                        )
-                                    }
                                 }
                                 Text(
                                     text = displayNameToUse,
@@ -2578,47 +2841,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        // --- GROUP 1: Status & Session Information ---
-
-                        // Provider
-                        val currentOpProvider = matchingAccount?.operationProvider ?: com.example.core.model.SasProviders.EARTHLINK
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(6.dp))
-                                .clickable { showEditProviderDialog = true }
-                                .padding(vertical = 1.5.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = if (currentLang == "ar") "مزود الخدمة" else "Provider",
-                                color = Color(0xFF8E8E93),
-                                fontSize = 13.5.sp
-                            )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = if (currentOpProvider == com.example.core.model.SasProviders.ALAMIRY) Color(0xFF7C4DFF).copy(alpha = 0.2f) else Color(0xFF0A84FF).copy(alpha = 0.2f),
-                                    border = BorderStroke(1.dp, if (currentOpProvider == com.example.core.model.SasProviders.ALAMIRY) Color(0xFFB388FF).copy(alpha = 0.5f) else Color(0xFF0A84FF).copy(alpha = 0.5f))
-                                ) {
-                                    Text(
-                                        text = currentOpProvider,
-                                        color = if (currentOpProvider == com.example.core.model.SasProviders.ALAMIRY) Color(0xFFD1C4E9) else Color(0xFF90CAF9),
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Icon(
-                                    imageVector = Icons.Default.Edit,
-                                    contentDescription = if (currentLang == "ar") "تعديل" else "Edit",
-                                    tint = Color(0xFF90CAF9),
-                                    modifier = Modifier.size(13.dp)
-                                )
-                            }
-                        }
+// --- GROUP 1: Status & Session Information ---
 
                         // Status
                         Row(
@@ -2748,6 +2971,17 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                         }
 
                         // Package Name
+                        // An ISP-linked account's plan is owned by the provider: the local row may still
+                        // carry the previous provider's plan, so it is only trusted when there is no
+                        // ISP linkage to re-read from.
+                        val localPlanFallback = matchingAccount
+                            ?.takeIf { it.ispUserIndex == null && it.ispSubscriberId == null }
+                            ?.packageName
+                        val resolvedPackageName = user.packageName?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
+                            ?: packagesList.find { it.accountIndex == user.accountIndex || it.accountIndex.toString() == user.accountIndex?.toString() }?.accountName
+                            ?: localPlanFallback?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
+                            ?: if (currentLang == "ar") "غير محدد" else "Unknown"
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -2761,7 +2995,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                 fontSize = 13.5.sp
                             )
                             Text(
-                                text = user.packageName ?: "Unknown",
+                                text = resolvedPackageName,
                                 color = Color(0xFF90CAF9),
                                 fontSize = 13.5.sp,
                                 fontWeight = FontWeight.Bold
@@ -2969,23 +3203,17 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                         userId = user.userID,
                         viewModel = viewModel,
                         currentLang = currentLang,
-                        provider = matchingAccount?.operationProvider ?: com.example.core.model.SasProviders.EARTHLINK,
+                        provider = matchingAccount?.operationProvider ?: detail?.originProvider ?: viewModel.selectedProvider.value,
                         onClose = { showPassToolsDialog = false }
                     )
                 }
 
                 if (showEditPackageDialog) {
                     val packagesList by viewModel.packages.collectAsStateWithLifecycle()
-                    val defaultPackages = remember {
-                        listOf(
-                            com.example.core.model.AccountPackage(1, "Lite", true, 30000.0),
-                            com.example.core.model.AccountPackage(2, "Economy", true, 40000.0),
-                            com.example.core.model.AccountPackage(3, "Active", true, 50000.0),
-                            com.example.core.model.AccountPackage(4, "Turbo", true, 65000.0),
-                            com.example.core.model.AccountPackage(5, "Business", true, 100000.0)
-                        )
-                    }
-                    val displayPackages = if (packagesList.isEmpty()) defaultPackages else packagesList
+                    // Real plans from the account's own provider only. An empty list means the
+                    // provider could not be reached, and inventing placeholder plans with
+                    // placeholder prices is how a free plan came to read as 40,000 IQD.
+                    val displayPackages = packagesList
 
                     var selectedPkg by remember {
                         mutableStateOf(
@@ -3052,12 +3280,16 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                 onClick = {
                                     showEditPackageDialog = false
                                     selectedPkg?.let { pkg ->
+                                        val currentOpProvider = matchingAccount?.operationProvider
+                                            ?: user.originProvider
+                                            ?: viewModel.selectedProvider.value
                                         val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
                                             earthlinkUsername = user.userID,
                                             displayName = displayNameToUse,
                                             phone1 = user.mobileNumber,
                                             packageName = pkg.accountName,
-                                            currentPriceIqd = pkg.price ?: 0.0
+                                            currentPriceIqd = pkg.price ?: 0.0,
+                                            operationProvider = currentOpProvider
                                         )
                                         viewModel.changeAccountType(
                                             userIndex = user.userIndex,
@@ -3116,12 +3348,16 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                     keyboardController?.hide()
                                     showEditDisplayNameDialog = false
                                     if (newName.isNotBlank()) {
+                                        val currentOpProvider = matchingAccount?.operationProvider
+                                            ?: user.originProvider
+                                            ?: viewModel.selectedProvider.value
                                         val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
                                             earthlinkUsername = user.userID,
                                             displayName = newName,
                                             phone1 = user.mobileNumber,
                                             packageName = user.packageName ?: "Unknown",
-                                            currentPriceIqd = 45000.0
+                                            currentPriceIqd = 45000.0,
+                                            operationProvider = currentOpProvider
                                         )
                                         viewModel.updateUserDisplayName(
                                             userIndex = userIndex,
@@ -3147,8 +3383,10 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                 }
 
                 if (showEditProviderDialog) {
-                    val currentOpProvider = matchingAccount?.operationProvider ?: com.example.core.model.SasProviders.EARTHLINK
-                    var targetProvider by rememberSaveable { mutableStateOf(currentOpProvider) }
+                    val currentOpProvider = matchingAccount?.operationProvider
+                        ?: user.originProvider
+                        ?: viewModel.selectedProvider.value
+                    var targetProvider by remember(showEditProviderDialog, currentOpProvider) { mutableStateOf(currentOpProvider) }
                     var providerChangeError by remember { mutableStateOf<String?>(null) }
                     var isCheckingInFlight by remember { mutableStateOf(false) }
                     val coroutineScope = rememberCoroutineScope()
@@ -3164,8 +3402,8 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 // Warning Card with EXACT required text
                                 Surface(
-                                    color = Color(0xFFF59E0B).copy(alpha = 0.12f),
-                                    border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.4f)),
+                                    color = Color(0xFFFF9F0A).copy(alpha = 0.12f),
+                                    border = BorderStroke(1.dp, Color(0xFFFF9F0A).copy(alpha = 0.4f)),
                                     shape = RoundedCornerShape(10.dp),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
@@ -3174,8 +3412,11 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                         verticalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
                                         Text(
-                                            text = "Changing provider changes where future ISP operations are sent.\nThis does not migrate the external subscriber.\nLocal history remains unchanged.\nPending operations keep their original provider.",
-                                            color = Color(0xFFF59E0B),
+                                            text = if (currentLang == "ar")
+                                                "تغيير المزود يحدد أين تُرسَل عمليات مزود الخدمة اللاحقة.\nلا ينقل المشترك إلى المزود الخارجي.\nالسجل المحلي يبقى كما هو.\nالعمليات المعلقة تحتفظ بمزودها الأصلي."
+                                            else
+                                                "Changing provider changes where future ISP operations are sent.\nThis does not migrate the external subscriber.\nLocal history remains unchanged.\nPending operations keep their original provider.",
+                                            color = Color(0xFFFF9F0A),
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Medium,
                                             lineHeight = 17.sp
@@ -3190,22 +3431,40 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                     color = Color.White
                                 )
 
-                                listOf(
-                                    com.example.core.model.SasProviders.EARTHLINK to if (currentLang == "ar") "إيرثلنك (EARTHLINK)" else "EarthLink (EARTHLINK)",
-                                    com.example.core.model.SasProviders.ALAMIRY to if (currentLang == "ar") "العامري / سام (ALAMIRY)" else "Alamiry / SAMM (ALAMIRY)"
-                                ).forEach { (provKey, provLabel) ->
-                                    val isSelected = targetProvider == provKey
+val access = prefs.getProviderAccessState()
+                                    // null map = not looked up yet, so the row stays pickable while loading.
+                                    var providerPresence by remember { mutableStateOf<Map<String, SasSubscriberPresence>?>(null) }
+                                    LaunchedEffect(showEditProviderDialog, user.userID) {
+                                        providerPresence = if (showEditProviderDialog) {
+                                            viewModel.checkProviderPresence(user.userID)
+                                        } else {
+                                            null
+                                        }
+                                    }
+                                    listOf(
+                                        com.example.core.model.SasProviders.EARTHLINK to if (currentLang == "ar") "إيرثلنك (EARTHLINK)" else "EarthLink (EARTHLINK)",
+                                        com.example.core.model.SasProviders.ALAMIRY to if (currentLang == "ar") "سام (SAMM)" else "SAMM (SAMM)"
+                                    ).forEach { (provKey, provLabel) ->
+                                        val isConfigured = if (provKey == com.example.core.model.SasProviders.EARTHLINK)
+                                            access.hasEarthlink else access.hasSamm
+                                        val presence = providerPresence?.get(provKey)
+                                        val isAvailable = isProviderRowSelectable(isConfigured, presence)
+                                    val isSelected = targetProvider == provKey && isAvailable
                                     Surface(
                                         shape = RoundedCornerShape(10.dp),
                                         color = if (isSelected) Color(0xFF0A84FF).copy(alpha = 0.15f) else Color(0xFF161E27),
                                         border = BorderStroke(
                                             1.dp,
-                                            if (isSelected) Color(0xFF0A84FF) else Color.White.copy(alpha = 0.08f)
+                                            when {
+                                                isSelected -> Color(0xFF0A84FF)
+                                                !isAvailable -> Color.White.copy(alpha = 0.04f)
+                                                else -> Color.White.copy(alpha = 0.08f)
+                                            }
                                         ),
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clip(RoundedCornerShape(10.dp))
-                                            .clickable {
+                                            .clickable(enabled = isAvailable) {
                                                 targetProvider = provKey
                                                 providerChangeError = null
                                             }
@@ -3227,10 +3486,17 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                             )
                                             Text(
                                                 text = provLabel,
-                                                color = Color.White,
+                                                color = if (isAvailable) Color.White else Color.White.copy(alpha = 0.35f),
                                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                                 fontSize = 13.sp
                                             )
+                                            providerRowNotice(isConfigured, presence, currentLang)?.let { notice ->
+                                                Text(
+                                                    text = notice,
+                                                    color = providerNoticeColor(isConfigured, presence),
+                                                    fontSize = 11.sp
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -3294,7 +3560,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                                 onError = { err ->
                                                     providerChangeError = err
                                                 }
-                                            )
+                                            ).join()
                                         } finally {
                                             isCheckingInFlight = false
                                         }
@@ -3326,7 +3592,7 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                 }
 
                 if (showStopUserDialog) {
-                    val isSuspended = user.accountStatus?.trim()?.lowercase() == "suspendedbyagent"
+                    val isSuspended = com.example.ui.screens.SubscriberDisplayRules.isSuspended(user.accountStatus)
                     ConfirmationDialog(
                         title = if (isSuspended) {
                             if (currentLang == "ar") "تفعيل حساب المشترك" else "Activate Account"
@@ -3381,13 +3647,19 @@ val parsedPrice = (com.example.core.ledger.MoneyParser.parseUiThousandsAmount(pr
                                     focusManager.clearFocus(force = true)
                                     keyboardController?.hide()
                                     showEditCustomIpDialog = false
-                                    val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
-                                        earthlinkUsername = user.userID,
-                                        displayName = displayNameToUse,
-                                        phone1 = user.mobileNumber,
-                                        packageName = user.packageName ?: "Economy",
-                                        currentPriceIqd = 45000.0
-                                    )
+                                    val currentOpProvider = matchingAccount?.operationProvider
+                                        ?: user.originProvider
+                                        ?: viewModel.selectedProvider.value
+val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
+                            earthlinkUsername = user.userID,
+                            displayName = displayNameToUse,
+                            phone1 = user.mobileNumber,
+                            packageName = user.packageName ?: "Economy",
+                            // No invented price: unknown must read as unknown, like every other
+                            // price fallback in this file.
+                            currentPriceIqd = 0.0,
+                            operationProvider = currentOpProvider
+                        )
                                     viewModel.saveCustomNanoIp(finalAcc, newIp)
                                 }
                             ) {

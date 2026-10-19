@@ -1194,6 +1194,12 @@ class LocalAccountRepositoryImpl(
     override suspend fun findActiveAccountByUsernameOrIdOneShot(username: String): LocalAccount? {
         return accountDao.findActiveAccountByUsernameOrIdOneShot(username)
     }
+    override fun getActiveAccountByUsernameOrIdPreferringProvider(username: String, provider: String): Flow<LocalAccount?> {
+        return accountDao.getActiveAccountByUsernameOrIdPreferringProvider(username, provider).distinctUntilChanged()
+    }
+    override suspend fun findActiveAccountByUsernameOrIdPreferringProviderOneShot(username: String, provider: String): LocalAccount? {
+        return accountDao.findActiveAccountByUsernameOrIdPreferringProviderOneShot(username, provider)
+    }
 
     override suspend fun findActiveAccountsBySubscriberIdentity(userIndex: Int?, username: String?): List<LocalAccount> {
         if (userIndex != null && userIndex > 0) {
@@ -1367,7 +1373,13 @@ class LocalAccountRepositoryImpl(
         }
     }
 
-    override suspend fun reconcileIspDisappearance(authoritativeIspUserIds: Set<String>, isFetchComplete: Boolean): List<String> {
+    override suspend fun reconcileIspDisappearance(
+        authoritativeIspUserIds: Set<String>,
+        isFetchComplete: Boolean,
+        targetProvider: String,
+        migrationUsernames: Set<String>,
+        migrationTargetProvider: String?
+    ): List<String> {
         if (!isFetchComplete || authoritativeIspUserIds.isEmpty()) return emptyList()
         return com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
             com.example.core.sync.IspDisappearanceReconciler.reconcile(
@@ -1375,7 +1387,10 @@ class LocalAccountRepositoryImpl(
                 accountDao = accountDao,
                 auditDao = database.auditLogDao(),
                 authoritativeIspUserIds = authoritativeIspUserIds,
-                isFetchComplete = isFetchComplete
+                isFetchComplete = isFetchComplete,
+                targetProvider = targetProvider,
+                migrationUsernames = migrationUsernames,
+                migrationTargetProvider = migrationTargetProvider
             )
         }
     }
@@ -1543,6 +1558,10 @@ class LocalLedgerRepositoryImpl(
         return pendingDao.getUnresolvedOperations()
     }
 
+    override fun getPendingOperationsFlow(): Flow<List<PendingExternalOperation>> {
+        return pendingDao.getPendingFlow()
+    }
+
     override suspend fun markPendingOperationFailed(businessTransactionId: String, error: String) {
         com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
             database.withTransaction {
@@ -1587,6 +1606,9 @@ class LocalLedgerRepositoryImpl(
                 val op = pendingDao.getByBusinessTransactionId(businessTransactionId) ?: return@withTransaction null
                 if (op.status == "COMPLETED") {
                     return@withTransaction ledgerDao.getByIdOneShot(businessTransactionId)
+                }
+                if (op.status == "FAILED") {
+                    return@withTransaction null
                 }
 
                 
@@ -1655,7 +1677,7 @@ class LocalLedgerRepositoryImpl(
                         }
                     } else {
                         accountDao.getByIdOneShot(op.accountId)?.takeIf { !it.isHistoryOnlySubscriber }
-                            ?: accountDao.findActiveAccountByUsernameOrIdOneShot(op.accountId)
+                            ?: accountDao.findActiveAccountByUsernameOrIdPreferringProviderOneShot(op.accountId, op.operationProvider)
                             ?: throw IllegalStateException("MISSING_LOCAL_FINANCIAL_TARGET: Cannot materialize financial position for missing local account ${op.accountId}")
                     }
 
@@ -2624,6 +2646,9 @@ class LocalLedgerRepositoryImpl(
 
         for (op in unresolved) {
             if (graceWindowMs > 0 && (now - op.createdAt < graceWindowMs)) {
+                continue
+            }
+            if (op.operationProvider != com.example.core.model.SasProviders.EARTHLINK) {
                 continue
             }
 

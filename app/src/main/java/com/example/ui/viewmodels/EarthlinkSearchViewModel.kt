@@ -45,6 +45,8 @@ class EarthlinkSearchViewModel(
     )
 
     companion object {
+        /** An extension is one day unless the operator asks for more. */
+        const val DEFAULT_EXTEND_DAYS = 1
         private val isoFormat = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
         private val bghFormat = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("Asia/Baghdad") }
         private val bghFormatFull = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("Asia/Baghdad") }
@@ -54,11 +56,21 @@ class EarthlinkSearchViewModel(
         @Synchronized fun formatBghFullDate(date: java.util.Date): String = try { bghFormatFull.format(date) } catch (_: Exception) { "" }
     }
 
-    private val _selectedProvider = MutableStateFlow(com.example.core.model.SasProviders.EARTHLINK)
+    private val _selectedProvider = MutableStateFlow(
+        prefs.getLastSelectedLoginProvider()?.takeIf { com.example.core.model.SasProviders.isValid(it) }
+            ?: com.example.core.model.SasProviders.EARTHLINK
+    )
     val selectedProvider: StateFlow<String> = _selectedProvider.asStateFlow()
 
     fun setSelectedProvider(provider: String) {
+        if (_selectedProvider.value == provider) return
         _selectedProvider.value = provider
+        // The operator's provider choice has to outlive this object: leaving the user page and
+        // closing/reopening the app both rebuild the ViewModel, and a lost choice silently
+        // retargets every later search back to the login provider.
+        prefs.setLastSelectedLoginProvider(provider)
+        // Each provider publishes its own plan list, so the picker must follow the selection.
+        loadPackages()
     }
 
     private val _searchQuery = MutableStateFlow("")
@@ -107,8 +119,12 @@ class EarthlinkSearchViewModel(
 
     fun hasDepositPassword(): Boolean = !prefs.getDepositPassword().isNullOrBlank()
 
-    fun getAccountByUsernameOrId(username: String): Flow<LocalAccount?> =
-        localAccountRepository.getActiveAccountByUsernameOrId(username)
+    fun getAccountByUsernameOrId(username: String, provider: String? = null): Flow<LocalAccount?> =
+        if (!provider.isNullOrBlank()) {
+            localAccountRepository.getActiveAccountByUsernameOrIdPreferringProvider(username, provider)
+        } else {
+            localAccountRepository.getActiveAccountByUsernameOrId(username)
+        }
 
     fun getAccountByUsernameOrIdForUser(userIndex: Int?, username: String): Flow<LocalAccount?> =
         localAccountRepository.observeAccountBySubscriberIdentity(userIndex, username)
@@ -177,6 +193,26 @@ class EarthlinkSearchViewModel(
         gateway.getAccountCost(accountIndex)
     }
 
+    /**
+     * Resolves a plan's price from whichever provider owns [planId], or null when that provider
+     * does not publish one. A returned 0.0 is a real price (a free plan), never a stand-in for
+     * "unknown" - conflating the two is what made a free plan display as a fabricated amount.
+     */
+    suspend fun getProviderPlanCost(planId: String?): Double? {
+        val id = planId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val provider = _selectedProvider.value
+        if (provider == com.example.core.model.SasProviders.ALAMIRY) {
+            return withContext(Dispatchers.IO) {
+                runCatching {
+                    sasGatewayRouter.getGateway(com.example.core.model.SasProviders.ALAMIRY)
+                        .getPlanPrice(id)
+                }.getOrNull()
+            }
+        }
+        val index = id.toIntOrNull() ?: return null
+        return if (index > 0) getAccountCost(index).takeIf { it > 0.0 } else null
+    }
+
 
     fun searchUsers() = search()
 
@@ -230,7 +266,8 @@ class EarthlinkSearchViewModel(
                                 }
                             } else acc.expiresAt ?: "",
                             displayNameLower = acc.displayName,
-                            accountNameLower = acc.packageName
+                            accountNameLower = acc.packageName,
+                            originProvider = currentProvider
                         )
                     }
                 } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
@@ -255,8 +292,24 @@ class EarthlinkSearchViewModel(
                         expirationDateLower = sub.expiresAt,
                         accountExpirationDateLower = sub.expiresAt,
                         displayNameLower = sub.displayName,
-                        accountNameLower = sub.planName
+                        accountNameLower = sub.planName,
+                        onlineStatusLower = sub.onlineStatus ?: "Offline",
+                        originProvider = currentProvider
                     )
+                }
+                // Sessions are a second round-trip and never gate the paint: the list shows first,
+                // then live dots fill in. Live sessions are global, not query-scoped, so a late
+                // arrival still marks the right rows in whatever list is current.
+                viewModelScope.launch {
+                    val onlineUsernames = try {
+                        targetGateway.listOnlineUsernames()
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+                        emptySet()
+                    }
+                    if (onlineUsernames.isEmpty()) return@launch
+                    _usersList.value = com.example.ui.screens.SubscriberDisplayRules
+                        .markOnline(_usersList.value, onlineUsernames)
                 }
             } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
                 val isNetworkIssue = e.message?.contains("Network unavailable", ignoreCase = true) == true || 
@@ -295,7 +348,8 @@ class EarthlinkSearchViewModel(
                                 } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; acc.expiresAt }
                             } else acc.expiresAt ?: "",
                                 displayNameLower = acc.displayName,
-                                accountNameLower = acc.packageName
+                                accountNameLower = acc.packageName,
+                                originProvider = currentProvider
                             )
                         }
                         _error.value = if (prefs.getLanguage() == "ar") {
@@ -334,7 +388,8 @@ class EarthlinkSearchViewModel(
                 accountExpirationDateLower = partialItem.accountExpirationDate,
                 activeDaysLeftLower = partialItem.activeDaysLeft,
                 displayNameLower = partialItem.displayName,
-                packageNameLower = partialItem.packageName ?: partialItem.displayName
+                packageNameLower = partialItem.packageName ?: partialItem.displayName,
+                originProvider = partialItem.originProvider
             )
             _isLoading.value = false
         } else {
@@ -343,10 +398,17 @@ class EarthlinkSearchViewModel(
         }
     }
 
-    suspend fun getUserDetail(userIndex: Int, accountProvider: String? = null): com.example.core.model.UserDetail? {
-        val targetProvider = accountProvider ?: _selectedProvider.value
+    suspend fun getUserDetail(
+        userIndex: Int,
+        username: String,
+        accountProvider: String? = null
+    ): com.example.core.model.UserDetail? {
+        val targetProvider = accountProvider ?: _selectedUser.value?.originProvider ?: _selectedProvider.value
         val targetGateway = sasGatewayRouter.getGateway(targetProvider)
-        val sub = targetGateway.getSubscriber(userIndex.toString()) ?: return null
+        // Addressed by username, never by the caller-held userIndex: that index belongs to whichever
+        // ISP served the account before it moved, so reading it back can return the wrong customer
+        // or none at all.
+        val sub = targetGateway.getSubscriber(username) ?: return null
         return com.example.core.model.UserDetail(
             userIndexLower = sub.subscriberId.toIntOrNull() ?: userIndex,
             userIDLower = sub.username,
@@ -358,7 +420,8 @@ class EarthlinkSearchViewModel(
             accountIndexLower = sub.planId?.toIntOrNull(),
             accountStatusLower = sub.status,
             expirationDateLower = sub.expiresAt,
-            accountExpirationDateLower = sub.expiresAt
+            accountExpirationDateLower = sub.expiresAt,
+            originProvider = targetProvider
         )
     }
 
@@ -436,7 +499,8 @@ class EarthlinkSearchViewModel(
                                 } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; foundLocal.expiresAt }
                             } else foundLocal.expiresAt ?: "",
                             packageNameLower = foundLocal.packageName,
-                            displayNameLower = foundLocal.displayName
+                            displayNameLower = foundLocal.displayName,
+                            originProvider = foundLocal.operationProvider
                         )
                         _isLoading.value = false
                     }
@@ -459,38 +523,155 @@ class EarthlinkSearchViewModel(
             if (hasIspLinkage && !isSyntheticLocal) {
                 _isRefreshingDetail.value = true
                 try {
-                    val accountProvider = foundLocal?.operationProvider
-                    val targetProvider = accountProvider ?: currentProvider
+                    // Which provider owns this account is a property of the local account row, never
+                    // of the search/dashboard row the operator happened to tap. That row is
+                    // provider-scoped, so re-entering the page through a SAMM row would otherwise
+                    // re-target the detail to SAMM while the provider badge still reads the local
+                    // row. The username carried by the navigation route is provider-neutral, so it
+                    // is the safe key for resolving that authority.
+                    val authorityAccount = knownUserId?.trim()?.takeIf { it.isNotBlank() }
+                        ?.let { id -> localAccountRepository.findActiveAccountsBySubscriberIdentity(null, id).firstOrNull() }
+                    val identityOwner = foundLocal ?: authorityAccount
+                    val accountProvider = identityOwner?.operationProvider
+                    val targetProvider = accountProvider ?: _selectedUser.value?.originProvider ?: currentProvider
                     val targetGateway = sasGatewayRouter.getGateway(targetProvider)
-                    val sub = targetGateway.getSubscriber(userIndex.toString())
+                    // "The provider has no such subscriber" and "we could not reach the provider" are
+                    // different answers. Only the former may retire the previous provider's display
+                    // snapshot; a transport failure must leave the operator's context untouched.
+                    var transportFailed = false
+                    var sub = if (!currentUserId.isNullOrBlank()) {
+                        try {
+                            // Read the account's own provider by the provider-neutral username.
+                            // identityOwner.ispUserIndex / ispSubscriberId are deliberately NOT used:
+                            // they are stale by design the moment the subscriber moves ISP, which is
+                            // exactly the transition this branch made possible, and the tapped row's
+                            // userIndex belongs to whichever provider that row came from.
+                            targetGateway.getSubscriber(currentUserId)
+                        } catch (e: com.example.core.network.SasNotFoundException) {
+                            null
+                        } catch (e: com.example.core.network.SasBusinessException) {
+                            null
+                        } catch (e: com.example.core.network.SasGatewayException) {
+                            transportFailed = true
+                            null
+                        }
+                    } else null
+                    if (sub == null && !transportFailed && !currentUserId.isNullOrBlank()) {
+                        try {
+                            val candidates = targetGateway.searchSubscribers(query = currentUserId, page = 1, pageSize = 20)
+                            val matched = candidates.find { it.username.equals(currentUserId, ignoreCase = true) }
+                            if (matched != null) {
+                                sub = try { targetGateway.getSubscriber(matched.username) ?: matched }
+                                    catch (_: com.example.core.network.SasNotFoundException) { matched }
+                            }
+                        } catch (e: com.example.core.network.SasGatewayException) {
+                            transportFailed = e !is com.example.core.network.SasNotFoundException &&
+                                e !is com.example.core.network.SasBusinessException
+                        }
+                    }
                     if (sub != null) {
+                        val numIdx = sub.subscriberId.toIntOrNull() ?: userIndex
+                        val daysLeft = if (!sub.expiresAt.isNullOrBlank()) {
+                            val expTime = (parseIsoDate(sub.expiresAt) ?: parseBghDate(sub.expiresAt))?.time
+                            if (expTime != null) {
+                                ((expTime - System.currentTimeMillis()) / (1000 * 60 * 60 * 24.0)).coerceAtLeast(0.0)
+                            } else null
+                        } else null
+
+                        val expirationMillis = sub.expiresAt?.let { com.example.ui.screens.SubscriberDisplayRules.parseInstantMillis(it) }
+                        val resolvedPkg = sub.planName?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
+                            ?: _packages.value.find { it.accountIndex.toString() == sub.planId || it.accountIndex == sub.planId?.toIntOrNull() }?.accountName
+                            ?: foundLocal?.packageName?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
+                            ?: _selectedUser.value?.packageName?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
+
+                        // Online state lives on a provider-specific session resource, not on the
+                        // subscriber payload, so it is read separately and stays optional.
+                        val liveSession = try {
+                            targetGateway.getSubscriberSession(sub.username)
+                        } catch (e: Exception) {
+                            if (e is kotlinx.coroutines.CancellationException) throw e
+                            null
+                        }
+
                         val detail = com.example.core.model.UserDetail(
-                            userIndexLower = sub.subscriberId.toIntOrNull() ?: userIndex,
+                            userIndexLower = numIdx,
                             userIDLower = sub.username,
                             customerFullNameLower = sub.displayName,
                             customerNameLower = sub.displayName ?: sub.username,
                             displayNameLower = sub.displayName,
                             mobileNumberLower = sub.phone,
-                            packageNameLower = sub.planName,
+                            packageNameLower = resolvedPkg,
                             accountIndexLower = sub.planId?.toIntOrNull(),
-                            accountStatusLower = sub.status,
+                            accountStatusLower = com.example.ui.screens.SubscriberDisplayRules
+                                .effectiveAccountStatus(sub.status, expirationMillis),
                             expirationDateLower = sub.expiresAt,
-                            accountExpirationDateLower = sub.expiresAt
+                            accountExpirationDateLower = sub.expiresAt,
+                            activeDaysLeftLower = daysLeft,
+                            onlineSessionTimeLower = liveSession?.onlineSeconds
+                                ?.let { com.example.ui.screens.SubscriberDisplayRules.formatOnlineDuration(it) },
+                            currentIPLower = liveSession?.ip,
+                            onlineSessionLower = liveSession?.let {
+                                // onlineTime is deliberately left unset: UserDetail.onlineSessionTime
+                                // prefers it over onlineSessionTimeLower, so filling it would show the
+                                // session START stamp where the duration belongs.
+                                com.example.core.model.OnlineSession(
+                                    onlineStatusLower = if (it.isOnline) "Online" else "Offline",
+                                    onlineSinceLower = it.startedAt,
+                                    ipAddressLower = it.ip
+                                )
+                            },
+                            originProvider = targetProvider
                         )
                         // A slower earlier request must not clobber a newer operator selection.
                         // The activity-scoped _selectedUser is shared across navigation, so a late
                         // response for an abandoned subscriber would otherwise resurrect it.
                         val stillSelected = _selectedUser.value
-                        if (stillSelected == null || stillSelected.userIndex == userIndex) {
+                        if (stillSelected == null || stillSelected.userIndex == userIndex || stillSelected.userID.equals(sub.username, ignoreCase = true)) {
                             _selectedUser.value = detail
                         }
-                        if (foundLocal != null && detail.userIndex > 0) {
+                        if (foundLocal != null) {
                             try {
-                                localAccountRepository.bindIspIdentity(foundLocal.id, detail.userIndex)
+                                if (targetProvider == com.example.core.model.SasProviders.EARTHLINK && detail.userIndex > 0) {
+                                    // The identity guard is independent of the provider-scoped field
+                                    // refresh: an ISP identity that was re-created after a departure
+                                    // must not block the plan/type update below.
+                                    try {
+                                        localAccountRepository.bindIspIdentity(foundLocal.id, detail.userIndex)
+                                    } catch (e: Exception) {
+                                        if (e is kotlinx.coroutines.CancellationException) throw e
+                                        Log.w("EarthlinkSearchVM", "ISP identity re-bind skipped: ${e.message}")
+                                    }
+                                    if (resolvedPkg != null && resolvedPkg != foundLocal.packageName) {
+                                        localAccountRepository.saveAccount(foundLocal.copy(packageName = resolvedPkg))
+                                    }
+                                } else if (targetProvider == com.example.core.model.SasProviders.ALAMIRY) {
+                                    localAccountRepository.saveAccount(foundLocal.copy(
+                                        ispSubscriberId = sub.subscriberId,
+                                        packageName = resolvedPkg ?: foundLocal.packageName
+                                    ))
+                                }
                             } catch (e: Exception) {
                                 if (e is kotlinx.coroutines.CancellationException) throw e
                                 Log.w("EarthlinkSearchVM", "ISP identity binding skipped: ${e.message}")
                             }
+                        }
+                    } else if (!transportFailed) {
+                        // The target provider authoritatively holds no record for this subscriber.
+                        // Retire the previous provider's plan/status/expiry instead of presenting
+                        // them under the newly selected provider.
+                        val still = _selectedUser.value
+                        if (still != null &&
+                            (still.userIndex == userIndex || still.userID.equals(currentUserId, ignoreCase = true))
+                        ) {
+                            _selectedUser.value = still.copy(
+                                packageNameLower = null,
+                                accountIndexLower = null,
+                                accountStatusLower = null,
+                                expirationDateLower = null,
+                                accountExpirationDateLower = null,
+                                activeDaysLeftLower = null,
+                                originProvider = targetProvider
+                            )
                         }
                     }
                 } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
@@ -509,6 +690,23 @@ class EarthlinkSearchViewModel(
     }
 
     private fun loadPackages() {
+        val provider = _selectedProvider.value
+        if (provider == com.example.core.model.SasProviders.ALAMIRY) {
+            // Alamiry's credential is the SAMM API token, not the EarthLink one, so the EarthLink
+            // credential guard below must not gate it: an Alamiry-only login still needs its real
+            // plan list, otherwise the change-plan picker falls back to placeholder plans.
+            if (prefs.getSammToken().isNullOrBlank()) return
+            viewModelScope.launch {
+                _packages.value = runCatching {
+                    sasGatewayRouter.getGateway(com.example.core.model.SasProviders.ALAMIRY).listPackages()
+                }.getOrElse {
+                    Log.e("EarthlinkSearchVM", "Failed to load Alamiry packages: ${it.message}")
+                    emptyList()
+                }
+            }
+            return
+        }
+
         val token = prefs.getAuthToken()
         val isDemo = prefs.getDemoMode()
         if (token.isNullOrEmpty() && !isDemo) return
@@ -527,14 +725,44 @@ class EarthlinkSearchViewModel(
         }
     }
 
+    /**
+     * The currency label the selected provider reports, or null when it reports none.
+     * Display follows the provider; nothing here assumes a currency.
+     */
+    suspend fun getProviderCurrency(): String? {
+        if (_selectedProvider.value != com.example.core.model.SasProviders.ALAMIRY) return null
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                sasGatewayRouter.getGateway(com.example.core.model.SasProviders.ALAMIRY).getCurrencyLabel()
+            }.getOrNull()
+        }
+    }
+
     fun previewPackageCost(pkgIndex: Int) {
         _costPreview.value = null
         viewModelScope.launch {
-            try {
-                val cost = gateway.getAccountCost(pkgIndex)
-                _costPreview.value = cost
-            } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                _error.value = "Failed package cost preview: ${e.message}"
+            val provider = _selectedProvider.value?.takeIf { com.example.core.model.SasProviders.isValid(it) }
+                ?: com.example.core.model.SasProviders.EARTHLINK
+            if (provider == com.example.core.model.SasProviders.ALAMIRY) {
+                val cached = _packages.value.find { it.accountIndex == pkgIndex }?.price
+                if (cached != null) {
+                    _costPreview.value = cached
+                } else {
+                    try {
+                        val pkgs = sasGatewayRouter.getGateway(com.example.core.model.SasProviders.ALAMIRY).listPackages()
+                        _costPreview.value = pkgs.find { it.accountIndex == pkgIndex }?.price
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+                        _error.value = "Failed package cost preview: ${e.message}"
+                    }
+                }
+            } else {
+                try {
+                    val cost = gateway.getAccountCost(pkgIndex)
+                    _costPreview.value = cost
+                } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+                    _error.value = "Failed package cost preview: ${e.message}"
+                }
             }
         }
     }
@@ -622,7 +850,8 @@ class EarthlinkSearchViewModel(
     }
 
     fun createUserUsingDeposit(username: String, phone: String, fullName: String, pkgIndex: Int, depositPass: String, intentId: String? = null): kotlinx.coroutines.Job {
-        val targetProvider = _selectedProvider.value
+        val targetProvider = _selectedProvider.value?.takeIf { com.example.core.model.SasProviders.isValid(it) }
+            ?: com.example.core.model.SasProviders.EARTHLINK
         val lock = getAccountLock("${username}:ACTIVATION")
 
         return viewModelScope.launch(Dispatchers.IO) {
@@ -648,23 +877,54 @@ class EarthlinkSearchViewModel(
                     return@launch
                 }
 
-                val available = gateway.checkUsernameAvailable(username)
+                val isSamm = targetProvider == com.example.core.model.SasProviders.ALAMIRY
+                val sammGateway = if (isSamm) sasGatewayRouter.getGateway(targetProvider) else null
+
+                val available = if (isSamm) {
+                    try {
+                        val existingSub = sammGateway!!.getSubscriber(username)
+                        existingSub == null
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+                        _error.value = "Failed to verify username availability on SAMM: ${e.message}"
+                        return@launch
+                    }
+                } else {
+                    gateway.checkUsernameAvailable(username)
+                }
+
                 if (!available) {
                     _error.value = "Username $username is already taken."
                     return@launch
                 }
 
-                val cost = try {
-                    gateway.getAccountCost(pkgIndex)
-                } catch (e: kotlinx.coroutines.CancellationException) {
-                    throw e
-                } catch (e: EarthlinkGatewayException) {
-                    _error.value = "Failed to determine package cost: ${e.message ?: "API error"}. Operation aborted."
-                    return@launch
-                } catch (e: Exception) {
-                    _error.value = "Failed to determine package cost: ${e.message ?: "error"}. Operation aborted."
-                    return@launch
+                val cost = if (isSamm) {
+                    val cachedCost = _packages.value.find { it.accountIndex == pkgIndex }?.price
+                    val authoritativeCost = cachedCost ?: try {
+                        sammGateway!!.listPackages().find { it.accountIndex == pkgIndex }?.price
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+                        null
+                    }
+                    if (authoritativeCost == null) {
+                        _error.value = "Failed to determine package cost for SAMM plan. Operation aborted."
+                        return@launch
+                    }
+                    authoritativeCost
+                } else {
+                    try {
+                        gateway.getAccountCost(pkgIndex)
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: EarthlinkGatewayException) {
+                        _error.value = "Failed to determine package cost: ${e.message ?: "API error"}. Operation aborted."
+                        return@launch
+                    } catch (e: Exception) {
+                        _error.value = "Failed to determine package cost: ${e.message ?: "error"}. Operation aborted."
+                        return@launch
+                    }
                 }
+
                 if (!cost.isFinite() || cost <= 0.0 || cost % 1.0 != 0.0 || cost % 250.0 != 0.0) {
                     _error.value = "Failed to determine a valid IQD package cost. Operation aborted."
                     return@launch
@@ -706,11 +966,11 @@ class EarthlinkSearchViewModel(
                     return@launch
                 }
 
-                val targetGateway = sasGatewayRouter.getGateway(targetProvider)
                 val parts = fullName.trim().split("\\s+".toRegex(), limit = 2)
                 val firstName = parts.getOrNull(0) ?: fullName
                 val lastName = parts.getOrNull(1) ?: ""
-                val opResult = targetGateway.createSubscriber(
+                val dispatchGateway = sammGateway ?: sasGatewayRouter.getGateway(targetProvider)
+                val opResult = dispatchGateway.createSubscriber(
                     username = username,
                     planId = pkgIndex.toString(),
                     password = depositPass,
@@ -1150,7 +1410,12 @@ class EarthlinkSearchViewModel(
         }
     }
 
-    fun extendUser(userIndex: Int, userId: String, intentId: String? = null): kotlinx.coroutines.Job {
+    fun extendUser(
+        userIndex: Int,
+        userId: String,
+        intentId: String? = null,
+        days: Int = DEFAULT_EXTEND_DAYS
+    ): kotlinx.coroutines.Job {
         val lock = getAccountLock("${userId}:EXTEND")
 
         return viewModelScope.launch(Dispatchers.IO) {
@@ -1176,6 +1441,12 @@ class EarthlinkSearchViewModel(
                     return@launch
                 }
 
+                val account = withContext(Dispatchers.IO) {
+                    localAccountRepository.findActiveAccountByUsernameOrIdPreferringProviderOneShot(userId, _selectedProvider.value)
+                        ?: localAccountRepository.findAccountByUsernameOrIdOneShot(userId)
+                }
+                val accountProvider = account?.operationProvider ?: _selectedProvider.value
+
                 localLedgerRepository.recordPendingOperation(
                     PendingExternalOperation(
                         businessTransactionId = businessTxId,
@@ -1185,7 +1456,8 @@ class EarthlinkSearchViewModel(
                         amountIqd = 0L,
                         payloadJson = "{\"userIndex\":$userIndex,\"userId\":\"$userId\"}",
                         status = "PENDING",
-                        dispatchClaimCount = 0
+                        dispatchClaimCount = 0,
+                        operationProvider = accountProvider
                     )
                 )
 
@@ -1195,15 +1467,44 @@ class EarthlinkSearchViewModel(
                     return@launch
                 }
 
-                val success = gateway.extendUser(userIndex)
+                var failureReason: String? = null
+                val success = runCatching {
+                    if (accountProvider == com.example.core.model.SasProviders.EARTHLINK) {
+                        // EarthLink renewal is deposit-authorized and lives outside the SAS seam
+                        // (EarthlinkSasGatewayAdapter.renewSubscriber fails closed by contract). It
+                        // also has its own duration, so it takes no day count.
+                        gateway.extendUser(userIndex)
+                    } else {
+                        // SAMM's /renew applies the PLAN's duration (a month) and accepts no day
+                        // count, so it cannot satisfy "give them N days". extendSubscriberByDays
+                        // sets the absolute expiry instead. The username is what identifies the
+                        // subscriber: the account's stored provider id belongs to whichever ISP it
+                        // last used, which is not necessarily this one.
+                        val targetGateway = sasGatewayRouter.getGateway(accountProvider)
+                        targetGateway.extendSubscriberByDays(userId, days).isApplied
+                    }
+                }.onFailure { e -> if (e !is kotlinx.coroutines.CancellationException) failureReason = e.message }
+                .getOrElse { e ->
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    Log.e("EarthlinkSearchVM", "EXTEND failed: ${e.message}")
+                    false
+                }
                 if (success) {
                     localLedgerRepository.resolvePendingOperationVerifiedSuccess(businessTxId, "[EXTEND]")
                     _actionSuccess.value = "Subscription for $userId extended successfully."
                     audit.logAction("EXTEND_USER", "USER", userId, "Extended subscriber duration")
                     loadUserDetail(userIndex, _selectedUser.value?.userIDLower)
                 } else {
-                    localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, "Extension failed on server")
-                    _error.value = "Extension failed."
+                    // Surface the real reason. A generic "Extension failed" is undiagnosable in the
+                    // field and turns an intermittent provider error into guesswork.
+                    val reason = failureReason?.takeIf { it.isNotBlank() }
+                        ?: "the provider did not confirm the change"
+                    localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, reason)
+                    _error.value = if (prefs.getLanguage() == "ar") {
+                        "فشل التمديد: $reason"
+                    } else {
+                        "Extension failed: $reason"
+                    }
                 }
             } catch (e: EarthlinkBusinessException) {
                 localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, e.errorMessage)
@@ -1271,6 +1572,7 @@ class EarthlinkSearchViewModel(
     fun toggleUserActive(userIndex: Int, userId: String, active: Boolean): kotlinx.coroutines.Job =
         viewModelScope.launch {
             val fallbackProvider = _selectedProvider.value
+            var actionProvider = fallbackProvider
             if (isSyntheticLocalIspIdentity(userIndex, userId)) {
                 _error.value = "Action unavailable for local-only account."
                 return@launch
@@ -1280,14 +1582,15 @@ class EarthlinkSearchViewModel(
             try {
                 val localAcc = withContext(Dispatchers.IO) {
                     localAccountRepository.findActiveAccountsBySubscriberIdentity(userIndex, userId).firstOrNull()
-                        ?: localAccountRepository.findActiveAccountByUsernameOrIdOneShot(userId)
+                        ?: localAccountRepository.findActiveAccountByUsernameOrIdPreferringProviderOneShot(userId, fallbackProvider)
                 }
-                val accountProvider = localAcc?.operationProvider ?: fallbackProvider
+                val accountProvider = localAcc?.operationProvider ?: _selectedUser.value?.originProvider ?: fallbackProvider
+                actionProvider = accountProvider
                 val targetGateway = sasGatewayRouter.getGateway(accountProvider)
                 val opResult = if (active) {
-                    targetGateway.activateSubscriber(userIndex.toString())
+                    targetGateway.activateSubscriber(userId)
                 } else {
-                    targetGateway.suspendSubscriber(userIndex.toString())
+                    targetGateway.suspendSubscriber(userId)
                 }
                 val success = opResult.isApplied
                 if (success) {
@@ -1299,7 +1602,9 @@ class EarthlinkSearchViewModel(
                         userId,
                         if (active) "Resumed subscriber account" else "Suspended subscriber account"
                     )
-                    loadUserDetail(userIndex, _selectedUser.value?.userIDLower)
+                    // The status change already succeeded. A failed refresh must not be reported as a
+                    // failed suspend, or the operator is told their action did nothing when it did.
+                    runCatching { loadUserDetail(userIndex, userId) }
                 } else {
                     _error.value = "Status update failed."
                 }
@@ -1314,10 +1619,13 @@ class EarthlinkSearchViewModel(
                 if (isNetworkIssue) {
                     val actionTextAr = if (active) "تفعيل الحساب" else "إيقاف الحساب"
                     val actionTextEn = if (active) "Account activation" else "Account suspension"
+                    val onSamm = actionProvider == com.example.core.model.SasProviders.ALAMIRY
                     _error.value = if (prefs.getLanguage() == "ar") {
-                        "فشل الاتصال بالشبكة: تعذر $actionTextAr على خوادم إيرثلنك. يرجى التأكد من الاتصال بالإنترنت وإعادة المحاولة."
+                        if (onSamm) "فشل الاتصال بالشبكة: تعذر $actionTextAr على خادم سام. يرجى التأكد من الاتصال بالإنترنت وإعادة المحاولة."
+                        else "فشل الاتصال بالشبكة: تعذر $actionTextAr على خوادم إيرثلنك. يرجى التأكد من الاتصال بالإنترنت وإعادة المحاولة."
                     } else {
-                        "Network connection failed: $actionTextEn could not be processed on Earthlink servers. Please check your internet connection and try again."
+                        if (onSamm) "Network connection failed: $actionTextEn could not be processed on the SAMM server. Please check your internet connection and try again."
+                        else "Network connection failed: $actionTextEn could not be processed on Earthlink servers. Please check your internet connection and try again."
                     }
                 } else {
                     _error.value = e.message
@@ -1347,12 +1655,12 @@ class EarthlinkSearchViewModel(
                 val localAcc = if (account == null) {
                     withContext(Dispatchers.IO) {
                         localAccountRepository.findActiveAccountsBySubscriberIdentity(userIndex, userId).firstOrNull()
-                            ?: localAccountRepository.findActiveAccountByUsernameOrIdOneShot(userId)
+                            ?: localAccountRepository.findActiveAccountByUsernameOrIdPreferringProviderOneShot(userId, fallbackProvider)
                     }
                 } else null
                 val accountProvider = account?.operationProvider ?: localAcc?.operationProvider ?: fallbackProvider
                 val targetGateway = sasGatewayRouter.getGateway(accountProvider)
-                val opResult = targetGateway.changePlan(userIndex.toString(), accountIndex.toString())
+                val opResult = targetGateway.changePlan(userId, accountIndex.toString())
                 val success = opResult.isApplied
                 if (success) {
                     val effectiveAccount = account ?: localAcc
@@ -1403,6 +1711,19 @@ class EarthlinkSearchViewModel(
                 _error.value = "Action unavailable for local-only account."
                 return@launch
             }
+            // Only EarthLink's API ever returns a stored password. SAMM never echoes one back and
+            // exposes no reveal endpoint, so calling the EarthLink gateway with a SAMM username
+            // could only ever fail.
+            val accountProvider = localAccountRepository
+                .findActiveAccountByUsernameOrIdOneShot(userId)?.operationProvider
+                ?: _selectedProvider.value
+            if (accountProvider != com.example.core.model.SasProviders.EARTHLINK) {
+                _revealedUserPass.value = null
+                _error.value = if (prefs.getLanguage() == "ar")
+                    "لا يمكن عرض كلمة المرور لمشتركي سام."
+                else "Showing a password is not supported for SAMM accounts."
+                return@launch
+            }
             try {
                 val pass = gateway.showUserPassword(userIndex, userId)
                 if (pass.isNullOrBlank()) {
@@ -1423,6 +1744,16 @@ class EarthlinkSearchViewModel(
             if (isSyntheticLocalIspIdentity(userIndex, userId)) {
                 _revealedAccountPass.value = null
                 _error.value = "Action unavailable for local-only account."
+                return@launch
+            }
+            val accountProvider = localAccountRepository
+                .findActiveAccountByUsernameOrIdOneShot(userId)?.operationProvider
+                ?: _selectedProvider.value
+            if (accountProvider != com.example.core.model.SasProviders.EARTHLINK) {
+                _revealedAccountPass.value = null
+                _error.value = if (prefs.getLanguage() == "ar")
+                    "لا يمكن عرض كلمة المرور لمشتركي سام."
+                else "Showing a password is not supported for SAMM accounts."
                 return@launch
             }
             try {
@@ -1456,7 +1787,7 @@ class EarthlinkSearchViewModel(
                 }
                 val accountProvider = localAcc?.operationProvider ?: fallbackProvider
                 val targetGateway = sasGatewayRouter.getGateway(accountProvider)
-                val opResult = targetGateway.changePassword(userIndex.toString(), newPass)
+                val opResult = targetGateway.changePassword(userId, newPass)
                 val success = opResult.isApplied
                 if (success) {
                     _revealedUserPass.value = newPass
@@ -1481,7 +1812,15 @@ class EarthlinkSearchViewModel(
             _isActionLoading.value = true
             _error.value = null
             try {
-                val success = gateway.changeAccountPassword(userIndex, userId, newPass)
+                val localAcc = withContext(Dispatchers.IO) {
+                    localAccountRepository.findActiveAccountsBySubscriberIdentity(userIndex, userId).firstOrNull()
+                        ?: localAccountRepository.findActiveAccountByUsernameOrIdOneShot(userId)
+                }
+                // Route through the provider seam. Calling the EarthLink gateway directly here is
+                // what left this button doing nothing for SAMM subscribers.
+                val accountProvider = localAcc?.operationProvider ?: _selectedProvider.value
+                val targetGateway = sasGatewayRouter.getGateway(accountProvider)
+                val success = targetGateway.changePassword(userId, newPass).isApplied
                 if (success) {
                     _revealedAccountPass.value = newPass
                     _actionSuccess.value = if (prefs.getLanguage() == "ar") "تم تغيير كلمة مرور الاشتراك بنجاح." else "Broadband account password changed successfully."
@@ -1511,19 +1850,25 @@ class EarthlinkSearchViewModel(
                         localAccountRepository.saveAccount(updated)
                     }
                 }
-                val targetUserId = account?.earthlinkUsername ?: _selectedUser.value?.userID ?: ""
-                if (isSyntheticLocalIspIdentity(userIndex, targetUserId)) {
-                    _actionSuccess.value = if (prefs.getLanguage() == "ar") {
-                        "تم تعديل اسم المشترك بنجاح."
-                    } else {
-                        "Subscriber display name updated successfully."
-                    }
-                    audit.logAction("UPDATE_DISPLAY_NAME", "USER", userIndex.toString(), "Updated display name to $newName")
-                    loadUserDetail(userIndex, targetUserId)
-                    return@launch
+val targetUserId = account?.earthlinkUsername ?: _selectedUser.value?.userID ?: ""
+            if (isSyntheticLocalIspIdentity(userIndex, targetUserId)) {
+                _actionSuccess.value = if (prefs.getLanguage() == "ar") {
+                    "تم تحديث اسم المشترك بنجاح."
+                } else {
+                    "Subscriber display name updated successfully."
                 }
-                val success = gateway.updateUserDisplayName(userIndex, newName)
-                if (success) {
+                audit.logAction("UPDATE_DISPLAY_NAME", "USER", userIndex.toString(), "Updated display name to $newName")
+                loadUserDetail(userIndex, targetUserId)
+                return@launch
+            }
+
+            // Route through the provider seam: this action is offered for every provider, and
+            // calling the EarthLink gateway directly sent Alamiry subscriber ids to the wrong ISP.
+            val accountProvider = (account ?: localAccountRepository.findAccountByUsernameOrIdOneShot(targetUserId))
+                ?.operationProvider ?: _selectedProvider.value
+            val targetGateway = sasGatewayRouter.getGateway(accountProvider)
+            val opResult = targetGateway.updateDisplayName(targetUserId, newName)
+            if (opResult.isApplied) {
                     _actionSuccess.value = if (prefs.getLanguage() == "ar") {
                         "تم تعديل اسم المشترك بنجاح."
                     } else {
@@ -1532,7 +1877,7 @@ class EarthlinkSearchViewModel(
                     audit.logAction("UPDATE_DISPLAY_NAME", "USER", userIndex.toString(), "Updated display name to $newName")
                     loadUserDetail(userIndex, _selectedUser.value?.userIDLower)
                 } else {
-                    _error.value = "Failed to update display name on Earthlink."
+                    _error.value = "Failed to update the display name on $accountProvider."
                 }
             } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
                 _error.value = e.message
@@ -1546,6 +1891,42 @@ class EarthlinkSearchViewModel(
         return withContext(Dispatchers.IO) {
             localLedgerRepository.getPendingOperationByAccountId(accountId) != null
         }
+    }
+
+    /**
+     * Which providers actually carry this username, queried once when the provider dialog opens.
+     *
+     * Moving an account to a provider that does not have the subscriber leaves it pointing at a dead
+     * identity, so the dialog greys out what is not there rather than only what is unconfigured.
+     *
+     * The answer is three-valued on purpose. A provider that could not be asked (offline, expired
+     * token, 500) reports [SasSubscriberPresence.UNKNOWN], never [SasSubscriberPresence.ABSENT]: a
+     * failed lookup is not evidence that the subscriber moved, and rendering it as a confirmed
+     * absence is how both rows end up greyed out with the dialog asserting the subscriber is on
+     * neither ISP.
+     */
+    suspend fun checkProviderPresence(username: String): Map<String, SasSubscriberPresence> {
+        val id = username.trim()
+        if (id.isEmpty()) return emptyMap()
+        val present = mutableMapOf<String, SasSubscriberPresence>()
+        for (prov in listOf(
+            com.example.core.model.SasProviders.EARTHLINK,
+            com.example.core.model.SasProviders.ALAMIRY
+        )) {
+            present[prov] = try {
+                // The seam owns the lookup, so the directory window and the exact-username guard are
+                // the ones every other username-addressed operation uses. Re-searching here with a
+                // short window is what previously let colliding usernames hide a subscriber that
+                // actually exists.
+                sasGatewayRouter.getGateway(prov).resolveSubscriberPresence(id)
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                // Includes "provider not configured", which the dialog already renders as
+                // "Not logged in" from the credentials state, so it must not read as absence here.
+                SasSubscriberPresence.UNKNOWN
+            }
+        }
+        return present
     }
 
     fun updateAccountProvider(
@@ -1570,12 +1951,30 @@ class EarthlinkSearchViewModel(
             withContext(Dispatchers.IO) {
                 localAccountRepository.saveAccount(updated)
             }
+            _selectedProvider.value = newProvider
+            _selectedUser.value = _selectedUser.value?.copy(originProvider = newProvider)
+            // The plan picker must offer the NEW provider's plans, not the old provider's list.
+            loadPackages()
+
             _actionSuccess.value = if (prefs.getLanguage() == "ar") {
                 "تم تغيير مزود الخدمة بنجاح."
             } else {
                 "Account provider updated successfully."
             }
             onSuccess()
+
+            val username = account.earthlinkUsername ?: _selectedUser.value?.userID ?: ""
+            if (username.isNotBlank()) {
+                val userIndexToUse = if (newProvider == com.example.core.model.SasProviders.EARTHLINK) {
+                    updated.ispUserIndex ?: 0
+                } else {
+                    updated.ispSubscriberId?.toIntOrNull() ?: 0
+                }
+                loadUserDetail(userIndexToUse, knownUserId = username)
+                if (newProvider == com.example.core.model.SasProviders.EARTHLINK) {
+                    loadPackages()
+                }
+            }
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             val msg = e.message ?: "Failed to update account provider"
@@ -1583,6 +1982,231 @@ class EarthlinkSearchViewModel(
             onError(msg)
         } finally {
             _isActionLoading.value = false
+        }
+    }
+
+    fun renewSammUser(
+        userId: String,
+        price: Double? = null,
+        note: String? = null,
+        isWasil: Boolean = false,
+        account: LocalAccount? = null,
+        onSuccessCallback: (suspend (String) -> Unit)? = null
+    ): kotlinx.coroutines.Job {
+        val lock = getAccountLock("${userId}:REFILL")
+
+        return viewModelScope.launch(Dispatchers.IO) {
+            if (!lock.tryLock()) {
+                Log.w("EarthlinkSearchVM", "Duplicate financial operation suppressed: account $userId has an active inflight operation")
+                _error.value = "Operation already in progress or awaiting verification."
+                return@launch
+            }
+            val opIntentId = java.util.UUID.randomUUID().toString()
+            val businessTxId = "charge_" + opIntentId
+            val finalNote = note ?: ""
+
+            try {
+                _isActionLoading.value = true
+                _error.value = null
+
+                val authoritativePrice = price ?: account?.currentPriceIqd ?: 40000.0
+                if (!authoritativePrice.isFinite() || authoritativePrice <= 0.0 ||
+                    authoritativePrice % 1.0 != 0.0 || authoritativePrice % 250.0 != 0.0) {
+                    _error.value = "Invalid, non-authoritative, or missing package price. Operation aborted."
+                    return@launch
+                }
+                val exactAmountIqd = authoritativePrice.toLong()
+
+                val effectiveAcc = if (account != null) {
+                    val existing = localAccountRepository.getAccountByIdOneShot(account.id)?.takeIf { !it.isHistoryOnlySubscriber }
+                    if (existing != null) {
+                        existing
+                    } else {
+                        val toSave = account.copy(currentPriceIqd = exactAmountIqd.toDouble(), operationProvider = com.example.core.model.SasProviders.ALAMIRY)
+                        localAccountRepository.saveAccount(toSave)
+                    }
+                } else {
+                    val existing = localAccountRepository.findActiveAccountByUsernameOrIdPreferringProviderOneShot(userId, com.example.core.model.SasProviders.ALAMIRY)
+                    if (existing != null) {
+                        existing
+                    } else {
+                        val snapshotUser = _selectedUser.value?.takeIf { it.userID.equals(userId, ignoreCase = true) }
+                        val snapshotListItem = _usersList.value.find { it.userID.equals(userId, ignoreCase = true) }
+                        val displayName = snapshotUser?.customerFullName
+                            ?: snapshotListItem?.customerName
+                            ?: userId
+                        val phone = snapshotUser?.mobileNumber ?: snapshotListItem?.mobileNumber
+                        val pkgName = snapshotUser?.packageName ?: snapshotListItem?.packageName ?: "Default"
+                        val resolvedId = if (localAccountRepository.getAccountByIdOneShot(userId) == null) {
+                            userId
+                        } else {
+                            java.util.UUID.randomUUID().toString()
+                        }
+                        val newAcc = LocalAccount(
+                            id = resolvedId,
+                            earthlinkUsername = userId,
+                            displayName = displayName.ifBlank { userId },
+                            phone1 = phone,
+                            packageName = pkgName,
+                            currentPriceIqd = exactAmountIqd.toDouble(),
+                            debtIqd = 0.0,
+                            operationProvider = com.example.core.model.SasProviders.ALAMIRY
+                        )
+                        localAccountRepository.saveAccount(newAcc)
+                        newAcc
+                    }
+                }
+
+                val sammGateway = sasGatewayRouter.getGateway(com.example.core.model.SasProviders.ALAMIRY)
+                val preSubscriber = try {
+                    sammGateway.getSubscriber(userId)
+                } catch (e: com.example.core.network.SasNotFoundException) {
+                    _error.value = "Subscriber not found on SAMM."
+                    return@launch
+                } catch (e: com.example.core.network.SasGatewayException) {
+                    _error.value = e.message ?: "Failed to read subscriber details from SAMM."
+                    return@launch
+                }
+                if (preSubscriber == null) {
+                    _error.value = "Subscriber not found on SAMM."
+                    return@launch
+                }
+
+                val payloadJson = org.json.JSONObject().apply {
+                    put("userId", userId)
+                    put("subscriberId", preSubscriber.subscriberId)
+                    put("baselineExpirationDate", preSubscriber.expiresAt)
+                    put("localAccountId", effectiveAcc.id)
+                    put("price", authoritativePrice)
+                    put("note", finalNote)
+                    put("isWasil", isWasil)
+                    put("provider", com.example.core.model.SasProviders.ALAMIRY)
+                }.toString()
+
+                localLedgerRepository.recordPendingOperation(
+                    PendingExternalOperation(
+                        businessTransactionId = businessTxId,
+                        operationIntentId = opIntentId,
+                        accountId = userId,
+                        operationType = "RENEWAL",
+                        amountIqd = exactAmountIqd,
+                        payloadJson = payloadJson,
+                        status = "PENDING",
+                        dispatchClaimCount = 0,
+                        operationProvider = com.example.core.model.SasProviders.ALAMIRY
+                    )
+                )
+
+                val claimGranted = localLedgerRepository.claimDispatchAuthorization(businessTxId)
+                if (!claimGranted) {
+                    _error.value = "Operation is already processing or awaiting verification."
+                    return@launch
+                }
+
+                val opResult = sammGateway.renewSubscriber(userId)
+                if (opResult.isApplied) {
+                    try {
+                        val chargeNote = finalNote.trim().ifEmpty { null }
+                        localLedgerRepository.resolvePendingOperationVerifiedSuccess(businessTxId, chargeNote)
+
+                        try {
+                            val chargeNoteToUse = finalNote.trim()
+                            val payNoteToUse = if (isWasil) finalNote.trim() else null
+                            localLedgerRepository.recordAccountRenewal(
+                                account = effectiveAcc,
+                                newPriceIqd = exactAmountIqd.toDouble(),
+                                chargeNote = chargeNoteToUse,
+                                payNote = payNoteToUse,
+                                idempotencyKey = businessTxId
+                            )
+                            syncRepo?.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
+                        } catch (e: Exception) {
+                            if (e is kotlinx.coroutines.CancellationException) throw e
+                            Log.e("EarthlinkSearchVM", "Failed to add ledger entry for SAMM renewal", e)
+                        }
+
+                        onSuccessCallback?.invoke(businessTxId)
+
+                        _actionSuccess.value = if (prefs.getLanguage() == "ar") {
+                            "تم تجديد اشتراك المشترك $userId بنجاح."
+                        } else {
+                            "Subscriber $userId was renewed successfully."
+                        }
+
+                        audit.logAction(
+                            action = "REFILL_USER",
+                            entityType = "USER",
+                            entityId = userId,
+                            summary = "Renewed subscription on SAMM at price $authoritativePrice. Note: $finalNote"
+                        )
+
+                        // Refresh subscriber detail from SAMM. The refresh is a read, and like every other
+                        // username-addressed call it re-resolves the identity rather than reusing an id
+                        // cached on the account, which is stale once the subscriber moves ISP.
+                        try {
+                            val refreshed = sammGateway.getSubscriber(userId)
+                            if (refreshed != null) {
+                                val numIdx = refreshed.subscriberId.toIntOrNull() ?: refreshed.subscriberId.hashCode()
+                                _selectedUser.value = com.example.core.model.UserDetail(
+                                    userIndexLower = numIdx,
+                                    userIDLower = refreshed.username,
+                                    customerFullNameLower = refreshed.displayName,
+                                    customerNameLower = refreshed.displayName ?: refreshed.username,
+                                    displayNameLower = refreshed.displayName,
+                                    mobileNumberLower = refreshed.phone,
+                                    packageNameLower = refreshed.planName,
+                                    accountIndexLower = refreshed.planId?.toIntOrNull(),
+                                    accountStatusLower = refreshed.status,
+                                    expirationDateLower = refreshed.expiresAt,
+                                    accountExpirationDateLower = refreshed.expiresAt,
+                                    originProvider = com.example.core.model.SasProviders.ALAMIRY
+                                )
+                            }
+                        } catch (_: Exception) {}
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+                        Log.e("EarthlinkSearchVM", "Failed to execute atomic post-call materialization after SAMM renewal", e)
+                        _error.value = if (prefs.getLanguage() == "ar") {
+                            "تم تجديد الاشتراك ولكن فشل تسجيل القيد المحلي."
+                        } else {
+                            "Renewal succeeded on server but local record confirmation failed."
+                        }
+                    }
+                } else {
+                    val failureReason = when (opResult) {
+                        is com.example.core.network.SasOperationResult.Rejected -> opResult.reason
+                        is com.example.core.network.SasOperationResult.Inconclusive -> opResult.reason
+                        is com.example.core.network.SasOperationResult.Unsupported -> opResult.reason
+                        else -> "SAMM renewal failed"
+                    }
+                    if (opResult is com.example.core.network.SasOperationResult.Inconclusive) {
+                        localLedgerRepository.resolvePendingOperationInconclusive(businessTxId, failureReason)
+                    } else {
+                        localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, failureReason)
+                    }
+                    _error.value = failureReason
+                }
+            } catch (e: com.example.core.network.SasBusinessException) {
+                localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, e.errorMessage)
+                _error.value = e.errorMessage
+            } catch (e: com.example.core.network.SasAuthException) {
+                localLedgerRepository.resolvePendingOperationVerifiedFailure(businessTxId, "Auth failed: ${e.message}")
+                _error.value = "Session expired. Please log in again."
+            } catch (e: com.example.core.network.SasTransportException) {
+                localLedgerRepository.resolvePendingOperationInconclusive(businessTxId, "Transport uncertainty: ${e.message}")
+                _error.value = if (prefs.getLanguage() == "ar") {
+                    "فشل الاتصال بالشبكة: تعذر تجديد الاشتراك على خوادم سامم. تم حفظ العملية للتحقق."
+                } else {
+                    "Network connection uncertain: Renewal stored for verification."
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                localLedgerRepository.resolvePendingOperationInconclusive(businessTxId, "Unexpected error: ${e.message}")
+                _error.value = e.message ?: "Failed to renew SAMM subscriber"
+            } finally {
+                _isActionLoading.value = false
+                lock.unlock()
+            }
         }
     }
 }

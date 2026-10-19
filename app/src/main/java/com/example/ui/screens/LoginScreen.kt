@@ -287,7 +287,7 @@ fun LoginScreen(viewModel: AuthViewModel) {
                                         .clickable { viewModel.setSelectedProvider(com.example.core.model.SasProviders.ALAMIRY) }
                                 ) {
                                     Text(
-                                        text = if (currentLang == "ar") "العامري (SAMM)" else "Alamiry (SAMM)",
+                                        text = if (currentLang == "ar") "سام" else "SAMM",
                                         fontSize = 13.sp,
                                         fontWeight = if (isSamm) FontWeight.Bold else FontWeight.Medium,
                                         color = if (isSamm) Color.White else Color.White.copy(alpha = 0.6f),
@@ -310,7 +310,7 @@ fun LoginScreen(viewModel: AuthViewModel) {
                                 label = { Text(if (currentLang == "ar") "عنوان الخادم (Server URL)" else "Server URL / Domain / IP") },
                                 placeholder = {
                                     Text(
-                                        "https://isp.alamiry.com",
+                                        "domain or IP address",
                                         color = Color.White.copy(alpha = 0.3f)
                                     )
                                 },

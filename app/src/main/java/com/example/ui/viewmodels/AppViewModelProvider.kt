@@ -21,6 +21,7 @@ object AppViewModelProvider {
             val app = (this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as EarthlinkApp)
             DashboardViewModel(
                 gateway = app.earthlinkGateway,
+                sasGatewayRouter = app.sasGatewayRouter,
                 audit = app.auditRepository,
                 localAccountRepository = app.localAccountRepository,
                 localLedgerRepository = app.localLedgerRepository,
@@ -64,7 +65,10 @@ object AppViewModelProvider {
             SyncStatusViewModel(
                 syncRepo = app.syncRepository,
                 audit = app.auditRepository,
-                prefs = app.preferenceManager
+                prefs = app.preferenceManager,
+                ledgerRepo = app.localLedgerRepository,
+                sasGatewayRouter = app.sasGatewayRouter,
+                earthlinkGateway = app.earthlinkGateway
             )
         }
     }

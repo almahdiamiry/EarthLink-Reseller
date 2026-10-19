@@ -151,6 +151,23 @@ class EarthlinkSearchViewModelSeamTest {
             return true
         }
 
+        // The seam addresses mutations by username and resolves it to a userIndex through this
+        // directory. An account the provider does not carry is unreachable, which is the point:
+        // a stale id can no longer reach a live subscriber.
+        val userDirectory = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
+        fun carrySubscriber(userIndex: Int, userId: String) {
+            userDirectory[userId] = userIndex
+        }
+
+        override suspend fun searchUsers(query: String, startIndex: Int, rowCount: Int) =
+            com.example.core.model.UserListResponse(
+                itemsList = userDirectory.entries
+                    .filter { it.key.contains(query, ignoreCase = true) }
+                    .map { com.example.core.model.UserListItem(userIndexLower = it.value, userIDLower = it.key) },
+                totalCount = userDirectory.size
+            )
+
         override suspend fun changeAccountType(userIndex: Int, userId: String, accountIndex: Int): Boolean {
             changeAccountTypeCalls.incrementAndGet()
             lastChangedAccountIndex = accountIndex
@@ -466,6 +483,7 @@ class EarthlinkSearchViewModelSeamTest {
 
     @Test
     fun testUpdateUserDisplayName_success_persistsLocallyAndDispatchesGatewayAndAudits() = runBlocking {
+        testGateway.carrySubscriber(501, "name_usr_1")
         val vm = createViewModel()
         val account = LocalAccount(
             id = "name_usr_1",
@@ -509,6 +527,7 @@ class EarthlinkSearchViewModelSeamTest {
     @Test
     fun testUpdateUserDisplayName_remoteFailure_persistsLocallySetsErrorWithoutAudit() = runBlocking {
         testGateway.shouldFailUpdateDisplayName = true
+        testGateway.carrySubscriber(502, "name_usr_2")
         val vm = createViewModel()
         val account = LocalAccount(
             id = "name_usr_2",
@@ -534,7 +553,9 @@ class EarthlinkSearchViewModelSeamTest {
         assertEquals(1, testGateway.updateDisplayNameCalls.get())
 
         // 3. UI error set, success is null
-        assertEquals("Failed to update display name on Earthlink.", vm.error.value)
+        // The message names the provider that failed. It used to hardcode "Earthlink", which
+    // reported an Alamiry failure as an EarthLink failure.
+    assertEquals("Failed to update the display name on EARTHLINK.", vm.error.value)
         assertNull(vm.actionSuccess.value)
 
         // 4. Audit must NOT be logged on remote failure
@@ -544,6 +565,7 @@ class EarthlinkSearchViewModelSeamTest {
 
     @Test
     fun testChangeAccountType_success_persistsLocallyAndDispatchesGatewayAndAudits() = runBlocking {
+        testGateway.carrySubscriber(601, "pkg_usr_1")
         val vm = createViewModel()
         val account = LocalAccount(
             id = "pkg_usr_1",
@@ -593,6 +615,7 @@ class EarthlinkSearchViewModelSeamTest {
     @Test
     fun testChangeAccountType_remoteFailure_doesNotPersistLocallySetsErrorWithoutAudit() = runBlocking {
         testGateway.shouldFailChangeAccountType = true
+        testGateway.carrySubscriber(602, "pkg_usr_2")
         val vm = createViewModel()
         val account = LocalAccount(
             id = "pkg_usr_2",
@@ -769,6 +792,7 @@ class EarthlinkSearchViewModelSeamTest {
         db.localAccountDao().insert(LocalAccount(id = "UUID_B1", earthlinkUsername = "alice", ispUserIndex = 2002))
         db.localAccountDao().insert(LocalAccount(id = "UUID_B2", earthlinkUsername = "alice", ispUserIndex = 2002))
 
+        testGateway.carrySubscriber(2002, "alice")
         val vm = createViewModel()
         val job = vm.loadUserDetail(2002, "alice")
         job.join()
@@ -1068,6 +1092,7 @@ class EarthlinkSearchViewModelSeamTest {
 
     @Test
     fun testRealIspAccount_mutationsCallGatewayNormally() = runBlocking {
+        testGateway.carrySubscriber(901, "real_sub_901")
         val realAccount = LocalAccount(
             id = "REAL_UUID_901",
             earthlinkUsername = "real_sub_901",
@@ -1117,6 +1142,7 @@ class EarthlinkSearchViewModelSeamTest {
         )
         accountRepo.saveAccount(localAccountA)
         accountRepo.saveAccount(realAccountB)
+        testGateway.carrySubscriber(collisionIndex, "real_user")
 
         val vm = createViewModel()
 

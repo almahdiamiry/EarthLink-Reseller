@@ -82,6 +82,10 @@ interface LocalAccountRepository {
     suspend fun findAccountByUsernameOrIdOneShot(username: String): LocalAccount?
     fun getActiveAccountByUsernameOrId(username: String): Flow<LocalAccount?>
     suspend fun findActiveAccountByUsernameOrIdOneShot(username: String): LocalAccount?
+    fun getActiveAccountByUsernameOrIdPreferringProvider(username: String, provider: String): Flow<LocalAccount?> =
+        getActiveAccountByUsernameOrId(username)
+    suspend fun findActiveAccountByUsernameOrIdPreferringProviderOneShot(username: String, provider: String): LocalAccount? =
+        findActiveAccountByUsernameOrIdOneShot(username)
 
     /**
      * Resolves all active physical containers representing the subscriber identity.
@@ -142,7 +146,13 @@ interface LocalAccountRepository {
      * @param isFetchComplete If false, aborts immediately without transitions
      * @return List of local account IDs that transitioned to history-only
      */
-    suspend fun reconcileIspDisappearance(authoritativeIspUserIds: Set<String>, isFetchComplete: Boolean): List<String>
+    suspend fun reconcileIspDisappearance(
+        authoritativeIspUserIds: Set<String>,
+        isFetchComplete: Boolean,
+        targetProvider: String = com.example.core.model.SasProviders.EARTHLINK,
+        migrationUsernames: Set<String> = emptySet(),
+        migrationTargetProvider: String? = null
+    ): List<String>
 }
 
 interface LocalLedgerRepository {
@@ -205,6 +215,7 @@ interface LocalLedgerRepository {
     suspend fun getPendingSyntheticHistory(): List<LocalLedgerEntry>
     suspend fun sweepAndResolvePendingOperations(gateway: EarthlinkGateway, graceWindowMs: Long = 5000L): List<PendingOperationResolution>
     suspend fun sweepAndResolvePendingOperations(router: SasGatewayRouter, graceWindowMs: Long = 5000L): List<PendingOperationResolution> = emptyList()
+    fun getPendingOperationsFlow(): Flow<List<PendingExternalOperation>> = kotlinx.coroutines.flow.emptyFlow()
 }
 
 interface UtowerImportRepository {

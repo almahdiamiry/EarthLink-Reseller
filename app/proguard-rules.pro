@@ -15,6 +15,10 @@
     @com.squareup.moshi.Json <fields>;
 }
 
+# Keep SAMM network DTOs and API services for Retrofit/Moshi
+-keep class com.example.core.network.samm.** { *; }
+
+
 # Protect sensitive billing logic/repositories from aggressive shrinking
 -keepnames class com.example.data.repository.** { *; }
 

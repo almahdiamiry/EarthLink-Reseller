@@ -1,8 +1,12 @@
 package com.example.core.network.samm
 
 import kotlinx.coroutines.test.runTest
+import java.util.concurrent.TimeUnit
+import com.example.core.network.SasGatewayException
+import com.example.core.network.samm.takeRequestOrFail
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -74,7 +78,7 @@ class SammWireContractTest {
         assertEquals(120, body?.rateLimitPerMin)
         assertEquals("5.1.15", body?.serverVersion)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("GET", recorded.method)
         assertEquals("/api/v1/me", recorded.path)
         assertEquals("Bearer $testToken", recorded.getHeader("Authorization"))
@@ -112,7 +116,7 @@ class SammWireContractTest {
                 .setBody(jsonResponse)
         )
 
-        val response = apiService.listCustomers(search = "baghdad", page = 1, perPage = 20)
+        val response = apiService.listCustomers(search = "baghdad", limit = 20, offset = 0)
 
         assertTrue(response.isSuccessful)
         val list = response.body()
@@ -124,9 +128,9 @@ class SammWireContractTest {
         assertEquals("user_baghdad_01", item?.username)
         assertEquals("active", item?.status)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("GET", recorded.method)
-        assertEquals("/api/v1/customers?search=baghdad&page=1&per_page=20", recorded.path)
+        assertEquals("/api/v1/customers?search=baghdad&limit=20&offset=0", recorded.path)
         assertEquals("Bearer $testToken", recorded.getHeader("Authorization"))
     }
 
@@ -163,7 +167,7 @@ class SammWireContractTest {
         assertEquals(105, response.body()?.id)
         assertEquals("user_baghdad_01", response.body()?.username)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("GET", recorded.method)
         assertEquals("/api/v1/customers/105", recorded.path)
     }
@@ -206,7 +210,7 @@ class SammWireContractTest {
         assertEquals(201, response.code())
         assertEquals(106, response.body()?.id)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("POST", recorded.method)
         assertEquals("/api/v1/customers", recorded.path)
 
@@ -249,7 +253,7 @@ class SammWireContractTest {
         assertTrue(response.isSuccessful)
         assertEquals("AhmedUpdated", response.body()?.firstname)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("PATCH", recorded.method)
         assertEquals("/api/v1/customers/105", recorded.path)
 
@@ -273,7 +277,7 @@ class SammWireContractTest {
         assertTrue(response.isSuccessful)
         assertEquals("suspended", response.body()?.status)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("POST", recorded.method)
         assertEquals("/api/v1/customers/105/suspend", recorded.path)
     }
@@ -293,7 +297,7 @@ class SammWireContractTest {
         assertTrue(response.isSuccessful)
         assertEquals("active", response.body()?.status)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("POST", recorded.method)
         assertEquals("/api/v1/customers/105/activate", recorded.path)
     }
@@ -326,7 +330,7 @@ class SammWireContractTest {
         assertEquals(105, renewBody?.id)
         assertEquals("2026-11-01T10:00:00Z", renewBody?.newExpiration)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("POST", recorded.method)
         assertEquals("/api/v1/customers/105/renew?generate_invoice=false", recorded.path)
     }
@@ -364,7 +368,7 @@ class SammWireContractTest {
         assertTrue(response.isSuccessful)
         assertEquals(15, response.body()?.planId)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("POST", recorded.method)
         assertEquals("/api/v1/customers/105/assign-plan", recorded.path)
 
@@ -404,7 +408,7 @@ class SammWireContractTest {
         assertEquals(1, list?.size)
         assertEquals("Standard 10M", list?.first()?.name)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("GET", recorded.method)
         assertEquals("/api/v1/plans?enabled_only=true", recorded.path)
     }
@@ -445,7 +449,7 @@ class SammWireContractTest {
         assertEquals("reset_limit", cmd?.action)
         assertTrue(cmd?.applied == true)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("GET", recorded.method)
         assertEquals("/api/v1/commands?limit=50&offset=0", recorded.path)
     }
@@ -467,7 +471,7 @@ class SammWireContractTest {
         val response = customClientService.getMe()
         assertTrue(response.isSuccessful)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("/api/v1/me", recorded.path)
         assertFalse(
             "Must never contain duplicate /api/v1/api/v1",
@@ -475,141 +479,423 @@ class SammWireContractTest {
         )
     }
 
+    // ========================================================================
+    // Pagination contract: SAMM uses limit/offset, never page/per_page.
+    // Sending page/per_page is silently dropped by the server, which then applies its own
+    // default limit of 100 and truncates the result set with no error at all.
+    // ========================================================================
+
     @Test
-    fun agentLogin_verifiesPathMethodBodyAndResponseDeserialization() = runTest {
-        // Claim: Agent login posts username & password to /api/v1/auth/agent-login and returns agent token & info
-        val jsonResponse = """
-            {
-              "token": "samm_agent_secret_token_12345",
-              "token_type": "bearer",
-              "expires_at": null,
-              "agent": {
-                "id": 5,
-                "username": "test_agent_v1",
-                "role": "agent",
-                "reseller_id": 2
-              }
-            }
-        """.trimIndent()
+    fun listCustomers_sendsLimitAndOffset_andNeverPageOrPerPage() = runTest {
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"total": 0, "items": []}""")
+        )
+
+        apiService.listCustomers(limit = 200, offset = 400)
+
+        val recorded = mockServer.takeRequestOrFail()
+        val path = recorded.path.orEmpty()
+        assertTrue("limit must be sent, got '$path'", path.contains("limit=200"))
+        assertTrue("offset must be sent, got '$path'", path.contains("offset=400"))
+        assertFalse("SAMM has no 'page' param, got '$path'", path.contains("page="))
+        assertFalse("SAMM has no 'per_page' param, got '$path'", path.contains("per_page="))
+    }
+
+    @Test
+    fun searchSubscribers_translatesPageAndPageSizeIntoLimitAndOffset() = runTest {
+        val gateway = SammGatewayImpl(apiService)
 
         mockServer.enqueue(
             MockResponse()
                 .setResponseCode(200)
                 .setHeader("Content-Type", "application/json")
-                .setBody(jsonResponse)
+                .setBody("""{"total": 0, "items": []}""")
         )
+        gateway.searchSubscribers(query = "abc", page = 3, pageSize = 50)
 
-        val unauthClient = SammNetworkClient.createApiService(mockServer.url("/").toString(), token = null)
-        val response = unauthClient.agentLogin(
-            SammAgentLoginRequest(
-                username = "test_agent_v1",
-                password = "MockAgentPassword#456"
-            )
-        )
-
-        assertTrue(response.isSuccessful)
-        val body = response.body()
-        assertNotNull(body)
-        assertEquals("samm_agent_secret_token_12345", body?.token)
-        assertEquals("bearer", body?.tokenType)
-        assertNull(body?.expiresAt)
-        assertEquals(5, body?.agent?.id)
-        assertEquals("test_agent_v1", body?.agent?.username)
-        assertEquals("agent", body?.agent?.role)
-        assertEquals(2, body?.agent?.resellerId)
-
-        val recorded = mockServer.takeRequest()
-        assertEquals("POST", recorded.method)
-        assertEquals("/api/v1/auth/agent-login", recorded.path)
-        assertEquals("application/json", recorded.getHeader("Accept"))
-        assertNull("Unauthenticated login must not have Authorization header", recorded.getHeader("Authorization"))
-        val requestBody = recorded.body.readUtf8()
-        assertTrue(requestBody.contains("\"username\":\"test_agent_v1\""))
-        assertTrue(requestBody.contains("\"password\":\"MockAgentPassword#456\""))
+        // page 3 of 50 -> offset (3-1)*50 = 100, limit 50
+        val recorded = mockServer.takeRequestOrFail()
+        val path = recorded.path.orEmpty()
+        assertTrue("page 3 at size 50 must offset by 100, got '$path'", path.contains("offset=100"))
+        assertTrue("page size must become limit, got '$path'", path.contains("limit=50"))
+        assertFalse("Must not send page=, got '$path'", path.contains("page="))
+        assertFalse("Must not send per_page=, got '$path'", path.contains("per_page="))
     }
 
     @Test
-    fun agentLogout_verifiesPathMethodHeadersAndResponseDeserialization() = runTest {
-        // Claim: Agent logout posts to /api/v1/auth/agent-logout with Bearer token
-        val jsonResponse = """
-            {
-              "status": "success",
-              "message": "Logged out successfully"
-            }
-        """.trimIndent()
+    fun searchSubscribers_clampsAnOversizedPageSizeToTheServerCeiling() = runTest {
+        // The dashboard asks for pageSize = 5000; SAMM rejects limit > 1000 with HTTP 422, so the
+        // gateway must clamp rather than forward it.
+        val gateway = SammGatewayImpl(apiService)
 
         mockServer.enqueue(
             MockResponse()
                 .setResponseCode(200)
                 .setHeader("Content-Type", "application/json")
-                .setBody(jsonResponse)
+                .setBody("""{"total": 0, "items": []}""")
+        )
+        gateway.searchSubscribers(query = "", page = 1, pageSize = 5000)
+
+        val recorded = mockServer.takeRequestOrFail()
+        val path = recorded.path.orEmpty()
+        assertTrue("Oversized limit must be clamped to 1000, got '$path'", path.contains("limit=1000"))
+        assertFalse("Must never send limit=5000, got '$path'", path.contains("limit=5000"))
+    }
+
+    // ========================================================================
+    // Plan price: a price of 0 is a real value (a free plan), not "unknown".
+    // Live reference: plan 10 "Owner" has price 0.0, plan 6 "Economy" has 35.0.
+    // ========================================================================
+
+    @Test
+    fun getPlanPrice_reportsZeroForAFreePlan_andTheRealPriceOtherwise() = runTest {
+        val gateway = SammGatewayImpl(apiService)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """
+                    [
+                      {"id": 10, "name": "Owner",   "price": 0.0,  "enabled": true},
+                      {"id": 6,  "name": "Economy", "price": 35.0, "enabled": true}
+                    ]
+                    """.trimIndent()
+                )
         )
 
-        val response = apiService.agentLogout()
-
-        assertTrue(response.isSuccessful)
-        val body = response.body()
-        assertNotNull(body)
-        assertEquals("success", body?.status)
-        assertEquals("Logged out successfully", body?.message)
-
-        val recorded = mockServer.takeRequest()
-        assertEquals("POST", recorded.method)
-        assertEquals("/api/v1/auth/agent-logout", recorded.path)
-        assertEquals("Bearer $testToken", recorded.getHeader("Authorization"))
+        assertEquals("A free plan must report 0.0, not null", 0.0, gateway.getPlanPrice("10")!!, 0.001)
+        assertEquals(35.0, gateway.getPlanPrice("6")!!, 0.001)
     }
 
     @Test
-    fun agentLogin_whenInvalidCredentials_returns401WithGenericFailure() = runTest {
-        // Claim: Agent login failures return HTTP 401 with normalized generic message "Invalid username or password."
-        val jsonError = """{"detail": "Invalid username or password."}"""
+    fun getPlanPrice_returnsNullForAnUnknownPlan() = runTest {
+        val gateway = SammGatewayImpl(apiService)
         mockServer.enqueue(
             MockResponse()
-                .setResponseCode(401)
+                .setResponseCode(200)
                 .setHeader("Content-Type", "application/json")
-                .setBody(jsonError)
+                .setBody("""[{"id": 10, "name": "Owner", "price": 0.0, "enabled": true}]""")
         )
 
-        val unauthClient = SammNetworkClient.createApiService(mockServer.url("/").toString(), token = null)
-        val response = unauthClient.agentLogin(
-            SammAgentLoginRequest(
-                username = "invalid_user",
-                password = "invalid_password"
-            )
-        )
-
-        assertFalse(response.isSuccessful)
-        assertEquals(401, response.code())
-        val errorBody = response.errorBody()?.string()
-        assertNotNull(errorBody)
-        assertTrue(errorBody?.contains("Invalid username or password.") == true)
+        assertNull("An unknown plan id must be null, never a fabricated number", gateway.getPlanPrice("999"))
+        assertNull("A blank plan id must be null", gateway.getPlanPrice(""))
     }
 
     @Test
-    fun agentLogin_whenThrottled_returns429TooManyRequestsWithRetryAfter() = runTest {
-        // Claim: Agent login rate limit returns HTTP 429 Too Many Requests with Retry-After header
-        val jsonError = """{"detail": "Too many failed login attempts. Please try again later."}"""
+    fun listPackages_mapsRealSamPlansWithTheirPrices_forTheChangePlanDialog() = runTest {
+        // The change-plan dialog used to fall back to hardcoded demo plans whenever the package
+        // list was empty, which is what put a fabricated 40,000 IQD "Economy" on screen.
+        val gateway = SammGatewayImpl(apiService)
         mockServer.enqueue(
             MockResponse()
-                .setResponseCode(429)
+                .setResponseCode(200)
                 .setHeader("Content-Type", "application/json")
-                .setHeader("Retry-After", "300")
-                .setBody(jsonError)
+                .setBody(
+                    """
+                    [
+                      {"id": 6,  "name": "Economy", "price": 20000.0, "enabled": true},
+                      {"id": 10, "name": "Owner",   "price": 0.0,     "enabled": true}
+                    ]
+                    """.trimIndent()
+                )
         )
 
-        val unauthClient = SammNetworkClient.createApiService(mockServer.url("/").toString(), token = null)
-        val response = unauthClient.agentLogin(
-            SammAgentLoginRequest(
-                username = "throttled_user",
-                password = "any_password"
-            )
-        )
+        val packages = gateway.listPackages()
 
-        assertFalse(response.isSuccessful)
-        assertEquals(429, response.code())
-        assertEquals("300", response.headers()["Retry-After"])
-        val errorBody = response.errorBody()?.string()
-        assertNotNull(errorBody)
-        assertTrue(errorBody?.contains("Too many failed login attempts") == true)
+        assertEquals("Both real plans must be offered", 2, packages.size)
+        val owner = packages.single { it.accountName == "Owner" }
+        val economy = packages.single { it.accountName == "Economy" }
+        assertEquals(10, owner.accountIndex)
+        assertEquals("A free plan must carry price 0.0, not a fallback", 0.0, owner.price!!, 0.001)
+        assertEquals(6, economy.accountIndex)
+        assertEquals(20000.0, economy.price!!, 0.001)
     }
+
+    @Test
+    fun getCurrencyLabel_readsTheCurrencySammReports_insteadOfAssumingOne() = runTest {
+        val gateway = SammGatewayImpl(apiService)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """
+                    {
+                      "version": "5.2.4",
+                      "settings": [
+                        {"key": "currency_code",   "value": "IQD", "type": "string"},
+                        {"key": "currency_symbol", "value": "IQD", "type": "string"}
+                      ]
+                    }
+                    """.trimIndent()
+                )
+        )
+
+        assertEquals("IQD", gateway.getCurrencyLabel())
+    }
+
+    @Test
+    fun changePlan_neverRenewsItOnlyChangesThePlan() = runTest {
+        // The app offers "Change Package", which must change the plan and leave the expiry alone.
+        // AssignPlanRequest previously omitted extend_expiration / keep_expiration / when /
+        // invoice_mode, so the server decided whether the subscriber got renewed as a side effect.
+        val gateway = SammGatewayImpl(apiService)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"total": 1, "items": [{"id": 326, "username": "admin@sacx"}]}""")
+        )
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"id": 326, "username": "admin@sacx", "plan_id": 6, "plan_name": "Economy"}""")
+        )
+
+        assertTrue(gateway.changePlan("admin@sacx", "6").isApplied)
+
+        mockServer.takeRequestOrFail("username lookup")
+        val body = mockServer.takeRequestOrFail("assign-plan").body.readUtf8()
+        assertTrue("extend_expiration must be explicitly false, body=$body", body.contains("\"extend_expiration\":false"))
+        assertTrue("keep_expiration must be explicitly true, body=$body", body.contains("\"keep_expiration\":true"))
+        assertTrue("when must be explicitly 'now', body=$body", body.contains("\"when\":\"now\""))
+        assertTrue("invoice_mode must be explicitly 'none', body=$body", body.contains("\"invoice_mode\":\"none\""))
+        assertTrue("generate_invoice must stay false, body=$body", body.contains("\"generate_invoice\":false"))
+    }
+
+    /** Drains queued requests and returns the PATCH that writes the new expiry. */
+    private fun patchRequest(): RecordedRequest {
+        var patch: RecordedRequest? = null
+        repeat(10) {
+            val r = mockServer.takeRequest(2, TimeUnit.SECONDS) ?: return patch!!
+            if (r.method == "PATCH") patch = r
+        }
+        return patch!!
+    }
+
+    @Test
+    fun extendSubscriberByDays_setsAnAbsoluteExpiryThatIsNdaysPastTheCurrentOne() = runTest {
+        // /renew pushes the expiry forward by the PLAN's duration (1 month) and accepts no day
+        // count. Extending by an exact number of days is done by setting an absolute expiry, which
+        // the API documents as the only way to control it.
+        val gateway = SammGatewayImpl(apiService)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"total": 1, "items": [{"id": 326, "username": "admin@sacx"}]}""")
+        )
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """{"id": 326, "username": "admin@sacx", "status": "active",
+                        "expiration_date": "2026-10-20T00:00:00+00:00"}""".trimIndent()
+                )
+        )
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"id": 326, "username": "admin@sacx", "status": "active"}""")
+        )
+
+        // 2026-10-10T00:00:00Z, well before the 2026-10-20 expiry.
+        val nowMs = 1_791_590_400_000L
+        val result = gateway.extendSubscriberByDays("admin@sacx", 5, nowMs = nowMs)
+
+        assertTrue("Extension must be applied, got $result", result.isApplied)
+        val request = patchRequest()
+        assertEquals("/api/v1/customers/326", request.path)
+        val body = request.body.readUtf8()
+        assertTrue(
+            "2026-10-25 00:00Z is 03:00 in Baghdad, so +5 days is 2026-10-25 03:00, body=$body",
+            body.contains("\"2026-10-25 03:00\"")
+        )
+        // Probed live against SAMM: it accepts ONLY a naive datetime. "Z", "+00:00" and "+03:00"
+        // are all rejected with "expiration_date must be ISO 8601 or 'YYYY-MM-DD HH:MM'".
+        assertFalse(
+            "SAMM rejects any timezone designator, body=$body",
+            Regex("""\"expiration_date\":\"[^\"]*(Z|[+-]\d{2}:?\d{2})[^\"]*\"""").containsMatchIn(body)
+        )
+    }
+
+    @Test
+    fun extendSubscriberByDays_neverShortensAnAlreadyExpiredSubscriber() = runTest {
+        val gateway = SammGatewayImpl(apiService)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"total": 1, "items": [{"id": 326, "username": "admin@sacx"}]}""")
+        )
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """{"id": 326, "username": "admin@sacx", "status": "expired",
+                        "expiration_date": "2020-01-01T00:00:00+00:00"}""".trimIndent()
+                )
+        )
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"id": 326, "username": "admin@sacx", "status": "active"}""")
+        )
+
+        // 2026-10-10T00:00:00Z. Somebody who lapsed in 2020 lands on 2026-10-11, not 2020-01-02.
+        val nowMs = 1_791_590_400_000L
+        gateway.extendSubscriberByDays("admin@sacx", 1, nowMs = nowMs)
+
+        val body = patchRequest().body.readUtf8()
+        assertTrue(
+            "A lapsed subscriber must be brought forward to now+1 day in Baghdad, body=$body",
+            body.contains("\"2026-10-11 03:00\"")
+        )
+    }
+
+    @Test
+    fun extendSubscriberByDays_rejectsAUsernameTheProviderDoesNotCarryInsteadOfPretending() = runTest {
+        // The extension is addressed by username. If SAMM does not carry that username there is no
+        // customer to extend, and guessing an id would write somebody else's expiry. It must fail
+        // loudly, naming the value, and dispatch nothing.
+        val gateway = SammGatewayImpl(apiService)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"total": 0, "items": []}""")
+        )
+        val requestsBefore = mockServer.requestCount
+
+        val thrown = try {
+            gateway.extendSubscriberByDays("absent@sacx", 3)
+            null
+        } catch (e: SasGatewayException) {
+            e
+        }
+
+        assertNotNull("A username the provider does not carry must be rejected", thrown)
+        assertTrue(
+            "The message must name the offending value, got: ${thrown?.message}",
+            thrown?.message?.contains("absent@sacx") == true
+        )
+        assertEquals(
+            "Only the lookup may reach the provider; no expiry may be written",
+            1,
+            mockServer.requestCount - requestsBefore
+        )
+    }
+
+    @Test
+    fun getCurrencyLabel_returnsNullWhenSammReportsNone() = runTest {
+        val gateway = SammGatewayImpl(apiService)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"version": "5.2.4", "settings": []}""")
+        )
+
+        assertNull("No reported currency must stay null, never a hardcoded one", gateway.getCurrencyLabel())
+    }
+
+    @Test
+    fun updateDisplayName_splitsTheDisplayNameAcrossSammFirstAndLastName() = runTest {
+        // The app offers rename for every provider; without a SAMM implementation it fell
+        // through to the EarthLink gateway and wrote the SAMM subscriber id to the wrong ISP.
+        val gateway = SammGatewayImpl(apiService)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"total": 1, "items": [{"id": 326, "username": "admin@sacx"}]}""")
+        )
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"id": 326, "username": "admin@sacx", "status": "active"}""")
+        )
+
+        assertTrue(gateway.updateDisplayName("admin@sacx", "Ahmad Karim").isApplied)
+
+        mockServer.takeRequestOrFail("username lookup")
+        val recorded = mockServer.takeRequestOrFail("rename")
+        assertEquals("PATCH", recorded.method)
+        assertEquals("/api/v1/customers/326", recorded.path)
+        val body = recorded.body.readUtf8()
+        assertTrue("firstname must carry the first part, body=$body", body.contains("\"firstname\":\"Ahmad\""))
+        assertTrue("lastname must carry the rest, body=$body", body.contains("\"lastname\":\"Karim\""))
+        assertFalse("The username must never be rewritten by a rename, body=$body", body.contains("username"))
+    }
+
+    @Test
+    fun updateDisplayName_aSingleWordNameGoesToFirstnameAlone() = runTest {
+        val gateway = SammGatewayImpl(apiService)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"total": 1, "items": [{"id": 326, "username": "admin@sacx"}]}""")
+        )
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"id": 326, "username": "admin@sacx", "status": "active"}""")
+        )
+
+        assertTrue(gateway.updateDisplayName("admin@sacx", "Prince").isApplied)
+
+        mockServer.takeRequestOrFail("username lookup")
+        val body = mockServer.takeRequestOrFail("rename").body.readUtf8()
+        assertTrue("firstname must carry the whole name, body=$body", body.contains("\"firstname\":\"Prince\""))
+        assertFalse("lastname must be omitted when absent, body=$body", body.contains("lastname"))
+    }
+
+    /**
+     * Claim: an @-bearing username reaches the SAMM directory lookup query byte-for-byte, so
+     * [SammGatewayImpl.findDirectoryRow] can resolve the provider row the rest of the
+     * username-keyed dispatch depends on.
+     * Seam: JVM MockWebServer wire contract (real OkHttp dispatch).
+     * Independent Oracle: the recorded lookup request's decoded `search` parameter must equal the
+     * exact username "admin@sacx" (RFC 3986 query decoding, not production code); double encoding
+     * or a dropped '@' would decode to a different key and fail this pin.
+     */
+    @Test
+    fun getSubscriber_anAtBearingUsernameReachesTheDirectoryLookupIntact() = runTest {
+        val gateway = SammGatewayImpl(apiService)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"total": 1, "items": [{"id": 326, "username": "admin@sacx"}]}""")
+        )
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"id": 326, "username": "admin@sacx", "status": "active"}""")
+        )
+
+        assertEquals("admin@sacx", gateway.getSubscriber("admin@sacx")?.username)
+
+        val lookup = mockServer.takeRequestOrFail("directory lookup")
+        assertEquals(
+            "The '@' prints the exact key the provider directory carries; re-encoding or dropping " +
+                "it would make the provider resolve a different or absent subscriber.",
+            "admin@sacx",
+            lookup.requestUrl?.queryParameter("search")
+        )
+    }
+
 }

@@ -6,7 +6,8 @@ import com.squareup.moshi.JsonClass
 /**
  * SAMM Wire DTOs (Data Transfer Objects)
  *
- * Mapped to SAMM 5.1.15 OpenAPI 3.1.0 specification (docs/samm/openapi.json).
+ * Mapped to SAMM OpenAPI 3.1.0 specification (docs/samm/openapi.json), refreshed from the live
+ * server's /api/v1/openapi.json. Live server_version at the time of refresh: 5.2.4.
  * Strict adherence to SAMM identity contract:
  * - Customer IDs are Integers on wire endpoints (`id: Int`).
  * - Dates are ISO-8601 strings.
@@ -23,12 +24,12 @@ data class MeResponse(
     @Json(name = "token_id") val tokenId: Int? = null
 )
 
-@JsonClass(generateAdapter = true)
-data class SammAgentLoginRequest(
-    @Json(name = "username") val username: String,
-    @Json(name = "password") val password: String
-)
-
+/**
+ * Agent identity attached to a token, read back from GET /me.
+ *
+ * There is no SAMM login/logout DTO: authentication is a static bearer token from System > API,
+ * not a username/password session.
+ */
 @JsonClass(generateAdapter = true)
 data class SammAgentInfo(
     @Json(name = "id") val id: Int,
@@ -38,17 +39,30 @@ data class SammAgentInfo(
 )
 
 @JsonClass(generateAdapter = true)
-data class SammAgentLoginResponse(
-    @Json(name = "token") val token: String,
-    @Json(name = "token_type") val tokenType: String = "bearer",
-    @Json(name = "expires_at") val expiresAt: String? = null,
-    @Json(name = "agent") val agent: SammAgentInfo
+data class SupportSettingEntry(
+    @Json(name = "key") val key: String? = null,
+    @Json(name = "value") val value: String? = null,
+    @Json(name = "type") val type: String? = null
+)
+
+/**
+ * GET /support/settings is undocumented in the OpenAPI schema (its 200 response is an empty
+ * object), so this mirrors the observed wire shape. Every field is optional so a future shape
+ * change degrades to "no currency reported" instead of a parse failure.
+ */
+@JsonClass(generateAdapter = true)
+data class SupportSettingsResponse(
+    @Json(name = "version") val version: String? = null,
+    @Json(name = "schema_version") val schemaVersion: String? = null,
+    @Json(name = "settings") val settings: List<SupportSettingEntry> = emptyList()
 )
 
 @JsonClass(generateAdapter = true)
-data class SammAgentLogoutResponse(
-    @Json(name = "status") val status: String,
-    @Json(name = "message") val message: String
+data class SessionItemDto(
+    @Json(name = "username") val username: String? = null,
+    @Json(name = "framed_ip") val framedIp: String? = null,
+    @Json(name = "last_session_time") val lastSessionTime: Long? = null,
+    @Json(name = "started_at") val startedAt: String? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -106,6 +120,7 @@ data class CustomerUpdate(
     @Json(name = "email") val email: String? = null,
     @Json(name = "mobile") val mobile: String? = null,
     @Json(name = "password") val password: String? = null,
+    @Json(name = "expiration_date") val expirationDate: String? = null,
     @Json(name = "notes") val notes: String? = null
 )
 
@@ -121,6 +136,10 @@ data class CustomerRenewResponse(
 @JsonClass(generateAdapter = true)
 data class AssignPlanRequest(
     @Json(name = "plan_id") val planId: Int,
+    @Json(name = "when") val whenMode: String? = null,
+    @Json(name = "invoice_mode") val invoiceMode: String? = null,
+    @Json(name = "extend_expiration") val extendExpiration: Boolean? = null,
+    @Json(name = "keep_expiration") val keepExpiration: Boolean? = null,
     @Json(name = "generate_invoice") val generateInvoice: Boolean = false,
     @Json(name = "reset_state") val resetState: Boolean = false,
     @Json(name = "reactivate") val reactivate: Boolean = false,

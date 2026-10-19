@@ -61,8 +61,23 @@ fun StatusSubscribersScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
 
     // Authoritative population: current ISP subscribers only (excluding any history-only accounts)
-    val ispSubscribers = remember(subscribers, localAccountMatcher) {
-        subscribers.filter { sub ->
+    // Defaults to the provider actually logged into. When only one is configured there is nothing
+    // to choose, so the selector is not rendered.
+    val access = remember { viewModel.prefs.getProviderAccessState() }
+    val bothProviders = access.hasEarthlink && access.hasSamm
+    var providerFilter by rememberSaveable {
+        mutableStateOf(
+            if (access.hasEarthlink && !access.hasSamm) com.example.core.model.SasProviders.EARTHLINK
+            else if (access.hasSamm && !access.hasEarthlink) com.example.core.model.SasProviders.ALAMIRY
+            else viewModel.prefs.getLastSelectedLoginProvider()
+        )
+    }
+    val providerScoped = remember(subscribers, localAccountMatcher, providerFilter) {
+        if (providerFilter == "all") subscribers
+        else subscribers.filter { it.originProvider == providerFilter }
+    }
+    val ispSubscribers = remember(providerScoped, localAccountMatcher) {
+        providerScoped.filter { sub ->
             val match = localAccountMatcher.findMatchingByUsername(sub.userID) ?: localAccountMatcher.findMatching(sub)
             match?.isHistoryOnlySubscriber != true
         }
@@ -153,6 +168,40 @@ fun StatusSubscribersScreen(
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
+
+                // Provider scope, rendered only when there is a real choice to make.
+                if (bothProviders) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(
+                            Triple("all", if (lang == "ar") "الكل" else "All", Color(0xFF8E8E93)),
+                            Triple(com.example.core.model.SasProviders.EARTHLINK, "EarthLink", Color(0xFF0A84FF)),
+                            Triple(com.example.core.model.SasProviders.ALAMIRY, "SAMM", Color(0xFF7C4DFF))
+                        ).forEach { (key, label, tint) ->
+                            val on = providerFilter == key
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = if (on) tint.copy(alpha = 0.18f) else Color(0xFF161E27),
+                                border = BorderStroke(1.dp, if (on) tint else Color.White.copy(alpha = 0.08f)),
+                                modifier = Modifier.clickable { providerFilter = key }
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (on) tint else Color.White.copy(alpha = 0.6f),
+                                    fontSize = 12.sp,
+                                    fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
 
                 // Subscriber List
                 if (displayList.isEmpty()) {

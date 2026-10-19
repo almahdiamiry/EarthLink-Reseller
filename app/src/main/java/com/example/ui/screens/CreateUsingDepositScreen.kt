@@ -44,6 +44,7 @@ fun CreateUsingDepositScreen(
     val prefs = remember(context) { (context.applicationContext as EarthlinkApp).preferenceManager }
     val currentLang by prefs.languageFlow.collectAsStateWithLifecycle()
     val isAr = currentLang == "ar"
+    val providerAccess by prefs.providerAccessStateFlow.collectAsStateWithLifecycle()
 
     var userId by rememberSaveable { mutableStateOf("") }
     var phone by rememberSaveable { mutableStateOf("") }
@@ -51,6 +52,22 @@ fun CreateUsingDepositScreen(
     var selectedPkgIndex by rememberSaveable { mutableStateOf(-1) }
 
     val selectedProvider by viewModel.selectedProvider.collectAsStateWithLifecycle()
+
+    // Ensure selected provider is valid for current access state
+    LaunchedEffect(providerAccess) {
+        val isCurrentConfigured = when (selectedProvider) {
+            com.example.core.model.SasProviders.EARTHLINK -> providerAccess.hasEarthlink
+            com.example.core.model.SasProviders.ALAMIRY -> providerAccess.hasSamm
+            else -> false
+        }
+        if (!isCurrentConfigured) {
+            when {
+                providerAccess.hasEarthlink -> viewModel.setSelectedProvider(com.example.core.model.SasProviders.EARTHLINK)
+                providerAccess.hasSamm -> viewModel.setSelectedProvider(com.example.core.model.SasProviders.ALAMIRY)
+            }
+        }
+    }
+
     val pkgs by viewModel.packages.collectAsStateWithLifecycle()
     val isActionLoading by viewModel.isActionLoading.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
@@ -69,18 +86,27 @@ fun CreateUsingDepositScreen(
     if (showConfirmDialog) {
         val selectedPkgName = pkgs.find { it.accountIndex == selectedPkgIndex }?.accountName ?: ""
         val hasValidCost = costPreview != null && costPreview!! > 0.0
+        val isSamm = selectedProvider == com.example.core.model.SasProviders.ALAMIRY
         val costMsg = if (hasValidCost) {
-            if (isAr) "سيتم خصم مبلغ ${formatIqd(costPreview!!)} من رصيد الصندوق."
-            else "Consumes ${formatIqd(costPreview!!)} from your deposit balance."
+            if (isSamm) {
+                if (isAr) "سعر الباقة: ${formatIqd(costPreview!!)} وسيتم تسجيل القيد في السجل المالي."
+                else "Package price: ${formatIqd(costPreview!!)} will be recorded in local ledger."
+            } else {
+                if (isAr) "سيتم خصم مبلغ ${formatIqd(costPreview!!)} من رصيد الصندوق."
+                else "Consumes ${formatIqd(costPreview!!)} from your deposit balance."
+            }
         } else {
-            if (isAr) "التكلفة غير متوفرة حالياً وسيتم التحقق منها قبل الخصم."
-            else "Package cost is currently unavailable and will be verified before deduction."
+            if (isAr) "التكلفة غير متوفرة حالياً وسيتم التحقق منها قبل التسجيل."
+            else "Package cost is currently unavailable and will be verified before recording."
         }
         ConfirmationDialog(
-            title = if (isAr) "تأكيد إنشاء مشترك مدفوع ($selectedProvider)" else "Confirm Paid Account Creation ($selectedProvider)",
-            message = if (isAr) "هل تود إنشاء وتفعيل المشترك $userId على مزود $selectedProvider وباقة $selectedPkgName؟ $costMsg"
-            else "Generate paid subscription $userId on provider $selectedProvider with package $selectedPkgName? $costMsg",
+            title = if (isAr) (if (isSamm) "تأكيد إنشاء المشترك في سام" else "تأكيد إنشاء مشترك مدفوع (إيرثلنك)")
+                    else (if (isSamm) "Confirm Subscriber Creation (SAMM)" else "Confirm Paid Account Creation (EarthLink)"),
+            message = if (isAr) "هل تود إنشاء وتفعيل المشترك $userId على باقة $selectedPkgName؟ $costMsg"
+                      else "Generate paid subscription $userId with package $selectedPkgName? $costMsg",
             needsPasswordField = true,
+            passwordLabel = if (isSamm) (if (isAr) "أدخل كلمة مرور اشتراك المشترك الجديد" else "Enter New Subscriber Password")
+                            else (if (isAr) "أدخل كلمة مرور الصندوق" else "Enter Deposit Password"),
             onCancel = { showConfirmDialog = false },
             onConfirm = { pass ->
                 showConfirmDialog = false
@@ -218,21 +244,31 @@ fun CreateUsingDepositScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             listOf(
-                                com.example.core.model.SasProviders.EARTHLINK to if (isAr) "إيرثلنك\n(EARTHLINK)" else "EarthLink\n(EARTHLINK)",
-                                com.example.core.model.SasProviders.ALAMIRY to if (isAr) "العامري / سام\n(ALAMIRY)" else "Alamiry / SAMM\n(ALAMIRY)"
+                                com.example.core.model.SasProviders.EARTHLINK to (if (isAr) "إيرثلنك\n(EARTHLINK)" else "EarthLink\n(EARTHLINK)"),
+                                com.example.core.model.SasProviders.ALAMIRY to (if (isAr) "سام\n(SAMM)" else "SAMM\n(SAMM)")
                             ).forEach { (provKey, provLabel) ->
-                                val isSel = selectedProvider == provKey
+                                val isConfigured = if (provKey == com.example.core.model.SasProviders.EARTHLINK)
+                                    providerAccess.hasEarthlink else providerAccess.hasSamm
+                                val isSel = selectedProvider == provKey && isConfigured
                                 Surface(
                                     shape = RoundedCornerShape(12.dp),
-                                    color = if (isSel) Color(0xFF0A84FF).copy(alpha = 0.15f) else Color(0xFF0E131B),
+                                    color = when {
+                                        isSel -> Color(0xFF0A84FF).copy(alpha = 0.15f)
+                                        !isConfigured -> Color(0xFF0E131B).copy(alpha = 0.4f)
+                                        else -> Color(0xFF0E131B)
+                                    },
                                     border = BorderStroke(
                                         1.dp,
-                                        if (isSel) Color(0xFF0A84FF) else Color.White.copy(alpha = 0.06f)
+                                        when {
+                                            isSel -> Color(0xFF0A84FF)
+                                            !isConfigured -> Color.White.copy(alpha = 0.03f)
+                                            else -> Color.White.copy(alpha = 0.06f)
+                                        }
                                     ),
                                     modifier = Modifier
                                         .weight(1f)
                                         .clip(RoundedCornerShape(12.dp))
-                                        .clickable { viewModel.setSelectedProvider(provKey) }
+                                        .clickable(enabled = isConfigured) { viewModel.setSelectedProvider(provKey) }
                                 ) {
                                     Row(
                                         modifier = Modifier.padding(12.dp),
@@ -242,18 +278,34 @@ fun CreateUsingDepositScreen(
                                         RadioButton(
                                             selected = isSel,
                                             onClick = null,
+                                            enabled = isConfigured,
                                             colors = RadioButtonDefaults.colors(
                                                 selectedColor = Color(0xFF0A84FF),
-                                                unselectedColor = Color.White.copy(alpha = 0.3f)
+                                                unselectedColor = if (isConfigured) Color.White.copy(alpha = 0.3f) else Color.White.copy(alpha = 0.1f),
+                                                disabledSelectedColor = Color.White.copy(alpha = 0.2f),
+                                                disabledUnselectedColor = Color.White.copy(alpha = 0.1f)
                                             )
                                         )
-                                        Text(
-                                            text = provLabel,
-                                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
-                                            fontSize = 12.sp,
-                                            color = if (isSel) Color.White else Color.White.copy(alpha = 0.85f),
-                                            lineHeight = 16.sp
-                                        )
+                                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Text(
+                                                text = provLabel,
+                                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                                                fontSize = 12.sp,
+                                                color = when {
+                                                    isSel -> Color.White
+                                                    isConfigured -> Color.White.copy(alpha = 0.85f)
+                                                    else -> Color.White.copy(alpha = 0.35f)
+                                                },
+                                                lineHeight = 16.sp
+                                            )
+                                            if (!isConfigured) {
+                                                Text(
+                                                    text = if (isAr) "غير مسجل الدخول" else "Not logged in",
+                                                    fontSize = 10.sp,
+                                                    color = Color.White.copy(alpha = 0.35f)
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -475,13 +527,19 @@ fun CreateUsingDepositScreen(
                     }
                 }
 
+                val isProviderConfigured = when (selectedProvider) {
+                    com.example.core.model.SasProviders.EARTHLINK -> providerAccess.hasEarthlink
+                    com.example.core.model.SasProviders.ALAMIRY -> providerAccess.hasSamm
+                    else -> false
+                }
+
                 // Action Button
                 Button(
                     onClick = {
                         focusManager.clearFocus()
                         showConfirmDialog = true
                     },
-                    enabled = selectedProvider.isNotBlank() && userId.isNotBlank() && selectedPkgIndex != -1 && !isActionLoading,
+                    enabled = isProviderConfigured && selectedProvider.isNotBlank() && userId.isNotBlank() && selectedPkgIndex != -1 && !isActionLoading,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFF30D158),
                         disabledContainerColor = Color(0xFF30D158).copy(alpha = 0.35f)

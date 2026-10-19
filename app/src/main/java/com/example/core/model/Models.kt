@@ -103,7 +103,8 @@ data class UserListItem(
     @Json(name = "isBlocked") val isBlockedLower: Any? = null,
     @Json(name = "IsBlocked") val isBlockedUpper: Any? = null,
     @Json(name = "isFreeAccount") val isFreeAccountLower: Any? = null,
-    @Json(name = "IsFreeAccount") val isFreeAccountUpper: Any? = null
+    @Json(name = "IsFreeAccount") val isFreeAccountUpper: Any? = null,
+    @Json(name = "originProvider") val originProvider: String? = null
 ) {
     val userIndex: Int get() = userIndexLower ?: userIndexUpper ?: 0
     val userID: String get() = userIDLower ?: userIDUpper ?: userIdLowerCamel ?: userIdUpperCamel ?: ""
@@ -279,7 +280,8 @@ data class UserDetail(
     @Json(name = "usageTime") val usageTimeLower: String? = null,
     @Json(name = "UsageTime") val usageTimeUpper: String? = null,
     @Json(name = "sessionTime") val sessionTimeLower: String? = null,
-    @Json(name = "SessionTime") val sessionTimeUpper: String? = null
+    @Json(name = "SessionTime") val sessionTimeUpper: String? = null,
+    @Json(name = "originProvider") val originProvider: String? = null
 ) {
     val userActive: Boolean? get() = parseBoolLike(userActiveLower ?: userActiveUpper)
     val userActiveManage: Boolean? get() = parseBoolLike(userActiveManageLower ?: userActiveManageUpper)

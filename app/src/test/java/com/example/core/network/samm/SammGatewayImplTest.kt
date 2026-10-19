@@ -3,11 +3,13 @@ package com.example.core.network.samm
 import com.example.core.model.SasProviders
 import com.example.core.network.SasAuthException
 import com.example.core.network.SasBusinessException
+import com.example.core.network.SasGatewayException
 import com.example.core.network.SasInconclusiveException
 import com.example.core.network.SasNotFoundException
 import com.example.core.network.SasOperationResult
 import com.example.core.network.SasVerificationOutcome
 import kotlinx.coroutines.test.runTest
+import com.example.core.network.samm.takeRequestOrFail
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
@@ -27,6 +29,7 @@ import org.junit.Test
  * for the ALAMIRY provider against SAMM 5.1.15 REST API wire specifications:
  * 1. Read operations: searchSubscribers (exact username vs search param), getSubscriber (integer ID normalization, 404 handling).
  * 2. Mutation operations: createSubscriber (activation), renewSubscriber, suspendSubscriber, activateSubscriber, changePlan, changePassword.
+ *    Every mutation but createSubscriber is username-keyed: it resolves the customer id from the username first.
  * 3. Verification oracle: verifyOperationOutcome for ACTIVATION, RENEWAL, TOGGLE_ACTIVE, CHANGE_PLAN, PASSWORD, and unknown operations.
  * 4. Error translation: 401 -> SasAuthException, 404 -> SasNotFoundException, 422 -> SasBusinessException, 500 -> SasInconclusiveException.
  * 5. Ingress/Egress domain normalization and fail-closed validation of non-integer customer/plan IDs.
@@ -52,6 +55,29 @@ class SammGatewayImplTest {
     @After
     fun tearDown() {
         mockServer.shutdown()
+    }
+
+    /**
+     * Enqueues the username -> customer id lookup every mutation performs first. The mutation seam is
+     * username-keyed: the gateway resolves the customer id from the username, so a mutation test must
+     * supply the directory row that resolution reads.
+     */
+    private fun enqueueCustomerLookup(username: String, id: Int) {
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """
+                    {
+                      "total": 1,
+                      "items": [
+                        { "id": $id, "username": "$username" }
+                      ]
+                    }
+                    """.trimIndent()
+                )
+        )
     }
 
     // ========================================================================
@@ -90,7 +116,7 @@ class SammGatewayImplTest {
         val isConnected = gateway.checkConnection()
 
         assertTrue("Expected checkConnection to return true on HTTP 200", isConnected)
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("GET", recorded.method)
         assertEquals("/api/v1/me", recorded.path)
     }
@@ -167,7 +193,7 @@ class SammGatewayImplTest {
         assertEquals("2026-11-01T00:00:00Z", subscriber.expiresAt)
         assertEquals("+9647801234567", subscriber.phone)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("GET", recorded.method)
         assertTrue(recorded.path!!.contains("username=baghdad_user01"))
         assertFalse(recorded.path!!.contains("search="))
@@ -190,7 +216,7 @@ class SammGatewayImplTest {
         val results = gateway.searchSubscribers("Ali Hassan")
 
         assertTrue(results.isEmpty())
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertTrue(recorded.path!!.contains("search=Ali%20Hassan") || recorded.path!!.contains("search=Ali+Hassan"))
     }
 
@@ -213,14 +239,17 @@ class SammGatewayImplTest {
         assertTrue(results.isEmpty())
     }
 
-    /**
-     * Claim: getSubscriber fetches customer by numeric ID, formats integer path parameter `/customers/{id}`,
-     *        and normalizes wire integer ID into domain String.
+/**
+     * Claim: getSubscriber resolves a username through the directory and reads the detail of THAT
+     *        customer. The argument is never used as a customer id.
      * Seam: JVM MockWebServer Wire Contract.
-     * Independent Oracle: Path is `/api/v1/customers/2055`, returned view has subscriberId="2055".
+     * Independent Oracle: The search body is a literal row {id: 379, username: "sub_lab_01"}. The only
+     *        correct detail path is therefore /api/v1/customers/379, derived from the search response
+     *        and not from the argument.
      */
     @Test
-    fun getSubscriber_validIntegerId_normalizesIdAndMapsFields() = runTest {
+    fun getSubscriber_resolvesUsernameThenReadsThatCustomer() = runTest {
+        enqueueCustomerLookup("sub_lab_01", 379)
         mockServer.enqueue(
             MockResponse()
                 .setResponseCode(200)
@@ -228,8 +257,8 @@ class SammGatewayImplTest {
                 .setBody(
                     """
                     {
-                      "id": 2055,
-                      "username": "user2055",
+                      "id": 379,
+                      "username": "sub_lab_01",
                       "firstname": "Karim",
                       "lastname": null,
                       "mobile": "+9647700000000",
@@ -242,28 +271,81 @@ class SammGatewayImplTest {
                 )
         )
 
-        val subscriber = gateway.getSubscriber("2055")
+        val subscriber = gateway.getSubscriber("sub_lab_01")
 
         assertNotNull(subscriber)
-        assertEquals("2055", subscriber!!.subscriberId)
-        assertEquals("user2055", subscriber.username)
+        assertEquals("379", subscriber!!.subscriberId)
+        assertEquals("sub_lab_01", subscriber.username)
         assertEquals("Karim", subscriber.displayName)
         assertEquals("active", subscriber.status)
         assertEquals("3", subscriber.planId)
         assertEquals("+9647700000000", subscriber.phone)
 
-        val recorded = mockServer.takeRequest()
-        assertEquals("GET", recorded.method)
-        assertEquals("/api/v1/customers/2055", recorded.path)
+        val search = mockServer.takeRequestOrFail()
+        assertTrue(
+            "Resolution must go through the case-insensitive ?search= filter. Actual: ${search.path}",
+            search.path!!.contains("search=sub_lab_01")
+        )
+        val detail = mockServer.takeRequestOrFail()
+        assertEquals("GET", detail.method)
+        assertEquals("/api/v1/customers/379", detail.path)
     }
 
     /**
-     * Claim: getSubscriber returns null when provider responds with HTTP 404 Not Found.
+     * Claim: getSubscriber never reinterprets its argument as a customer id, even a numeric one. An
+     *        account's cached customer id is stale BY DESIGN after an ISP move.
+     * Seam: JVM MockWebServer Wire Contract.
+     * Independent Oracle: The literal username "909090" is served by the literal id 31415. Dispatching
+     *        /api/v1/customers/909090 would mean the argument was treated as an id.
+     */
+    @Test
+    fun getSubscriber_numericUsernameIsNeverUsedAsACustomerId() = runTest {
+        enqueueCustomerLookup("909090", 31415)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{ "id": 31415, "username": "909090", "status": "active" }""")
+        )
+
+        val subscriber = gateway.getSubscriber("909090")
+
+        mockServer.takeRequestOrFail()
+        val detail = mockServer.takeRequestOrFail()
+        assertEquals("/api/v1/customers/31415", detail.path)
+        assertEquals("31415", subscriber?.subscriberId)
+    }
+
+    /**
+     * Claim: getSubscriber returns null without a detail call when the provider definitively does
+     *        not carry the username.
+     * Seam: JVM MockWebServer Wire Contract.
+     * Independent Oracle: An empty search result is the only outcome consistent with absence, and
+     *        exactly one request may have been made.
+     */
+    @Test
+    fun getSubscriber_usernameNotCarried_returnsNullWithoutDetailCall() = runTest {
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{ "total": 0, "items": [] }""")
+        )
+
+        val subscriber = gateway.getSubscriber("absent_user")
+
+        assertNull(subscriber)
+        assertEquals(1, mockServer.requestCount)
+    }
+
+    /**
+     * Claim: getSubscriber returns null when the provider answers HTTP 404 for the resolved customer.
      * Seam: JVM MockWebServer Wire Contract.
      * Independent Oracle: HTTP 404 response yields null return value without throwing exception.
      */
     @Test
     fun getSubscriber_on404_returnsNull() = runTest {
+        enqueueCustomerLookup("ghost_user", 9999)
         mockServer.enqueue(
             MockResponse()
                 .setResponseCode(404)
@@ -271,27 +353,38 @@ class SammGatewayImplTest {
                 .setBody("""{"detail": "Customer not found"}""")
         )
 
-        val subscriber = gateway.getSubscriber("9999")
+        val subscriber = gateway.getSubscriber("ghost_user")
 
         assertNull(subscriber)
     }
 
     /**
-     * Claim: getSubscriber throws SasBusinessException immediately when subscriberId is not a valid integer,
-     *        preventing invalid wire requests from reaching the provider.
-     * Seam: JVM Unit Test.
-     * Independent Oracle: Throws SasBusinessException with exact message "Invalid SAMM customer ID integer: 'not_an_int'".
+     * Claim: a FAILED lookup is never reported as "no such subscriber". An HTTP 500 on the search
+     *        propagates as a typed SasGatewayException instead of degrading to a silent null.
+     * Seam: JVM MockWebServer Wire Contract.
+     * Independent Oracle: The mocked body carries the literal message "directory exploded", which
+     *        must reach the caller rather than being flattened into a null "not found". A 5xx maps to
+     *        SasInconclusiveException by the seam's own error taxonomy, so the assertion is written
+     *        against the SasGatewayException contract and the literal message, not one subclass.
      */
     @Test
-    fun getSubscriber_invalidNonIntegerId_throwsSasBusinessException() = runTest {
+    fun getSubscriber_searchFails_propagatesInsteadOfReportingAbsence() = runTest {
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(500)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"detail": "directory exploded"}""")
+        )
+
         try {
-            gateway.getSubscriber("not_an_int")
-            fail("Expected SasBusinessException for non-integer subscriber ID")
-        } catch (e: SasBusinessException) {
-            assertEquals("Invalid SAMM customer ID integer: 'not_an_int'", e.errorMessage)
-            assertNull(e.statusCode)
+            val subscriber = gateway.getSubscriber("sub_lab_01")
+            fail("Expected the lookup failure to propagate, not to report absence. Got: $subscriber")
+        } catch (e: SasGatewayException) {
+            assertTrue(
+                "The provider's own reason must survive: ${e.message}",
+                e.message?.contains("directory exploded") == true
+            )
         }
-        assertEquals("No network requests should have been dispatched", 0, mockServer.requestCount)
     }
 
     /**
@@ -360,7 +453,7 @@ class SammGatewayImplTest {
         val applied = result as SasOperationResult.Applied
         assertEquals("3001", applied.evidence)
 
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertEquals("POST", recorded.method)
         assertEquals("/api/v1/customers", recorded.path)
         val body = recorded.body.readUtf8()
@@ -395,12 +488,15 @@ class SammGatewayImplTest {
     }
 
     /**
-     * Claim: suspendSubscriber dispatches POST /api/v1/customers/{id}/suspend and returns Applied.
+     * Claim: suspendSubscriber resolves the username to a customer id, then dispatches
+     *        POST /api/v1/customers/{id}/suspend and returns Applied.
      * Seam: JVM MockWebServer Wire Contract.
-     * Independent Oracle: POST /api/v1/customers/100/suspend returns HTTP 200 -> Applied.
+     * Independent Oracle: Directory row user100 -> 100 is a literal; POST /api/v1/customers/100/suspend
+     *        returns HTTP 200 -> Applied. The dispatched id comes from the lookup, not from the caller.
      */
     @Test
     fun suspendSubscriber_sendsPostAndReturnsApplied() = runTest {
+        enqueueCustomerLookup("user100", 100)
         mockServer.enqueue(
             MockResponse()
                 .setResponseCode(200)
@@ -408,37 +504,52 @@ class SammGatewayImplTest {
                 .setBody("""{"id": 100, "username": "user100", "status": "suspended"}""")
         )
 
-        val result = gateway.suspendSubscriber("100")
+        val result = gateway.suspendSubscriber("user100")
 
         assertTrue(result is SasOperationResult.Applied)
-        val recorded = mockServer.takeRequest()
+        val lookup = mockServer.takeRequestOrFail("lookup")
+        assertTrue(lookup.path!!.contains("search=user100"))
+        val recorded = mockServer.takeRequestOrFail("suspend")
         assertEquals("POST", recorded.method)
         assertEquals("/api/v1/customers/100/suspend", recorded.path)
     }
 
     /**
-     * Claim: suspendSubscriber throws SasBusinessException when subscriberId is not a valid integer.
-     * Seam: JVM Unit Test.
-     * Independent Oracle: Throws SasBusinessException, zero network calls.
+     * Claim: suspendSubscriber fails closed when SAMM does not carry the username: nothing is
+     *        dispatched, so no other customer can be suspended by mistake.
+     * Seam: JVM MockWebServer Wire Contract.
+     * Independent Oracle: An empty directory row set -> SasNotFoundException, lookup only, zero
+     *        suspend requests.
      */
     @Test
-    fun suspendSubscriber_nonIntegerId_throwsSasBusinessException() = runTest {
+    fun suspendSubscriber_unresolvableUsername_throwsSasNotFoundException() = runTest {
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"total": 0, "items": []}""")
+        )
+        val requestsBefore = mockServer.requestCount
+
         try {
-            gateway.suspendSubscriber("invalid_id")
-            fail("Expected SasBusinessException")
-        } catch (e: SasBusinessException) {
-            assertEquals("Invalid SAMM customer ID integer: 'invalid_id'", e.errorMessage)
+            gateway.suspendSubscriber("absent_user")
+            fail("Expected SasNotFoundException")
+        } catch (e: SasNotFoundException) {
+            assertTrue(e.message?.contains("absent_user") == true)
         }
-        assertEquals(0, mockServer.requestCount)
+        assertEquals(1, mockServer.requestCount - requestsBefore)
     }
 
     /**
-     * Claim: activateSubscriber dispatches POST /api/v1/customers/{id}/activate and returns Applied.
+     * Claim: activateSubscriber resolves the username to a customer id, then dispatches
+     *        POST /api/v1/customers/{id}/activate and returns Applied.
      * Seam: JVM MockWebServer Wire Contract.
-     * Independent Oracle: POST /api/v1/customers/100/activate returns HTTP 200 -> Applied.
+     * Independent Oracle: Directory row user100 -> 100 is a literal; POST /api/v1/customers/100/activate
+     *        returns HTTP 200 -> Applied.
      */
     @Test
     fun activateSubscriber_sendsPostAndReturnsApplied() = runTest {
+        enqueueCustomerLookup("user100", 100)
         mockServer.enqueue(
             MockResponse()
                 .setResponseCode(200)
@@ -446,23 +557,25 @@ class SammGatewayImplTest {
                 .setBody("""{"id": 100, "username": "user100", "status": "active"}""")
         )
 
-        val result = gateway.activateSubscriber("100")
+        val result = gateway.activateSubscriber("user100")
 
         assertTrue(result is SasOperationResult.Applied)
-        val recorded = mockServer.takeRequest()
+        mockServer.takeRequestOrFail("lookup")
+        val recorded = mockServer.takeRequestOrFail("activate")
         assertEquals("POST", recorded.method)
         assertEquals("/api/v1/customers/100/activate", recorded.path)
     }
 
     /**
-     * Claim: renewSubscriber dispatches POST /api/v1/customers/{id}/renew with generate_invoice=false
-     *        and returns Applied with new expiration date evidence.
+     * Claim: renewSubscriber resolves the username, then dispatches POST /api/v1/customers/{id}/renew
+     *        with generate_invoice=false and returns Applied with new expiration date evidence.
      * Seam: JVM MockWebServer Wire Contract.
      * Independent Oracle: POST /api/v1/customers/100/renew?generate_invoice=false returns HTTP 200
      *                      with new_expiration="2026-12-01T00:00:00Z" -> Applied(evidence="2026-12-01T00:00:00Z").
      */
     @Test
     fun renewSubscriber_sendsPostWithGenerateInvoiceFalseAndReturnsAppliedWithNewExpiration() = runTest {
+        enqueueCustomerLookup("user100", 100)
         mockServer.enqueue(
             MockResponse()
                 .setResponseCode(200)
@@ -480,25 +593,27 @@ class SammGatewayImplTest {
                 )
         )
 
-        val result = gateway.renewSubscriber("100")
+        val result = gateway.renewSubscriber("user100")
 
         assertTrue(result is SasOperationResult.Applied)
         val applied = result as SasOperationResult.Applied
         assertEquals("2026-12-01T00:00:00Z", applied.evidence)
 
-        val recorded = mockServer.takeRequest()
+        mockServer.takeRequestOrFail("lookup")
+        val recorded = mockServer.takeRequestOrFail("renew")
         assertEquals("POST", recorded.method)
         assertEquals("/api/v1/customers/100/renew?generate_invoice=false", recorded.path)
     }
 
     /**
-     * Claim: changePlan dispatches POST /api/v1/customers/{id}/assign-plan with plan_id integer
-     *        and generate_invoice=false, returning Applied.
+     * Claim: changePlan resolves the username and dispatches POST /api/v1/customers/{id}/assign-plan
+     *        with plan_id integer and generate_invoice=false, returning Applied.
      * Seam: JVM MockWebServer Wire Contract.
      * Independent Oracle: POST body has plan_id=15, generate_invoice=false -> Applied.
      */
     @Test
     fun changePlan_sendsPostWithCorrectBodyAndReturnsApplied() = runTest {
+        enqueueCustomerLookup("user100", 100)
         mockServer.enqueue(
             MockResponse()
                 .setResponseCode(200)
@@ -506,10 +621,11 @@ class SammGatewayImplTest {
                 .setBody("""{"id": 100, "plan_id": 15, "plan_name": "Premium 100M"}""")
         )
 
-        val result = gateway.changePlan("100", "15")
+        val result = gateway.changePlan("user100", "15")
 
         assertTrue(result is SasOperationResult.Applied)
-        val recorded = mockServer.takeRequest()
+        mockServer.takeRequestOrFail("lookup")
+        val recorded = mockServer.takeRequestOrFail("assign-plan")
         assertEquals("POST", recorded.method)
         assertEquals("/api/v1/customers/100/assign-plan", recorded.path)
         val body = recorded.body.readUtf8()
@@ -518,29 +634,33 @@ class SammGatewayImplTest {
     }
 
     /**
-     * Claim: changePlan throws SasBusinessException when newPlanId is not a valid integer.
+     * Claim: changePlan throws SasBusinessException when newPlanId is not a valid integer, and does
+     *        not dispatch the plan change.
      * Seam: JVM Unit Test.
      * Independent Oracle: Throws SasBusinessException with message "Invalid SAMM plan ID integer: 'abc'".
      */
     @Test
     fun changePlan_nonIntegerPlanId_throwsSasBusinessException() = runTest {
+        enqueueCustomerLookup("user100", 100)
+
         try {
-            gateway.changePlan("100", "abc")
+            gateway.changePlan("user100", "abc")
             fail("Expected SasBusinessException")
         } catch (e: SasBusinessException) {
             assertEquals("Invalid SAMM plan ID integer: 'abc'", e.errorMessage)
         }
-        assertEquals(0, mockServer.requestCount)
+        assertEquals(1, mockServer.requestCount)
     }
 
     /**
-     * Claim: changePassword dispatches PATCH /api/v1/customers/{id} with password in body,
-     *        never stores or leaks password, and returns Applied.
+     * Claim: changePassword resolves the username and dispatches PATCH /api/v1/customers/{id} with
+     *        password in body, never stores or leaks password, and returns Applied.
      * Seam: JVM MockWebServer Wire Contract.
      * Independent Oracle: PATCH /api/v1/customers/100 with password="super_secret_99" -> Applied.
      */
     @Test
     fun changePassword_sendsPatchWithPasswordAndReturnsApplied() = runTest {
+        enqueueCustomerLookup("user100", 100)
         mockServer.enqueue(
             MockResponse()
                 .setResponseCode(200)
@@ -548,10 +668,11 @@ class SammGatewayImplTest {
                 .setBody("""{"id": 100, "username": "user100"}""")
         )
 
-        val result = gateway.changePassword("100", "super_secret_99")
+        val result = gateway.changePassword("user100", "super_secret_99")
 
         assertTrue(result is SasOperationResult.Applied)
-        val recorded = mockServer.takeRequest()
+        mockServer.takeRequestOrFail("lookup")
+        val recorded = mockServer.takeRequestOrFail("password patch")
         assertEquals("PATCH", recorded.method)
         assertEquals("/api/v1/customers/100", recorded.path)
         val body = recorded.body.readUtf8()
@@ -589,7 +710,7 @@ class SammGatewayImplTest {
         val outcome = gateway.verifyOperationOutcome("ACTIVATION", "verified_user", null)
 
         assertEquals(SasVerificationOutcome.VERIFIED_SUCCESS, outcome)
-        val recorded = mockServer.takeRequest()
+        val recorded = mockServer.takeRequestOrFail()
         assertTrue(recorded.path!!.contains("username=verified_user"))
     }
 
@@ -741,6 +862,136 @@ class SammGatewayImplTest {
     }
 
     /**
+     * Claim: INV-01, INV-04: verifyOperationOutcome with null or blank baseline strictly returns INCONCLUSIVE.
+     * Seam: JVM MockWebServer Wire Contract.
+     * Independent Oracle: baselineEvidence = null -> INCONCLUSIVE without network dispatch.
+     */
+    @Test
+    fun verifyRenewal_nullBaseline_returnsInconclusive() = runTest {
+        val outcome = gateway.verifyOperationOutcome(
+            operationType = "RENEWAL",
+            targetIdentifier = "100",
+            baselineEvidence = null
+        )
+
+        assertEquals(SasVerificationOutcome.INCONCLUSIVE, outcome)
+    }
+
+    /**
+     * Claim: INV-03, INV-04: REFILL alias with username target resolves id via directory and verifies outcome.
+     * Seam: JVM MockWebServer Wire Contract.
+     * Independent Oracle: Directory lookup resolves "user100" -> 100, then getCustomer(100) expiry advanced -> VERIFIED_SUCCESS.
+     */
+    @Test
+    fun verifyRenewal_refillAliasWithUsername_resolvesIdAndVerifiesSuccess() = runTest {
+        // First request: findDirectoryRow(search = "user100")
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """
+                    {
+                      "items": [
+                        {
+                          "id": 100,
+                          "username": "user100",
+                          "firstname": "Test",
+                          "lastname": "User"
+                        }
+                      ],
+                      "total": 1
+                    }
+                    """.trimIndent()
+                )
+        )
+        // Second request: getCustomer(100)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """
+                    {
+                      "id": 100,
+                      "username": "user100",
+                      "expiration_date": "2026-11-01T00:00:00Z"
+                    }
+                    """.trimIndent()
+                )
+        )
+
+        val outcome = gateway.verifyOperationOutcome(
+            operationType = "REFILL",
+            targetIdentifier = "user100",
+            baselineEvidence = "2026-10-01T00:00:00Z"
+        )
+
+        assertEquals(SasVerificationOutcome.VERIFIED_SUCCESS, outcome)
+    }
+
+    /**
+     * Claim: Instant-normalized comparison: Different timezone formatting of the SAME instant evaluates as unchanged -> VERIFIED_FAILURE.
+     * Seam: JVM MockWebServer Wire Contract.
+     * Independent Oracle: Current ("2026-10-01T03:00:00+03:00") is exact same epoch millisecond as baseline ("2026-10-01T00:00:00Z") -> VERIFIED_FAILURE.
+     */
+    @Test
+    fun verifyRenewal_instantNormalizedDifferentFormatsSameInstant_returnsVerifiedFailure() = runTest {
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """
+                    {
+                      "id": 100,
+                      "username": "user100",
+                      "expiration_date": "2026-10-01T03:00:00+03:00"
+                    }
+                    """.trimIndent()
+                )
+        )
+
+        val outcome = gateway.verifyOperationOutcome(
+            operationType = "RENEWAL",
+            targetIdentifier = "100",
+            baselineEvidence = "2026-10-01T00:00:00Z"
+        )
+
+        assertEquals(SasVerificationOutcome.VERIFIED_FAILURE, outcome)
+    }
+
+    /**
+     * Claim: When username is definitively not found in directory during recovery, verifyOperationOutcome returns VERIFIED_FAILURE.
+     * Seam: JVM MockWebServer Wire Contract.
+     * Independent Oracle: Directory returns empty items for username -> VERIFIED_FAILURE.
+     */
+    @Test
+    fun verifyRenewal_usernameNotFoundInDirectory_returnsVerifiedFailure() = runTest {
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """
+                    {
+                      "items": [],
+                      "total": 0
+                    }
+                    """.trimIndent()
+                )
+        )
+
+        val outcome = gateway.verifyOperationOutcome(
+            operationType = "RENEWAL",
+            targetIdentifier = "nonexistent_user",
+            baselineEvidence = "2026-10-01T00:00:00Z"
+        )
+
+        assertEquals(SasVerificationOutcome.VERIFIED_FAILURE, outcome)
+    }
+
+    /**
      * Claim: verifyOperationOutcome for TOGGLE_ACTIVE returns VERIFIED_SUCCESS when customer status
      *        matches expected target status baseline.
      * Seam: JVM MockWebServer Wire Contract.
@@ -854,6 +1105,100 @@ class SammGatewayImplTest {
     }
 
     /**
+     * Claim: verifyOperationOutcome for EXTEND returns VERIFIED_FAILURE when customer does not exist (HTTP 404).
+     * Seam: JVM MockWebServer Wire Contract.
+     * Independent Oracle: HTTP 404 -> VERIFIED_FAILURE (negative evidence doctrine).
+     */
+    @Test
+    fun verifyExtend_whenCustomerDoesNotExist_returnsVerifiedFailure() = runTest {
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(404)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"detail": "Customer 100 not found"}""")
+        )
+
+        val outcome = gateway.verifyOperationOutcome(
+            operationType = "EXTEND",
+            targetIdentifier = "100",
+            baselineEvidence = null
+        )
+
+        assertEquals(SasVerificationOutcome.VERIFIED_FAILURE, outcome)
+    }
+
+    /**
+     * Claim: verifyOperationOutcome for EXTEND returns VERIFIED_FAILURE when username is not found in directory.
+     * Seam: JVM MockWebServer Wire Contract.
+     * Independent Oracle: Empty directory items for username -> VERIFIED_FAILURE.
+     */
+    @Test
+    fun verifyExtend_whenUsernameNotFoundInDirectory_returnsVerifiedFailure() = runTest {
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"items": [], "total": 0}""")
+        )
+
+        val outcome = gateway.verifyOperationOutcome(
+            operationType = "EXTEND",
+            targetIdentifier = "missing_user",
+            baselineEvidence = null
+        )
+
+        assertEquals(SasVerificationOutcome.VERIFIED_FAILURE, outcome)
+    }
+
+    /**
+     * Claim: verifyOperationOutcome for EXTEND returns INCONCLUSIVE when customer exists, because extension
+     *        cannot be positively confirmed from read state alone (negative evidence doctrine).
+     * Seam: JVM MockWebServer Wire Contract.
+     * Independent Oracle: Customer exists -> INCONCLUSIVE (avoids phantom debt / premature release).
+     */
+    @Test
+    fun verifyExtend_whenCustomerExists_returnsInconclusive() = runTest {
+        enqueueCustomerLookup("user100", 100)
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"id": 100, "username": "user100", "status": "active"}""")
+        )
+
+        val outcome = gateway.verifyOperationOutcome(
+            operationType = "EXTEND",
+            targetIdentifier = "user100",
+            baselineEvidence = null
+        )
+
+        assertEquals(SasVerificationOutcome.INCONCLUSIVE, outcome)
+    }
+
+    /**
+     * Claim: verifyOperationOutcome for EXTEND returns INCONCLUSIVE when a network/server error occurs.
+     * Seam: JVM MockWebServer Wire Contract.
+     * Independent Oracle: HTTP 500 error -> INCONCLUSIVE.
+     */
+    @Test
+    fun verifyExtend_whenTransportFails_returnsInconclusive() = runTest {
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(500)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"detail": "Internal server error"}""")
+        )
+
+        val outcome = gateway.verifyOperationOutcome(
+            operationType = "EXTEND",
+            targetIdentifier = "100",
+            baselineEvidence = null
+        )
+
+        assertEquals(SasVerificationOutcome.INCONCLUSIVE, outcome)
+    }
+
+    /**
      * Claim: verifyOperationOutcome returns INCONCLUSIVE for unrecognized operation types.
      * Seam: JVM Unit Test.
      * Independent Oracle: Unknown operation name -> SasVerificationOutcome.INCONCLUSIVE.
@@ -903,6 +1248,7 @@ class SammGatewayImplTest {
      */
     @Test
     fun errorTranslation_http404_onMutation_throwsSasNotFoundException() = runTest {
+        enqueueCustomerLookup("user999", 999)
         mockServer.enqueue(
             MockResponse()
                 .setResponseCode(404)
@@ -911,7 +1257,7 @@ class SammGatewayImplTest {
         )
 
         try {
-            gateway.renewSubscriber("999")
+            gateway.renewSubscriber("user999")
             fail("Expected SasNotFoundException")
         } catch (e: SasNotFoundException) {
             assertEquals(404, e.statusCode)
@@ -967,6 +1313,7 @@ class SammGatewayImplTest {
      */
     @Test
     fun errorTranslation_http500_throwsSasInconclusiveException() = runTest {
+        enqueueCustomerLookup("user100", 100)
         mockServer.enqueue(
             MockResponse()
                 .setResponseCode(500)
@@ -975,7 +1322,7 @@ class SammGatewayImplTest {
         )
 
         try {
-            gateway.suspendSubscriber("100")
+            gateway.suspendSubscriber("user100")
             fail("Expected SasInconclusiveException")
         } catch (e: SasInconclusiveException) {
             assertEquals(500, e.statusCode)

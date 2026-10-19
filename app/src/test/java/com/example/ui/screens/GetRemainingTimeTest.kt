@@ -91,6 +91,57 @@ class GetRemainingTimeTest {
         assertEquals("Remaining: 30 minutes", result)
     }
 
+    /**
+     * A plan with no expiry at all (SAMM sends expiration_date = null) is unlimited, not
+     * "30 minutes remaining". Live reference: username admin@sacx, plan "Owner", status "active",
+     * expiration_date null.
+     */
+    @Test
+    fun testGetRemainingTimeActiveWithNoExpiry_isUnlimitedNotAThirtyMinuteGrace() {
+        assertEquals(
+            "No expiry",
+            getRemainingTime(
+                expirationDateStr = null,
+                activeDaysLeftStr = null,
+                lang = "en",
+                accountStatus = "Active"
+            )
+        )
+    }
+
+    @Test
+    fun testGetRemainingTimeActiveWithBlankOrNaExpiry_isUnlimited() {
+        for (blank in listOf("", "   ", "N/A", "none")) {
+            assertEquals(
+                "blank/sentinel expiry '$blank' must read as no expiry",
+                "No expiry",
+                getRemainingTime(
+                    expirationDateStr = blank,
+                    activeDaysLeftStr = null,
+                    lang = "en",
+                    accountStatus = "Active"
+                )
+            )
+        }
+    }
+
+    /**
+     * The 30-minute grace is reserved for an expiry that IS present but unparseable, or slightly
+     * past, while the provider still reports the subscriber active. That behaviour must survive.
+     */
+    @Test
+    fun testGetRemainingTimeActiveWithUnparseableExpiry_keepsTheGraceFallback() {
+        assertEquals(
+            "Remaining: 30 minutes",
+            getRemainingTime(
+                expirationDateStr = "not-a-real-date",
+                activeDaysLeftStr = null,
+                lang = "en",
+                accountStatus = "Active"
+            )
+        )
+    }
+
     @Test
     fun testNormalizeArabicPersianDigits() {
         assertEquals("0123456789", normalizeArabicPersianDigits("٠١٢٣٤٥٦٧٨٩"))

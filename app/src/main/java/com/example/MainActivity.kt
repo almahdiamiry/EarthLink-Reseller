@@ -62,7 +62,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MyApplicationTheme {
+            // The app is dark by design: screens carry hardcoded dark surfaces, so the theme must
+            // agree with them. Defaulting to the OS theme left every colorScheme.* component light
+            // inside a dark app. Dynamic color is off so the palette is ours, not the wallpaper's.
+            MyApplicationTheme(darkTheme = true, dynamicColor = false) {
                 MainLayout()
             }
         }
