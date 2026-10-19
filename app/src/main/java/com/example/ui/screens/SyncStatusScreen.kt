@@ -87,13 +87,14 @@ fun SyncStatusScreen(
 
     val syncDateFormat = remember { java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
+    CompositionLocalProvider(LocalLayoutDirection provides (if (currentLang == "ar") LayoutDirection.Rtl else LayoutDirection.Ltr)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
         Text(
             text = if (currentLang == "ar") "مزامنة السحابة والسجل" else "Cloud Sync & Audit",
             fontSize = 21.sp,
@@ -604,6 +605,7 @@ fun SyncStatusScreen(
             )
         }
     }
+}
 }
 
 // --- OPERATOR SETTINGS SCREEN ---

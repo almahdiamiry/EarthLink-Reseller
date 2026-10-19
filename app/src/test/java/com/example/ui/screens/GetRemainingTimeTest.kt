@@ -207,4 +207,40 @@ class GetRemainingTimeTest {
         org.junit.Assert.assertNotNull(timestampArabic)
         assertEquals(timestampStandard, timestampArabic)
     }
+
+    @Test
+    fun testSanitizePresentationDateStringParity() {
+        // 1. Clean ASCII date string (fast-path hit: unchanged, returns cleanStr)
+        val cleanAscii = "2026-10-19 14:30:00"
+        assertEquals(cleanAscii, sanitizePresentationDateString(cleanAscii))
+
+        // 2. Sentinels and nulls
+        org.junit.Assert.assertNull(sanitizePresentationDateString(null))
+        org.junit.Assert.assertNull(sanitizePresentationDateString(""))
+        org.junit.Assert.assertNull(sanitizePresentationDateString("   "))
+        org.junit.Assert.assertNull(sanitizePresentationDateString("none"))
+        org.junit.Assert.assertNull(sanitizePresentationDateString("N/A"))
+
+        // 3. Lowercase ISO t and z markers
+        assertEquals("2026-10-19T14:30:00Z", sanitizePresentationDateString("2026-10-19t14:30:00z"))
+
+        // 4. Fractional seconds truncation
+        assertEquals("2026-10-19 14:30:00.123", sanitizePresentationDateString("2026-10-19 14:30:00.1234567"))
+
+        // 5. Eastern Arabic and Persian numerals
+        assertEquals("2026-07-01 14:30:00", sanitizePresentationDateString("٢٠٢٦-٠٧-٠١ ١٤:٣٠:٠٠"))
+        assertEquals("2026-07-01 14:30:00", sanitizePresentationDateString("۲۰۲۶-۰۷-۰۱ ۱۴:۳۰:۰۰"))
+
+        // 6. Directional bidi controls (LRM, RLM, etc.)
+        assertEquals("2026-10-19 14:30:00", sanitizePresentationDateString("\u200E2026-10-19\u200F 14:30:00\u202A"))
+
+        // 7. Non-breaking space (NBSP) and multiple consecutive spaces
+        assertEquals("2026-10-19 14:30:00", sanitizePresentationDateString("2026-10-19\u00A0\u00A014:30:00"))
+        assertEquals("2026-10-19 14:30:00", sanitizePresentationDateString("2026-10-19   14:30:00"))
+
+        // 8. Tabs and newlines (whitespace normalization)
+        assertEquals("2026-10-19 14:30:00", sanitizePresentationDateString("2026-10-19\t14:30:00"))
+        assertEquals("2026-10-19 14:30:00", sanitizePresentationDateString("2026-10-19\n14:30:00"))
+    }
 }
+
