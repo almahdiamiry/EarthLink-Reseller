@@ -901,6 +901,7 @@ fun ConfirmationDialog(
     title: String,
     message: String,
     needsPasswordField: Boolean = false,
+    passwordLabel: String? = null,
     onCancel: () -> Unit,
     onConfirm: (password: String) -> Unit
 ) {
@@ -958,7 +959,7 @@ fun ConfirmationDialog(
                     OutlinedTextField(
                         value = password,
                         onValueChange = { password = it },
-                        label = { Text(if (isAr) "أدخل كلمة مرور الصندوق" else "Enter Deposit Password") },
+                        label = { Text(passwordLabel ?: if (isAr) "أدخل كلمة مرور الصندوق" else "Enter Deposit Password") },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),

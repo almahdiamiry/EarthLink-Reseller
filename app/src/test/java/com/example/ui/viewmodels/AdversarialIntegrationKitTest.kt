@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.core.database.AppDatabase
+import com.example.core.model.AccountPackage
 import com.example.core.model.LocalAccount
 import com.example.core.model.LocalLedgerEntry
 import com.example.core.model.PendingExternalOperation
@@ -671,9 +672,17 @@ class AdversarialIntegrationKitTest {
         var changePlanResult: SasOperationResult = SasOperationResult.Applied()
         var changePasswordResult: SasOperationResult = SasOperationResult.Applied()
         var outcomeToReturn: SasVerificationOutcome = SasVerificationOutcome.VERIFIED_SUCCESS
+        var packagesList: List<AccountPackage> = listOf(
+            AccountPackage(accountIndex = 12, accountName = "SAMM Standard", price = 35000.0)
+        )
 
         private fun checkError() {
             errorToThrow?.let { throw it }
+        }
+
+        override suspend fun listPackages(): List<AccountPackage> {
+            checkError()
+            return packagesList
         }
 
         override suspend fun searchSubscribers(query: String, page: Int, pageSize: Int): List<SasSubscriberView> {
@@ -682,7 +691,7 @@ class AdversarialIntegrationKitTest {
             return searchResult
         }
 
-        override suspend fun getSubscriber(subscriberId: String): SasSubscriberView? {
+        override suspend fun getSubscriber(username: String): SasSubscriberView? {
             getSubscriberCalls.incrementAndGet()
             checkError()
             return subscriberDetailResult

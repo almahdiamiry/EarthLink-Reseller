@@ -56,7 +56,10 @@ class EarthlinkSearchViewModel(
         @Synchronized fun formatBghFullDate(date: java.util.Date): String = try { bghFormatFull.format(date) } catch (_: Exception) { "" }
     }
 
-    private val _selectedProvider = MutableStateFlow(prefs.getLastSelectedLoginProvider())
+    private val _selectedProvider = MutableStateFlow(
+        prefs.getLastSelectedLoginProvider()?.takeIf { com.example.core.model.SasProviders.isValid(it) }
+            ?: com.example.core.model.SasProviders.EARTHLINK
+    )
     val selectedProvider: StateFlow<String> = _selectedProvider.asStateFlow()
 
     fun setSelectedProvider(provider: String) {
@@ -738,11 +741,28 @@ class EarthlinkSearchViewModel(
     fun previewPackageCost(pkgIndex: Int) {
         _costPreview.value = null
         viewModelScope.launch {
-            try {
-                val cost = gateway.getAccountCost(pkgIndex)
-                _costPreview.value = cost
-            } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                _error.value = "Failed package cost preview: ${e.message}"
+            val provider = _selectedProvider.value?.takeIf { com.example.core.model.SasProviders.isValid(it) }
+                ?: com.example.core.model.SasProviders.EARTHLINK
+            if (provider == com.example.core.model.SasProviders.ALAMIRY) {
+                val cached = _packages.value.find { it.accountIndex == pkgIndex }?.price
+                if (cached != null) {
+                    _costPreview.value = cached
+                } else {
+                    try {
+                        val pkgs = sasGatewayRouter.getGateway(com.example.core.model.SasProviders.ALAMIRY).listPackages()
+                        _costPreview.value = pkgs.find { it.accountIndex == pkgIndex }?.price
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+                        _error.value = "Failed package cost preview: ${e.message}"
+                    }
+                }
+            } else {
+                try {
+                    val cost = gateway.getAccountCost(pkgIndex)
+                    _costPreview.value = cost
+                } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
+                    _error.value = "Failed package cost preview: ${e.message}"
+                }
             }
         }
     }
@@ -830,7 +850,8 @@ class EarthlinkSearchViewModel(
     }
 
     fun createUserUsingDeposit(username: String, phone: String, fullName: String, pkgIndex: Int, depositPass: String, intentId: String? = null): kotlinx.coroutines.Job {
-        val targetProvider = _selectedProvider.value
+        val targetProvider = _selectedProvider.value?.takeIf { com.example.core.model.SasProviders.isValid(it) }
+            ?: com.example.core.model.SasProviders.EARTHLINK
         val lock = getAccountLock("${username}:ACTIVATION")
 
         return viewModelScope.launch(Dispatchers.IO) {
@@ -856,23 +877,54 @@ class EarthlinkSearchViewModel(
                     return@launch
                 }
 
-                val available = gateway.checkUsernameAvailable(username)
+                val isSamm = targetProvider == com.example.core.model.SasProviders.ALAMIRY
+                val sammGateway = if (isSamm) sasGatewayRouter.getGateway(targetProvider) else null
+
+                val available = if (isSamm) {
+                    try {
+                        val existingSub = sammGateway!!.getSubscriber(username)
+                        existingSub == null
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+                        _error.value = "Failed to verify username availability on SAMM: ${e.message}"
+                        return@launch
+                    }
+                } else {
+                    gateway.checkUsernameAvailable(username)
+                }
+
                 if (!available) {
                     _error.value = "Username $username is already taken."
                     return@launch
                 }
 
-                val cost = try {
-                    gateway.getAccountCost(pkgIndex)
-                } catch (e: kotlinx.coroutines.CancellationException) {
-                    throw e
-                } catch (e: EarthlinkGatewayException) {
-                    _error.value = "Failed to determine package cost: ${e.message ?: "API error"}. Operation aborted."
-                    return@launch
-                } catch (e: Exception) {
-                    _error.value = "Failed to determine package cost: ${e.message ?: "error"}. Operation aborted."
-                    return@launch
+                val cost = if (isSamm) {
+                    val cachedCost = _packages.value.find { it.accountIndex == pkgIndex }?.price
+                    val authoritativeCost = cachedCost ?: try {
+                        sammGateway!!.listPackages().find { it.accountIndex == pkgIndex }?.price
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+                        null
+                    }
+                    if (authoritativeCost == null) {
+                        _error.value = "Failed to determine package cost for SAMM plan. Operation aborted."
+                        return@launch
+                    }
+                    authoritativeCost
+                } else {
+                    try {
+                        gateway.getAccountCost(pkgIndex)
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: EarthlinkGatewayException) {
+                        _error.value = "Failed to determine package cost: ${e.message ?: "API error"}. Operation aborted."
+                        return@launch
+                    } catch (e: Exception) {
+                        _error.value = "Failed to determine package cost: ${e.message ?: "error"}. Operation aborted."
+                        return@launch
+                    }
                 }
+
                 if (!cost.isFinite() || cost <= 0.0 || cost % 1.0 != 0.0 || cost % 250.0 != 0.0) {
                     _error.value = "Failed to determine a valid IQD package cost. Operation aborted."
                     return@launch
@@ -914,11 +966,11 @@ class EarthlinkSearchViewModel(
                     return@launch
                 }
 
-                val targetGateway = sasGatewayRouter.getGateway(targetProvider)
                 val parts = fullName.trim().split("\\s+".toRegex(), limit = 2)
                 val firstName = parts.getOrNull(0) ?: fullName
                 val lastName = parts.getOrNull(1) ?: ""
-                val opResult = targetGateway.createSubscriber(
+                val dispatchGateway = sammGateway ?: sasGatewayRouter.getGateway(targetProvider)
+                val opResult = dispatchGateway.createSubscriber(
                     username = username,
                     planId = pkgIndex.toString(),
                     password = depositPass,

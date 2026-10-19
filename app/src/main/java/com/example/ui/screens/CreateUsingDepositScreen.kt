@@ -69,18 +69,27 @@ fun CreateUsingDepositScreen(
     if (showConfirmDialog) {
         val selectedPkgName = pkgs.find { it.accountIndex == selectedPkgIndex }?.accountName ?: ""
         val hasValidCost = costPreview != null && costPreview!! > 0.0
+        val isSamm = selectedProvider == com.example.core.model.SasProviders.ALAMIRY
         val costMsg = if (hasValidCost) {
-            if (isAr) "سيتم خصم مبلغ ${formatIqd(costPreview!!)} من رصيد الصندوق."
-            else "Consumes ${formatIqd(costPreview!!)} from your deposit balance."
+            if (isSamm) {
+                if (isAr) "سعر الباقة: ${formatIqd(costPreview!!)} وسيتم تسجيل القيد في السجل المالي."
+                else "Package price: ${formatIqd(costPreview!!)} will be recorded in local ledger."
+            } else {
+                if (isAr) "سيتم خصم مبلغ ${formatIqd(costPreview!!)} من رصيد الصندوق."
+                else "Consumes ${formatIqd(costPreview!!)} from your deposit balance."
+            }
         } else {
-            if (isAr) "التكلفة غير متوفرة حالياً وسيتم التحقق منها قبل الخصم."
-            else "Package cost is currently unavailable and will be verified before deduction."
+            if (isAr) "التكلفة غير متوفرة حالياً وسيتم التحقق منها قبل التسجيل."
+            else "Package cost is currently unavailable and will be verified before recording."
         }
         ConfirmationDialog(
-            title = if (isAr) "تأكيد إنشاء مشترك مدفوع ($selectedProvider)" else "Confirm Paid Account Creation ($selectedProvider)",
-            message = if (isAr) "هل تود إنشاء وتفعيل المشترك $userId على مزود $selectedProvider وباقة $selectedPkgName؟ $costMsg"
-            else "Generate paid subscription $userId on provider $selectedProvider with package $selectedPkgName? $costMsg",
+            title = if (isAr) (if (isSamm) "تأكيد إنشاء المشترك في سام" else "تأكيد إنشاء مشترك مدفوع (إيرثلنك)")
+                    else (if (isSamm) "Confirm Subscriber Creation (SAMM)" else "Confirm Paid Account Creation (EarthLink)"),
+            message = if (isAr) "هل تود إنشاء وتفعيل المشترك $userId على باقة $selectedPkgName؟ $costMsg"
+                      else "Generate paid subscription $userId with package $selectedPkgName? $costMsg",
             needsPasswordField = true,
+            passwordLabel = if (isSamm) (if (isAr) "أدخل كلمة مرور اشتراك المشترك الجديد" else "Enter New Subscriber Password")
+                            else (if (isAr) "أدخل كلمة مرور الصندوق" else "Enter Deposit Password"),
             onCancel = { showConfirmDialog = false },
             onConfirm = { pass ->
                 showConfirmDialog = false
