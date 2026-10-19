@@ -270,7 +270,8 @@ fun OperatorMainScreen(authViewModel: AuthViewModel) {
                             onUserClick = { userItem ->
                                 searchViewModel.clearErrorAndSuccess()
                                 searchViewModel.prepareUserDetail(userItem.userIndex, userItem)
-                                navController.navigate("user_detail/${userItem.userIndex}?userId=${userItem.userIDLower}")
+                                val idParam = userItem.userID.takeIf { it.isNotBlank() }?.let { "?userId=${android.net.Uri.encode(it)}" } ?: ""
+                                navController.navigate("user_detail/${userItem.userIndex}$idParam")
                             },
                             onPlusClick = {
                                 showCreateSheet = true
@@ -306,7 +307,8 @@ fun OperatorMainScreen(authViewModel: AuthViewModel) {
                             onUserClick = { userItem ->
                                 searchViewModel.clearErrorAndSuccess()
                                 searchViewModel.prepareUserDetail(userItem.userIndex, userItem)
-                                navController.navigate("user_detail/${userItem.userIndex}?userId=${userItem.userIDLower}")
+                                val idParam = userItem.userID.takeIf { it.isNotBlank() }?.let { "?userId=${android.net.Uri.encode(it)}" } ?: ""
+                                navController.navigate("user_detail/${userItem.userIndex}$idParam")
                             }
                         )
                     }
@@ -319,7 +321,8 @@ fun OperatorMainScreen(authViewModel: AuthViewModel) {
                             onUserSelect = { user ->
                                 searchViewModel.clearErrorAndSuccess()
                                 searchViewModel.prepareUserDetail(user.userIndex, user)
-                                navController.navigate("user_detail/${user.userIndex}?userId=${user.userIDLower}")
+                                val idParam = user.userID.takeIf { it.isNotBlank() }?.let { "?userId=${android.net.Uri.encode(it)}" } ?: ""
+                                navController.navigate("user_detail/${user.userIndex}$idParam")
                             }
                         )
                     }
@@ -350,7 +353,8 @@ fun OperatorMainScreen(authViewModel: AuthViewModel) {
                     }
                 ) { backStackEntry ->
                     val userIndex = backStackEntry.arguments?.getInt("userIndex") ?: 0
-                    val userId = backStackEntry.arguments?.getString("userId")
+                    val rawUserId = backStackEntry.arguments?.getString("userId")
+                    val userId = rawUserId?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
                     UserDetailScreenV2(
                         userIndex = userIndex,
                         userId = userId,

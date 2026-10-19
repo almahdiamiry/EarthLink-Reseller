@@ -444,7 +444,7 @@ fun UserDetailScreenV2(
         }
     }
 
-    LaunchedEffect(userIndex) {
+    LaunchedEffect(userIndex, userId) {
         viewModel.loadUserDetail(userIndex, userId)
     }
 

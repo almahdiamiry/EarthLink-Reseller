@@ -364,16 +364,18 @@ override suspend fun extendSubscriberByDays(
     override suspend fun getSubscriberSession(username: String): SasSubscriberSession? {
         val key = username.trim().takeIf { it.isNotEmpty() } ?: return null
         return try {
-            val response = safeApiCall { apiService.listSessions(username = key, limit = 1) }
-            val session = response.body()?.items?.firstOrNull { it.username.equals(key, ignoreCase = true) }
-                ?: return null
-            SasSubscriberSession(
-                isOnline = true,
-                startedAt = session.startedAt,
-                onlineSeconds = session.lastSessionTime,
-                ip = session.framedIp
-            )
-        } catch (_: SasGatewayException) {
+            kotlinx.coroutines.withTimeoutOrNull(2000L) {
+                val response = safeApiCall { apiService.listSessions(username = key, limit = 1) }
+                val session = response.body()?.items?.firstOrNull { it.username.equals(key, ignoreCase = true) }
+                    ?: return@withTimeoutOrNull null
+                SasSubscriberSession(
+                    isOnline = true,
+                    startedAt = session.startedAt,
+                    onlineSeconds = session.lastSessionTime,
+                    ip = session.framedIp
+                )
+            }
+        } catch (_: Exception) {
             null
         }
     }

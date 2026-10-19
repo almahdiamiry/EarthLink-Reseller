@@ -207,6 +207,47 @@ class EarthlinkSearchViewModelDefaultProviderTest {
         assertEquals("Selected user must preserve origin provider", SasProviders.ALAMIRY, vm.selectedUser.value?.originProvider)
     }
 
+    /**
+     * Claim: When navigation passes literal "null" string or blank for userId, loadUserDetail
+     *        must not discard the optimistic partial item's identity or originProvider, and must
+     *        route to the correct provider instead of defaulting to the last-logged provider.
+     * Seam: JVM Robolectric Tier (EarthlinkSearchViewModel).
+     * Independent Oracle: Partial item specifies originProvider = EARTHLINK. Target gateway
+     *                      calls must be 1 on EarthLink and 0 on SAMM even when SAMM is active provider.
+     */
+    @Test
+    fun loadUserDetail_whenUserIdPassedAsNullString_preservesOriginProviderAndDoesNotQueryFallbackProvider() = runTest {
+        val vm = createViewModel()
+        // Simulate SAMM being the active login provider
+        vm.setSelectedProvider(SasProviders.ALAMIRY)
+
+        fakeEarthlinkSasGateway.subscriberDetailResult = SasSubscriberView(
+            subscriberId = "54321",
+            username = "earthlink_user_1",
+            displayName = "EL Subscriber",
+            status = "Active",
+            planName = "Home"
+        )
+
+        // EarthLink response typically had userID in UserID (upper), so userIDLower is null
+        val partialItem = UserListItem(
+            userIndexLower = 54321,
+            userIDUpper = "earthlink_user_1",
+            customerNameLower = "EL Subscriber",
+            originProvider = SasProviders.EARTHLINK
+        )
+        vm.prepareUserDetail(54321, partialItem)
+
+        // NavHost passed userId as literal string "null"
+        val job = vm.loadUserDetail(54321, "null")
+        job.join()
+
+        assertEquals("EarthLink gateway must receive getSubscriber call", 1, fakeEarthlinkSasGateway.getSubscriberCalls.get())
+        assertEquals("SAMM gateway must not receive getSubscriber call", 0, fakeSammSasGateway.getSubscriberCalls.get())
+        assertEquals("Selected user must preserve origin provider", SasProviders.EARTHLINK, vm.selectedUser.value?.originProvider)
+        assertEquals("Progress indicator must be dismissed immediately", false, vm.isRefreshingDetail.value)
+    }
+
     @Test
     fun getUserDetail_routesByOriginProviderWhenLocalAccountMissing() = runTest {
         val vm = createViewModel()

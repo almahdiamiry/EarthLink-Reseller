@@ -428,10 +428,16 @@ class EarthlinkSearchViewModel(
 
     fun loadUserDetail(userIndex: Int, knownUserId: String? = null): kotlinx.coroutines.Job {
         val currentProvider = _selectedProvider.value
+        val sanitizedUserId = knownUserId?.trim()?.takeIf {
+            it.isNotBlank() && !it.equals("null", ignoreCase = true)
+        }
         return viewModelScope.launch {
             _error.value = null
             
-            if (knownUserId != null && _selectedUser.value?.userID != knownUserId) {
+            if (sanitizedUserId != null && _selectedUser.value?.userID?.isNotBlank() == true && 
+                !_selectedUser.value?.userID.equals(sanitizedUserId, ignoreCase = true) &&
+                _selectedUser.value?.userIndex != userIndex
+            ) {
                 _selectedUser.value = null
             }
 
@@ -443,28 +449,28 @@ class EarthlinkSearchViewModel(
             if (_selectedUser.value == null) {
                 try {
                     foundLocal = withContext(Dispatchers.IO) {
-                        if (!knownUserId.isNullOrBlank()) {
-                            if (knownUserId.startsWith("local_")) {
-                                val localId = knownUserId.removePrefix("local_")
+                        if (!sanitizedUserId.isNullOrBlank()) {
+                            if (sanitizedUserId.startsWith("local_")) {
+                                val localId = sanitizedUserId.removePrefix("local_")
                                 val candidate = localAccountRepository.getAccountByIdOneShot(localId)
                                 if (candidate != null && candidate.ispUserIndex == null && candidate.id.hashCode() == userIndex) {
                                     return@withContext candidate
                                 }
                             }
-                            val syntheticCandidate = localAccountRepository.findActiveAccountsBySubscriberIdentity(null, knownUserId)
+                            val syntheticCandidate = localAccountRepository.findActiveAccountsBySubscriberIdentity(null, sanitizedUserId)
                                 .firstOrNull { it.ispUserIndex == null && it.id.hashCode() == userIndex }
                             if (syntheticCandidate != null) {
                                 return@withContext syntheticCandidate
                             }
                             val matches = if (userIndex > 0) {
-                                localAccountRepository.findActiveAccountsBySubscriberIdentity(userIndex, knownUserId)
+                                localAccountRepository.findActiveAccountsBySubscriberIdentity(userIndex, sanitizedUserId)
                             } else {
                                 emptyList()
                             }
                             if (matches.size == 1) {
                                 matches.single()
                             } else if (matches.isEmpty() && userIndex <= 0) {
-                                localAccountRepository.findActiveAccountByUsernameOrIdOneShot(knownUserId)
+                                localAccountRepository.findActiveAccountByUsernameOrIdOneShot(sanitizedUserId)
                             } else {
                                 null
                             }
@@ -510,7 +516,7 @@ class EarthlinkSearchViewModel(
                 }
             }
 
-            val currentUserId = _selectedUser.value?.userID ?: knownUserId
+            val currentUserId = _selectedUser.value?.userID?.takeIf { it.isNotBlank() } ?: sanitizedUserId
             val isSyntheticLocal = if (!currentUserId.isNullOrBlank()) {
                 isSyntheticLocalIspIdentity(userIndex, currentUserId)
             } else {
@@ -530,11 +536,14 @@ class EarthlinkSearchViewModel(
                     // re-target the detail to SAMM while the provider badge still reads the local
                     // row. The username carried by the navigation route is provider-neutral, so it
                     // is the safe key for resolving that authority.
-                    val authorityAccount = knownUserId?.trim()?.takeIf { it.isNotBlank() }
+                    val authorityAccount = sanitizedUserId
                         ?.let { id -> localAccountRepository.findActiveAccountsBySubscriberIdentity(null, id).firstOrNull() }
                     val identityOwner = foundLocal ?: authorityAccount
                     val accountProvider = identityOwner?.operationProvider
-                    val targetProvider = accountProvider ?: _selectedUser.value?.originProvider ?: currentProvider
+                    val targetProvider = accountProvider
+                        ?: _selectedUser.value?.originProvider
+                        ?: (if (userIndex > 0) com.example.core.model.SasProviders.EARTHLINK else null)
+                        ?: currentProvider
                     val targetGateway = sasGatewayRouter.getGateway(targetProvider)
                     // "The provider has no such subscriber" and "we could not reach the provider" are
                     // different answers. Only the former may retire the previous provider's display
@@ -598,22 +607,6 @@ class EarthlinkSearchViewModel(
                             ?: foundLocal?.packageName?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
                             ?: _selectedUser.value?.packageName?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
 
-                        // Online state lives on a provider-specific session resource, not on the
-                        // subscriber payload. Awaited concurrently from the deferred launched above.
-                        val liveSession = if (sessionDeferred != null) {
-                            if (sub.username.equals(currentUserId, ignoreCase = true)) {
-                                sessionDeferred.await()
-                            } else {
-                                // If the canonical username differed from currentUserId, fetch for sub.username
-                                try {
-                                    targetGateway.getSubscriberSession(sub.username)
-                                } catch (e: Exception) {
-                                    if (e is kotlinx.coroutines.CancellationException) throw e
-                                    null
-                                }
-                            }
-                        } else null
-
                         val detail = com.example.core.model.UserDetail(
                             userIndexLower = numIdx,
                             userIDLower = sub.username,
@@ -628,19 +621,9 @@ class EarthlinkSearchViewModel(
                             expirationDateLower = sub.expiresAt,
                             accountExpirationDateLower = sub.expiresAt,
                             activeDaysLeftLower = daysLeft,
-                            onlineSessionTimeLower = liveSession?.onlineSeconds
-                                ?.let { com.example.ui.screens.SubscriberDisplayRules.formatOnlineDuration(it) },
-                            currentIPLower = liveSession?.ip,
-                            onlineSessionLower = liveSession?.let {
-                                // onlineTime is deliberately left unset: UserDetail.onlineSessionTime
-                                // prefers it over onlineSessionTimeLower, so filling it would show the
-                                // session START stamp where the duration belongs.
-                                com.example.core.model.OnlineSession(
-                                    onlineStatusLower = if (it.isOnline) "Online" else "Offline",
-                                    onlineSinceLower = it.startedAt,
-                                    ipAddressLower = it.ip
-                                )
-                            },
+                            onlineSessionTimeLower = _selectedUser.value?.onlineSessionTime,
+                            currentIPLower = _selectedUser.value?.currentIP,
+                            onlineSessionLower = _selectedUser.value?.onlineSession,
                             originProvider = targetProvider
                         )
                         // A slower earlier request must not clobber a newer operator selection.
@@ -649,6 +632,45 @@ class EarthlinkSearchViewModel(
                         val stillSelected = _selectedUser.value
                         if (stillSelected == null || stillSelected.userIndex == userIndex || stillSelected.userID.equals(sub.username, ignoreCase = true)) {
                             _selectedUser.value = detail
+                        }
+                        // Drop the top progress indicator immediately now that core subscriber info is displayed
+                        _isRefreshingDetail.value = false
+                        _isLoading.value = false
+
+                        // Asynchronously enrich online session without blocking the screen
+                        if (sessionDeferred != null) {
+                            launch {
+                                try {
+                                    val liveSession = if (sub.username.equals(currentUserId, ignoreCase = true)) {
+                                        sessionDeferred.await()
+                                    } else {
+                                        try {
+                                            targetGateway.getSubscriberSession(sub.username)
+                                        } catch (e: Exception) {
+                                            if (e is kotlinx.coroutines.CancellationException) throw e
+                                            null
+                                        }
+                                    }
+                                    if (liveSession != null) {
+                                        val current = _selectedUser.value
+                                        if (current != null && (current.userIndex == userIndex || current.userID.equals(sub.username, ignoreCase = true))) {
+                                            _selectedUser.value = current.copy(
+                                                onlineSessionTimeLower = liveSession.onlineSeconds
+                                                    ?.let { com.example.ui.screens.SubscriberDisplayRules.formatOnlineDuration(it) },
+                                                currentIPLower = liveSession.ip,
+                                                onlineSessionLower = com.example.core.model.OnlineSession(
+                                                    onlineStatusLower = if (liveSession.isOnline) "Online" else "Offline",
+                                                    onlineSinceLower = liveSession.startedAt,
+                                                    ipAddressLower = liveSession.ip
+                                                )
+                                            )
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    if (e is kotlinx.coroutines.CancellationException) throw e
+                                    Log.w("EarthlinkSearchVM", "Async session fetch skipped: ${e.message}")
+                                }
+                            }
                         }
                         if (foundLocal != null) {
                             try {
@@ -1396,7 +1418,7 @@ class EarthlinkSearchViewModel(
                             entityId = userId,
                             summary = "Renewed subscription at price $authoritativePrice. Note: $finalNote"
                         )
-                        _selectedUser.value?.userIndex?.let { loadUserDetail(it, _selectedUser.value?.userIDLower) }
+                        _selectedUser.value?.userIndex?.let { loadUserDetail(it, _selectedUser.value?.userID) }
                     } catch (e: Exception) {
                         if (e is kotlinx.coroutines.CancellationException) throw e
                         android.util.Log.e("EarthlinkSearchViewModel", "Failed to execute atomic post-call materialization after renewal", e)
@@ -1521,7 +1543,7 @@ class EarthlinkSearchViewModel(
                     localLedgerRepository.resolvePendingOperationVerifiedSuccess(businessTxId, "[EXTEND]")
                     _actionSuccess.value = "Subscription for $userId extended successfully."
                     audit.logAction("EXTEND_USER", "USER", userId, "Extended subscriber duration")
-                    loadUserDetail(userIndex, _selectedUser.value?.userIDLower)
+                    loadUserDetail(userIndex, _selectedUser.value?.userID)
                 } else {
                     // Surface the real reason. A generic "Extension failed" is undiagnosable in the
                     // field and turns an intermittent provider error into guesswork.
@@ -1709,7 +1731,7 @@ class EarthlinkSearchViewModel(
                         userId,
                         "Changed subscriber package/account status to $accountName"
                     )
-                    loadUserDetail(userIndex, _selectedUser.value?.userIDLower)
+                    loadUserDetail(userIndex, _selectedUser.value?.userID)
                 } else {
                     _error.value = "Failed to update package."
                 }
@@ -1903,7 +1925,7 @@ val targetUserId = account?.earthlinkUsername ?: _selectedUser.value?.userID ?: 
                         "Subscriber display name updated successfully."
                     }
                     audit.logAction("UPDATE_DISPLAY_NAME", "USER", userIndex.toString(), "Updated display name to $newName")
-                    loadUserDetail(userIndex, _selectedUser.value?.userIDLower)
+                    loadUserDetail(userIndex, _selectedUser.value?.userID)
                 } else {
                     _error.value = "Failed to update the display name on $accountProvider."
                 }
