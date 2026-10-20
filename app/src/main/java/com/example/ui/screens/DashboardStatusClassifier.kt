@@ -71,7 +71,7 @@ object DashboardStatusClassifier {
         if (daysLeft != null && daysLeft < 0.0) {
             return true
         }
-        if (statusClean == "active" || statusClean == "فعال" || statusClean == "نشط") return false
+        if (statusClean == "active" || statusClean == "فعال" || statusClean == "نشط" || statusClean == "offline") return false
         if (statusClean == "expiringsoon" || statusClean == "expiring") return false
         return false
     }
@@ -97,7 +97,7 @@ object DashboardStatusClassifier {
         if (daysLeft != null && daysLeft < 0.0) {
             return false
         }
-        if (statusClean == "active" || statusClean == "فعال" || statusClean == "نشط") {
+        if (statusClean == "active" || statusClean == "فعال" || statusClean == "نشط" || statusClean == "offline") {
             return true
         }
         if (statusClean == "expiringsoon" || statusClean == "expiring") {
@@ -110,7 +110,9 @@ object DashboardStatusClassifier {
         if (!isUserActive(user, matchingAccount, nowMs)) return false
         val onlineClean = user.onlineStatus?.trim()?.lowercase(Locale.US) ?: ""
         val statusClean = user.accountStatus?.trim()?.lowercase(Locale.US) ?: ""
-        return onlineClean == "offline" || statusClean == "offline"
+        if (onlineClean == "offline" || statusClean == "offline") return true
+        // Active subscribers without an active NAS session (not starting with 'online') are offline
+        return !onlineClean.startsWith("online")
     }
 
     fun isUserOnline(user: UserListItem, matchingAccount: LocalAccount? = null, nowMs: Long = System.currentTimeMillis()): Boolean {

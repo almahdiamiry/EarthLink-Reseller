@@ -253,9 +253,9 @@ class SubscriberStatusClassificationTest {
         assertFalse(DashboardStatusClassifier.matches(onlineNoNAS, null, DashboardStatusFilter.OFFLINE, fixedNow))
         assertTrue(DashboardStatusClassifier.matches(onlineNoNAS, null, DashboardStatusFilter.ACTIVE, fixedNow))
 
-        // Active subscriber with null onlineStatus does NOT match ONLINE (requires actual connection) and does NOT match OFFLINE
+        // Active subscriber with null onlineStatus does NOT match ONLINE (requires actual connection) and matches OFFLINE (active with no active session)
         assertFalse(DashboardStatusClassifier.matches(activeNullOnlineStatus, null, DashboardStatusFilter.ONLINE, fixedNow))
-        assertFalse(DashboardStatusClassifier.matches(activeNullOnlineStatus, null, DashboardStatusFilter.OFFLINE, fixedNow))
+        assertTrue(DashboardStatusClassifier.matches(activeNullOnlineStatus, null, DashboardStatusFilter.OFFLINE, fixedNow))
 
         // Active Offline subscribers match OFFLINE
         assertTrue(DashboardStatusClassifier.matches(activeOffline, null, DashboardStatusFilter.OFFLINE, fixedNow))
@@ -558,9 +558,10 @@ class SubscriberStatusClassificationTest {
         assertEquals(69, subscribers.size)
 
         // Exact match against real EarthLink ISP counts:
+        // 43 active subscribers: 30 online, 1 captive portal (OnlineNoNet), 12 offline (active with no session)
         assertEquals(43, DashboardStatusClassifier.countFiltered(subscribers, matcher, DashboardStatusFilter.ACTIVE, fixedNow))
         assertEquals(30, DashboardStatusClassifier.countFiltered(subscribers, matcher, DashboardStatusFilter.ONLINE, fixedNow))
-        assertEquals(0, DashboardStatusClassifier.countFiltered(subscribers, matcher, DashboardStatusFilter.OFFLINE, fixedNow))
+        assertEquals(12, DashboardStatusClassifier.countFiltered(subscribers, matcher, DashboardStatusFilter.OFFLINE, fixedNow))
         assertEquals(4, DashboardStatusClassifier.countFiltered(subscribers, matcher, DashboardStatusFilter.EXPIRING_SOON, fixedNow))
         assertEquals(1, DashboardStatusClassifier.countFiltered(subscribers, matcher, DashboardStatusFilter.RECENTLY_EXPIRED, fixedNow))
         assertEquals(25, DashboardStatusClassifier.countFiltered(subscribers, matcher, DashboardStatusFilter.EXPIRED, fixedNow))
