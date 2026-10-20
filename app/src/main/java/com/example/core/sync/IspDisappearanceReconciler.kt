@@ -18,9 +18,9 @@ object IspDisappearanceReconciler {
      * Invariants (RC-04):
      * 1. Mapping: LocalAccount.earthlinkUsername <-> API field userID.
      * 2. Any LocalAccount with null/blank earthlinkUsername MUST be excluded entirely.
-     * 3. Monotonic transition: if earthlinkUsername not in authoritativeIspUserIds, set isHistoryOnlySubscriber = true.
-     *    Never reset true -> false.
-     * 4. Audit logging: logs ISP_SUBSCRIBER_DISAPPEARED for each transitioned account.
+     * 3. Transition: if earthlinkUsername not in authoritativeIspUserIds, set isHistoryOnlySubscriber = true.
+     *    If history-only subscriber reappears in authoritativeIspUserIds, restore isHistoryOnlySubscriber = false.
+     * 4. Audit logging: logs ISP_SUBSCRIBER_DISAPPEARED or ISP_SUBSCRIBER_RESTORED.
      * 5. Outbox queuing: queues outbox entry for updated account.
      * 6. Incomplete fetch abort: If isFetchComplete is false, aborts without transitions (INV-12).
      *
@@ -37,23 +37,23 @@ object IspDisappearanceReconciler {
         auditDao: AuditLogDao?,
         authoritativeIspUserIds: Set<String>,
         isFetchComplete: Boolean,
-targetProvider: String = com.example.core.model.SasProviders.EARTHLINK,
+        targetProvider: String = com.example.core.model.SasProviders.EARTHLINK,
         migrationUsernames: Set<String> = emptySet(),
         migrationTargetProvider: String? = null
     ): List<String> {
-    if (!isFetchComplete) {
-    return emptyList()
-    }
+        if (!isFetchComplete) {
+            return emptyList()
+        }
 
-    val normalizedIspUserIds = authoritativeIspUserIds.map { it.trim().lowercase() }.toSet()
-    val normalizedMigration = migrationUsernames.map { it.trim().lowercase() }.toSet()
-    val canMigrate = migrationTargetProvider != null && migrationTargetProvider != targetProvider
+        val normalizedIspUserIds = authoritativeIspUserIds.map { it.trim().lowercase() }.toSet()
+        val normalizedMigration = migrationUsernames.map { it.trim().lowercase() }.toSet()
+        val canMigrate = migrationTargetProvider != null && migrationTargetProvider != targetProvider
         val transitionedAccountIds = mutableListOf<String>()
         val moshi = Moshi.Builder().build()
         val accountAdapter = moshi.adapter(LocalAccount::class.java)
 
         database.withTransaction {
-            val allAccounts = accountDao.getAllOneShot(limit = Int.MAX_VALUE)
+            val allAccounts = accountDao.getAllPersistedOneShot(limit = Int.MAX_VALUE)
             val now = System.currentTimeMillis()
 
             for (acc in allAccounts) {
@@ -68,46 +68,73 @@ targetProvider: String = com.example.core.model.SasProviders.EARTHLINK,
                     continue
                 }
 
-                // If already history-only, nothing to change (monotonic)
+                val isPresentInIsp = normalizedIspUserIds.contains(username.lowercase())
+
+                // Re-appearance restoration: if history-only account is now present in authoritative roster, restore it
                 if (acc.isHistoryOnlySubscriber) {
+                    if (isPresentInIsp) {
+                        val restored = acc.copy(
+                            isHistoryOnlySubscriber = false,
+                            updatedAt = now
+                        )
+                        accountDao.update(restored)
+                        OutboxManager.upsertWithOutbox(
+                            database.syncOutboxDao(),
+                            "local_accounts",
+                            restored.id,
+                            accountAdapter.toJson(restored)
+                        )
+                        auditDao?.insert(
+                            AuditLog(
+                                action = "ISP_SUBSCRIBER_RESTORED",
+                                entityType = "local_accounts",
+                                entityId = acc.id,
+                                summary = "Subscriber '${acc.displayName}' ($username) reappeared in authoritative $targetProvider ISP subscriber list. Restored from history-only.",
+                                createdAt = now,
+                                severity = AuditSeverity.INFO.name,
+                                actor = "system",
+                                origin = AuditOrigin.SYSTEM_ACTION.name,
+                                metadataJsonMasked = "{\"earthlinkUsername\":\"$username\",\"accountId\":\"${acc.id}\",\"provider\":\"$targetProvider\"}"
+                            )
+                        )
+                    }
                     continue
                 }
 
-                // Check if username is present in ISP
-if (!normalizedIspUserIds.contains(username.lowercase())) {
+                // Check if username is absent from ISP
+                if (!isPresentInIsp) {
+                    // Gone from this provider but present on the other one: the subscriber MOVED ISP.
+                    // They are not historical, so their history must stay live under the new provider.
+                    // This runs before the history-only write because monotonicity can never undo that.
+                    if (canMigrate && normalizedMigration.contains(username.lowercase())) {
+                        val moved = acc.copy(
+                            operationProvider = migrationTargetProvider!!,
+                            updatedAt = now
+                        )
+                        accountDao.update(moved)
+                        OutboxManager.upsertWithOutbox(
+                            database.syncOutboxDao(),
+                            "local_accounts",
+                            moved.id,
+                            accountAdapter.toJson(moved)
+                        )
+                        auditDao?.insert(
+                            AuditLog(
+                                action = "ISP_SUBSCRIBER_MIGRATED",
+                                entityType = "local_accounts",
+                                entityId = acc.id,
+                                summary = "Subscriber '${acc.displayName}' ($username) disappeared from $targetProvider but is present on $migrationTargetProvider. Re-pointed to the new provider; local history preserved.",
+                                createdAt = now,
+                                severity = AuditSeverity.WARNING.name,
+                                actor = "system",
+                                origin = AuditOrigin.SYSTEM_ACTION.name,
+                                metadataJsonMasked = "{\"earthlinkUsername\":\"$username\",\"accountId\":\"${acc.id}\",\"from\":\"$targetProvider\",\"to\":\"$migrationTargetProvider\"}"
+                            )
+                        )
+                        continue
+                    }
 
-            // Gone from this provider but present on the other one: the subscriber MOVED ISP.
-            // They are not historical, so their history must stay live under the new provider.
-            // This runs before the history-only write because monotonicity can never undo that.
-            if (canMigrate && normalizedMigration.contains(username.lowercase())) {
-                val moved = acc.copy(
-                    operationProvider = migrationTargetProvider!!,
-                    updatedAt = now
-                )
-                accountDao.update(moved)
-                OutboxManager.upsertWithOutbox(
-                    database.syncOutboxDao(),
-                    "local_accounts",
-                    moved.id,
-                    accountAdapter.toJson(moved)
-                )
-                auditDao?.insert(
-                    AuditLog(
-                        action = "ISP_SUBSCRIBER_MIGRATED",
-                        entityType = "local_accounts",
-                        entityId = acc.id,
-                        summary = "Subscriber '${acc.displayName}' ($username) disappeared from $targetProvider but is present on $migrationTargetProvider. Re-pointed to the new provider; local history preserved.",
-                        createdAt = now,
-                        severity = AuditSeverity.WARNING.name,
-                        actor = "system",
-                        origin = AuditOrigin.SYSTEM_ACTION.name,
-                        metadataJsonMasked = "{\"earthlinkUsername\":\"$username\",\"accountId\":\"${acc.id}\",\"from\":\"$targetProvider\",\"to\":\"$migrationTargetProvider\"}"
-                    )
-                )
-                continue
-            }
-
-            val updated = acc.copy(
+                    val updated = acc.copy(
                         isHistoryOnlySubscriber = true,
                         updatedAt = now
                     )
@@ -141,5 +168,109 @@ if (!normalizedIspUserIds.contains(username.lowercase())) {
         }
 
         return transitionedAccountIds
+    }
+
+    /**
+     * Purges or archives local accounts when an ISP provider is logged out.
+     * - Accounts present on the remaining provider are migrated to that provider.
+     * - Accounts with 0 debt and no ledger transactions are physically purged.
+     * - Accounts with outstanding debt or ledger transactions are archived to history-only.
+     *
+     * @return Pair(deletedCount, archivedCount)
+     */
+    suspend fun handleLogout(
+        database: AppDatabase,
+        accountDao: LocalAccountDao,
+        auditDao: AuditLogDao?,
+        loggedOutProvider: String,
+        remainingProviderUsernames: Set<String> = emptySet(),
+        remainingProvider: String? = null
+    ): Pair<Int, Int> {
+        val normalizedRemaining = remainingProviderUsernames.map { it.trim().lowercase() }.toSet()
+        val canMigrate = remainingProvider != null && remainingProvider != loggedOutProvider && normalizedRemaining.isNotEmpty()
+        val moshi = Moshi.Builder().build()
+        val accountAdapter = moshi.adapter(LocalAccount::class.java)
+        var deletedCount = 0
+        var archivedCount = 0
+
+        database.withTransaction {
+            val allAccounts = accountDao.getAllPersistedOneShot(limit = Int.MAX_VALUE)
+            val now = System.currentTimeMillis()
+
+            for (acc in allAccounts) {
+                if (acc.operationProvider != loggedOutProvider) {
+                    continue
+                }
+
+                val username = acc.earthlinkUsername?.trim()
+
+                // 1. Migration if subscriber exists on remaining provider
+                if (canMigrate && !username.isNullOrBlank() && normalizedRemaining.contains(username.lowercase())) {
+                    val moved = acc.copy(
+                        operationProvider = remainingProvider!!,
+                        updatedAt = now
+                    )
+                    accountDao.update(moved)
+                    OutboxManager.upsertWithOutbox(
+                        database.syncOutboxDao(),
+                        "local_accounts",
+                        moved.id,
+                        accountAdapter.toJson(moved)
+                    )
+                    auditDao?.insert(
+                        AuditLog(
+                            action = "PROVIDER_LOGOUT_SUBSCRIBER_MIGRATED",
+                            entityType = "local_accounts",
+                            entityId = acc.id,
+                            summary = "Subscriber '${acc.displayName}' ($username) migrated from $loggedOutProvider to $remainingProvider on logout.",
+                            createdAt = now,
+                            severity = AuditSeverity.INFO.name,
+                            actor = "system",
+                            origin = AuditOrigin.SYSTEM_ACTION.name,
+                            metadataJsonMasked = "{\"username\":\"$username\",\"from\":\"$loggedOutProvider\",\"to\":\"$remainingProvider\"}"
+                        )
+                    )
+                    continue
+                }
+
+                // 2. Check debt and ledger presence
+                val hasDebt = acc.debtIqd > 0.0 || acc.advanceIqd > 0.0
+                val hasLedger = database.localLedgerEntryDao().getByAccountIdOneShot(acc.id, limit = 1).isNotEmpty()
+
+                if (!hasDebt && !hasLedger) {
+                    accountDao.deleteById(acc.id)
+                    OutboxManager.deleteWithTombstone(database.syncOutboxDao(), "local_accounts", acc.id, "{}")
+                    deletedCount++
+                } else if (!acc.isHistoryOnlySubscriber) {
+                    val archived = acc.copy(
+                        isHistoryOnlySubscriber = true,
+                        updatedAt = now
+                    )
+                    accountDao.update(archived)
+                    OutboxManager.upsertWithOutbox(
+                        database.syncOutboxDao(),
+                        "local_accounts",
+                        archived.id,
+                        accountAdapter.toJson(archived)
+                    )
+                    auditDao?.insert(
+                        AuditLog(
+                            action = "PROVIDER_LOGOUT_ACCOUNT_ARCHIVED",
+                            entityType = "local_accounts",
+                            entityId = acc.id,
+                            summary = "Subscriber '${acc.displayName}' ($username) archived as history-only on $loggedOutProvider logout to preserve debt/ledger.",
+                            createdAt = now,
+                            severity = AuditSeverity.WARNING.name,
+                            actor = "system",
+                            origin = AuditOrigin.SYSTEM_ACTION.name,
+                            metadataJsonMasked = "{\"username\":\"$username\",\"debtIqd\":${acc.debtIqd}}"
+                        )
+                    )
+                    archivedCount++
+                }
+            }
+        }
+
+        return Pair(deletedCount, archivedCount)
     }
 }

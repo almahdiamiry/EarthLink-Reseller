@@ -15,7 +15,8 @@ class AuthViewModel(
     val gateway: com.example.domain.repository.EarthlinkGateway,
     val prefs: com.example.core.security.PreferenceManager,
     private val audit: com.example.domain.repository.AuditRepository,
-    val syncRepo: com.example.domain.repository.SyncRepository
+    val syncRepo: com.example.domain.repository.SyncRepository,
+    val localAccountRepo: com.example.domain.repository.LocalAccountRepository? = null
 ) : ViewModel() {
 
     private val _username = MutableStateFlow("")
@@ -155,6 +156,11 @@ class AuthViewModel(
                     entityId = currentUrl ?: "UNKNOWN",
                     summary = "Agent logged out from SAMM"
                 )
+                val remainingProvider = if (prefs.isEarthlinkConfigured()) SasProviders.EARTHLINK else null
+                localAccountRepo?.handleProviderLogout(
+                    loggedOutProvider = SasProviders.ALAMIRY,
+                    remainingProvider = remainingProvider
+                )
             } finally {
                 prefs.clearSammCredentials()
                 _isLoading.value = false
@@ -238,6 +244,11 @@ class AuthViewModel(
                 _password.value = ""
                 viewModelScope.launch {
                     try {
+                        val remainingProvider = if (prefs.isSammConfigured()) SasProviders.ALAMIRY else null
+                        localAccountRepo?.handleProviderLogout(
+                            loggedOutProvider = SasProviders.EARTHLINK,
+                            remainingProvider = remainingProvider
+                        )
                         audit.logAction(
                             action = "PROVIDER_REMOVE",
                             entityType = "PROVIDER",
@@ -251,6 +262,11 @@ class AuthViewModel(
                 prefs.clearSammCredentials()
                 viewModelScope.launch {
                     try {
+                        val remainingProvider = if (prefs.isEarthlinkConfigured()) SasProviders.EARTHLINK else null
+                        localAccountRepo?.handleProviderLogout(
+                            loggedOutProvider = SasProviders.ALAMIRY,
+                            remainingProvider = remainingProvider
+                        )
                         audit.logAction(
                             action = "PROVIDER_REMOVE",
                             entityType = "PROVIDER",

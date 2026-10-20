@@ -14,7 +14,8 @@ object AppViewModelProvider {
                 gateway = app.earthlinkGateway,
                 prefs = app.preferenceManager,
                 audit = app.auditRepository,
-                syncRepo = app.syncRepository
+                syncRepo = app.syncRepository,
+                localAccountRepo = app.localAccountRepository
             )
         }
         initializer {

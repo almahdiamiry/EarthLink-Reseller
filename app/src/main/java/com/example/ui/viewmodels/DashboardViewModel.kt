@@ -201,40 +201,42 @@ class DashboardViewModel(
                                     val effectiveRouter = getEffectiveRouter()
                                     if (effectiveRouter != null) {
                                         val sammGateway = effectiveRouter.getGateway(com.example.core.model.SasProviders.ALAMIRY)
-                                        val sessionsJob = async {
-                                            try {
-                                                sammGateway.listOnlineSessions()
-                                            } catch (e: Exception) {
-                                                if (e is kotlinx.coroutines.CancellationException) throw e
-                                                emptyMap()
-                                            }
-                                        }
                                         val subscribers = sammGateway.searchSubscribers(query = "", page = 1, pageSize = 5000)
-                                        val liveSessions = sessionsJob.await()
-                                        val items = com.example.ui.screens.SubscriberDisplayRules.markOnlineWithSessions(
-                                            subscribers.map { sub ->
-                                                val numIndex = sub.subscriberId.toIntOrNull() ?: sub.subscriberId.hashCode()
-                                                com.example.core.model.UserListItem(
-                                                    userIndexLower = numIndex,
-                                                    userIDLower = sub.username,
-                                                    customerNameLower = sub.displayName ?: sub.username,
-                                                    mobileNumberLower = sub.phone,
-                                                    accountStatusLower = sub.status,
-                                                    expirationDateLower = sub.expiresAt,
-                                                    accountExpirationDateLower = sub.expiresAt,
-                                                    displayNameLower = sub.displayName,
-                                                    accountNameLower = sub.planName,
-                                                    originProvider = com.example.core.model.SasProviders.ALAMIRY
-                                                )
-                                            },
-                                            liveSessions
-                                        )
+                                        val items = subscribers.map { sub ->
+                                            val numIndex = sub.subscriberId.toIntOrNull() ?: sub.subscriberId.hashCode()
+                                            com.example.core.model.UserListItem(
+                                                userIndexLower = numIndex,
+                                                userIDLower = sub.username,
+                                                customerNameLower = sub.displayName ?: sub.username,
+                                                mobileNumberLower = sub.phone,
+                                                accountStatusLower = sub.status,
+                                                expirationDateLower = sub.expiresAt,
+                                                accountExpirationDateLower = sub.expiresAt,
+                                                displayNameLower = sub.displayName,
+                                                accountNameLower = sub.planName,
+                                                originProvider = com.example.core.model.SasProviders.ALAMIRY
+                                            )
+                                        }
                                         if (items.isNotEmpty()) {
                                             val allItemsHaveValidUserId = items.all { it.userID.isNotBlank() }
                                             if (allItemsHaveValidUserId) {
                                                 sammAuthoritative = items.map { it.userID.trim() }.toSet()
                                             } else {
                                                 android.util.Log.w("DashboardViewModel", "SAMM ISP disappearance reconciliation skipped: snapshot contains item with blank/invalid userID")
+                                            }
+                                        }
+                                        // Sessions are a second round-trip and never gate the paint: the list shows first (<1s),
+                                        // then live sessions enrich the list in background.
+                                        viewModelScope.launch {
+                                            try {
+                                                val liveSessions = sammGateway.listOnlineSessions()
+                                                if (liveSessions.isNotEmpty()) {
+                                                    _subscribersList.value = com.example.ui.screens.SubscriberDisplayRules
+                                                        .markOnlineWithSessions(_subscribersList.value, liveSessions)
+                                                }
+                                            } catch (e: Exception) {
+                                                if (e is kotlinx.coroutines.CancellationException) throw e
+                                                android.util.Log.w("DashboardViewModel", "SAMM background live sessions fetch failed: ${e.message}")
                                             }
                                         }
                                         items
@@ -293,9 +295,21 @@ class DashboardViewModel(
                             }
                         }
 
+                        // Guard against transient network failures wiping cached subscribers to 0
+                        val effectiveEl = if (elItems.isEmpty() && (providerState.hasEarthlink || isDemo) && _subscribersList.value.any { it.originProvider == com.example.core.model.SasProviders.EARTHLINK }) {
+                            _subscribersList.value.filter { it.originProvider == com.example.core.model.SasProviders.EARTHLINK }
+                        } else {
+                            elItems
+                        }
+                        val effectiveSamm = if (sammItems.isEmpty() && providerState.hasSamm && _subscribersList.value.any { it.originProvider == com.example.core.model.SasProviders.ALAMIRY }) {
+                            _subscribersList.value.filter { it.originProvider == com.example.core.model.SasProviders.ALAMIRY }
+                        } else {
+                            sammItems
+                        }
+
                         val activeLoginProvider = prefs.getLastSelectedLoginProvider() ?: com.example.core.model.SasProviders.EARTHLINK
-                        val primaryList = if (activeLoginProvider == com.example.core.model.SasProviders.ALAMIRY) sammItems else elItems
-                        val secondaryList = if (activeLoginProvider == com.example.core.model.SasProviders.ALAMIRY) elItems else sammItems
+                        val primaryList = if (activeLoginProvider == com.example.core.model.SasProviders.ALAMIRY) effectiveSamm else effectiveEl
+                        val secondaryList = if (activeLoginProvider == com.example.core.model.SasProviders.ALAMIRY) effectiveEl else effectiveSamm
 
                         val combined = ArrayList<com.example.core.model.UserListItem>(primaryList.size + secondaryList.size)
                         val seenKeys = HashSet<Pair<String, String>>()

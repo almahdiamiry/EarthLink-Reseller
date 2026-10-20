@@ -38,7 +38,7 @@ fun DashboardStatusScreen(
     val localAccountMatcher = remember(localAccounts) { LocalAccountMatcher(localAccounts) }
     val nowMs = remember { System.currentTimeMillis() }
 
-    val access = remember { viewModel.prefs.getProviderAccessState() }
+    val access by viewModel.prefs.providerAccessStateFlow.collectAsStateWithLifecycle(initialValue = viewModel.prefs.getProviderAccessState())
     val isDemo = viewModel.prefs.getDemoMode()
     val hasEarthlink = access.hasEarthlink || isDemo
     val hasSamm = access.hasSamm
@@ -50,6 +50,14 @@ fun DashboardStatusScreen(
             else if (hasSamm && !hasEarthlink) SasProviders.ALAMIRY
             else viewModel.prefs.getLastSelectedLoginProvider()
         )
+    }
+
+    LaunchedEffect(hasEarthlink, hasSamm) {
+        if (!hasEarthlink && hasSamm && selectedProvider != SasProviders.ALAMIRY) {
+            selectedProvider = SasProviders.ALAMIRY
+        } else if (hasEarthlink && !hasSamm && selectedProvider != SasProviders.EARTHLINK) {
+            selectedProvider = SasProviders.EARTHLINK
+        }
     }
 
     // Authoritative population: current ISP subscribers only (excluding any history-only accounts)

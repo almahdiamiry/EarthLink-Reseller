@@ -153,6 +153,19 @@ interface LocalAccountRepository {
         migrationUsernames: Set<String> = emptySet(),
         migrationTargetProvider: String? = null
     ): List<String>
+
+    /**
+     * Purges or archives local accounts when a provider (e.g. EarthLink) is logged out.
+     * Accounts with debt <= 0 are deleted; accounts with debt > 0 are transitioned to history-only.
+     * If the account also exists on the remaining configured provider, it is migrated to that provider.
+     *
+     * @return Pair(deletedCount, archivedCount)
+     */
+    suspend fun handleProviderLogout(
+        loggedOutProvider: String,
+        remainingProviderUsernames: Set<String> = emptySet(),
+        remainingProvider: String? = null
+    ): Pair<Int, Int> = Pair(0, 0)
 }
 
 interface LocalLedgerRepository {
