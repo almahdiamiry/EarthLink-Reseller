@@ -381,20 +381,36 @@ override suspend fun extendSubscriberByDays(
     }
 
     /**
-     * One bulk read of every live RADIUS session, so a subscriber list can be marked online without
-     * asking per row. The customer resource carries no session field, so /sessions is the only source.
+     * Map of live RADIUS sessions with rich telemetry (IP, Uptime, Octets, MAC).
      */
-    override suspend fun listOnlineUsernames(): Set<String> {
+    override suspend fun listOnlineSessions(): Map<String, SasSubscriberSession> {
         return try {
             safeApiCall { apiService.listSessions(limit = 1000) }
                 .body()?.items.orEmpty()
-                .mapNotNull { it.username?.trim() }
-                .filter { it.isNotEmpty() }
-                .map { it.lowercase() }
-                .toSet()
+                .mapNotNull { item ->
+                    val username = item.username?.trim()?.lowercase() ?: return@mapNotNull null
+                    if (username.isEmpty()) return@mapNotNull null
+                    username to SasSubscriberSession(
+                        isOnline = true,
+                        startedAt = item.startedAt,
+                        onlineSeconds = item.lastSessionTime,
+                        ip = item.framedIp,
+                        mac = item.callingStationId,
+                        inputOctets = item.lastInputOctets,
+                        outputOctets = item.lastOutputOctets
+                    )
+                }
+                .toMap()
         } catch (_: SasGatewayException) {
-            emptySet()
+            emptyMap()
         }
+    }
+
+    /**
+     * One bulk read of every live RADIUS session username.
+     */
+    override suspend fun listOnlineUsernames(): Set<String> {
+        return listOnlineSessions().keys
     }
 
     // ========================================================================

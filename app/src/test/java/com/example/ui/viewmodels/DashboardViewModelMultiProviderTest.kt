@@ -315,4 +315,52 @@ class DashboardViewModelMultiProviderTest {
         verify(earthlinkGateway, never()).searchUsers(anyString(), anyInt(), anyInt())
         assertEquals(0, sammSasGateway.searchSubscribersCallCount)
     }
+
+    /**
+     * Claim: When subscribers exist on both EarthLink and SAMM with identical usernames,
+     * both must be retained in subscribersList with their respective originProvider.
+     * Seam / Environment: ROBOLECTRIC
+     * Independent Oracle: Literal expected size 2 with 1 EARTHLINK and 1 ALAMIRY subscriber.
+     */
+    @Test
+    fun bothProviders_whenSubscribersShareUsername_preservesBothWithDistinctOriginProvider() = runTest(testDispatcher) {
+        `when`(prefs.getProviderAccessState()).thenReturn(ProviderAccessState.BOTH)
+        `when`(prefs.getAuthToken()).thenReturn("el_token_123")
+        `when`(prefs.getIspAdminUsername()).thenReturn("admin_user")
+        `when`(prefs.getIspAdminPassword()).thenReturn("admin_pass")
+        `when`(prefs.getLastSelectedLoginProvider()).thenReturn(SasProviders.ALAMIRY)
+
+        val elResponse = UserListResponse(
+            totalCount = 1,
+            itemsList = listOf(
+                UserListItem(
+                    userIndexLower = 1,
+                    userIDLower = "shared_user",
+                    customerNameLower = "EL Shared User",
+                    accountStatusLower = "Active"
+                )
+            )
+        )
+        `when`(earthlinkGateway.searchUsers(query = "", startIndex = 0, rowCount = 5000)).thenReturn(elResponse)
+        `when`(earthlinkGateway.getBalance()).thenReturn(100000.0)
+        `when`(earthlinkGateway.getPrepaidNeeded(7)).thenReturn(50000.0)
+
+        val sammSubscribers = listOf(
+            SasSubscriberView(
+                subscriberId = "201",
+                username = "shared_user",
+                displayName = "SAMM Shared User",
+                status = "Active"
+            )
+        )
+        sammSasGateway.searchSubscribersResult = sammSubscribers
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        val loadedList = viewModel.subscribersList.value
+        assertEquals("Both subscribers must be preserved even if they share username", 2, loadedList.size)
+        assertTrue("Must contain EarthLink copy", loadedList.any { it.userID == "shared_user" && it.originProvider == SasProviders.EARTHLINK })
+        assertTrue("Must contain SAMM copy", loadedList.any { it.userID == "shared_user" && it.originProvider == SasProviders.ALAMIRY })
+    }
 }

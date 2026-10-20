@@ -175,4 +175,30 @@ object SubscriberDisplayRules {
             }
         }
     }
+
+    /**
+     * Enriches user items with live session telemetry (IP, session duration, octets).
+     */
+    fun markOnlineWithSessions(
+        users: List<com.example.core.model.UserListItem>,
+        sessions: Map<String, com.example.core.network.SasSubscriberSession>
+    ): List<com.example.core.model.UserListItem> {
+        if (sessions.isEmpty()) return users
+        return users.map { user ->
+            val session = sessions[user.userID.trim().lowercase()]
+            if (session != null && session.isOnline) {
+                user.copy(
+                    onlineStatusLower = "Online",
+                    userIPLower = session.ip ?: user.userIPLower,
+                    callerMACLower = session.mac ?: user.callerMACLower,
+                    onlineSinceLower = session.startedAt ?: user.onlineSinceLower,
+                    onlineSessionSeconds = session.onlineSeconds,
+                    downloadBytes = session.inputOctets,
+                    uploadBytes = session.outputOctets
+                )
+            } else {
+                user
+            }
+        }
+    }
 }

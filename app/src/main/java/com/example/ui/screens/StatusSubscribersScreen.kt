@@ -44,6 +44,7 @@ import java.util.Locale
 fun StatusSubscribersScreen(
     viewModel: DashboardViewModel,
     filterKey: String,
+    provider: String = com.example.core.model.SasProviders.EARTHLINK,
     lang: String = "ar",
     onBack: () -> Unit,
     onUserClick: (UserListItem) -> Unit
@@ -60,21 +61,9 @@ fun StatusSubscribersScreen(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
-    // Authoritative population: current ISP subscribers only (excluding any history-only accounts)
-    // Defaults to the provider actually logged into. When only one is configured there is nothing
-    // to choose, so the selector is not rendered.
-    val access = remember { viewModel.prefs.getProviderAccessState() }
-    val bothProviders = access.hasEarthlink && access.hasSamm
-    var providerFilter by rememberSaveable {
-        mutableStateOf(
-            if (access.hasEarthlink && !access.hasSamm) com.example.core.model.SasProviders.EARTHLINK
-            else if (access.hasSamm && !access.hasEarthlink) com.example.core.model.SasProviders.ALAMIRY
-            else viewModel.prefs.getLastSelectedLoginProvider()
-        )
-    }
-    val providerScoped = remember(subscribers, localAccountMatcher, providerFilter) {
-        if (providerFilter == "all") subscribers
-        else subscribers.filter { it.originProvider == providerFilter }
+    // Authoritative population: scoped strictly to the selected ISP passed from Dashboard
+    val providerScoped = remember(subscribers, provider) {
+        subscribers.filter { it.originProvider == null || it.originProvider == provider }
     }
     val ispSubscribers = remember(providerScoped, localAccountMatcher) {
         providerScoped.filter { sub ->
@@ -161,47 +150,13 @@ fun StatusSubscribersScreen(
                                 text = "${categorySubscribers.size}",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp,
-                                color = Color(0xFF0A84FF)
+                                color = if (provider == com.example.core.model.SasProviders.ALAMIRY) Color(0xFF7C4DFF) else Color(0xFF0A84FF)
                             )
                         }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
-
-                // Provider scope, rendered only when there is a real choice to make.
-                if (bothProviders) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf(
-                            Triple("all", if (lang == "ar") "الكل" else "All", Color(0xFF8E8E93)),
-                            Triple(com.example.core.model.SasProviders.EARTHLINK, "EarthLink", Color(0xFF0A84FF)),
-                            Triple(com.example.core.model.SasProviders.ALAMIRY, "SAMM", Color(0xFF7C4DFF))
-                        ).forEach { (key, label, tint) ->
-                            val on = providerFilter == key
-                            Surface(
-                                shape = RoundedCornerShape(20.dp),
-                                color = if (on) tint.copy(alpha = 0.18f) else Color(0xFF161E27),
-                                border = BorderStroke(1.dp, if (on) tint else Color.White.copy(alpha = 0.08f)),
-                                modifier = Modifier.clickable { providerFilter = key }
-                            ) {
-                                Text(
-                                    text = label,
-                                    color = if (on) tint else Color.White.copy(alpha = 0.6f),
-                                    fontSize = 12.sp,
-                                    fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
 
                 // Subscriber List
                 if (displayList.isEmpty()) {
@@ -223,13 +178,21 @@ fun StatusSubscribersScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(displayList, key = { it.userID }) { user ->
-                            ArabicSubscriberCard(
-                                user = user,
-                                localAccounts = localAccounts,
-                                localAccountMatcher = localAccountMatcher,
-                                lang = lang,
-                                onClick = { onUserClick(user) }
-                            )
+                            if (filter == DashboardStatusFilter.ONLINE) {
+                                OnlineSubscriberCard(
+                                    user = user,
+                                    lang = lang,
+                                    onClick = { onUserClick(user) }
+                                )
+                            } else {
+                                ArabicSubscriberCard(
+                                    user = user,
+                                    localAccounts = localAccounts,
+                                    localAccountMatcher = localAccountMatcher,
+                                    lang = lang,
+                                    onClick = { onUserClick(user) }
+                                )
+                            }
                         }
 
                         item {
@@ -401,6 +364,275 @@ fun StatusSubscribersScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun OnlineSubscriberCard(
+    user: UserListItem,
+    lang: String = "ar",
+    onClick: () -> Unit
+) {
+    val isAr = lang == "ar"
+    val displayName = when {
+        !user.displayName.isNullOrBlank() -> user.displayName!!
+        !user.customerName.isNullOrBlank() -> user.customerName!!
+        else -> user.userID
+    }
+
+    val ip = user.userIP?.takeIf { it.isNotBlank() } ?: "—"
+    val uptime = formatUptimeSeconds(user.onlineSessionSeconds, lang)
+    val hasTraffic = (user.downloadBytes != null && user.downloadBytes > 0L) || (user.uploadBytes != null && user.uploadBytes > 0L)
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(16.dp),
+        color = Color(0xFF141922),
+        border = BorderStroke(1.dp, Color(0xFF7C4DFF).copy(alpha = 0.25f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Header Row: Avatar + Name/Username + Online Badge
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Vibrant Online Avatar
+                Box(
+                    modifier = Modifier.size(42.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .background(
+                                color = Color(0xFF7C4DFF).copy(alpha = 0.18f),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .border(
+                                1.dp,
+                                Color(0xFF7C4DFF).copy(alpha = 0.45f),
+                                RoundedCornerShape(12.dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val firstLetter = displayName.trim().firstOrNull()?.toString()?.uppercase(Locale.getDefault()) ?: "?"
+                        Text(
+                            text = firstLetter,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = Color.White
+                        )
+                    }
+
+                    // Green live dot at bottom corner
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .offset(x = 2.dp, y = 2.dp)
+                            .size(12.dp)
+                            .background(Color(0xFF30D158), CircleShape)
+                            .border(2.dp, Color(0xFF141922), CircleShape)
+                    )
+                }
+
+                // Name & Username
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = displayName,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1
+                    )
+                    Text(
+                        text = user.userID,
+                        fontSize = 12.sp,
+                        color = Color(0xFF8E8E93),
+                        maxLines = 1
+                    )
+                }
+
+                // Live Online Badge
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF30D158).copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, Color(0xFF30D158).copy(alpha = 0.4f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .background(Color(0xFF30D158), CircleShape)
+                        )
+                        Text(
+                            text = if (isAr) "أونلاين" else "Online",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF30D158)
+                        )
+                    }
+                }
+            }
+
+            // Divider line
+            HorizontalDivider(color = Color.White.copy(alpha = 0.05f), thickness = 1.dp)
+
+            // Telemetry Chips Grid
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // IP Address Chip
+                Surface(
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF0E131B),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Wifi,
+                            contentDescription = null,
+                            tint = Color(0xFF64D2FF),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = ip,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF64D2FF),
+                            maxLines = 1
+                        )
+                    }
+                }
+
+                // Uptime Chip
+                Surface(
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF0E131B),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Schedule,
+                            contentDescription = null,
+                            tint = Color(0xFFFFD60A),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = uptime,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFFFD60A),
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+
+            // Traffic / Data Usage Row (if available)
+            if (hasTraffic || !user.callerMAC.isNullOrBlank()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (hasTraffic) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "↓ ${formatBytes(user.downloadBytes)}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFF30D158)
+                            )
+                            Text(
+                                text = "•",
+                                fontSize = 10.sp,
+                                color = Color(0xFF8E8E93)
+                            )
+                            Text(
+                                text = "↑ ${formatBytes(user.uploadBytes)}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFF0A84FF)
+                            )
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.width(1.dp))
+                    }
+
+                    if (!user.callerMAC.isNullOrBlank()) {
+                        Text(
+                            text = user.callerMAC!!,
+                            fontSize = 10.5.sp,
+                            color = Color(0xFF8E8E93),
+                            fontWeight = FontWeight.Normal
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+fun formatBytes(bytes: Long?): String {
+    if (bytes == null || bytes <= 0L) return "0 MB"
+    val kb = bytes / 1024.0
+    val mb = kb / 1024.0
+    val gb = mb / 1024.0
+    return when {
+        gb >= 1.0 -> String.format(Locale.US, "%.2f GB", gb)
+        mb >= 1.0 -> String.format(Locale.US, "%.1f MB", mb)
+        else -> String.format(Locale.US, "%.0f KB", kb)
+    }
+}
+
+fun formatUptimeSeconds(seconds: Long?, lang: String = "ar"): String {
+    if (seconds == null || seconds <= 0L) return if (lang == "ar") "أقل من دقيقة" else "< 1 min"
+    val days = seconds / 86400
+    val hours = (seconds % 86400) / 3600
+    val minutes = (seconds % 3600) / 60
+    return if (lang == "ar") {
+        when {
+            days > 0 -> "$days يوم و $hours س"
+            hours > 0 -> "$hours س و $minutes د"
+            else -> "$minutes دقيقة"
+        }
+    } else {
+        when {
+            days > 0 -> "${days}d ${hours}h"
+            hours > 0 -> "${hours}h ${minutes}m"
+            else -> "${minutes}m"
         }
     }
 }

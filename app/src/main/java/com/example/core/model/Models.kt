@@ -104,6 +104,15 @@ data class UserListItem(
     @Json(name = "IsBlocked") val isBlockedUpper: Any? = null,
     @Json(name = "isFreeAccount") val isFreeAccountLower: Any? = null,
     @Json(name = "IsFreeAccount") val isFreeAccountUpper: Any? = null,
+    @Json(name = "userIP") val userIPLower: String? = null,
+    @Json(name = "UserIP") val userIPUpper: String? = null,
+    @Json(name = "callerMAC") val callerMACLower: String? = null,
+    @Json(name = "CallerMAC") val callerMACUpper: String? = null,
+    @Json(name = "onlineTime") val onlineTimeLower: String? = null,
+    @Json(name = "onlineSince") val onlineSinceLower: String? = null,
+    val onlineSessionSeconds: Long? = null,
+    val downloadBytes: Long? = null,
+    val uploadBytes: Long? = null,
     @Json(name = "originProvider") val originProvider: String? = null
 ) {
     val userIndex: Int get() = userIndexLower ?: userIndexUpper ?: 0
@@ -122,6 +131,10 @@ data class UserListItem(
     val userActiveManage: Boolean? get() = parseBoolLike(userActiveManageLower ?: userActiveManageUpper)
     val isBlocked: Boolean? get() = parseBoolLike(isBlockedLower ?: isBlockedUpper)
     val isFreeAccount: Boolean? get() = parseBoolLike(isFreeAccountLower ?: isFreeAccountUpper)
+    val userIP: String? get() = userIPLower ?: userIPUpper
+    val callerMAC: String? get() = callerMACLower ?: callerMACUpper
+    val onlineTime: String? get() = onlineTimeLower
+    val onlineSince: String? get() = onlineSinceLower
 }
 
 @JsonClass(generateAdapter = true)

@@ -203,15 +203,15 @@ class DashboardViewModel(
                                         val sammGateway = effectiveRouter.getGateway(com.example.core.model.SasProviders.ALAMIRY)
                                         val sessionsJob = async {
                                             try {
-                                                sammGateway.listOnlineUsernames()
+                                                sammGateway.listOnlineSessions()
                                             } catch (e: Exception) {
                                                 if (e is kotlinx.coroutines.CancellationException) throw e
-                                                emptySet()
+                                                emptyMap()
                                             }
                                         }
                                         val subscribers = sammGateway.searchSubscribers(query = "", page = 1, pageSize = 5000)
-                                        val onlineUsernames = sessionsJob.await()
-                                        val items = com.example.ui.screens.SubscriberDisplayRules.markOnline(
+                                        val liveSessions = sessionsJob.await()
+                                        val items = com.example.ui.screens.SubscriberDisplayRules.markOnlineWithSessions(
                                             subscribers.map { sub ->
                                                 val numIndex = sub.subscriberId.toIntOrNull() ?: sub.subscriberId.hashCode()
                                                 com.example.core.model.UserListItem(
@@ -227,7 +227,7 @@ class DashboardViewModel(
                                                     originProvider = com.example.core.model.SasProviders.ALAMIRY
                                                 )
                                             },
-                                            onlineUsernames
+                                            liveSessions
                                         )
                                         if (items.isNotEmpty()) {
                                             val allItemsHaveValidUserId = items.all { it.userID.isNotBlank() }
@@ -298,17 +298,20 @@ class DashboardViewModel(
                         val secondaryList = if (activeLoginProvider == com.example.core.model.SasProviders.ALAMIRY) elItems else sammItems
 
                         val combined = ArrayList<com.example.core.model.UserListItem>(primaryList.size + secondaryList.size)
-                        val seenUsernames = HashSet<String>()
+                        val seenKeys = HashSet<Pair<String, String>>()
 
                         for (item in primaryList) {
-                            val key = item.userID.trim().lowercase(java.util.Locale.US)
-                            if (key.isNotEmpty() && seenUsernames.add(key)) {
+                            val prov = item.originProvider ?: activeLoginProvider
+                            val key = Pair(prov, item.userID.trim().lowercase(java.util.Locale.US))
+                            if (key.second.isNotEmpty() && seenKeys.add(key)) {
                                 combined.add(item)
                             }
                         }
                         for (item in secondaryList) {
-                            val key = item.userID.trim().lowercase(java.util.Locale.US)
-                            if (key.isNotEmpty() && seenUsernames.add(key)) {
+                            val fallbackProv = if (activeLoginProvider == com.example.core.model.SasProviders.ALAMIRY) com.example.core.model.SasProviders.EARTHLINK else com.example.core.model.SasProviders.ALAMIRY
+                            val prov = item.originProvider ?: fallbackProv
+                            val key = Pair(prov, item.userID.trim().lowercase(java.util.Locale.US))
+                            if (key.second.isNotEmpty() && seenKeys.add(key)) {
                                 combined.add(item)
                             }
                         }

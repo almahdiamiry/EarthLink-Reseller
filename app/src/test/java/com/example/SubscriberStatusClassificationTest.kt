@@ -7,6 +7,7 @@ import com.example.ui.screens.DashboardStatusFilter
 import com.example.ui.screens.LocalAccountMatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.text.SimpleDateFormat
@@ -563,5 +564,56 @@ class SubscriberStatusClassificationTest {
         assertEquals(4, DashboardStatusClassifier.countFiltered(subscribers, matcher, DashboardStatusFilter.EXPIRING_SOON, fixedNow))
         assertEquals(1, DashboardStatusClassifier.countFiltered(subscribers, matcher, DashboardStatusFilter.RECENTLY_EXPIRED, fixedNow))
         assertEquals(25, DashboardStatusClassifier.countFiltered(subscribers, matcher, DashboardStatusFilter.EXPIRED, fixedNow))
+    }
+
+    /**
+     * Claim: Live session telemetry enrichment accurately maps IP, duration, octets, and MAC onto UserListItem and sets onlineStatus='Online'.
+     * Seam / Environment: JVM
+     * Independent Oracle: Literal assertion values matching session fixture data.
+     */
+    @Test
+    fun testMarkOnlineWithSessions_enrichesTelemetryAndOnlineStatus() {
+        val user1 = UserListItem(
+            userIndexLower = 1,
+            userIDLower = "samm_user_1",
+            accountStatusLower = "Active",
+            originProvider = com.example.core.model.SasProviders.ALAMIRY
+        )
+        val user2 = UserListItem(
+            userIndexLower = 2,
+            userIDLower = "samm_user_2",
+            accountStatusLower = "Active",
+            originProvider = com.example.core.model.SasProviders.ALAMIRY
+        )
+
+        val sessions = mapOf(
+            "samm_user_1" to com.example.core.network.SasSubscriberSession(
+                isOnline = true,
+                startedAt = "2026-10-19T10:00:00Z",
+                onlineSeconds = 7200L,
+                ip = "10.150.10.55",
+                mac = "AA:BB:CC:DD:EE:FF",
+                inputOctets = 104857600L,
+                outputOctets = 20971520L
+            )
+        )
+
+        val result = com.example.ui.screens.SubscriberDisplayRules.markOnlineWithSessions(
+            listOf(user1, user2),
+            sessions
+        )
+
+        val enrichedUser1 = result.first { it.userID == "samm_user_1" }
+        assertEquals("Online", enrichedUser1.onlineStatus)
+        assertEquals("10.150.10.55", enrichedUser1.userIP)
+        assertEquals("AA:BB:CC:DD:EE:FF", enrichedUser1.callerMAC)
+        assertEquals("2026-10-19T10:00:00Z", enrichedUser1.onlineSince)
+        assertEquals(7200L, enrichedUser1.onlineSessionSeconds)
+        assertEquals(104857600L, enrichedUser1.downloadBytes)
+        assertEquals(20971520L, enrichedUser1.uploadBytes)
+
+        val untouchedUser2 = result.first { it.userID == "samm_user_2" }
+        assertNull(untouchedUser2.onlineStatus)
+        assertNull(untouchedUser2.userIP)
     }
 }

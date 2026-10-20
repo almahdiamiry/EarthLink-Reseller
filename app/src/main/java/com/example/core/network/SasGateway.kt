@@ -137,7 +137,10 @@ data class SasSubscriberSession(
     val isOnline: Boolean,
     val startedAt: String? = null,
     val onlineSeconds: Long? = null,
-    val ip: String? = null
+    val ip: String? = null,
+    val mac: String? = null,
+    val inputOctets: Long? = null,
+    val outputOctets: Long? = null
 )
 
 /**
@@ -376,6 +379,11 @@ interface SasGateway {
      * Defaults to empty: providers that carry session state per subscriber need no bulk read.
      */
     suspend fun listOnlineUsernames(): Set<String> = emptySet()
+
+    /**
+     * Map of live sessions keyed by lower-cased username, for providers exposing live session telemetry.
+     */
+    suspend fun listOnlineSessions(): Map<String, SasSubscriberSession> = emptyMap()
 
     /**
      * Reads the price of a plan, when the provider publishes one.

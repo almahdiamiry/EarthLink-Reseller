@@ -287,21 +287,30 @@ fun OperatorMainScreen(authViewModel: AuthViewModel) {
                         DashboardStatusScreen(
                             viewModel = dashboardViewModel,
                             onBack = { navController.popBackStack() },
-                            onCardClick = { filter ->
-                                navController.navigate("status_subscribers/${filter.key}")
+                            onCardClick = { filter, provider ->
+                                navController.navigate("status_subscribers/${filter.key}?provider=$provider")
                             }
                         )
                     }
                 }
                 composable(
-                    route = "status_subscribers/{filterKey}",
-                    arguments = listOf(navArgument("filterKey") { type = NavType.StringType })
+                    route = "status_subscribers/{filterKey}?provider={provider}",
+                    arguments = listOf(
+                        navArgument("filterKey") { type = NavType.StringType },
+                        navArgument("provider") {
+                            type = NavType.StringType
+                            defaultValue = com.example.core.model.SasProviders.EARTHLINK
+                            nullable = true
+                        }
+                    )
                 ) { backStackEntry ->
                     val filterKey = backStackEntry.arguments?.getString("filterKey") ?: "active"
+                    val provider = backStackEntry.arguments?.getString("provider") ?: com.example.core.model.SasProviders.EARTHLINK
                     BottomNavPadded {
                         StatusSubscribersScreen(
                             viewModel = dashboardViewModel,
                             filterKey = filterKey,
+                            provider = provider,
                             lang = currentLang,
                             onBack = { navController.popBackStack() },
                             onUserClick = { userItem ->

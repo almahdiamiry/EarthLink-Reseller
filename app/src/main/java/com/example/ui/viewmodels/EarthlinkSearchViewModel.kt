@@ -302,15 +302,15 @@ class EarthlinkSearchViewModel(
                 // then live dots fill in. Live sessions are global, not query-scoped, so a late
                 // arrival still marks the right rows in whatever list is current.
                 viewModelScope.launch {
-                    val onlineUsernames = try {
-                        targetGateway.listOnlineUsernames()
+                    val onlineSessions = try {
+                        targetGateway.listOnlineSessions()
                     } catch (e: Exception) {
                         if (e is kotlinx.coroutines.CancellationException) throw e
-                        emptySet()
+                        emptyMap()
                     }
-                    if (onlineUsernames.isEmpty()) return@launch
+                    if (onlineSessions.isEmpty()) return@launch
                     _usersList.value = com.example.ui.screens.SubscriberDisplayRules
-                        .markOnline(_usersList.value, onlineUsernames)
+                        .markOnlineWithSessions(_usersList.value, onlineSessions)
                 }
             } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
                 val isNetworkIssue = e.message?.contains("Network unavailable", ignoreCase = true) == true || 

@@ -251,13 +251,15 @@ fun DashboardScreen(
     val filteredList by remember(subscribers, localAccounts, localAccountMatcher, selectedStatusFilter, selectedSort, isSearchActive, searchQuery) {
         derivedStateOf {
             val mergedList = ArrayList<com.example.core.model.UserListItem>(subscribers.size + localAccounts.size)
-            val seenUsernames = HashSet<String>()
+            val seenKeys = HashSet<Pair<String, String>>()
             val seenAccountIds = HashSet<String>()
 
             // 1. Add live ISP / demo subscribers
             for (sub in subscribers) {
+                val prov = sub.originProvider ?: com.example.core.model.SasProviders.EARTHLINK
                 val normUser = sub.userID?.trim()?.lowercase(Locale.US)
-                if (!normUser.isNullOrBlank() && seenUsernames.contains(normUser)) {
+                val key = if (!normUser.isNullOrBlank()) Pair(prov, normUser) else null
+                if (key != null && seenKeys.contains(key)) {
                     continue
                 }
                 val matchingAccount = localAccountMatcher.findMatchingByUsername(sub.userID) ?: localAccountMatcher.findMatching(sub)
@@ -265,10 +267,12 @@ fun DashboardScreen(
                     continue
                 }
                 mergedList.add(sub)
-                if (!normUser.isNullOrBlank()) seenUsernames.add(normUser)
+                if (key != null) seenKeys.add(key)
                 matchingAccount?.let { acc ->
                     seenAccountIds.add(acc.id)
-                    acc.earthlinkUsername?.let { if (it.isNotBlank()) seenUsernames.add(it.trim().lowercase(Locale.US)) }
+                    acc.earthlinkUsername?.let {
+                        if (it.isNotBlank()) seenKeys.add(Pair(acc.operationProvider, it.trim().lowercase(Locale.US)))
+                    }
                 }
             }
 
@@ -276,8 +280,9 @@ fun DashboardScreen(
             for (acc in localAccounts) {
                 if (acc.isHistoryOnlySubscriber) continue
                 if (seenAccountIds.contains(acc.id)) continue
-                val accUserLower = acc.earthlinkUsername?.lowercase(Locale.US)
-                if (accUserLower != null && accUserLower.isNotBlank() && seenUsernames.contains(accUserLower)) {
+                val accUserLower = acc.earthlinkUsername?.trim()?.lowercase(Locale.US)
+                val accKey = if (!accUserLower.isNullOrBlank()) Pair(acc.operationProvider, accUserLower) else null
+                if (accKey != null && seenKeys.contains(accKey)) {
                     continue
                 }
 
@@ -297,7 +302,7 @@ fun DashboardScreen(
                 )
                 mergedList.add(item)
                 seenAccountIds.add(acc.id)
-                accUserLower?.let { if (it.isNotBlank()) seenUsernames.add(it) }
+                if (accKey != null) seenKeys.add(accKey)
             }
 
             val baseList = mergedList

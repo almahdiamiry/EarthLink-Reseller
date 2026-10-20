@@ -62,7 +62,12 @@ data class SessionItemDto(
     @Json(name = "username") val username: String? = null,
     @Json(name = "framed_ip") val framedIp: String? = null,
     @Json(name = "last_session_time") val lastSessionTime: Long? = null,
-    @Json(name = "started_at") val startedAt: String? = null
+    @Json(name = "started_at") val startedAt: String? = null,
+    @Json(name = "calling_station_id") val callingStationId: String? = null,
+    @Json(name = "last_input_octets") val lastInputOctets: Long? = null,
+    @Json(name = "last_output_octets") val lastOutputOctets: Long? = null,
+    @Json(name = "current_speed_down") val currentSpeedDown: Double? = null,
+    @Json(name = "current_speed_up") val currentSpeedUp: Double? = null
 )
 
 @JsonClass(generateAdapter = true)
