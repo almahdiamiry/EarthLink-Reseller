@@ -162,9 +162,7 @@ interface LocalAccountRepository {
      * @return Pair(deletedCount, archivedCount)
      */
     suspend fun handleProviderLogout(
-        loggedOutProvider: String,
-        remainingProviderUsernames: Set<String> = emptySet(),
-        remainingProvider: String? = null
+        loggedOutProvider: String
     ): Pair<Int, Int> = Pair(0, 0)
 }
 

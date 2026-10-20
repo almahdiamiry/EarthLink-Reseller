@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.core.database.AppDatabase
 import com.example.core.model.LocalAccount
 import com.example.core.model.LocalLedgerEntry
+import com.example.core.model.PendingExternalOperation
 import com.example.core.model.SasProviders
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -25,11 +26,11 @@ import org.robolectric.annotation.Config
  *
  * Core Triad Specification:
  * 1. Claim:
- *    - On provider logout, zero-debt accounts with no ledger entries are physically purged (Issue 3-a).
- *    - Accounts with debt > 0 or with historical ledger records are archived as history-only (Issue 3-b).
+ *    - On provider logout, zero-debt accounts with no ledger entries and no active pending operations are purged.
+ *    - Accounts with debt > 0, historical ledger records, or in-flight pending operations are archived as history-only.
  *    - Accounts belonging to other providers are completely untouched.
  *    - When an archived account reappears in the provider's authoritative roster, it transitions back
- *      to active (isHistoryOnlySubscriber = false) (Issue Q3).
+ *      to active (isHistoryOnlySubscriber = false).
  * 2. Seam:
  *    - ROBOLECTRIC tier with in-memory Room database.
  * 3. Oracle:
@@ -54,11 +55,12 @@ class ProviderLogoutReconciliationTest {
     fun tearDown() = database.close()
 
     @Test
-    fun handleLogout_purgesZeroDebtWithoutLedger_andArchivesDebtBearing() = runTest {
+    fun handleLogout_purgesZeroDebtWithoutLedger_andArchivesDebtOrPendingBearing() = runTest {
         val accountDao = database.localAccountDao()
         val ledgerDao = database.localLedgerEntryDao()
+        val pendingDao = database.pendingExternalOperationDao()
 
-        // 1. Zero debt, no ledger -> Purged
+        // 1. Zero debt, no ledger, no pending -> Purged
         accountDao.insert(
             LocalAccount(
                 id = "acc_zero_debt",
@@ -108,7 +110,28 @@ class ProviderLogoutReconciliationTest {
             )
         )
 
-        // 4. SAMM account -> Untouched during EarthLink logout
+        // 4. Zero debt, no ledger, but HAS in-flight pending operation -> Preserved as history-only (Invariant #3/#4)
+        accountDao.insert(
+            LocalAccount(
+                id = "acc_with_pending",
+                displayName = "Pending Op User",
+                earthlinkUsername = "pending_user",
+                operationProvider = SasProviders.EARTHLINK,
+                isHistoryOnlySubscriber = false,
+                debtIqd = 0.0,
+                advanceIqd = 0.0
+            )
+        )
+        pendingDao.insert(
+            PendingExternalOperation(
+                accountId = "acc_with_pending",
+                operationType = "RENEWAL",
+                amountIqd = 35000L,
+                status = "PENDING"
+            )
+        )
+
+        // 5. SAMM account -> Untouched during EarthLink logout
         accountDao.insert(
             LocalAccount(
                 id = "acc_samm",
@@ -129,7 +152,7 @@ class ProviderLogoutReconciliationTest {
         )
 
         assertEquals("Expected 1 account deleted", 1, deleted)
-        assertEquals("Expected 2 accounts archived", 2, archived)
+        assertEquals("Expected 3 accounts archived", 3, archived)
 
         // Verify account 1 is purged
         assertNull("Zero debt account without ledger must be deleted", accountDao.getByIdOneShot("acc_zero_debt"))
@@ -144,7 +167,12 @@ class ProviderLogoutReconciliationTest {
         assertNotNull(ledgerAcc)
         assertTrue("Account with ledger must be history-only", ledgerAcc!!.isHistoryOnlySubscriber)
 
-        // Verify account 4 is unaffected
+        // Verify account 4 is archived due to active in-flight operation
+        val pendingAcc = accountDao.getByIdOneShot("acc_with_pending")
+        assertNotNull(pendingAcc)
+        assertTrue("Account with pending operation must be history-only", pendingAcc!!.isHistoryOnlySubscriber)
+
+        // Verify account 5 is unaffected
         val sammAcc = accountDao.getByIdOneShot("acc_samm")
         assertNotNull(sammAcc)
         assertFalse("SAMM account must remain active", sammAcc!!.isHistoryOnlySubscriber)

@@ -156,11 +156,7 @@ class AuthViewModel(
                     entityId = currentUrl ?: "UNKNOWN",
                     summary = "Agent logged out from SAMM"
                 )
-                val remainingProvider = if (prefs.isEarthlinkConfigured()) SasProviders.EARTHLINK else null
-                localAccountRepo?.handleProviderLogout(
-                    loggedOutProvider = SasProviders.ALAMIRY,
-                    remainingProvider = remainingProvider
-                )
+                localAccountRepo?.handleProviderLogout(SasProviders.ALAMIRY)
             } finally {
                 prefs.clearSammCredentials()
                 _isLoading.value = false
@@ -244,11 +240,7 @@ class AuthViewModel(
                 _password.value = ""
                 viewModelScope.launch {
                     try {
-                        val remainingProvider = if (prefs.isSammConfigured()) SasProviders.ALAMIRY else null
-                        localAccountRepo?.handleProviderLogout(
-                            loggedOutProvider = SasProviders.EARTHLINK,
-                            remainingProvider = remainingProvider
-                        )
+                        localAccountRepo?.handleProviderLogout(SasProviders.EARTHLINK)
                         audit.logAction(
                             action = "PROVIDER_REMOVE",
                             entityType = "PROVIDER",
@@ -262,11 +254,7 @@ class AuthViewModel(
                 prefs.clearSammCredentials()
                 viewModelScope.launch {
                     try {
-                        val remainingProvider = if (prefs.isEarthlinkConfigured()) SasProviders.EARTHLINK else null
-                        localAccountRepo?.handleProviderLogout(
-                            loggedOutProvider = SasProviders.ALAMIRY,
-                            remainingProvider = remainingProvider
-                        )
+                        localAccountRepo?.handleProviderLogout(SasProviders.ALAMIRY)
                         audit.logAction(
                             action = "PROVIDER_REMOVE",
                             entityType = "PROVIDER",

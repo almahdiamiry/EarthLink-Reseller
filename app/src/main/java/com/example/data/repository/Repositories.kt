@@ -1395,18 +1395,14 @@ class LocalAccountRepositoryImpl(
     }
 
     override suspend fun handleProviderLogout(
-        loggedOutProvider: String,
-        remainingProviderUsernames: Set<String>,
-        remainingProvider: String?
+        loggedOutProvider: String
     ): Pair<Int, Int> {
         return com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
             com.example.core.sync.IspDisappearanceReconciler.handleLogout(
                 database = database,
                 accountDao = accountDao,
                 auditDao = database.auditLogDao(),
-                loggedOutProvider = loggedOutProvider,
-                remainingProviderUsernames = remainingProviderUsernames,
-                remainingProvider = remainingProvider
+                loggedOutProvider = loggedOutProvider
             )
         }
     }

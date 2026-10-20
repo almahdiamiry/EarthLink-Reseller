@@ -172,9 +172,8 @@ object IspDisappearanceReconciler {
 
     /**
      * Purges or archives local accounts when an ISP provider is logged out.
-     * - Accounts present on the remaining provider are migrated to that provider.
-     * - Accounts with 0 debt and no ledger transactions are physically purged.
-     * - Accounts with outstanding debt or ledger transactions are archived to history-only.
+     * - Accounts with 0 debt, no ledger transactions, and no active in-flight pending operations are physically purged.
+     * - Accounts with outstanding debt, ledger transactions, or in-flight pending operations are archived to history-only.
      *
      * @return Pair(deletedCount, archivedCount)
      */
@@ -182,12 +181,8 @@ object IspDisappearanceReconciler {
         database: AppDatabase,
         accountDao: LocalAccountDao,
         auditDao: AuditLogDao?,
-        loggedOutProvider: String,
-        remainingProviderUsernames: Set<String> = emptySet(),
-        remainingProvider: String? = null
+        loggedOutProvider: String
     ): Pair<Int, Int> {
-        val normalizedRemaining = remainingProviderUsernames.map { it.trim().lowercase() }.toSet()
-        val canMigrate = remainingProvider != null && remainingProvider != loggedOutProvider && normalizedRemaining.isNotEmpty()
         val moshi = Moshi.Builder().build()
         val accountAdapter = moshi.adapter(LocalAccount::class.java)
         var deletedCount = 0
@@ -195,49 +190,19 @@ object IspDisappearanceReconciler {
 
         database.withTransaction {
             val allAccounts = accountDao.getAllPersistedOneShot(limit = Int.MAX_VALUE)
+            val targetAccounts = allAccounts.filter { it.operationProvider == loggedOutProvider }
+            if (targetAccounts.isEmpty()) return@withTransaction
+
+            val pendingAccountIds = accountDao.getAccountIdsWithActiveInFlightOperations(targetAccounts.map { it.id }).toSet()
             val now = System.currentTimeMillis()
 
-            for (acc in allAccounts) {
-                if (acc.operationProvider != loggedOutProvider) {
-                    continue
-                }
-
+            for (acc in targetAccounts) {
                 val username = acc.earthlinkUsername?.trim()
-
-                // 1. Migration if subscriber exists on remaining provider
-                if (canMigrate && !username.isNullOrBlank() && normalizedRemaining.contains(username.lowercase())) {
-                    val moved = acc.copy(
-                        operationProvider = remainingProvider!!,
-                        updatedAt = now
-                    )
-                    accountDao.update(moved)
-                    OutboxManager.upsertWithOutbox(
-                        database.syncOutboxDao(),
-                        "local_accounts",
-                        moved.id,
-                        accountAdapter.toJson(moved)
-                    )
-                    auditDao?.insert(
-                        AuditLog(
-                            action = "PROVIDER_LOGOUT_SUBSCRIBER_MIGRATED",
-                            entityType = "local_accounts",
-                            entityId = acc.id,
-                            summary = "Subscriber '${acc.displayName}' ($username) migrated from $loggedOutProvider to $remainingProvider on logout.",
-                            createdAt = now,
-                            severity = AuditSeverity.INFO.name,
-                            actor = "system",
-                            origin = AuditOrigin.SYSTEM_ACTION.name,
-                            metadataJsonMasked = "{\"username\":\"$username\",\"from\":\"$loggedOutProvider\",\"to\":\"$remainingProvider\"}"
-                        )
-                    )
-                    continue
-                }
-
-                // 2. Check debt and ledger presence
+                val hasPending = pendingAccountIds.contains(acc.id)
                 val hasDebt = acc.debtIqd > 0.0 || acc.advanceIqd > 0.0
                 val hasLedger = database.localLedgerEntryDao().getByAccountIdOneShot(acc.id, limit = 1).isNotEmpty()
 
-                if (!hasDebt && !hasLedger) {
+                if (!hasDebt && !hasLedger && !hasPending) {
                     accountDao.deleteById(acc.id)
                     OutboxManager.deleteWithTombstone(database.syncOutboxDao(), "local_accounts", acc.id, "{}")
                     deletedCount++
@@ -258,7 +223,7 @@ object IspDisappearanceReconciler {
                             action = "PROVIDER_LOGOUT_ACCOUNT_ARCHIVED",
                             entityType = "local_accounts",
                             entityId = acc.id,
-                            summary = "Subscriber '${acc.displayName}' ($username) archived as history-only on $loggedOutProvider logout to preserve debt/ledger.",
+                            summary = "Subscriber '${acc.displayName}' ($username) archived as history-only on $loggedOutProvider logout to preserve debt/ledger/pending ops.",
                             createdAt = now,
                             severity = AuditSeverity.WARNING.name,
                             actor = "system",
