@@ -223,153 +223,93 @@ fun DashboardStatusScreen(
                     }
                 }
 
-                // Stat Grid Cards
-                if (selectedProvider == SasProviders.EARTHLINK) {
-                    // EarthLink: 4 Cards (Active, Expiring Soon, Recently Expired, Expired)
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                // Stat Grid Cards: 6 Cards for Both Providers (Active, Online, Offline, Expiring Soon, Recently Expired, Expired)
+                val isSamm = selectedProvider == SasProviders.ALAMIRY
+                val onlineColor = if (isSamm) Color(0xFF7C4DFF) else Color(0xFF0A84FF)
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Row 1: Active Users & Online Users
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Box(modifier = Modifier.weight(1f)) {
-                                StatGridCard(
-                                    title = if (isAr) DashboardStatusFilter.ACTIVE.titleAr else DashboardStatusFilter.ACTIVE.titleEn,
-                                    value = activeCount.toString(),
-                                    icon = Icons.Default.CheckCircle,
-                                    iconBg = Color(0xFF30D158),
-                                    iconColor = Color(0xFF30D158),
-                                    onClick = { onCardClick(DashboardStatusFilter.ACTIVE, selectedProvider) }
-                                )
-                            }
-
-                            Box(modifier = Modifier.weight(1f)) {
-                                StatGridCard(
-                                    title = if (isAr) DashboardStatusFilter.EXPIRING_SOON.titleAr else DashboardStatusFilter.EXPIRING_SOON.titleEn,
-                                    value = expiringSoonCount.toString(),
-                                    icon = Icons.Default.HourglassBottom,
-                                    iconBg = Color(0xFFFFD60A),
-                                    iconColor = Color(0xFFFFD60A),
-                                    onClick = { onCardClick(DashboardStatusFilter.EXPIRING_SOON, selectedProvider) }
-                                )
-                            }
+                        Box(modifier = Modifier.weight(1f)) {
+                            StatGridCard(
+                                title = if (isAr) DashboardStatusFilter.ACTIVE.titleAr else DashboardStatusFilter.ACTIVE.titleEn,
+                                value = activeCount.toString(),
+                                icon = Icons.Default.CheckCircle,
+                                iconBg = Color(0xFF30D158),
+                                iconColor = Color(0xFF30D158),
+                                onClick = { onCardClick(DashboardStatusFilter.ACTIVE, selectedProvider) }
+                            )
                         }
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Box(modifier = Modifier.weight(1f)) {
-                                StatGridCard(
-                                    title = if (isAr) DashboardStatusFilter.RECENTLY_EXPIRED.titleAr else DashboardStatusFilter.RECENTLY_EXPIRED.titleEn,
-                                    value = recentlyExpiredCount.toString(),
-                                    icon = Icons.Default.History,
-                                    iconBg = Color(0xFFFF9F0A),
-                                    iconColor = Color(0xFFFF9F0A),
-                                    onClick = { onCardClick(DashboardStatusFilter.RECENTLY_EXPIRED, selectedProvider) }
-                                )
-                            }
-
-                            Box(modifier = Modifier.weight(1f)) {
-                                StatGridCard(
-                                    title = if (isAr) DashboardStatusFilter.EXPIRED.titleAr else DashboardStatusFilter.EXPIRED.titleEn,
-                                    value = expiredCount.toString(),
-                                    icon = Icons.Default.Cancel,
-                                    iconBg = Color(0xFFFF453A),
-                                    iconColor = Color(0xFFFF453A),
-                                    onClick = { onCardClick(DashboardStatusFilter.EXPIRED, selectedProvider) }
-                                )
-                            }
+                        Box(modifier = Modifier.weight(1f)) {
+                            StatGridCard(
+                                title = if (isAr) DashboardStatusFilter.ONLINE.titleAr else DashboardStatusFilter.ONLINE.titleEn,
+                                value = onlineCount.toString(),
+                                icon = Icons.Default.Wifi,
+                                iconBg = onlineColor,
+                                iconColor = onlineColor,
+                                onClick = { onCardClick(DashboardStatusFilter.ONLINE, selectedProvider) }
+                            )
                         }
                     }
-                } else {
-                    // SAMM: 6 Cards (Active, Online, Offline, Expiring Soon, Recently Expired, Expired)
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+
+                    // Row 2: Offline Users & Users Expiring Soon
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // Row 1: Active Users & Online Users
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Box(modifier = Modifier.weight(1f)) {
-                                StatGridCard(
-                                    title = if (isAr) DashboardStatusFilter.ACTIVE.titleAr else DashboardStatusFilter.ACTIVE.titleEn,
-                                    value = activeCount.toString(),
-                                    icon = Icons.Default.CheckCircle,
-                                    iconBg = Color(0xFF30D158),
-                                    iconColor = Color(0xFF30D158),
-                                    onClick = { onCardClick(DashboardStatusFilter.ACTIVE, selectedProvider) }
-                                )
-                            }
-
-                            Box(modifier = Modifier.weight(1f)) {
-                                StatGridCard(
-                                    title = if (isAr) DashboardStatusFilter.ONLINE.titleAr else DashboardStatusFilter.ONLINE.titleEn,
-                                    value = onlineCount.toString(),
-                                    icon = Icons.Default.Wifi,
-                                    iconBg = Color(0xFF7C4DFF),
-                                    iconColor = Color(0xFF7C4DFF),
-                                    onClick = { onCardClick(DashboardStatusFilter.ONLINE, selectedProvider) }
-                                )
-                            }
+                        Box(modifier = Modifier.weight(1f)) {
+                            StatGridCard(
+                                title = if (isAr) DashboardStatusFilter.OFFLINE.titleAr else DashboardStatusFilter.OFFLINE.titleEn,
+                                value = offlineCount.toString(),
+                                icon = Icons.Default.WifiOff,
+                                iconBg = Color(0xFFFF9F0A),
+                                iconColor = Color(0xFFFF9F0A),
+                                onClick = { onCardClick(DashboardStatusFilter.OFFLINE, selectedProvider) }
+                            )
                         }
 
-                        // Row 2: Offline Users & Users Expiring Soon
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Box(modifier = Modifier.weight(1f)) {
-                                StatGridCard(
-                                    title = if (isAr) DashboardStatusFilter.OFFLINE.titleAr else DashboardStatusFilter.OFFLINE.titleEn,
-                                    value = offlineCount.toString(),
-                                    icon = Icons.Default.WifiOff,
-                                    iconBg = Color(0xFFFF9F0A),
-                                    iconColor = Color(0xFFFF9F0A),
-                                    onClick = { onCardClick(DashboardStatusFilter.OFFLINE, selectedProvider) }
-                                )
-                            }
+                        Box(modifier = Modifier.weight(1f)) {
+                            StatGridCard(
+                                title = if (isAr) DashboardStatusFilter.EXPIRING_SOON.titleAr else DashboardStatusFilter.EXPIRING_SOON.titleEn,
+                                value = expiringSoonCount.toString(),
+                                icon = Icons.Default.HourglassBottom,
+                                iconBg = Color(0xFFFFD60A),
+                                iconColor = Color(0xFFFFD60A),
+                                onClick = { onCardClick(DashboardStatusFilter.EXPIRING_SOON, selectedProvider) }
+                            )
+                        }
+                    }
 
-                            Box(modifier = Modifier.weight(1f)) {
-                                StatGridCard(
-                                    title = if (isAr) DashboardStatusFilter.EXPIRING_SOON.titleAr else DashboardStatusFilter.EXPIRING_SOON.titleEn,
-                                    value = expiringSoonCount.toString(),
-                                    icon = Icons.Default.HourglassBottom,
-                                    iconBg = Color(0xFFFFD60A),
-                                    iconColor = Color(0xFFFFD60A),
-                                    onClick = { onCardClick(DashboardStatusFilter.EXPIRING_SOON, selectedProvider) }
-                                )
-                            }
+                    // Row 3: Recently Expired Users & Expired Users
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            StatGridCard(
+                                title = if (isAr) DashboardStatusFilter.RECENTLY_EXPIRED.titleAr else DashboardStatusFilter.RECENTLY_EXPIRED.titleEn,
+                                value = recentlyExpiredCount.toString(),
+                                icon = Icons.Default.History,
+                                iconBg = Color(0xFFFF9F0A),
+                                iconColor = Color(0xFFFF9F0A),
+                                onClick = { onCardClick(DashboardStatusFilter.RECENTLY_EXPIRED, selectedProvider) }
+                            )
                         }
 
-                        // Row 3: Recently Expired Users & Expired Users
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Box(modifier = Modifier.weight(1f)) {
-                                StatGridCard(
-                                    title = if (isAr) DashboardStatusFilter.RECENTLY_EXPIRED.titleAr else DashboardStatusFilter.RECENTLY_EXPIRED.titleEn,
-                                    value = recentlyExpiredCount.toString(),
-                                    icon = Icons.Default.History,
-                                    iconBg = Color(0xFFFF9F0A),
-                                    iconColor = Color(0xFFFF9F0A),
-                                    onClick = { onCardClick(DashboardStatusFilter.RECENTLY_EXPIRED, selectedProvider) }
-                                )
-                            }
-
-                            Box(modifier = Modifier.weight(1f)) {
-                                StatGridCard(
-                                    title = if (isAr) DashboardStatusFilter.EXPIRED.titleAr else DashboardStatusFilter.EXPIRED.titleEn,
-                                    value = expiredCount.toString(),
-                                    icon = Icons.Default.Cancel,
-                                    iconBg = Color(0xFFFF453A),
-                                    iconColor = Color(0xFFFF453A),
-                                    onClick = { onCardClick(DashboardStatusFilter.EXPIRED, selectedProvider) }
-                                )
-                            }
+                        Box(modifier = Modifier.weight(1f)) {
+                            StatGridCard(
+                                title = if (isAr) DashboardStatusFilter.EXPIRED.titleAr else DashboardStatusFilter.EXPIRED.titleEn,
+                                value = expiredCount.toString(),
+                                icon = Icons.Default.Cancel,
+                                iconBg = Color(0xFFFF453A),
+                                iconColor = Color(0xFFFF453A),
+                                onClick = { onCardClick(DashboardStatusFilter.EXPIRED, selectedProvider) }
+                            )
                         }
                     }
                 }

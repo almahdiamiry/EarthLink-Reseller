@@ -38,6 +38,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -484,6 +485,29 @@ fun DashboardScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(18.dp)
+                                                .background(Color(0xFF0A84FF).copy(alpha = 0.2f), shape = CircleShape)
+                                                .border(1.dp, Color(0xFF0A84FF).copy(alpha = 0.5f), shape = CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                                Text(
+                                                    text = "E",
+                                                    color = Color(0xFF0A84FF),
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    textAlign = TextAlign.Center,
+                                                    style = TextStyle(
+                                                        platformStyle = PlatformTextStyle(
+                                                            includeFontPadding = false
+                                                        ),
+                                                        lineHeight = 11.sp
+                                                    )
+                                                )
+                                            }
+                                        }
                                         Icon(
                                             imageVector = Icons.Default.AccountBalanceWallet,
                                             contentDescription = null,
