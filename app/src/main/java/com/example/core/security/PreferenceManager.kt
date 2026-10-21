@@ -632,6 +632,7 @@ open class PreferenceManager(private val context: Context) {
         private const val KEY_SAMM_AGENT_USERNAME = "enc_samm_agent_username"
         private const val KEY_SAMM_AGENT_RESELLER_ID = "enc_samm_agent_reseller_id"
         private const val KEY_LAST_SELECTED_LOGIN_PROVIDER = "last_selected_login_provider"
+        private const val KEY_SAMM_CLEAR_PENDING_FOR_SYNC = "samm_clear_pending_for_sync"
     }
 
     fun getDashboardSortOption(): String {
@@ -947,13 +948,21 @@ open class PreferenceManager(private val context: Context) {
     private val _sammConfigVersionFlow = MutableStateFlow(0)
     val sammConfigVersionFlow = _sammConfigVersionFlow.asStateFlow()
 
+    fun isSammClearPendingForSync(): Boolean = prefs.getBoolean(KEY_SAMM_CLEAR_PENDING_FOR_SYNC, false)
+
+    fun markSammClearUploaded() {
+        prefs.edit().putBoolean(KEY_SAMM_CLEAR_PENDING_FOR_SYNC, false).apply()
+    }
+
     fun saveSammBaseUrl(url: String?, fromRemote: Boolean = false) {
         if (url.isNullOrBlank()) {
             prefs.edit().remove(KEY_SAMM_BASE_URL).apply()
         } else {
             // Normalize URL: trim and remove trailing slashes
             val normalized = url.trim().trimEnd('/')
-            prefs.edit().putString(KEY_SAMM_BASE_URL, normalized).apply()
+            prefs.edit().putString(KEY_SAMM_BASE_URL, normalized)
+                .putBoolean(KEY_SAMM_CLEAR_PENDING_FOR_SYNC, false)
+                .apply()
         }
         if (!fromRemote) recordSettingsLocalMutation()
         _sammConfigVersionFlow.value += 1
@@ -966,7 +975,9 @@ open class PreferenceManager(private val context: Context) {
         if (token.isNullOrBlank()) {
             prefs.edit().remove(KEY_SAMM_API_TOKEN).apply()
         } else {
-            prefs.edit().putString(KEY_SAMM_API_TOKEN, token.trim()).apply()
+            prefs.edit().putString(KEY_SAMM_API_TOKEN, token.trim())
+                .putBoolean(KEY_SAMM_CLEAR_PENDING_FOR_SYNC, false)
+                .apply()
         }
         if (!fromRemote) recordSettingsLocalMutation()
         _sammConfigVersionFlow.value += 1
@@ -1015,6 +1026,7 @@ open class PreferenceManager(private val context: Context) {
             .remove(KEY_SAMM_AGENT_ID)
             .remove(KEY_SAMM_AGENT_USERNAME)
             .remove(KEY_SAMM_AGENT_RESELLER_ID)
+            .putBoolean(KEY_SAMM_CLEAR_PENDING_FOR_SYNC, true)
             .apply()
         recordSettingsLocalMutation()
         _sammConfigVersionFlow.value += 1

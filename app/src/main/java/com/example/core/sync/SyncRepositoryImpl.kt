@@ -34,9 +34,11 @@ import com.google.firebase.firestore.QuerySnapshot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -127,6 +129,15 @@ class SyncRepositoryImpl(
             }
         } else {
             _syncState.value = SyncStatusState.OFFLINE
+        }
+
+        // SAMM config changes (connect / logout) must propagate promptly; without this
+        // observer an upload could wait for the next periodic WorkManager pass (15 min).
+        syncScope.launch {
+            prefManager.sammConfigVersionFlow.drop(1).collect { _ ->
+                delay(1000)
+                triggerSettingsSync(null, "samm_config_changed")
+            }
         }
     }
 
@@ -347,13 +358,6 @@ class SyncRepositoryImpl(
             phase = SyncPhase.PREPARING,
             lastCompletedTime = prefManager.getLastSyncTime()
         )
-
-        if (prefManager.getAuthToken().isNullOrEmpty()) {
-            Log.w("FirebaseSync", "No active session auth token in PreferenceManager. Sync requires authentication.")
-            _syncState.value = SyncStatusState.AUTH_REQUIRED
-            _syncProgress.value = _syncProgress.value.copy(isSyncing = false, phase = SyncPhase.FAILED, lastError = "Auth required")
-            return false
-        }
 
         val fbAuth = auth
         val fbFirestore = firestore
@@ -1689,6 +1693,16 @@ class SyncRepositoryImpl(
                         if (remoteSammUrl != null) prefManager.saveSammBaseUrl(remoteSammUrl, fromRemote = true)
                         if (decryptedRemoteSamm != null) prefManager.saveSammToken(decryptedRemoteSamm, fromRemote = true)
                         if (remoteProvider != null) prefManager.setLastSelectedLoginProvider(remoteProvider, fromRemote = true)
+                        // Global SAMM disconnect: a document newer than our baseline that carries no SAMM
+                        // fields at all means another device logged out — clear local SAMM config too.
+                        val sammKeysInDoc = snapshot.contains("sammBaseUrl") || snapshot.contains("encSammToken")
+                        if (!sammKeysInDoc && remoteUpdatedAt > lastSyncedServerTimestamp &&
+                            !hasLocalMutation && prefManager.isSammConfigured()
+                        ) {
+                            prefManager.saveSammBaseUrl(null, fromRemote = true)
+                            prefManager.saveSammToken(null, fromRemote = true)
+                            Log.i("FirebaseSync", "syncUserSettings: Global SAMM disconnect detected; cleared local SAMM config.")
+                        }
                         prefManager.saveSettingsLastSyncedTimestamp(remoteUpdatedAt)
                         prefManager.clearSettingsLocalMutation()
                         Log.i("FirebaseSync", "syncUserSettings: Applied authoritative remote settings to local state (remoteUpdatedAt=$remoteUpdatedAt, lastSynced=$lastSyncedServerTimestamp).")
@@ -1719,6 +1733,15 @@ class SyncRepositoryImpl(
                         }
                         if (localProvider != null) {
                             updates["lastSelectedLoginProvider"] = localProvider
+                        }
+                        // Tombstone propagation for global SAMM logout: logouts only clear local
+                        // prefs to blank, which the blank-skip rules here cannot express upstream.
+                        // A pending clear flag (set by clearSammCredentials) emits explicit deletions
+                        // so other devices disconnect instead of resurrecting the old token.
+                        if (prefManager.isSammClearPendingForSync() && localSammUrl.isBlank() && localSammToken.isBlank()) {
+                            updates["sammBaseUrl"] = com.google.firebase.firestore.FieldValue.delete()
+                            updates["encSammToken"] = com.google.firebase.firestore.FieldValue.delete()
+                            prefManager.markSammClearUploaded()
                         }
 
                         if (updates.isNotEmpty()) {
