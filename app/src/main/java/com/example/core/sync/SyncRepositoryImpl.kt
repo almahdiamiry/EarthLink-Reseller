@@ -1644,13 +1644,20 @@ class SyncRepositoryImpl(
                     val encIspPass = snapshot.getString("encIspAdminPassword")
                     val encDepositPass = snapshot.getString("encDepositPassword")
                     val remoteUpdatedAt = RemoteSyncCursor.parseRemoteTimestamp(snapshot.get("updatedAt")) ?: 0L
+                    val remoteSammUrl = snapshot.getString("sammBaseUrl")
+                    val encSammToken = snapshot.getString("encSammToken")
+                    val remoteProvider = snapshot.getString("lastSelectedLoginProvider")
 
                     val decryptedRemoteIsp = if (!encIspPass.isNullOrBlank()) CloudSecretEncryptor.decryptSecret(encIspPass, targetUid) else null
                     val decryptedRemoteDeposit = if (!encDepositPass.isNullOrBlank()) CloudSecretEncryptor.decryptSecret(encDepositPass, targetUid) else null
+                    val decryptedRemoteSamm = if (!encSammToken.isNullOrBlank()) CloudSecretEncryptor.decryptSecret(encSammToken, targetUid) else null
 
                     val localIspUser = prefManager.getIspAdminUsername() ?: ""
                     val localIspPass = prefManager.getIspAdminPassword() ?: ""
                     val localDepositPass = prefManager.getDepositPassword() ?: ""
+                    val localSammUrl = prefManager.getSammBaseUrl() ?: ""
+                    val localSammToken = prefManager.getSammToken() ?: ""
+                    val localProvider = prefManager.getPersistedLastSelectedLoginProvider()
 
                     val lastSyncedServerTimestamp = prefManager.getSettingsLastSyncedTimestamp()
                     val hasLocalMutation = prefManager.hasSettingsLocalMutation()
@@ -1658,7 +1665,10 @@ class SyncRepositoryImpl(
                     // Check if local and remote values match
                     val isIdentical = (localIspUser == (remoteIspUser ?: "")) &&
                             (localIspPass == (decryptedRemoteIsp ?: "")) &&
-                            (localDepositPass == (decryptedRemoteDeposit ?: ""))
+                            (localDepositPass == (decryptedRemoteDeposit ?: "")) &&
+                            (localSammUrl == (remoteSammUrl ?: "")) &&
+                            (localSammToken == (decryptedRemoteSamm ?: "")) &&
+                            ((localProvider ?: "") == (remoteProvider ?: ""))
 
                     if (isIdentical) {
                         if (remoteUpdatedAt > 0L) {
@@ -1676,6 +1686,9 @@ class SyncRepositoryImpl(
                         if (remoteIspUser != null) prefManager.saveIspAdminUsername(remoteIspUser, fromRemote = true)
                         if (decryptedRemoteIsp != null) prefManager.saveIspAdminPassword(decryptedRemoteIsp, fromRemote = true)
                         if (decryptedRemoteDeposit != null) prefManager.saveDepositPassword(decryptedRemoteDeposit, fromRemote = true)
+                        if (remoteSammUrl != null) prefManager.saveSammBaseUrl(remoteSammUrl, fromRemote = true)
+                        if (decryptedRemoteSamm != null) prefManager.saveSammToken(decryptedRemoteSamm, fromRemote = true)
+                        if (remoteProvider != null) prefManager.setLastSelectedLoginProvider(remoteProvider, fromRemote = true)
                         prefManager.saveSettingsLastSyncedTimestamp(remoteUpdatedAt)
                         prefManager.clearSettingsLocalMutation()
                         Log.i("FirebaseSync", "syncUserSettings: Applied authoritative remote settings to local state (remoteUpdatedAt=$remoteUpdatedAt, lastSynced=$lastSyncedServerTimestamp).")
@@ -1696,6 +1709,16 @@ class SyncRepositoryImpl(
                         if (localDepositPass.isNotBlank()) {
                             val enc = CloudSecretEncryptor.encryptSecret(localDepositPass, targetUid)
                             if (enc != null) updates["encDepositPassword"] = enc
+                        }
+                        if (localSammUrl.isNotBlank()) {
+                            updates["sammBaseUrl"] = localSammUrl
+                        }
+                        if (localSammToken.isNotBlank()) {
+                            val enc = CloudSecretEncryptor.encryptSecret(localSammToken, targetUid)
+                            if (enc != null) updates["encSammToken"] = enc
+                        }
+                        if (localProvider != null) {
+                            updates["lastSelectedLoginProvider"] = localProvider
                         }
 
                         if (updates.isNotEmpty()) {

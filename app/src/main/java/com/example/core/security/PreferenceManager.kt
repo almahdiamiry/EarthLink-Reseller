@@ -686,9 +686,12 @@ open class PreferenceManager(private val context: Context) {
         }
     }
 
-    fun setLastSelectedLoginProvider(provider: String) {
+    fun getPersistedLastSelectedLoginProvider(): String? = prefs.getString(KEY_LAST_SELECTED_LOGIN_PROVIDER, null)
+
+    fun setLastSelectedLoginProvider(provider: String, fromRemote: Boolean = false) {
         if (SasProviders.isValid(provider)) {
             prefs.edit().putString(KEY_LAST_SELECTED_LOGIN_PROVIDER, provider).apply()
+            if (!fromRemote) recordSettingsLocalMutation()
         }
     }
 
@@ -944,7 +947,7 @@ open class PreferenceManager(private val context: Context) {
     private val _sammConfigVersionFlow = MutableStateFlow(0)
     val sammConfigVersionFlow = _sammConfigVersionFlow.asStateFlow()
 
-    fun saveSammBaseUrl(url: String?) {
+    fun saveSammBaseUrl(url: String?, fromRemote: Boolean = false) {
         if (url.isNullOrBlank()) {
             prefs.edit().remove(KEY_SAMM_BASE_URL).apply()
         } else {
@@ -952,18 +955,20 @@ open class PreferenceManager(private val context: Context) {
             val normalized = url.trim().trimEnd('/')
             prefs.edit().putString(KEY_SAMM_BASE_URL, normalized).apply()
         }
+        if (!fromRemote) recordSettingsLocalMutation()
         _sammConfigVersionFlow.value += 1
         refreshProviderAccessState()
     }
 
     fun getSammBaseUrl(): String? = prefs.getString(KEY_SAMM_BASE_URL, null)
 
-    fun saveSammToken(token: String?) {
+    fun saveSammToken(token: String?, fromRemote: Boolean = false) {
         if (token.isNullOrBlank()) {
             prefs.edit().remove(KEY_SAMM_API_TOKEN).apply()
         } else {
             prefs.edit().putString(KEY_SAMM_API_TOKEN, token.trim()).apply()
         }
+        if (!fromRemote) recordSettingsLocalMutation()
         _sammConfigVersionFlow.value += 1
         refreshProviderAccessState()
     }
@@ -1011,6 +1016,7 @@ open class PreferenceManager(private val context: Context) {
             .remove(KEY_SAMM_AGENT_USERNAME)
             .remove(KEY_SAMM_AGENT_RESELLER_ID)
             .apply()
+        recordSettingsLocalMutation()
         _sammConfigVersionFlow.value += 1
         refreshProviderAccessState()
     }
