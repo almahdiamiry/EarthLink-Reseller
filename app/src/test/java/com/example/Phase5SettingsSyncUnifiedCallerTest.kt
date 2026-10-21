@@ -120,9 +120,6 @@ class Phase5SettingsSyncUnifiedCallerTest {
         val expectedReasons = setOf(
             "auth_state_changed",
             "pull_remote_changes",
-            "email_sign_in",
-            "google_sign_in",
-            "auth_login",
             "save_isp_credentials"
         )
 
@@ -292,37 +289,24 @@ class Phase5SettingsSyncUnifiedCallerTest {
         val syncRepoText = syncRepoFile.readText()
         val authVmText = authVmFile.readText()
 
-        // 1. google_sign_in path
+        // 1. auth_state_changed path is THE single session-establishment leg (GAP-4 dedupe):
+        // email_sign_in / google_sign_in / auth_login legs were removed because the auth-state
+        // listener is the superset (it also fires on silent session restore).
         assertTrue(
-            "google_sign_in must trigger settings sync directly",
-            syncRepoText.contains("triggerSettingsSync(uid, \"google_sign_in\")")
+            "auth_state_changed must be the single sign-in settings-sync leg",
+            syncRepoText.contains("triggerSettingsSync(user.uid, \"auth_state_changed\")") &&
+                !syncRepoText.contains("\"email_sign_in\"") &&
+                !syncRepoText.contains("\"google_sign_in\"") &&
+                !authVmText.contains("\"auth_login\"")
         )
 
-        // 2. email_sign_in path
-        assertTrue(
-            "email_sign_in must trigger settings sync directly",
-            syncRepoText.contains("triggerSettingsSync(uid, \"email_sign_in\")")
-        )
-
-        // 3. auth_state_changed path
-        assertTrue(
-            "auth_state_changed must trigger settings sync directly",
-            syncRepoText.contains("triggerSettingsSync(user.uid, \"auth_state_changed\")")
-        )
-
-        // 4. auth_login path in AuthViewModel
-        assertTrue(
-            "auth_login must trigger settings sync directly in AuthViewModel",
-            authVmText.contains("triggerSettingsSync(reason = \"auth_login\")")
-        )
-
-        // 5. save_isp_credentials path in AuthViewModel
+        // 2. save_isp_credentials path in AuthViewModel
         assertTrue(
             "save_isp_credentials must trigger settings sync directly in AuthViewModel",
             authVmText.contains("triggerSettingsSync(reason = \"save_isp_credentials\")")
         )
 
-        // 6. Routine pull_remote_changes is gated by state check in SyncRepositoryImpl
+        // 3. Routine pull_remote_changes is gated by state check in SyncRepositoryImpl
         assertTrue(
             "pull_remote_changes must be guarded by hasSettingsLocalMutation() or timestamp == 0L",
             syncRepoText.contains("if (prefManager.hasSettingsLocalMutation() || prefManager.getSettingsLastSyncedTimestamp() == 0L)") &&

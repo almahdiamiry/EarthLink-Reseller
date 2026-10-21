@@ -1568,7 +1568,6 @@ class SyncRepositoryImpl(
             val uid = result.user?.uid
             if (uid != null) {
                 _syncState.value = SyncStatusState.IDLE
-                triggerSettingsSync(uid, "email_sign_in")
             }
             uid
         } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
@@ -1599,7 +1598,6 @@ class SyncRepositoryImpl(
             val uid = result.user?.uid
             if (uid != null) {
                 _syncState.value = SyncStatusState.IDLE
-                triggerSettingsSync(uid, "google_sign_in")
             }
             uid
         } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;

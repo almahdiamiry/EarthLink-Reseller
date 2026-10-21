@@ -180,7 +180,7 @@ class AuthViewModel(
                 // Automatically save ISP credentials
                 prefs.saveIspAdminUsername(_username.value)
                 prefs.saveIspAdminPassword(_password.value)
-                syncRepo.triggerSettingsSync(reason = "auth_login")
+                // Settings sync is triggered by the auth_state_changed listener; no extra leg here.
                 
                 if (_rememberMe.value) {
                     prefs.saveUsername(_username.value)
