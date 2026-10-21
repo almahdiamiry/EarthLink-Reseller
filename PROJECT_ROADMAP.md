@@ -18,8 +18,8 @@
 ├────────────────────────────────────────────────────────────────────────────────────────┤
 │ OPERATING MODE:                 POST-V1 / STABLE MAINTENANCE                           │
 │ ACTIVE WORKSTREAM:              NONE — SYSTEM IDLE                                     │
-│ CURRENT VERIFIED TEST BASELINE: 1196 TOTAL (1189 PASSED, 0 FAIL, 0 ERR, 7 SKIPPED)  │
-│ CURRENT CHECKPOINT:             2b52c067b29fb301ded8822852e32f9d8a711530             │
+│ CURRENT VERIFIED TEST BASELINE: 1200 TOTAL (1193 PASSED, 0 FAIL, 0 ERR, 7 SKIPPED)  │
+│ CURRENT CHECKPOINT:             e840abdc70597a68c13b0d4c383fb0b216f9d642             │
 │ GOVERNING PLAYBOOK:             OPERATIONAL TESTING PLAYBOOK (AGENTS.md §9)            │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
