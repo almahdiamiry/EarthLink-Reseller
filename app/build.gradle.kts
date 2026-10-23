@@ -47,8 +47,8 @@ android {
     applicationId = "com.alamiry.earthlinkreseller"
     minSdk = 24
     targetSdk = 36
-    versionCode = 68
-    versionName = "1.68.0"
+    versionCode = 69
+    versionName = "1.69.0"
     
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
