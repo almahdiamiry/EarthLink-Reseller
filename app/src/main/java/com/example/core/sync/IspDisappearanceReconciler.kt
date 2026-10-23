@@ -13,6 +13,61 @@ import com.squareup.moshi.Moshi
 object IspDisappearanceReconciler {
 
     /**
+     * Row-scoped authoritative absence: the owning provider answered "no such subscriber"
+     * for the account's exact username key on the detail screen. Applies the same
+     * transition the roster-driven [reconcile] pass performs for one row — flag flips to
+     * history-only, all financial fields preserved, outbox + audit written.
+     *
+     * Refusals (return null):
+     * - already history-only (idempotent repeat)
+     * - account's provider differs from targetProvider (provider-scope guard, as in reconcile)
+     * - null/blank earthlinkUsername (rule 2, as in reconcile)
+     *
+     * Self-healing: if the subscriber still exists ISP-side (e.g. a bad local username),
+     * the next trusted-roster [reconcile] pass restores it via ISP_SUBSCRIBER_RESTORED.
+     */
+    suspend fun transitionSingleToHistoryOnly(
+        database: AppDatabase,
+        accountDao: LocalAccountDao,
+        auditDao: AuditLogDao?,
+        account: LocalAccount,
+        targetProvider: String
+    ): LocalAccount? {
+        if (account.isHistoryOnlySubscriber) return null
+        if (account.operationProvider != targetProvider) return null
+        val username = account.earthlinkUsername?.trim()
+        if (username.isNullOrBlank()) return null
+
+        val now = System.currentTimeMillis()
+        val updated = account.copy(isHistoryOnlySubscriber = true, updatedAt = now)
+        val accountAdapter = Moshi.Builder().build().adapter(LocalAccount::class.java)
+
+        database.withTransaction {
+            accountDao.update(updated)
+            OutboxManager.upsertWithOutbox(
+                database.syncOutboxDao(),
+                "local_accounts",
+                updated.id,
+                accountAdapter.toJson(updated)
+            )
+            auditDao?.insert(
+                AuditLog(
+                    action = "ISP_SUBSCRIBER_DISAPPEARED",
+                    entityType = "local_accounts",
+                    entityId = updated.id,
+                    summary = "Subscriber '${updated.displayName}' ($username) was answered 'no such subscriber' by their owning provider ($targetProvider) on the detail screen. Transitioned to history-only (row-scoped authoritative absence).",
+                    createdAt = now,
+                    severity = AuditSeverity.WARNING.name,
+                    actor = "system",
+                    origin = AuditOrigin.SYSTEM_ACTION.name,
+                    metadataJsonMasked = "{\"earthlinkUsername\":\"$username\",\"accountId\":\"${updated.id}\",\"provider\":\"$targetProvider\"}"
+                )
+            )
+        }
+        return updated
+    }
+
+    /**
      * Evaluates all local accounts against a complete, verified set of ISP user IDs.
      *
      * Invariants (RC-04):

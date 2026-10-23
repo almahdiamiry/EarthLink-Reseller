@@ -157,6 +157,15 @@ interface LocalAccountRepository {
     ): List<String>
 
     /**
+     * Row-scoped authoritative absence: the account's owning provider answered "no such
+     * subscriber" for its exact username key. Applies the same transition the roster-driven
+     * reconcile performs, only for this account (provider scope guard, idempotent, financials
+     * preserved, outbox + audit written). Returns null when no transition happened.
+     */
+    suspend fun markIspSubscriberDeleted(accountId: String, targetProvider: String): LocalAccount?
+
+
+    /**
      * Purges or archives local accounts when a provider (e.g. EarthLink) is logged out.
      * Accounts with debt <= 0 are deleted; accounts with debt > 0 are transitioned to history-only.
      * If the account also exists on the remaining configured provider, it is migrated to that provider.

@@ -481,6 +481,17 @@ class EarthlinkSearchViewModel(
                             }
                         }
                     }
+                    // findActive* lookups exclude history-only containers on purpose. An
+                    // archived card tapped by username would otherwise resolve to nothing,
+                    // fall through to the live refresh, and end at the retirement branch
+                    // that erases its stored package/status/expiry. Resolve the archived
+                    // row itself so the seeding below (and the refresh skip) apply to it.
+                    if (foundLocal == null && !sanitizedUserId.isNullOrBlank()) {
+                        foundLocal = try {
+                            localAccountRepository.findAccountByUsernameOrIdOneShot(sanitizedUserId)
+                                ?.takeIf { it.isHistoryOnlySubscriber }
+                        } catch (ex: Exception) { if (ex is kotlinx.coroutines.CancellationException) throw ex; null }
+                    }
                     if (foundLocal != null) {
                         _selectedUser.value = com.example.core.model.UserDetail(
                             userIndexLower = userIndex,
@@ -538,6 +549,13 @@ class EarthlinkSearchViewModel(
                     val authorityAccount = sanitizedUserId
                         ?.let { id -> localAccountRepository.findActiveAccountsBySubscriberIdentity(null, id).firstOrNull() }
                     val identityOwner = foundLocal ?: authorityAccount
+                    // Archived (history-only) subscriber: the ISP authoritatively holds no
+                    // record, so the live refresh can only reach the "no record" retirement
+                    // branch and erase the stored package/status/expiry. Keep the seeded
+                    // snapshot exactly as displayed; do not fetch.
+                    if (identityOwner?.isHistoryOnlySubscriber == true) {
+                        return@launch
+                    }
                     val accountProvider = identityOwner?.operationProvider
                     val targetProvider = accountProvider
                         ?: _selectedUser.value?.originProvider
@@ -699,21 +717,42 @@ class EarthlinkSearchViewModel(
                         }
                     } else if (!transportFailed) {
                         // The target provider authoritatively holds no record for this subscriber.
-                        // Retire the previous provider's plan/status/expiry instead of presenting
-                        // them under the newly selected provider.
-                        val still = _selectedUser.value
-                        if (still != null &&
-                            (still.userIndex == userIndex || still.userID.equals(currentUserId, ignoreCase = true))
-                        ) {
-                            _selectedUser.value = still.copy(
-                                packageNameLower = null,
-                                accountIndexLower = null,
-                                accountStatusLower = null,
-                                expirationDateLower = null,
-                                accountExpirationDateLower = null,
-                                activeDaysLeftLower = null,
-                                originProvider = targetProvider
-                            )
+                        val flipCandidate = identityOwner?.takeIf {
+                            it.operationProvider == targetProvider && !it.isHistoryOnlySubscriber
+                        }
+                        if (flipCandidate != null) {
+                            // A local container owns this identity and its OWN provider just
+                            // authoritatively denied the subscriber under the exact username key:
+                            // the same absence evidence the roster reconcile pass acts on, applied
+                            // row-scoped. Flip to history-only and keep the stored snapshot
+                            // displayed — the seeded package/status/expiry is the reseller's own
+                            // data and must never be clobbered by the ISP's "no record" answer.
+                            // If the answer was wrong (e.g. renamed username), the next trusted
+                            // roster reconcile restores the row (ISP_SUBSCRIBER_RESTORED).
+                            try {
+                                localAccountRepository.markIspSubscriberDeleted(flipCandidate.id, targetProvider)
+                            } catch (e: kotlinx.coroutines.CancellationException) { throw e
+                            } catch (e: Exception) {
+                                Log.w("EarthlinkSearchVM", "Row-scoped history-only flip failed: ${e.message}")
+                            }
+                        } else {
+                            // No local container owns this identity: retire the previous
+                            // provider's plan/status/expiry instead of presenting them under
+                            // the newly selected provider.
+                            val still = _selectedUser.value
+                            if (still != null &&
+                                (still.userIndex == userIndex || still.userID.equals(currentUserId, ignoreCase = true))
+                            ) {
+                                _selectedUser.value = still.copy(
+                                    packageNameLower = null,
+                                    accountIndexLower = null,
+                                    accountStatusLower = null,
+                                    expirationDateLower = null,
+                                    accountExpirationDateLower = null,
+                                    activeDaysLeftLower = null,
+                                    originProvider = targetProvider
+                                )
+                            }
                         }
                     }
                 } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;

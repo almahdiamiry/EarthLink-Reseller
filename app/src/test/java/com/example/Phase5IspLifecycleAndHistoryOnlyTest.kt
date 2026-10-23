@@ -513,5 +513,75 @@ class Phase5IspLifecycleAndHistoryOnlyTest {
         val auditLogs = database.auditLogDao().getRecent(10)
         assertFalse("No disappearance audit logs should be recorded", auditLogs.any { it.action == "ISP_SUBSCRIBER_DISAPPEARED" })
     }
+
+    /**
+     * Core Triad:
+     * Claim: Row-scoped authoritative absence (markIspSubscriberDeleted) flips ONLY a
+     * matching-provider, non-history account to history-only; all financial fields
+     * (debt/advance/loan and openings) are preserved verbatim; the change is outboxed and
+     * audited; repeat calls are no-ops (idempotent).
+     * Seam / Environment: ROBOLECTRIC in-memory Room (same tier as the roster reconcile tests).
+     * Independent Oracle: the transition contract is copied-field semantics —
+     * account.copy(isHistoryOnlySubscriber = true, updatedAt = now) with debt 80,000.0 +
+     * advance 2,500.0 + loan 0.0 asserted as literal constants, never recomputed from code.
+     */
+    @Test
+    fun testRowScopedAuthoritativeAbsence_flipPreservesFinancials_isIdempotent_andProviderGuarded() = runBlocking {
+        val beforeMark = System.currentTimeMillis()
+        val acc = LocalAccount(
+            id = "flip_target",
+            displayName = "ابو لؤي",
+            earthlinkUsername = "Iomkhathem@sacx",
+            operationProvider = SasProviders.EARTHLINK,
+            debtIqd = 80000.0,
+            advanceIqd = 2500.0,
+            loanIqd = 0.0,
+            openingDebtIqd = 80000.0,
+            openingAdvanceIqd = 2500.0,
+            openingLoanIqd = 0.0,
+            isHistoryOnlySubscriber = false
+        )
+        database.localAccountDao().insert(acc)
+
+        // 1. Flip on authoritative absence from the owning provider
+        val flipped = accountRepo.markIspSubscriberDeleted("flip_target", SasProviders.EARTHLINK)
+        assertNotNull("Owning provider's 'no record' must flip the row", flipped)
+        assertTrue(flipped!!.isHistoryOnlySubscriber)
+
+        // Financial preservation (oracle: literal constants above)
+        assertEquals(80000.0, flipped.debtIqd, 0.001)
+        assertEquals(2500.0, flipped.advanceIqd, 0.001)
+        assertEquals(0.0, flipped.loanIqd, 0.001)
+        assertEquals(80000.0, flipped.openingDebtIqd, 0.001)
+        assertEquals(2500.0, flipped.openingAdvanceIqd, 0.001)
+        assertEquals(0.0, flipped.openingLoanIqd, 0.001)
+
+        // Provider scope + audit + outbox
+        val auditLogs = database.auditLogDao().getRecent(10)
+        assertTrue(
+            "Row-scoped flip must be audited as ISP_SUBSCRIBER_DISAPPEARED",
+            auditLogs.any { it.action == "ISP_SUBSCRIBER_DISAPPEARED" && it.entityId == "flip_target" }
+        )
+        val outbox = database.syncOutboxDao().getPending().filter { it.entityType == "local_accounts" && it.entityId == "flip_target" }
+        assertTrue("Row-scoped flip must be outboxed for cloud sync", outbox.isNotEmpty())
+
+        // 2. Idempotent repeat — a second authoritative absence changes nothing
+        val second = accountRepo.markIspSubscriberDeleted("flip_target", SasProviders.EARTHLINK)
+        assertNull("Already-history-only row must not flip again", second)
+
+        // 3. Provider-scope guard — a SAMM-owned row may not flip via an EARTHLINK answer
+        val sammRow = LocalAccount(
+            id = "samm_owned",
+            displayName = "س",
+            earthlinkUsername = "s1",
+            operationProvider = SasProviders.ALAMIRY,
+            debtIqd = 5000.0
+        )
+        database.localAccountDao().insert(sammRow)
+        val refused = accountRepo.markIspSubscriberDeleted("samm_owned", SasProviders.EARTHLINK)
+        assertNull("Provider-scope mismatch must be refused", refused)
+        val persistedSamm = database.localAccountDao().getByIdOneShot("samm_owned")!!
+        assertFalse(persistedSamm.isHistoryOnlySubscriber)
+    }
 }
 

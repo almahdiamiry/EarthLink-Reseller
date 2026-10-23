@@ -287,8 +287,13 @@ fun DashboardScreen(
 
             // 2. Append all Local / Legacy Accounts (uTower + local) not represented in live subscribers
             for (acc in localAccounts) {
-                // Archived rows are shown, never hidden (user decision 2a).
                 if (seenAccountIds.contains(acc.id)) continue
+                // Idle history-only rows (archived, nothing owed, no pre-paid credit) are
+                // display noise while browsing and drop out of the list; during an active
+                // search they merge back in, so their payment history stays reachable.
+                val isIdleHistoryOnly = acc.isHistoryOnlySubscriber &&
+                    acc.debtIqd == 0.0 && acc.advanceIqd == 0.0
+                if (isIdleHistoryOnly && searchQuery.isBlank()) continue
                 val accUserLower = acc.earthlinkUsername?.trim()?.lowercase(Locale.US)
                 val accKey = if (!accUserLower.isNullOrBlank()) Pair(acc.operationProvider, accUserLower) else null
                 if (accKey != null && seenKeys.contains(accKey)) {
@@ -322,8 +327,9 @@ fun DashboardScreen(
 
             var list = baseList.filter { user ->
                 val matchingAccount = localAccountMatcher.findMatchingByUsername(user.userID) ?: localAccountMatcher.findMatching(user)
-                // Archived rows are never dropped (user decision 2a); they bucket by their own
-                // dates below like every other row.
+                // Archived rows with debt/prepaid are never dropped (user decision 2a); they
+                // bucket by their own dates below like every other row. Idle history-only
+                // rows were already excluded above while browsing.
 
                 val expStr = listOfNotNull(
                     user.manualExpirationDate,

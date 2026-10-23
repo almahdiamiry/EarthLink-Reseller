@@ -1476,6 +1476,19 @@ class LocalAccountRepositoryImpl(
         }
     }
 
+    override suspend fun markIspSubscriberDeleted(accountId: String, targetProvider: String): LocalAccount? {
+        val account = accountDao.getByIdOneShot(accountId) ?: return null
+        return com.example.core.sync.DataOperationCoordinator.withOperation(com.example.core.sync.DataOperationMode.SYNC) {
+            com.example.core.sync.IspDisappearanceReconciler.transitionSingleToHistoryOnly(
+                database = database,
+                accountDao = accountDao,
+                auditDao = database.auditLogDao(),
+                account = account,
+                targetProvider = targetProvider
+            )
+        }
+    }
+
     override suspend fun handleProviderLogout(
         loggedOutProvider: String
     ): Pair<Int, Int> {

@@ -69,6 +69,7 @@ import com.alamiry.earthlinkreseller.R
 import com.example.ui.viewmodels.EarthlinkSearchViewModel
 import com.example.core.network.SasSubscriberPresence
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -2372,8 +2373,20 @@ if (showExtendDialog) {
                     return@Column
                 }
 
+                // Top refresh bar, slow-connection only: the snapshot already renders
+                // instantly, so the bar appears just when the ISP refresh is still running
+                // after 500ms (real ISP slowness), and never flashes for instant loads.
                 val isRefreshingDetail by viewModel.isRefreshingDetail.collectAsStateWithLifecycle()
-                if (isRefreshingDetail) {
+                var showSlowRefreshBar by remember { mutableStateOf(false) }
+                LaunchedEffect(isRefreshingDetail) {
+                    if (isRefreshingDetail) {
+                        delay(500)
+                        showSlowRefreshBar = true
+                    } else {
+                        showSlowRefreshBar = false
+                    }
+                }
+                if (showSlowRefreshBar) {
                     LinearProgressIndicator(
                         modifier = Modifier
                             .fillMaxWidth()
