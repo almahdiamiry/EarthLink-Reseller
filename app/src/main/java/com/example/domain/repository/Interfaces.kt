@@ -73,7 +73,9 @@ interface LocalAccountRepository {
 
     suspend fun batchSetProvider(
         candidateAccountIds: List<String>,
-        targetProvider: String
+        targetProvider: String,
+        presenceProbe: (suspend (username: String) -> com.example.core.network.SasSubscriberPresence?)? = null,
+        onPresenceProgress: (suspend (done: Int, total: Int) -> Unit)? = null
     ): BatchProviderResult
     
     fun getAccountById(id: String): Flow<LocalAccount?>

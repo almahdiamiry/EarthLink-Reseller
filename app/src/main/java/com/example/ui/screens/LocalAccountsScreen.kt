@@ -85,19 +85,7 @@ fun LocalAccountsScreen(
 
     val coroutineScope = rememberCoroutineScope()
     var pendingBatchTargetProvider by remember { mutableStateOf<String?>(null) }
-
-    // Toast or message when batchResult changes
-    LaunchedEffect(batchResult) {
-        batchResult?.let { res ->
-            val msg = if (isAr) {
-                "اكتمل التعيين: تم تحديث ${res.updated}، بالفعل على المزود ${res.alreadyTarget}، تم تخطي ${res.skippedDueToPending} لوجود عمليات معلقة."
-            } else {
-                "Batch complete: Updated ${res.updated}, Already target ${res.alreadyTarget}, Skipped ${res.skippedDueToPending} (in-flight ops)."
-            }
-            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-            viewModel.clearBatchResult()
-        }
-    }
+    val batchPresenceProgress by viewModel.batchPresenceProgress.collectAsStateWithLifecycle()
 
     val sortLabel = if (isAr) "ترتيب حسب:" else "Sorted by:"
     val sortOptionsList = if (isAr) {
@@ -368,70 +356,46 @@ fun LocalAccountsScreen(
         }
     }
 
-    // Confirmation Dialog for Batch Provider Assignment
+    // Shared batch dialogs (same wording as Dashboard surface)
     pendingBatchTargetProvider?.let { target ->
-        val selectedCount = selectedAccountIds.size
-        AlertDialog(
-            onDismissRequest = { pendingBatchTargetProvider = null },
-            title = {
-                Text(
-                    text = if (isAr) "تأكيد تعيين المزود بالدفعة" else "Confirm Batch Provider Assignment",
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = if (isAr) "عدد الحسابات المحددة: $selectedCount" else "Selected Accounts: $selectedCount",
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = if (isAr) "المزود المستهدف: $target" else "Target Provider: $target",
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Divider(modifier = Modifier.padding(vertical = 4.dp))
-                    Text(
-                        text = if (isAr) "تغيير المزود يغيّر وجهة عمليات الإنترنت المستقبلية.\n" +
-                               "لا يؤدي ذلك إلى نقل المشترك لدى المزود الخارجي.\n" +
-                               "السجل المحلي يبقى دون تغيير.\n" +
-                               "العمليات قيد التنفيذ تحتفظ بمزودها الأصلي."
-                        else "Changing provider changes where future ISP operations are sent.\n" +
-                               "This does not migrate the external subscriber.\n" +
-                               "Local history remains unchanged.\n" +
-                               "Pending operations keep their original provider.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Divider(modifier = Modifier.padding(vertical = 4.dp))
-                    Text(
-                        text = if (isAr) "ملاحظة: سيتم تخطي أي حساب يحتوي على عمليات معلقة نشطة تلقائياً لأمان المعاملات."
-                               else "Note: Accounts with active in-flight operations will be skipped automatically.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val prov = target
-                        pendingBatchTargetProvider = null
-                        coroutineScope.launch {
-                            viewModel.executeBatchProviderAssignment(prov)
-                        }
+        BatchProviderConfirmDialog(
+            targetProvider = target,
+            selectedCount = selectedAccountIds.size,
+            isAr = isAr,
+            onConfirm = {
+                val prov = target
+                pendingBatchTargetProvider = null
+                coroutineScope.launch {
+                    try {
+                        val gateway = try {
+                            (context.applicationContext as EarthlinkApp).sasGatewayRouter.getGateway(prov)
+                        } catch (_: Exception) { null }
+                        val probe: (suspend (String) -> com.example.core.network.SasSubscriberPresence?)? =
+                            gateway?.let { g ->
+                                val fn: suspend (String) -> com.example.core.network.SasSubscriberPresence? =
+                                    { username -> g.resolveSubscriberPresence(username) }
+                                fn
+                            }
+                        viewModel.executeBatchProviderAssignment(prov, probe)
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        // Error surfaced via viewModel error state by the VM.
                     }
-                ) {
-                    Text(if (isAr) "تأكيد التعيين" else "Confirm")
                 }
             },
-            dismissButton = {
-                OutlinedButton(onClick = { pendingBatchTargetProvider = null }) {
-                    Text(if (isAr) "إلغاء" else "Cancel")
-                }
-            }
+            onDismiss = { pendingBatchTargetProvider = null }
         )
+    }
+
+    batchPresenceProgress?.let { (done, total) ->
+        BatchProviderPresenceProgressDialog(done = done, total = total, isAr = isAr)
+    }
+
+    batchResult?.let { res ->
+        BatchProviderResultDialog(result = res, isAr = isAr) {
+            viewModel.clearBatchResult()
+        }
     }
 }
 

@@ -166,7 +166,9 @@ class FinalCrossDeviceFirestoreSimulationTest {
         // PROOF: Convergence on Device A
         val allPersistedOnA = deviceA.accountDao.getAllPersistedOneShot()
         assertEquals("Device A must have both accounts persisted", 2, allPersistedOnA.size)
-        val activeOnA = deviceA.accountDao.getAllOneShot()
+        // getAllOneShot() returns ALL persisted rows (archived rows are always visible per
+        // decision Q2a), so the active set is the non-history-only projection of that query.
+        val activeOnA = deviceA.accountDao.getAllOneShot().filter { !it.isHistoryOnlySubscriber }
         assertEquals("Device A must have exactly 1 active account", 1, activeOnA.size)
         assertEquals("Active account on Device A must be Gen2", "acc_gen2", activeOnA[0].id)
         assertFalse("Active account on Device A must not be history-only", activeOnA[0].isHistoryOnlySubscriber)
@@ -181,7 +183,7 @@ class FinalCrossDeviceFirestoreSimulationTest {
         // PROOF: Convergence on Device B
         val allPersistedOnB = deviceB.accountDao.getAllPersistedOneShot()
         assertEquals("Device B must have both accounts persisted", 2, allPersistedOnB.size)
-        val activeOnB = deviceB.accountDao.getAllOneShot()
+        val activeOnB = deviceB.accountDao.getAllOneShot().filter { !it.isHistoryOnlySubscriber }
         assertEquals("Device B must have exactly 1 active account", 1, activeOnB.size)
         assertEquals("Active account on Device B must be Gen2", "acc_gen2", activeOnB[0].id)
         assertFalse("Active account on Device B must not be history-only", activeOnB[0].isHistoryOnlySubscriber)
@@ -474,7 +476,9 @@ class FinalCrossDeviceFirestoreSimulationTest {
             assertEquals(setOf("acc_gen1_tri", "acc_gen2_tri", "acc_gen3_tri"), persistedIds)
 
             // 2. Active Accounts: Exactly 1 (Gen3)
-            val activeAccounts = device.accountDao.getAllOneShot()
+            // getAllOneShot() returns ALL persisted rows (archived rows are always visible per
+            // decision Q2a), so the active set is the non-history-only projection of that query.
+            val activeAccounts = device.accountDao.getAllOneShot().filter { !it.isHistoryOnlySubscriber }
             assertEquals("[$devName] Must have exactly 1 active account", 1, activeAccounts.size)
             assertEquals("acc_gen3_tri", activeAccounts[0].id)
             assertFalse("[$devName] Gen3 must not be history-only", activeAccounts[0].isHistoryOnlySubscriber)
@@ -560,8 +564,8 @@ class FinalCrossDeviceFirestoreSimulationTest {
 
         // Verify Device A has identical state to Devices B and C
         assertEquals(3, deviceA.accountDao.getAllPersistedOneShot().size)
-        assertEquals(1, deviceA.accountDao.getAllOneShot().size)
-        assertEquals("acc_sc_3", deviceA.accountDao.getAllOneShot()[0].id)
+        assertEquals(1, deviceA.accountDao.getAllOneShot().filter { !it.isHistoryOnlySubscriber }.size)
+        assertEquals("acc_sc_3", deviceA.accountDao.getAllOneShot().filter { !it.isHistoryOnlySubscriber }[0].id)
 
         assertEquals(70000.0, deviceA.accountDao.getByIdOneShot("acc_sc_1")!!.debtIqd, 0.001)
         assertEquals(45000.0, deviceA.accountDao.getByIdOneShot("acc_sc_2")!!.debtIqd, 0.001)
@@ -621,7 +625,7 @@ class FinalCrossDeviceFirestoreSimulationTest {
         val allPersisted = deviceA.accountDao.getAllPersistedOneShot()
         assertEquals(3, allPersisted.size)
 
-        val active = deviceA.accountDao.getAllOneShot()
+        val active = deviceA.accountDao.getAllOneShot().filter { !it.isHistoryOnlySubscriber }
         assertEquals(1, active.size)
         assertEquals("acc_rev_3", active[0].id)
 

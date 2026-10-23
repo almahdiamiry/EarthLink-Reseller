@@ -155,8 +155,10 @@ class HistoryOnlyInfrastructureIntegrityTest {
             database.localAccountDao().insert(activeAcc)
             database.localAccountDao().insert(historyAcc)
 
-            // Active-only query must see ONLY the active account (size = 1)
-            val activeAccounts = database.localAccountDao().getAllOneShot()
+            // Active-only projection must see ONLY the active account (size = 1).
+            // getAllOneShot() returns ALL persisted rows (archived rows are always visible per
+            // decision Q2a), so the active set is the non-history-only projection of that query.
+            val activeAccounts = database.localAccountDao().getAllOneShot().filter { !it.isHistoryOnlySubscriber }
             assertEquals(1, activeAccounts.size)
             assertEquals("acc_active_01", activeAccounts[0].id)
             assertFalse(activeAccounts[0].isHistoryOnlySubscriber)
@@ -232,8 +234,8 @@ class HistoryOnlyInfrastructureIntegrityTest {
             assertTrue("Restored history-only subscriber must retain isHistoryOnlySubscriber=true", restoredHist!!.isHistoryOnlySubscriber)
             assertEquals(70000.0, restoredHist.debtIqd, 0.001)
 
-            // Active-only query on restored db still returns only 1 account
-            assertEquals(1, database.localAccountDao().getAllOneShot().size)
+            // Active-only projection on restored db still returns only 1 account
+            assertEquals(1, database.localAccountDao().getAllOneShot().filter { !it.isHistoryOnlySubscriber }.size)
 
             backupFile.delete()
         }

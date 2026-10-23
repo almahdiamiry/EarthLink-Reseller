@@ -93,6 +93,90 @@ class DashboardViewModel(
         prefs.setDashboardSortOption(sort)
     }
 
+    // --- Batch provider change (Dashboard selection surface) ---
+    // Selection keys are subscriber usernames (same identity key the list dedupes on).
+    private val _selectedUsernames = MutableStateFlow<Set<String>>(emptySet())
+    val selectedUsernames = _selectedUsernames.asStateFlow()
+
+    val isBatchSelectionMode = _selectedUsernames.map { it.isNotEmpty() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    private val _batchResult = MutableStateFlow<com.example.core.model.BatchProviderResult?>(null)
+    val batchResult = _batchResult.asStateFlow()
+    fun clearBatchResult() { _batchResult.value = null }
+
+    private val _batchIsRunning = MutableStateFlow(false)
+    val batchIsRunning = _batchIsRunning.asStateFlow()
+
+    private val _batchPresenceProgress = MutableStateFlow<Pair<Int, Int>?>(null)
+    val batchPresenceProgress = _batchPresenceProgress.asStateFlow()
+
+    fun toggleSubscriberSelection(username: String) {
+        val current = _selectedUsernames.value
+        _selectedUsernames.value = if (username in current) current - username else current + username
+    }
+
+    fun selectVisibleSubscribers(usernames: List<String>) {
+        _selectedUsernames.value = _selectedUsernames.value + usernames
+    }
+
+    fun clearSubscriberSelection() {
+        _selectedUsernames.value = emptySet()
+    }
+
+    suspend fun executeBatchProviderAssignment(
+        targetProvider: String,
+        presenceProbe: (suspend (username: String) -> com.example.core.network.SasSubscriberPresence?)?
+    ): com.example.core.model.BatchProviderResult? {
+        val selected = _selectedUsernames.value.toList()
+        if (selected.isEmpty()) return null
+        _batchIsRunning.value = true
+        _batchPresenceProgress.value = null
+        return try {
+            val accounts = localAccountRepository.getAllAccounts().first()
+            val matcher = com.example.ui.screens.LocalAccountMatcher(accounts)
+            val accountIds = LinkedHashSet<String>()
+            val notOnAccountNames = mutableListOf<String>()
+            for (username in selected) {
+                val acc = matcher.findMatchingByUsername(username)
+                if (acc == null) notOnAccountNames.add(username) else accountIds.add(acc.id)
+            }
+            if (accountIds.isEmpty()) {
+                val result = com.example.core.model.BatchProviderResult(
+                    totalSelected = selected.size,
+                    updated = 0, alreadyTarget = 0, skippedDueToPending = 0,
+                    notOnAccountNames = notOnAccountNames
+                )
+                _batchResult.value = result
+                clearSubscriberSelection()
+                return result
+            }
+            val result = localAccountRepository.batchSetProvider(accountIds.toList(), targetProvider, presenceProbe) { done, total ->
+                _batchPresenceProgress.value = done to total
+            }
+            val merged = if (notOnAccountNames.isNotEmpty()) {
+                result.copy(notOnAccountNames = result.notOnAccountNames + notOnAccountNames)
+            } else result
+            _batchResult.value = merged
+            audit.logAction(
+                "BATCH_SET_PROVIDER",
+                "LOCAL_ACCOUNT",
+                "BATCH",
+                "Dashboard batch set provider to $targetProvider: updated ${merged.updated}/${merged.totalSelected}, alreadyTarget ${merged.alreadyTarget}, skippedDueToPending ${merged.skippedDueToPending}, notOnTarget ${merged.notOnTargetNames.size}, notOnAccount ${merged.notOnAccountNames.size}"
+            )
+            clearSubscriberSelection()
+            syncRepo.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
+            merged
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            _error.value = "Batch provider assignment failed: ${e.message}"
+            null
+        } finally {
+            _batchIsRunning.value = false
+            _batchPresenceProgress.value = null
+        }
+    }
+
     init {
         loadDashboardData()
     }
@@ -261,6 +345,20 @@ class DashboardViewModel(
                         // monotonicity would have locked in the wrong answer.
                         val sammRoster = sammAuthoritative
                         val elRoster = elAuthoritative
+
+                        // User decision (Q1): when BOTH ISPs are configured but only one roster is
+                        // trusted, archive passes are deferred entirely. A trusted roster proves
+                        // presence; absence while the other ISP is dark does NOT prove deletion -
+                        // running the pass there is how a restore buried علي العكيلي and 149 SAMM
+                        // rows the moment EarthLink synced alone.
+                        val oneIspDark = (providerState.hasEarthlink && providerState.hasSamm) &&
+                            (elRoster == null || sammRoster == null)
+                        if (oneIspDark) {
+                            android.util.Log.w(
+                                "DashboardViewModel",
+                                "Archive reconcile deferred: a configured provider roster is untrusted (hasEarthlink=${providerState.hasEarthlink}, hasSamm=${providerState.hasSamm}, elRoster=${elRoster != null}, sammRoster=${sammRoster != null})"
+                            )
+                        } else {
                         kotlinx.coroutines.withContext(ioDispatcher) {
                             try {
                                 elRoster?.let { el ->
@@ -293,6 +391,7 @@ class DashboardViewModel(
                                 if (e is kotlinx.coroutines.CancellationException) throw e
                                 android.util.Log.e("DashboardViewModel", "ISP disappearance reconciliation failed: ${e.message}", e)
                             }
+                        }
                         }
 
                         // Guard against transient network failures wiping cached subscribers to 0

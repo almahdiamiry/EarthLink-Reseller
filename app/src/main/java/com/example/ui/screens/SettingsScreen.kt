@@ -172,6 +172,45 @@ fun SettingsScreen(
         }
     }
 
+    // Restore-from-file picker: any external backup zip (e.g. exported from this app
+    // previously, or copied from Downloads), routed through the same confirm chain
+    // used for locally-created backups.
+    val restoreFromFilePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            coroutineScope.launch {
+                val tempRestoreFile = File(localContext.cacheDir, "restore_import.zip")
+                try {
+                    localContext.contentResolver.openInputStream(uri)!!.use { input ->
+                        tempRestoreFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    Toast.makeText(localContext, "Read failed: ${e.message}", Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+                val pendingCount = app.syncRepository.getPendingOutboxCount()
+                if (pendingCount > 0) {
+                    pendingOutboxCountForRestore = pendingCount
+                    pendingFileForRestore = tempRestoreFile
+                    showUnsyncedOutboxWarningDialog = true
+                } else {
+                    if (BackupManager.isBackupPasswordProtected(tempRestoreFile)) {
+                        restoreTargetFile = tempRestoreFile
+                        restorePasswordInput = ""
+                        restorePasswordError = null
+                        showRestorePasswordPromptDialog = true
+                    } else {
+                        selectedBackupToRestore = tempRestoreFile
+                    }
+                }
+            }
+        }
+    }
+
     val gso = remember {
         GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestIdToken("1023954528299-it54t81l6ptjpt3cbgk7nu4qbn3pu265.apps.googleusercontent.com")
@@ -359,6 +398,7 @@ fun SettingsScreen(
                                 selectedEncryptionModePassword = false
                                 showBackupPasswordOptionsDialog = true
                             },
+                            onRestoreFromFile = { restoreFromFilePickerLauncher.launch("*/*") },
                             onImportUtower = onNavigateToImport
                         )
                     }
@@ -1315,6 +1355,7 @@ private fun SyncAndBackupSection(
     isFetchingBackups: Boolean,
     onListBackups: () -> Unit,
     onExportZip: () -> Unit,
+    onRestoreFromFile: () -> Unit,
     onImportUtower: () -> Unit
 ) {
     // 1. CLOUD SYNC ROW
@@ -1587,6 +1628,38 @@ private fun SyncAndBackupSection(
             ) {
                 Icon(Icons.Default.FolderZip, contentDescription = null, tint = Color(0xFFFF9F0A), modifier = Modifier.size(18.dp))
                 Text(if (currentLang == "ar") "مشاركة (.zip)" else "Export", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+            }
+        }
+    }
+
+    // Restore from an external backup file (e.g. previous production export in Downloads)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = Color(0xFF0E131B),
+            border = BorderStroke(1.dp, Color(0xFF30D158).copy(alpha = 0.25f)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onRestoreFromFile() }
+        ) {
+            Row(
+                modifier = Modifier
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = Color(0xFF30D158), modifier = Modifier.size(18.dp))
+                Text(
+                    if (currentLang == "ar") "استعادة من ملف (.zip)"
+                    else "Restore from file (.zip)",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White
+                )
             }
         }
     }

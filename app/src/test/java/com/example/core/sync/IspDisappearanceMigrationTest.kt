@@ -262,4 +262,84 @@ class IspDisappearanceMigrationTest {
         assertEquals(30000.0, gone.debtIqd, 0.001)
         assertEquals(5000.0, gone.loanIqd, 0.001)
     }
+
+    /**
+     * Claim: a v17-restore survivor wrongly archived as history-only is un-archived by the same
+     *        "absent here, alive there" ISP-presence rule the live rows already enjoy. This is the
+     *        exact shape of the post-restore defect: migration 18_19 backfills every restored row
+     *        with operationProvider=EARTHLINK, a SAMM subscriber is absent from the EarthLink
+     *        roster, and with no SAMM session on the device the reconciler flipped the row to
+     *        history-only. The history-only branch must be able to migrate+revive, otherwise the
+     *        false archive is a permanent deadlock: the provider-scoped re-appearance pass can
+     *        never see an EARTHLINK-labeled row, and the history-only branch bypasses migration.
+     * Seam: ROBOLECTRIC, in-memory Room with the real AuditLogDao.
+     * Independent Oracle: literal provider/flag/money values re-read from the entity, plus one
+     *        ISP_SUBSCRIBER_MIGRATED audit record and one outbox row carrying the new provider;
+     *        expected values are written out by hand from the contract, not computed.
+     */
+    @Test
+    fun wronglyArchivedByRestore_absentEarthLink_aliveSamm_migratesAndRevives() = runTest {
+        val dao = database.localAccountDao()
+        dao.insert(
+            LocalAccount(
+                id = "ali",
+                displayName = "Ali Akili",
+                earthlinkUsername = "alialakily@sacx",
+                operationProvider = SasProviders.EARTHLINK,
+                isHistoryOnlySubscriber = true,
+                debtIqd = 230000.0,
+                loanIqd = 0.0
+            )
+        )
+
+        // EarthLink roster: no alialakily@sacx. SAMM roster: the subscriber is there and alive.
+        val transitioned = IspDisappearanceReconciler.reconcile(
+            database = database,
+            accountDao = dao,
+            auditDao = database.auditLogDao(),
+            authoritativeIspUserIds = setOf("someone_else@sacx"),
+            isFetchComplete = true,
+            targetProvider = SasProviders.EARTHLINK,
+            migrationUsernames = setOf("alialakily@sacx"),
+            migrationTargetProvider = SasProviders.ALAMIRY
+        )
+
+        // Revival is an un-archival, not a new history-flip: it must not report the account
+        // as a disappearance transition.
+        assertEquals(emptyList<String>(), transitioned)
+
+        val ali = dao.getByIdOneShot("ali")!!
+        assertEquals(
+            "A subscriber alive on SAMM must be routed at SAMM, not stay on the provider that lost him",
+            SasProviders.ALAMIRY,
+            ali.operationProvider
+        )
+        assertFalse(
+            "ISP presence is the un-archive proof: the false history-only fix must be undone",
+            ali.isHistoryOnlySubscriber
+        )
+        // The archive was only ever a routing decision; the money must survive byte for byte.
+        assertEquals("Revival must not touch the restored debt", 230000.0, ali.debtIqd, 0.001)
+        assertEquals("Revival must not touch the loan", 0.0, ali.loanIqd, 0.001)
+
+        val audits = database.auditLogDao().getAllSync()
+        val migration = audits.firstOrNull { it.action == "ISP_SUBSCRIBER_MIGRATED" }
+        assertNotNull(
+            "Reviving a financially-affecting account must leave an audit record. Saw: ${audits.map { it.action }}",
+            migration
+        )
+        assertEquals("ali", migration!!.entityId)
+
+        val outbox = database.syncOutboxDao().getByEntity("ali", "local_accounts")
+        assertEquals(
+            "The revived account must be queued for cloud sync",
+            1,
+            outbox.size
+        )
+        assertTrue(
+            "The queued payload must carry the new provider and the un-archived flag: ${outbox.first().payloadJson}",
+            outbox.first().payloadJson.contains("\"operationProvider\":\"ALAMIRY\"") &&
+                outbox.first().payloadJson.contains("\"isHistoryOnlySubscriber\":false")
+        )
+    }
 }

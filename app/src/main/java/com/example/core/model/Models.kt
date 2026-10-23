@@ -113,7 +113,11 @@ data class UserListItem(
     val onlineSessionSeconds: Long? = null,
     val downloadBytes: Long? = null,
     val uploadBytes: Long? = null,
-    @Json(name = "originProvider") val originProvider: String? = null
+    @Json(name = "originProvider") val originProvider: String? = null,
+    // Local-only display flag (never set by any API payload): true for uTower/import rows the
+    // reconciler has archived ( gone from every configured ISP roster ). Archived rows are shown,
+    // never hidden; the flag only drives the archive badge.
+    val isHistoryOnly: Boolean = false
 ) {
     val userIndex: Int get() = userIndexLower ?: userIndexUpper ?: 0
     val userID: String get() = userIDLower ?: userIDUpper ?: userIdLowerCamel ?: userIdUpperCamel ?: ""
@@ -778,13 +782,18 @@ data class RestoreMergeResult(
 
 /**
  * Result summary for batch provider assignment (Task 11A).
+ * Skipped-name lists double as their counts (size). Defaults keep legacy 4-arg
+ * constructor and data-class equality valid for existing callers/tests.
  */
 @JsonClass(generateAdapter = true)
 data class BatchProviderResult(
     val totalSelected: Int,
     val updated: Int,
     val alreadyTarget: Int,
-    val skippedDueToPending: Int
+    val skippedDueToPending: Int,
+    val skippedDueToPendingNames: List<String> = emptyList(),
+    val notOnTargetNames: List<String> = emptyList(),
+    val notOnAccountNames: List<String> = emptyList()
 )
 
 

@@ -97,6 +97,39 @@ object IspDisappearanceReconciler {
                                 metadataJsonMasked = "{\"earthlinkUsername\":\"$username\",\"accountId\":\"${acc.id}\",\"provider\":\"$targetProvider\"}"
                             )
                         )
+                    } else if (canMigrate && normalizedMigration.contains(username.lowercase())) {
+                        // ponytail: false-archive repair. This is the post-restore deadlock: a
+                        // v17 backup row is backfilled operationProvider=EARTHLINK (migration
+                        // 18_19) and a SAMM subscriber gets flipped history-only when no SAMM
+                        // roster was trusted at flip time. The provider-scoped re-appearance pass
+                        // can never see an EARTHLINK-labeled row, so without this branch the
+                        // false archive is permanent. Absent from provider X but ALIVE on Y is
+                        // the same ISP-presence proof the live-row migration already honors.
+                        val revived = acc.copy(
+                            operationProvider = migrationTargetProvider!!,
+                            isHistoryOnlySubscriber = false,
+                            updatedAt = now
+                        )
+                        accountDao.update(revived)
+                        OutboxManager.upsertWithOutbox(
+                            database.syncOutboxDao(),
+                            "local_accounts",
+                            revived.id,
+                            accountAdapter.toJson(revived)
+                        )
+                        auditDao?.insert(
+                            AuditLog(
+                                action = "ISP_SUBSCRIBER_MIGRATED",
+                                entityType = "local_accounts",
+                                entityId = acc.id,
+                                summary = "Subscriber '${acc.displayName}' ($username) was archived under $targetProvider but is present on $migrationTargetProvider. Un-archived and re-pointed to the live provider; history preserved.",
+                                createdAt = now,
+                                severity = AuditSeverity.WARNING.name,
+                                actor = "system",
+                                origin = AuditOrigin.SYSTEM_ACTION.name,
+                                metadataJsonMasked = "{\"earthlinkUsername\":\"$username\",\"accountId\":\"${acc.id}\",\"from\":\"$targetProvider\",\"to\":\"$migrationTargetProvider\"}"
+                            )
+                        )
                     }
                     continue
                 }

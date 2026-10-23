@@ -11,6 +11,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
@@ -1130,15 +1133,89 @@ class LocalAccountRepositoryImpl(
 
     override suspend fun batchSetProvider(
         candidateAccountIds: List<String>,
-        targetProvider: String
+        targetProvider: String,
+        presenceProbe: (suspend (username: String) -> com.example.core.network.SasSubscriberPresence?)?,
+        onPresenceProgress: (suspend (done: Int, total: Int) -> Unit)?
     ): BatchProviderResult {
         if (candidateAccountIds.isEmpty()) {
             return BatchProviderResult(0, 0, 0, 0)
         }
 
+        // Presence gate (pre-pass, OUTSIDE any Room transaction):
+        // Only accounts whose subscriber is CONFIRMED-present on the target provider may flip.
+        // Absent AND unknown are skipped (fail-closed). Any probe failure aborts the whole
+        // batch before a single row is written (Q5: hard abort, nothing committed).
+        // Legacy path: probe = null behaves exactly as before (no gate).
+        val eligibleAccountIds: List<String>
+        val notOnTargetNames = mutableListOf<String>()
+        val notOnAccountNames = mutableListOf<String>()
+        var displayNameById: Map<String, String> = emptyMap()
+        if (presenceProbe != null) {
+            val loaded = mutableListOf<LocalAccount>()
+            for (chunk in candidateAccountIds.chunked(900)) {
+                loaded.addAll(accountDao.getAccountsByIds(chunk))
+            }
+            val byId = loaded.associateBy { it.id }
+            for (id in candidateAccountIds) {
+                if (!byId.containsKey(id)) {
+                    notOnAccountNames.add(id)
+                }
+            }
+            displayNameById = byId.mapValues { (_, acc) -> acc.earthlinkUsername ?: acc.displayName }
+            val accountsByUsername = byId.values
+                // Already-target rows never need the gateway: they are folded as
+                // alreadyTarget by the Room transaction phase below (no probe, no churn).
+                .filter { it.operationProvider != targetProvider }
+                .filter { !it.earthlinkUsername.isNullOrBlank() }
+                .groupBy { it.earthlinkUsername!!.trim().lowercase() }
+
+            val totalToProbe = accountsByUsername.size
+            val probeCounter = java.util.concurrent.atomic.AtomicInteger(0)
+            // ponytail: 8 parallel directory lookups per screenful of users; drop to 4 if ISP rate-limits searchUsers.
+            val probePermits = kotlinx.coroutines.sync.Semaphore(8)
+            val syncedNotOnTarget = java.util.Collections.synchronizedList(notOnTargetNames)
+            try {
+                coroutineScope {
+                    for ((username, _) in accountsByUsername) {
+                        launch {
+                            probePermits.withPermit {
+                                // Null presence answer degrades to UNKNOWN -> fail-closed skip.
+                                val presence = presenceProbe(username)
+                                    ?: com.example.core.network.SasSubscriberPresence.UNKNOWN
+                                if (presence != com.example.core.network.SasSubscriberPresence.PRESENT) {
+                                    syncedNotOnTarget.add(username)
+                                }
+                                val done = probeCounter.incrementAndGet()
+                                onPresenceProgress?.invoke(done, totalToProbe)
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                throw IllegalStateException(
+                    "Batch provider check aborted before any changes: could not verify presence (account ${probeCounter.get() + 1} of $totalToProbe). ${e.message}",
+                    e
+                )
+            }
+            val skipUsernames = notOnTargetNames.toSet()
+            eligibleAccountIds = candidateAccountIds.filter { id ->
+                val acc = byId[id] ?: return@filter false
+                val uname = acc.earthlinkUsername?.trim()?.lowercase()
+                if (uname == null || uname.isBlank()) {
+                    // No username to verify -> cannot confirm presence -> fail closed.
+                    notOnTargetNames.add(acc.displayName)
+                    return@filter false
+                }
+                uname !in skipUsernames
+            }
+        } else {
+            eligibleAccountIds = candidateAccountIds
+        }
+
         return database.withTransaction {
             val chunkSize = 900
-            val chunks = candidateAccountIds.chunked(chunkSize)
+            val chunks = eligibleAccountIds.chunked(chunkSize)
 
             val activeInFlightIds = mutableSetOf<String>()
             val alreadyOnTargetIds = mutableSetOf<String>()
@@ -1165,11 +1242,16 @@ class LocalAccountRepositoryImpl(
                 }
             }
 
+            val skippedDueToPendingNames = activeInFlightIds.map { id -> displayNameById[id] ?: id }
+
             BatchProviderResult(
                 totalSelected = candidateAccountIds.size,
                 updated = updatedCount,
                 alreadyTarget = alreadyOnTargetIds.size,
-                skippedDueToPending = activeInFlightIds.size
+                skippedDueToPending = activeInFlightIds.size,
+                skippedDueToPendingNames = skippedDueToPendingNames,
+                notOnTargetNames = notOnTargetNames,
+                notOnAccountNames = notOnAccountNames
             )
         }
     }

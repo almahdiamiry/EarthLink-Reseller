@@ -263,7 +263,10 @@ class BatchProviderAssignmentTest {
         val result = accountRepo.batchSetProvider(listOf("acc_pending", "acc_clean"), SasProviders.ALAMIRY)
 
         assertEquals(
-            BatchProviderResult(totalSelected = 2, updated = 1, alreadyTarget = 0, skippedDueToPending = 1),
+            BatchProviderResult(
+                totalSelected = 2, updated = 1, alreadyTarget = 0, skippedDueToPending = 1,
+                skippedDueToPendingNames = listOf("acc_pending")
+            ),
             result
         )
 

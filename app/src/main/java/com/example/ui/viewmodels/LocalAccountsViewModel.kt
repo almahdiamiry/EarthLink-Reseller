@@ -114,6 +114,9 @@ class LocalAccountsViewModel(
         _batchResult.value = null
     }
 
+    private val _batchPresenceProgress = MutableStateFlow<Pair<Int, Int>?>(null)
+    val batchPresenceProgress = _batchPresenceProgress.asStateFlow()
+
     fun setSearchQuery(value: String) { _displayLimit.value = 50; _searchQuery.value = value }
     fun toggleFilterDebt() { _displayLimit.value = 50; _filterDebt.value = !_filterDebt.value }
     fun toggleFilterAdvance() { _displayLimit.value = 50; _filterAdvance.value = !_filterAdvance.value }
@@ -157,7 +160,10 @@ class LocalAccountsViewModel(
         _selectedAccountIds.value = emptySet()
     }
 
-    suspend fun executeBatchProviderAssignment(targetProvider: String): BatchProviderResult {
+    suspend fun executeBatchProviderAssignment(
+        targetProvider: String,
+        presenceProbe: (suspend (username: String) -> com.example.core.network.SasSubscriberPresence?)? = null
+    ): BatchProviderResult {
         val selected = _selectedAccountIds.value.toList()
         if (selected.isEmpty()) {
             val empty = BatchProviderResult(0, 0, 0, 0)
@@ -165,14 +171,17 @@ class LocalAccountsViewModel(
             return empty
         }
         _isLoading.value = true
+        _batchPresenceProgress.value = null
         return try {
-            val result = localRepo.batchSetProvider(selected, targetProvider)
+            val result = localRepo.batchSetProvider(selected, targetProvider, presenceProbe) { done, total ->
+                _batchPresenceProgress.value = done to total
+            }
             _batchResult.value = result
             audit.logAction(
                 "BATCH_SET_PROVIDER",
                 "LOCAL_ACCOUNT",
                 "BATCH",
-                "Batch set provider to $targetProvider: updated ${result.updated}/${result.totalSelected}, alreadyTarget ${result.alreadyTarget}, skippedDueToPending ${result.skippedDueToPending}"
+                "Batch set provider to $targetProvider: updated ${result.updated}/${result.totalSelected}, alreadyTarget ${result.alreadyTarget}, skippedDueToPending ${result.skippedDueToPending}, notOnTarget ${result.notOnTargetNames.size}, notOnAccount ${result.notOnAccountNames.size}"
             )
             clearSelection()
             syncRepo.requestSync(com.example.domain.repository.SyncReason.USER_ACTION)
@@ -183,6 +192,7 @@ class LocalAccountsViewModel(
             throw e
         } finally {
             _isLoading.value = false
+            _batchPresenceProgress.value = null
         }
     }
 

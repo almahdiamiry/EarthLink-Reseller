@@ -7,10 +7,10 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface LocalAccountDao {
-    @Query("SELECT * FROM local_accounts WHERE isHistoryOnlySubscriber = 0 ORDER BY displayName ASC LIMIT :limit")
+    @Query("SELECT * FROM local_accounts ORDER BY displayName ASC LIMIT :limit")
     fun getAll(limit: Int = 100000): Flow<List<LocalAccount>>
 
-    @Query("SELECT * FROM local_accounts WHERE isHistoryOnlySubscriber = 0 ORDER BY displayName ASC, id ASC LIMIT :limit OFFSET :offset")
+    @Query("SELECT * FROM local_accounts ORDER BY displayName ASC, id ASC LIMIT :limit OFFSET :offset")
     suspend fun getAllOneShot(limit: Int = 100000, offset: Int = 0): List<LocalAccount>
 
     @Query("SELECT * FROM local_accounts ORDER BY displayName ASC, id ASC LIMIT :limit OFFSET :offset")
@@ -21,6 +21,9 @@ interface LocalAccountDao {
 
     @Query("SELECT * FROM local_accounts WHERE id = :id")
     suspend fun getByIdOneShot(id: String): LocalAccount?
+
+    @Query("SELECT * FROM local_accounts WHERE id IN (:accountIds)")
+    suspend fun getAccountsByIds(accountIds: List<String>): List<LocalAccount>
 
     @Query("SELECT * FROM local_accounts WHERE sourceExternalId = :sourceExternalId LIMIT 1")
     suspend fun findBySourceExternalId(sourceExternalId: String): LocalAccount?

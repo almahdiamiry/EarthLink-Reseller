@@ -218,7 +218,7 @@ fun DashboardScreen(
     // Sorting & Filtering State
     var showFinancialSummarySheet by rememberSaveable { mutableStateOf(false) }
     val totalDebt = remember(localAccounts) {
-        localAccounts.filter { !it.isHistoryOnlySubscriber }.sumOf { it.debtIqd }
+        localAccounts.sumOf { it.debtIqd }
     }
     var showSortSheet by rememberSaveable { mutableStateOf(false) }
     var pendingSortOpen by rememberSaveable { mutableStateOf(false) }
@@ -228,6 +228,15 @@ fun DashboardScreen(
     var isSearchActive by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
+
+    // Batch provider-change (Subscribers-tab selection surface)
+    val batchSelectedUsernames by viewModel.selectedUsernames.collectAsStateWithLifecycle()
+    val isBatchSelectionMode by viewModel.isBatchSelectionMode.collectAsStateWithLifecycle()
+    val batchResult by viewModel.batchResult.collectAsStateWithLifecycle()
+    val batchIsRunning by viewModel.batchIsRunning.collectAsStateWithLifecycle()
+    val batchPresenceProgress by viewModel.batchPresenceProgress.collectAsStateWithLifecycle()
+    val batchCoroutineScope = rememberCoroutineScope()
+    var pendingBatchTargetProvider by rememberSaveable { mutableStateOf<String?>(null) }
 
     val isImeVisible = WindowInsets.isImeVisible
     val imeInsets = WindowInsets.ime
@@ -264,9 +273,8 @@ fun DashboardScreen(
                     continue
                 }
                 val matchingAccount = localAccountMatcher.findMatchingByUsername(sub.userID) ?: localAccountMatcher.findMatching(sub)
-                if (matchingAccount?.isHistoryOnlySubscriber == true) {
-                    continue
-                }
+                // Archived rows are shown, never hidden (user decision): if the ISP still lists
+                // the subscriber, the live copy wins (stale archive flag), so no skip here.
                 mergedList.add(sub)
                 if (key != null) seenKeys.add(key)
                 matchingAccount?.let { acc ->
@@ -279,7 +287,7 @@ fun DashboardScreen(
 
             // 2. Append all Local / Legacy Accounts (uTower + local) not represented in live subscribers
             for (acc in localAccounts) {
-                if (acc.isHistoryOnlySubscriber) continue
+                // Archived rows are shown, never hidden (user decision 2a).
                 if (seenAccountIds.contains(acc.id)) continue
                 val accUserLower = acc.earthlinkUsername?.trim()?.lowercase(Locale.US)
                 val accKey = if (!accUserLower.isNullOrBlank()) Pair(acc.operationProvider, accUserLower) else null
@@ -299,7 +307,8 @@ fun DashboardScreen(
                     expirationDateLower = acc.expiresAt ?: "",
                     displayNameLower = acc.displayName,
                     accountNameLower = acc.packageName,
-                    originProvider = acc.operationProvider
+                    originProvider = acc.operationProvider,
+                    isHistoryOnly = acc.isHistoryOnlySubscriber
                 )
                 mergedList.add(item)
                 seenAccountIds.add(acc.id)
@@ -308,13 +317,13 @@ fun DashboardScreen(
 
             val baseList = mergedList
 
+
             val now = System.currentTimeMillis()
 
             var list = baseList.filter { user ->
                 val matchingAccount = localAccountMatcher.findMatchingByUsername(user.userID) ?: localAccountMatcher.findMatching(user)
-                if (matchingAccount?.isHistoryOnlySubscriber == true) {
-                    return@filter false
-                }
+                // Archived rows are never dropped (user decision 2a); they bucket by their own
+                // dates below like every other row.
 
                 val expStr = listOfNotNull(
                     user.manualExpirationDate,
@@ -429,6 +438,65 @@ fun DashboardScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            if (isBatchSelectionMode) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(8.dp))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TextButton(onClick = { viewModel.clearSubscriberSelection() }) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = if (lang == "ar") "إلغاء التحديد" else "Clear selection",
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (lang == "ar") "تم تحديد: ${batchSelectedUsernames.size}" else "Selected: ${batchSelectedUsernames.size}",
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                            TextButton(onClick = {
+                                viewModel.selectVisibleSubscribers(
+                                    filteredList.map { it.userID }.filter { it.isNotBlank() }
+                                )
+                            }) {
+                                Text(
+                                    if (lang == "ar") "تحديد الظاهر" else "Select Visible",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = { pendingBatchTargetProvider = com.example.core.model.SasProviders.EARTHLINK },
+                                modifier = Modifier.weight(1f),
+                                enabled = !batchIsRunning
+                            ) {
+                                Text(if (lang == "ar") "تعيين إلى EarthLink" else "Set -> EarthLink", fontSize = 12.sp)
+                            }
+                            Button(
+                                onClick = { pendingBatchTargetProvider = com.example.core.model.SasProviders.ALAMIRY },
+                                modifier = Modifier.weight(1f),
+                                enabled = !batchIsRunning
+                            ) {
+                                Text(if (lang == "ar") "تعيين إلى SAMM" else "Set -> SAMM", fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            }
+
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     // Compact Header Row: [ App Logo ] <---> [ Balance Capsule + Filter Action ]
@@ -678,12 +746,65 @@ fun DashboardScreen(
                         localAccounts = localAccounts,
                         localAccountMatcher = localAccountMatcher,
                         lang = lang,
-                        onClick = { onUserClick(user) }
+                        isSelected = batchSelectedUsernames.contains(user.userID),
+                        showCheckbox = isBatchSelectionMode,
+                        onLongClick = if (!isBatchSelectionMode) {
+                            { viewModel.toggleSubscriberSelection(user.userID) }
+                        } else null,
+                        onClick = {
+                            if (isBatchSelectionMode) {
+                                viewModel.toggleSubscriberSelection(user.userID)
+                            } else {
+                                onUserClick(user)
+                            }
+                        }
                     )
                 }
             }
 
             item { Spacer(modifier = Modifier.height(100.dp)) }
+        }
+
+        // Batch provider-change dialogs (shared with Local Accounts surface)
+        pendingBatchTargetProvider?.let { target ->
+            BatchProviderConfirmDialog(
+                targetProvider = target,
+                selectedCount = batchSelectedUsernames.size,
+                isAr = lang == "ar",
+                onConfirm = {
+                    val prov = target
+                    pendingBatchTargetProvider = null
+                    batchCoroutineScope.launch {
+                        try {
+                            val gateway = try {
+                                context.sasGatewayRouter.getGateway(prov)
+                            } catch (_: Exception) { null }
+                            val probe: (suspend (String) -> com.example.core.network.SasSubscriberPresence?)? =
+                                gateway?.let { g ->
+                                    val fn: suspend (String) -> com.example.core.network.SasSubscriberPresence? =
+                                        { username -> g.resolveSubscriberPresence(username) }
+                                    fn
+                                }
+                            viewModel.executeBatchProviderAssignment(prov, probe)
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            // Error is surfaced via viewModel collection state.
+                        }
+                    }
+                },
+                onDismiss = { pendingBatchTargetProvider = null }
+            )
+        }
+
+        batchPresenceProgress?.let { (done, total) ->
+            BatchProviderPresenceProgressDialog(done = done, total = total, isAr = lang == "ar")
+        }
+
+        batchResult?.let { res ->
+            BatchProviderResultDialog(result = res, isAr = lang == "ar") {
+                viewModel.clearBatchResult()
+            }
         }
 
         // BackHandler: Close search if active

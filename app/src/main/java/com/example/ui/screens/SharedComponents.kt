@@ -585,18 +585,27 @@ fun getRemainingTime(expirationDateStr: String?, activeDaysLeftStr: String? = nu
 
 class LocalAccountMatcher(localAccounts: List<LocalAccount>) {
     private val usernameMap: Map<String, LocalAccount>
+    private val archivedUsernameMap: Map<String, LocalAccount>
     private val uniqueNameMap: Map<String, LocalAccount>
 
     init {
         val byUsername = HashMap<String, LocalAccount>(localAccounts.size)
+        val archivedByUsername = HashMap<String, LocalAccount>(localAccounts.size)
         val nameCounts = HashMap<String, Int>(localAccounts.size)
         val nameFirst = HashMap<String, LocalAccount>(localAccounts.size)
 
         for (acc in localAccounts) {
-            if (acc.isHistoryOnlySubscriber) continue
             val username = acc.earthlinkUsername?.trim()?.lowercase()
             if (!username.isNullOrBlank()) {
-                byUsername.putIfAbsent(username, acc)
+                if (acc.isHistoryOnlySubscriber) {
+                    // History-only rows keep out of the general matching map (they must never
+                    // suppress or hijack a live ISP subscriber; Fix3 invariant). They are exposed
+                    // only via findArchivedByUsername so their always-visible cards (decision 2a)
+                    // can still render their real debt/advance.
+                    archivedByUsername.putIfAbsent(username, acc)
+                } else {
+                    byUsername.putIfAbsent(username, acc)
+                }
             }
             val displayName = acc.displayName.trim().lowercase()
             if (displayName.isNotEmpty()) {
@@ -605,7 +614,18 @@ class LocalAccountMatcher(localAccounts: List<LocalAccount>) {
             }
         }
         usernameMap = byUsername
+        archivedUsernameMap = archivedByUsername
         uniqueNameMap = nameFirst.filter { (name, _) -> nameCounts[name] == 1 }
+    }
+
+    /**
+     * Exact-username lookup across archived (history-only) accounts. Identity-stable by
+     * construction: only callers that ALREADY know the target row is archived (e.g. rendering
+     * an always-visible archived card's debt) may use it. Never feeds suppression logic.
+     */
+    fun findArchivedByUsername(username: String): LocalAccount? {
+        val uId = username.trim().lowercase()
+        return if (uId.isNotEmpty()) archivedUsernameMap[uId] else null
     }
 
     fun findMatching(user: UserListItem): LocalAccount? {
@@ -642,18 +662,29 @@ class LocalAccountMatcher(localAccounts: List<LocalAccount>) {
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun ArabicSubscriberCard(
     user: UserListItem,
     localAccounts: List<LocalAccount> = emptyList(),
     localAccountMatcher: LocalAccountMatcher? = null,
     lang: String = "ar",
+    isSelected: Boolean = false,
+    showCheckbox: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
     val matcher = localAccountMatcher ?: remember(localAccounts) { LocalAccountMatcher(localAccounts) }
     val matchingAccount = remember(user.userID, user.displayName, user.customerName, matcher) {
         matcher.findMatching(user)
     }
+    // Archived cards are excluded from matcher.findMatching by the Fix3 fail-closed rule
+    // (history-only must never hijack a live subscriber). Their real balances still belong on
+    // their own card, so fall back to an identity-stable exact-username archived lookup.
+    val archivedBalanceAccount = if (user.isHistoryOnly) {
+        remember(user.userID, matcher) { matcher.findArchivedByUsername(user.userID) ?: matchingAccount }
+    } else null
+    val balanceSourceAccount = archivedBalanceAccount ?: matchingAccount
     
     val expirationStr = remember(user.expirationDate, user.manualExpirationDate, user.accountExpirationDate, matchingAccount?.expiresAt) {
         listOfNotNull(
@@ -675,13 +706,15 @@ fun ArabicSubscriberCard(
     val isSuspended = SubscriberDisplayRules.isSuspended(statusClean)
     val isExpired = remainingTime.contains("منتهي") || remainingTime.contains("Expired") || statusClean == "expired" || statusClean == "منتهي"
     val isActive = !isExpired && !isSuspended
-    
+    // Archive rows are shown, never hidden (user decision 2a): badge them instead of hiding.
+    val isArchived = user.isHistoryOnly
+
     val containerBg = MaterialTheme.colorScheme.surface
     val rowBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
     val onlineStatusClean = user.onlineStatus?.trim()?.lowercase(Locale.US) ?: ""
     val isOnline = onlineStatusClean.contains("online") || onlineStatusClean == "online" || onlineStatusClean == "onlineno9net" || onlineStatusClean == "onlineno_net"
-    val debtIqd = matchingAccount?.debtIqd ?: 0.0
-    val advanceIqd = matchingAccount?.advanceIqd ?: 0.0
+    val debtIqd = balanceSourceAccount?.debtIqd ?: 0.0
+    val advanceIqd = balanceSourceAccount?.advanceIqd ?: 0.0
 
     val displayName = when {
         !user.displayName.isNullOrBlank() -> user.displayName!!
@@ -690,13 +723,21 @@ fun ArabicSubscriberCard(
     }
 
     CompositionLocalProvider(LocalLayoutDirection provides (if (lang == "ar") LayoutDirection.Rtl else LayoutDirection.Ltr)) {
-        Surface(
-            modifier = Modifier
+        val clickModifier = if (onLongClick != null) {
+            Modifier
                 .fillMaxWidth()
                 .padding(vertical = 3.dp)
-                .clickable { onClick() },
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+        } else {
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 3.dp)
+                .clickable { onClick() }
+        }
+        Surface(
+            modifier = clickModifier,
             shape = RoundedCornerShape(14.dp),
-            color = Color(0xFF141922),
+            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else Color(0xFF141922),
             border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
         ) {
             Row(
@@ -706,6 +747,9 @@ fun ArabicSubscriberCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                if (showCheckbox) {
+                    Checkbox(checked = isSelected, onCheckedChange = null)
+                }
                 // Avatar Squircle with Online/Offline indicator
                 Box(
                     modifier = Modifier.size(40.dp),
@@ -818,7 +862,22 @@ fun ArabicSubscriberCard(
                                 }
                             }
 
-                            // Status Badge
+                            // Status Badge (archive rows show an archive badge instead)
+                            if (isArchived) {
+                                Surface(
+                                    color = Color(0xFFFF9F0A).copy(alpha = 0.12f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = BorderStroke(1.dp, Color(0xFFFF9F0A).copy(alpha = 0.3f))
+                                ) {
+                                    Text(
+                                        text = if (lang == "ar") "أرشيف" else "Archived",
+                                        color = Color(0xFFFF9F0A),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
+                                }
+                            } else {
                             val badgeInk = when {
                                 isActive -> Color(0xFF30D158)
                                 isSuspended -> Color(0xFFFF453A)
@@ -840,6 +899,7 @@ fun ArabicSubscriberCard(
                                     fontWeight = FontWeight.SemiBold,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                                 )
+                            }
                             }
                         }
                     }
