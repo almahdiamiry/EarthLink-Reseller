@@ -302,9 +302,12 @@ class DashboardViewModel(
                                             )
                                         }
                                         if (items.isNotEmpty()) {
+                                            val isRosterLikelyComplete = items.size < 5000
                                             val allItemsHaveValidUserId = items.all { it.userID.isNotBlank() }
-                                            if (allItemsHaveValidUserId) {
+                                            if (allItemsHaveValidUserId && isRosterLikelyComplete) {
                                                 sammAuthoritative = items.map { it.userID.trim() }.toSet()
+                                            } else if (!isRosterLikelyComplete) {
+                                                android.util.Log.w("DashboardViewModel", "SAMM ISP disappearance reconciliation skipped: snapshot reached 5000 ceiling, may be incomplete")
                                             } else {
                                                 android.util.Log.w("DashboardViewModel", "SAMM ISP disappearance reconciliation skipped: snapshot contains item with blank/invalid userID")
                                             }

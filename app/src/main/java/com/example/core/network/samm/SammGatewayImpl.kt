@@ -252,7 +252,33 @@ override suspend fun extendSubscriberByDays(
         if (!response.isSuccessful) {
             throw parseSammError(response)
         }
-        return response.body()?.items?.map { it.toSubscriberView() } ?: emptyList()
+        val body = response.body() ?: return emptyList()
+        val total = body.total
+        val initialItems = body.items.map { it.toSubscriberView() }
+        if (total <= limit || pageSize <= MAX_PAGE_SIZE || isExactUsername) {
+            return initialItems
+        }
+
+        // ponytail: large page fetch (e.g. pageSize = 5000 for dashboard roster).
+        // Automatically page through SAMM's 1000-item limit chunks up to total or pageSize.
+        val accumulated = initialItems.toMutableList()
+        var currentOffset = offset + initialItems.size
+        while (accumulated.size < total && accumulated.size < pageSize) {
+            val nextLimit = minOf(MAX_PAGE_SIZE, pageSize - accumulated.size)
+            val nextResp = try {
+                apiService.listCustomers(search = trimmed.ifEmpty { null }, limit = nextLimit, offset = currentOffset)
+            } catch (e: SasGatewayException) {
+                throw e
+            } catch (t: Throwable) {
+                throw t.toSasGatewayException()
+            }
+            if (!nextResp.isSuccessful) break
+            val batch = nextResp.body()?.items?.map { it.toSubscriberView() }.orEmpty()
+            if (batch.isEmpty()) break
+            accumulated.addAll(batch)
+            currentOffset += batch.size
+        }
+        return accumulated
     }
 
     override suspend fun getSubscriber(username: String): SasSubscriberView? {

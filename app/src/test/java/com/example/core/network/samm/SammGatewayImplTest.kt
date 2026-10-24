@@ -239,6 +239,48 @@ class SammGatewayImplTest {
         assertTrue(results.isEmpty())
     }
 
+    /**
+     * Claim: When pageSize > 1000 and total > 1000, searchSubscribers automatically pages
+     *        through SAMM API chunks and returns the combined roster up to total/pageSize.
+     * Seam: JVM MockWebServer Wire Contract.
+     * Independent Oracle: Page 1 returns 1000 items with total=1002; page 2 returns 2 items.
+     *        Combined result contains exactly 1002 items and verifies both wire requests with correct offset.
+     */
+    @Test
+    fun searchSubscribers_largePage_pagesAcrossChunksUntilTotal() = runTest {
+        val page1Items = (1..1000).joinToString(",") { i ->
+            """{"id": $i, "username": "user_$i", "firstname": "User", "lastname": "$i", "status": "active"}"""
+        }
+        val page2Items = """{"id": 1001, "username": "user_1001", "firstname": "User", "lastname": "1001", "status": "active"},{"id": 1002, "username": "user_1002", "firstname": "User", "lastname": "1002", "status": "active"}"""
+
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"total": 1002, "items": [$page1Items]}""")
+        )
+        mockServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"total": 1002, "items": [$page2Items]}""")
+        )
+
+        val results = gateway.searchSubscribers(query = "", page = 1, pageSize = 5000)
+
+        assertEquals(1002, results.size)
+        assertEquals("user_1", results.first().username)
+        assertEquals("user_1002", results.last().username)
+
+        val req1 = mockServer.takeRequestOrFail("page 1")
+        assertTrue(req1.path!!.contains("limit=1000"))
+        assertTrue(req1.path!!.contains("offset=0"))
+
+        val req2 = mockServer.takeRequestOrFail("page 2")
+        assertTrue(req2.path!!.contains("limit=1000"))
+        assertTrue(req2.path!!.contains("offset=1000"))
+    }
+
 /**
      * Claim: getSubscriber resolves a username through the directory and reads the detail of THAT
      *        customer. The argument is never used as a customer id.
