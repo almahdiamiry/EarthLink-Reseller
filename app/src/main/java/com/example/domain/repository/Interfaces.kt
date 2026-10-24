@@ -33,6 +33,7 @@ interface EarthlinkGateway {
     suspend fun toggleUserActive(userIndex: Int, active: Boolean): Boolean
     suspend fun changeAccountType(userIndex: Int, userId: String, accountIndex: Int): Boolean
     suspend fun updateUserDisplayName(userIndex: Int, newName: String): Boolean
+    suspend fun getActiveSessions(startIndex: Int = 0, rowCount: Int = 200): ActiveSessionResponse? = null
     suspend fun invalidateBalanceCache() {}
 }
 

@@ -1131,6 +1131,105 @@ class EarthlinkSasGatewayAdapterTest {
     }
 
     // ========================================================================
+    // ========================================================================
+    // 7. Subscriber Session Contracts
+    // ========================================================================
+
+    /**
+     * Claim: getSubscriberSession returns SasSubscriberSession when active session exists for exact username.
+     * Seam: JVM headless unit test.
+     * Independent Oracle: Matching item in getActiveSessions maps to SasSubscriberSession with correct telemetry.
+     */
+    @Test
+    fun getSubscriberSession_exactMatch_returnsTelemetry() = runTest {
+        fakeGateway.activeSessionsResult = com.example.core.model.ActiveSessionResponse(
+            itemsList = listOf(
+                com.example.core.model.ActiveSessionItem(
+                    userIDLower = "user100",
+                    userIPLower = "10.0.0.5",
+                    onlineTimeLower = "01:30:00",
+                    onlineSinceLower = "2026-10-24 10:00:00",
+                    callerMACLower = "AA:BB:CC:DD:EE:FF"
+                )
+            )
+        )
+
+        val session = adapter.getSubscriberSession("user100")
+
+        assertNotNull(session)
+        assertTrue(session!!.isOnline)
+        assertEquals("10.0.0.5", session.ip)
+        assertEquals(5400L, session.onlineSeconds)
+        assertEquals("2026-10-24 10:00:00", session.startedAt)
+        assertEquals("AA:BB:CC:DD:EE:FF", session.mac)
+        assertEquals(1, fakeGateway.getActiveSessionsCalls.get())
+    }
+
+    /**
+     * Claim: getSubscriberSession matches username ignoring case and ignoring domain suffix.
+     * Seam: JVM headless unit test.
+     * Independent Oracle: user100@sacx session matches lookup for USER100.
+     */
+    @Test
+    fun getSubscriberSession_prefixAndCaseInsensitiveMatch_returnsTelemetry() = runTest {
+        fakeGateway.activeSessionsResult = com.example.core.model.ActiveSessionResponse(
+            itemsList = listOf(
+                com.example.core.model.ActiveSessionItem(
+                    userIDLower = "user100@sacx",
+                    userIPLower = "10.2.1.20",
+                    onlineTimeLower = "2d 04:00:00",
+                    onlineSinceLower = "2026-10-22 08:00:00"
+                )
+            )
+        )
+
+        val session = adapter.getSubscriberSession("USER100")
+
+        assertNotNull(session)
+        assertTrue(session!!.isOnline)
+        assertEquals("10.2.1.20", session.ip)
+        // 2 days (172800) + 4 hours (14400) = 187200 seconds
+        assertEquals(187200L, session.onlineSeconds)
+    }
+
+    /**
+     * Claim: getSubscriberSession returns null when user is offline or not found.
+     * Seam: JVM headless unit test.
+     * Independent Oracle: Absent item in active sessions returns null.
+     */
+    @Test
+    fun getSubscriberSession_whenNotActive_returnsNull() = runTest {
+        fakeGateway.activeSessionsResult = com.example.core.model.ActiveSessionResponse(
+            itemsList = listOf(
+                com.example.core.model.ActiveSessionItem(
+                    userIDLower = "other_user",
+                    userIPLower = "10.0.0.1"
+                )
+            )
+        )
+
+        val session = adapter.getSubscriberSession("offline_user")
+
+        assertNull(session)
+        assertEquals(1, fakeGateway.getActiveSessionsCalls.get())
+    }
+
+    /**
+     * Claim: parseDurationSeconds parses day and time formats accurately, returning null on invalid input.
+     * Seam: JVM headless unit test.
+     * Independent Oracle: Mathematical conversion to total seconds.
+     */
+    @Test
+    fun parseDurationSeconds_variousFormats_convertsAccurately() {
+        assertEquals(5400L, parseDurationSeconds("01:30:00"))
+        assertEquals(187200L, parseDurationSeconds("2d 04:00:00"))
+        assertEquals(90L, parseDurationSeconds("01:30"))
+        assertEquals(45L, parseDurationSeconds("45"))
+        assertNull(parseDurationSeconds(null))
+        assertNull(parseDurationSeconds(""))
+        assertNull(parseDurationSeconds("invalid"))
+    }
+
     // Fake Earthlink Gateway Implementation
     // ========================================================================
 
@@ -1173,6 +1272,10 @@ class EarthlinkSasGatewayAdapterTest {
         var lastToggleActiveState: Boolean? = null
 
         var changeAccountTypeResult: Boolean = true
+
+        val getActiveSessionsCalls = AtomicInteger(0)
+        var activeSessionsResult: com.example.core.model.ActiveSessionResponse? = null
+        var activeSessionsException: Throwable? = null
         var changeAccountTypeException: Throwable? = null
         var lastChangeAccountUserIndex: Int? = null
         var lastChangeAccountUserId: String? = null
@@ -1273,5 +1376,10 @@ class EarthlinkSasGatewayAdapterTest {
         override suspend fun showAccountPassword(userIndex: Int, userId: String): String = ""
         override suspend fun changeAccountPassword(userIndex: Int, userId: String, newPass: String): Boolean = true
         override suspend fun updateUserDisplayName(userIndex: Int, newName: String): Boolean = true
+        override suspend fun getActiveSessions(startIndex: Int, rowCount: Int): com.example.core.model.ActiveSessionResponse? {
+            getActiveSessionsCalls.incrementAndGet()
+            activeSessionsException?.let { throw it }
+            return activeSessionsResult
+        }
     }
 }

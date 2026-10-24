@@ -509,44 +509,7 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
                 return cached
             }
         }
-        val userDetail = safeApiCall { apiService.getUserDetail(userIndex) }
-        var finalUserDetail = userDetail
-        val targetUserId = userDetail.userID.trim().lowercase()
-        if (targetUserId.isNotEmpty()) {
-            try {
-                val activeSessionsEnv = apiService.getActiveSessions(0, 200)
-                if (activeSessionsEnv.isSuccessful == true) {
-                    val activeList = activeSessionsEnv.value?.itemsList
-                    val matchingSession = activeList?.find {
-                        val sessionIndex = it.userIndex
-                        val sessionUserId = it.userID.trim().lowercase()
-                        
-                        (sessionIndex != 0 && (sessionIndex == userIndex || sessionIndex == userDetail.userIndex)) ||
-                        (sessionUserId.isNotEmpty() && sessionUserId == targetUserId) ||
-                        (sessionUserId.isNotEmpty() && targetUserId.isNotEmpty() && 
-                         sessionUserId.substringBefore("@") == targetUserId.substringBefore("@"))
-                    }
-                    if (matchingSession != null) {
-                        val session = OnlineSession(
-                            userIPLower = matchingSession.userIP,
-                            onlineTimeLower = matchingSession.onlineTime,
-                            onlineStatusLower = matchingSession.onlineStatus ?: "Online",
-                            onlineSinceLower = matchingSession.onlineSince
-                        )
-                        finalUserDetail = userDetail.copy(
-                            onlineSessionLower = session,
-                            currentIPLower = matchingSession.userIP,
-                            onlineSessionTimeLower = matchingSession.onlineTime
-                        )
-                    }
-                }
-            } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
-                // Best effort hydration
-            }
-        }
-        return finalUserDetail
-
-
+        return safeApiCall { apiService.getUserDetail(userIndex) }
     }
     override suspend fun autocompleteUser(query: String): List<AutocompleteUser> {
         val value = safeApiCall { apiService.autocompleteUser(query) }
@@ -1011,6 +974,9 @@ class EarthlinkGatewayImpl(private val apiService: EarthlinkApiService, private 
 
 
     }
+    override suspend fun getActiveSessions(startIndex: Int, rowCount: Int): com.example.core.model.ActiveSessionResponse? {
+        return safeApiCall(defaultOnNull = null) { apiService.getActiveSessions(startIndex, rowCount) }
+    }
 }
 
 
@@ -1377,7 +1343,11 @@ class LocalAccountRepositoryImpl(
                         displayName = if (account.displayName.isNotBlank()) account.displayName else existing.displayName,
                         phone1 = account.phone1 ?: existing.phone1,
                         phone2 = account.phone2 ?: existing.phone2,
-                        packageName = account.packageName ?: existing.packageName,
+                        packageName = if (existing.operationProvider != account.operationProvider && account.operationProvider.isNotBlank()) {
+                            account.packageName
+                        } else {
+                            account.packageName ?: existing.packageName
+                        },
                         currentPriceIqd = if (account.currentPriceIqd > 0.0) account.currentPriceIqd else existing.currentPriceIqd,
                         nanoIp = account.nanoIp ?: existing.nanoIp,
                         towerName = account.towerName ?: existing.towerName,
@@ -2801,7 +2771,11 @@ class LocalLedgerRepositoryImpl(
                 displayName = if (account.displayName.isNotBlank()) account.displayName else existing.displayName,
                 phone1 = account.phone1 ?: existing.phone1,
                 phone2 = account.phone2 ?: existing.phone2,
-                packageName = account.packageName ?: existing.packageName,
+                packageName = if (existing.operationProvider != account.operationProvider && account.operationProvider.isNotBlank()) {
+                    account.packageName
+                } else {
+                    account.packageName ?: existing.packageName
+                },
                 currentPriceIqd = if (account.currentPriceIqd > 0.0) account.currentPriceIqd else existing.currentPriceIqd,
                 nanoIp = account.nanoIp ?: existing.nanoIp,
                 towerName = account.towerName ?: existing.towerName,

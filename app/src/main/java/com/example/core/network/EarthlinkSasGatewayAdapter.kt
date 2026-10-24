@@ -239,6 +239,31 @@ class EarthlinkSasGatewayAdapter(
         }
     }
 
+    override suspend fun getSubscriberSession(username: String): SasSubscriberSession? {
+        val key = username.trim().takeIf { it.isNotEmpty() } ?: return null
+        return try {
+            val sessionsResponse = delegate.getActiveSessions(0, 200)
+            val sessions = sessionsResponse?.itemsList.orEmpty()
+            val match = sessions.firstOrNull { it.userID.trim().equals(key, ignoreCase = true) }
+                ?: sessions.firstOrNull {
+                    val user = it.userID.trim()
+                    val userPrefix = user.substringBefore("@")
+                    val targetPrefix = key.substringBefore("@")
+                    userPrefix.isNotEmpty() && userPrefix.equals(targetPrefix, ignoreCase = true)
+                } ?: return null
+
+            SasSubscriberSession(
+                isOnline = true,
+                startedAt = match.onlineSince,
+                onlineSeconds = parseDurationSeconds(match.onlineTime),
+                ip = match.userIP,
+                mac = match.callerMAC
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     override suspend fun checkConnection(): Boolean {
         return try {
             delegate.getBalance()
@@ -493,5 +518,40 @@ class EarthlinkSasGatewayAdapter(
                 SasVerificationOutcome.INCONCLUSIVE
             }
         }
+    }
+}
+
+internal fun parseDurationSeconds(duration: String?): Long? {
+    if (duration.isNullOrBlank()) return null
+    val trimmed = duration.trim()
+    var days = 0L
+    var rest = trimmed
+    val dIndex = rest.indexOfAny(charArrayOf('d', 'D'))
+    if (dIndex >= 0) {
+        days = rest.substring(0, dIndex).trim().toLongOrNull() ?: 0L
+        rest = rest.substring(dIndex + 1).trim()
+    }
+    val tokens = rest.split(':')
+    return try {
+        when (tokens.size) {
+            3 -> {
+                val h = tokens[0].trim().toLongOrNull() ?: return null
+                val m = tokens[1].trim().toLongOrNull() ?: return null
+                val s = tokens[2].trim().toLongOrNull() ?: return null
+                days * 86400L + h * 3600L + m * 60L + s
+            }
+            2 -> {
+                val m = tokens[0].trim().toLongOrNull() ?: return null
+                val s = tokens[1].trim().toLongOrNull() ?: return null
+                days * 86400L + m * 60L + s
+            }
+            1 -> {
+                val s = tokens[0].trim().toLongOrNull() ?: return null
+                days * 86400L + s
+            }
+            else -> null
+        }
+    } catch (_: Exception) {
+        null
     }
 }
