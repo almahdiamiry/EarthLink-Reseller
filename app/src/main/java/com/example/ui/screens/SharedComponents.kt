@@ -585,17 +585,25 @@ fun getRemainingTime(expirationDateStr: String?, activeDaysLeftStr: String? = nu
 
 class LocalAccountMatcher(localAccounts: List<LocalAccount>) {
     private val usernameMap: Map<String, LocalAccount>
+    private val providerUsernameMap: Map<Pair<String, String>, LocalAccount>
     private val archivedUsernameMap: Map<String, LocalAccount>
+    private val archivedProviderUsernameMap: Map<Pair<String, String>, LocalAccount>
     private val uniqueNameMap: Map<String, LocalAccount>
+    private val uniqueNameByProviderMap: Map<Pair<String, String>, LocalAccount>
 
     init {
         val byUsername = HashMap<String, LocalAccount>(localAccounts.size)
+        val byProviderAndUsername = HashMap<Pair<String, String>, LocalAccount>(localAccounts.size)
         val archivedByUsername = HashMap<String, LocalAccount>(localAccounts.size)
+        val archivedByProviderAndUsername = HashMap<Pair<String, String>, LocalAccount>(localAccounts.size)
         val nameCounts = HashMap<String, Int>(localAccounts.size)
         val nameFirst = HashMap<String, LocalAccount>(localAccounts.size)
+        val providerNameCounts = HashMap<Pair<String, String>, Int>(localAccounts.size)
+        val providerNameFirst = HashMap<Pair<String, String>, LocalAccount>(localAccounts.size)
 
         for (acc in localAccounts) {
             val username = acc.earthlinkUsername?.trim()?.lowercase()
+            val prov = acc.operationProvider
             if (!username.isNullOrBlank()) {
                 if (acc.isHistoryOnlySubscriber) {
                     // History-only rows keep out of the general matching map (they must never
@@ -603,19 +611,27 @@ class LocalAccountMatcher(localAccounts: List<LocalAccount>) {
                     // only via findArchivedByUsername so their always-visible cards (decision 2a)
                     // can still render their real debt/advance.
                     archivedByUsername.putIfAbsent(username, acc)
+                    archivedByProviderAndUsername.putIfAbsent(Pair(prov, username), acc)
                 } else {
                     byUsername.putIfAbsent(username, acc)
+                    byProviderAndUsername.putIfAbsent(Pair(prov, username), acc)
                 }
             }
             val displayName = acc.displayName.trim().lowercase()
             if (displayName.isNotEmpty()) {
                 nameCounts[displayName] = (nameCounts[displayName] ?: 0) + 1
                 nameFirst.putIfAbsent(displayName, acc)
+                val provNameKey = Pair(prov, displayName)
+                providerNameCounts[provNameKey] = (providerNameCounts[provNameKey] ?: 0) + 1
+                providerNameFirst.putIfAbsent(provNameKey, acc)
             }
         }
         usernameMap = byUsername
+        providerUsernameMap = byProviderAndUsername
         archivedUsernameMap = archivedByUsername
+        archivedProviderUsernameMap = archivedByProviderAndUsername
         uniqueNameMap = nameFirst.filter { (name, _) -> nameCounts[name] == 1 }
+        uniqueNameByProviderMap = providerNameFirst.filter { (key, _) -> providerNameCounts[key] == 1 }
     }
 
     /**
@@ -623,42 +639,70 @@ class LocalAccountMatcher(localAccounts: List<LocalAccount>) {
      * construction: only callers that ALREADY know the target row is archived (e.g. rendering
      * an always-visible archived card's debt) may use it. Never feeds suppression logic.
      */
-    fun findArchivedByUsername(username: String): LocalAccount? {
+    fun findArchivedByUsername(username: String, provider: String? = null): LocalAccount? {
         val uId = username.trim().lowercase()
-        return if (uId.isNotEmpty()) archivedUsernameMap[uId] else null
+        if (uId.isEmpty()) return null
+        if (!provider.isNullOrBlank()) {
+            return archivedProviderUsernameMap[Pair(provider, uId)]
+        }
+        return archivedUsernameMap[uId]
     }
 
     fun findMatching(user: UserListItem): LocalAccount? {
         val uId = user.userID.trim().lowercase()
+        val userProv = user.originProvider?.takeIf { it.isNotBlank() }
         if (uId.isNotEmpty()) {
-            val matchedByUsername = usernameMap[uId]
-            if (matchedByUsername != null) return matchedByUsername
+            if (userProv != null) {
+                val matchedByProv = providerUsernameMap[Pair(userProv, uId)]
+                if (matchedByProv != null) return matchedByProv
+                // Provider-scoped matching: if an account exists under the same username
+                // but belongs to a different provider, do NOT match it across providers.
+                val otherProvCandidate = usernameMap[uId]
+                if (otherProvCandidate != null && otherProvCandidate.operationProvider != userProv) {
+                    return null
+                }
+            } else {
+                val matchedByUsername = usernameMap[uId]
+                if (matchedByUsername != null) return matchedByUsername
+            }
         }
 
-        val candidate = findUniqueCandidateByName(user.displayName)
-            ?: findUniqueCandidateByName(user.customerName)
-            ?: return null
+        val candidate = if (userProv != null) {
+            findUniqueCandidateByName(user.displayName, userProv)
+                ?: findUniqueCandidateByName(user.customerName, userProv)
+        } else {
+            findUniqueCandidateByName(user.displayName)
+                ?: findUniqueCandidateByName(user.customerName)
+        } ?: return null
 
         val candidateUsername = candidate.earthlinkUsername?.trim()?.lowercase()
         val hasConflictingUsername = !candidateUsername.isNullOrBlank() && uId.isNotEmpty() && candidateUsername != uId
         val isHistoryOnly = candidate.isHistoryOnlySubscriber
+        val hasConflictingProvider = userProv != null && candidate.operationProvider != userProv
 
-        if (hasConflictingUsername || isHistoryOnly) {
+        if (hasConflictingUsername || isHistoryOnly || hasConflictingProvider) {
             return null
         }
 
         return candidate
     }
 
-    private fun findUniqueCandidateByName(name: String?): LocalAccount? {
+    private fun findUniqueCandidateByName(name: String?, provider: String? = null): LocalAccount? {
         val clean = name?.trim()?.lowercase() ?: return null
         if (clean.isEmpty()) return null
+        if (!provider.isNullOrBlank()) {
+            return uniqueNameByProviderMap[Pair(provider, clean)]
+        }
         return uniqueNameMap[clean]
     }
 
-    fun findMatchingByUsername(username: String): LocalAccount? {
+    fun findMatchingByUsername(username: String, provider: String? = null): LocalAccount? {
         val uId = username.trim().lowercase()
-        return if (uId.isNotEmpty()) usernameMap[uId] else null
+        if (uId.isEmpty()) return null
+        if (!provider.isNullOrBlank()) {
+            return providerUsernameMap[Pair(provider, uId)]
+        }
+        return usernameMap[uId]
     }
 }
 
@@ -675,14 +719,14 @@ fun ArabicSubscriberCard(
     onClick: () -> Unit
 ) {
     val matcher = localAccountMatcher ?: remember(localAccounts) { LocalAccountMatcher(localAccounts) }
-    val matchingAccount = remember(user.userID, user.displayName, user.customerName, matcher) {
+    val matchingAccount = remember(user.userID, user.displayName, user.customerName, user.originProvider, matcher) {
         matcher.findMatching(user)
     }
     // Archived cards are excluded from matcher.findMatching by the Fix3 fail-closed rule
     // (history-only must never hijack a live subscriber). Their real balances still belong on
     // their own card, so fall back to an identity-stable exact-username archived lookup.
     val archivedBalanceAccount = if (user.isHistoryOnly) {
-        remember(user.userID, matcher) { matcher.findArchivedByUsername(user.userID) ?: matchingAccount }
+        remember(user.userID, user.originProvider, matcher) { matcher.findArchivedByUsername(user.userID, user.originProvider) ?: matchingAccount }
     } else null
     val balanceSourceAccount = archivedBalanceAccount ?: matchingAccount
     
@@ -834,8 +878,8 @@ fun ArabicSubscriberCard(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            // Provider Badge
-                            val effectiveProvider = matchingAccount?.operationProvider ?: user.originProvider
+                            // Provider Badge: Authoritative identity belongs to the rendered subscriber
+                            val effectiveProvider = user.originProvider ?: matchingAccount?.operationProvider
                             if (effectiveProvider != null) {
                                 val isAlamiry = effectiveProvider == SasProviders.ALAMIRY
                                 val badgeColor = if (isAlamiry) Color(0xFF5E5CE6) else Color(0xFF0A84FF)

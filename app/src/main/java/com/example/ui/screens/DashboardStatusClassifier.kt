@@ -178,7 +178,7 @@ object DashboardStatusClassifier {
         nowMs: Long
     ): Int {
         return list.count { user ->
-            val matchingAccount = localAccountMatcher.findMatchingByUsername(user.userID) ?: localAccountMatcher.findMatching(user)
+            val matchingAccount = localAccountMatcher.findMatching(user)
             if (matchingAccount?.isHistoryOnlySubscriber == true) return@count false
             matches(user, matchingAccount, filter, nowMs)
         }
@@ -191,7 +191,7 @@ object DashboardStatusClassifier {
         nowMs: Long
     ): List<UserListItem> {
         return list.filter { user ->
-            val matchingAccount = localAccountMatcher.findMatchingByUsername(user.userID) ?: localAccountMatcher.findMatching(user)
+            val matchingAccount = localAccountMatcher.findMatching(user)
             if (matchingAccount?.isHistoryOnlySubscriber == true) return@filter false
             matches(user, matchingAccount, filter, nowMs)
         }

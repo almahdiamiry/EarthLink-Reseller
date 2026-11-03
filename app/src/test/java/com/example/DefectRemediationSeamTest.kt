@@ -483,6 +483,50 @@ class DefectRemediationSeamTest {
         assertEquals("acc_local", matched!!.id)
     }
 
+    /**
+     * Claim: INV-09 / Multi-Provider Isolation: LocalAccountMatcher must isolate matching by operationProvider
+     *        so that a SAMM live subscriber never binds to an EarthLink account with the same username.
+     * Seam / Environment: JVM tier unit test.
+     * Independent Oracle: A SAMM UserListItem ("user_x", originProvider = ALAMIRY) matched against an EarthLink
+     *                     account ("user_x", operationProvider = EARTHLINK) must resolve to null.
+     */
+    @Test
+    fun fix3_localAccountMatcher_providerAwareIsolation() {
+        val elAccount = LocalAccount(
+            id = "acc_el",
+            earthlinkUsername = "user_shared",
+            displayName = "Shared User",
+            operationProvider = com.example.core.model.SasProviders.EARTHLINK
+        )
+        val sammAccount = LocalAccount(
+            id = "acc_samm",
+            earthlinkUsername = "user_shared",
+            displayName = "Shared User",
+            operationProvider = com.example.core.model.SasProviders.ALAMIRY
+        )
+        val matcherWithBoth = LocalAccountMatcher(listOf(elAccount, sammAccount))
+        val matcherWithElOnly = LocalAccountMatcher(listOf(elAccount))
+
+        val sammUser = UserListItem(
+            userIDLower = "user_shared",
+            customerNameLower = "Shared User",
+            originProvider = com.example.core.model.SasProviders.ALAMIRY
+        )
+        val elUser = UserListItem(
+            userIDLower = "user_shared",
+            customerNameLower = "Shared User",
+            originProvider = com.example.core.model.SasProviders.EARTHLINK
+        )
+
+        // When both exist: each resolves to its own provider's account
+        assertEquals("acc_samm", matcherWithBoth.findMatching(sammUser)?.id)
+        assertEquals("acc_el", matcherWithBoth.findMatching(elUser)?.id)
+
+        // When only EarthLink account exists in DB, SAMM live subscriber must NEVER match it
+        assertNull("SAMM live subscriber must not bind to EarthLink LocalAccount with same username", matcherWithElOnly.findMatching(sammUser))
+        assertEquals("acc_el", matcherWithElOnly.findMatching(elUser)?.id)
+    }
+
     @Test
     fun gate3_matcherInteraction_provesAllSixVisibilityCases() {
         val nowMs = 1700000000000L

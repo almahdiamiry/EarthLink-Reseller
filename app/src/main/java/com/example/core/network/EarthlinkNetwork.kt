@@ -310,7 +310,7 @@ class NetworkClient(private val context: Context) {
             val newToken = if (!currentToken.isNullOrEmpty() && currentToken != requestHeaderToken) {
                 currentToken
             } else {
-                refreshEarthlinkToken(isGoogleUser = usesIspAdminAuth)
+                refreshEarthlinkToken(isGoogleUser = isGoogleUser)
             }
 
             if (!newToken.isNullOrEmpty()) {
@@ -352,7 +352,7 @@ class NetworkClient(private val context: Context) {
                 synchronized(tokenLock) {
                     apiToken = prefManager.getEarthlinkApiToken()
                     if (apiToken.isNullOrEmpty()) {
-                        apiToken = refreshEarthlinkToken(isGoogleUser = true)
+                        apiToken = refreshEarthlinkToken(isGoogleUser = isGoogleUser)
                     }
                 }
             }

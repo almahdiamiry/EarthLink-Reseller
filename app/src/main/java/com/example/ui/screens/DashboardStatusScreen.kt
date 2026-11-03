@@ -64,7 +64,7 @@ fun DashboardStatusScreen(
     // Authoritative population: current ISP subscribers only (excluding any history-only accounts)
     val ispSubscribers = remember(subscribers, localAccountMatcher) {
         subscribers.filter { sub ->
-            val match = localAccountMatcher.findMatchingByUsername(sub.userID) ?: localAccountMatcher.findMatching(sub)
+            val match = localAccountMatcher.findMatching(sub)
             match?.isHistoryOnlySubscriber != true
         }
     }

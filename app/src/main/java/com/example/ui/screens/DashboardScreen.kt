@@ -272,7 +272,7 @@ fun DashboardScreen(
                 if (key != null && seenKeys.contains(key)) {
                     continue
                 }
-                val matchingAccount = localAccountMatcher.findMatchingByUsername(sub.userID) ?: localAccountMatcher.findMatching(sub)
+                val matchingAccount = localAccountMatcher.findMatching(sub)
                 // Archived rows are shown, never hidden (user decision): if the ISP still lists
                 // the subscriber, the live copy wins (stale archive flag), so no skip here.
                 mergedList.add(sub)

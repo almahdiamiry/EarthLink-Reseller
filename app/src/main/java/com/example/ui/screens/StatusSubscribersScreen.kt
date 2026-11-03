@@ -67,7 +67,7 @@ fun StatusSubscribersScreen(
     }
     val ispSubscribers = remember(providerScoped, localAccountMatcher) {
         providerScoped.filter { sub ->
-            val match = localAccountMatcher.findMatchingByUsername(sub.userID) ?: localAccountMatcher.findMatching(sub)
+            val match = localAccountMatcher.findMatching(sub)
             match?.isHistoryOnlySubscriber != true
         }
     }
