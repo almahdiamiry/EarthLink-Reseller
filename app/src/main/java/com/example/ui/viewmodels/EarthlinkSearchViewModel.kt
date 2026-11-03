@@ -426,8 +426,12 @@ class EarthlinkSearchViewModel(
         )
     }
 
-    fun loadUserDetail(userIndex: Int, knownUserId: String? = null): kotlinx.coroutines.Job {
-        val currentProvider = _selectedProvider.value
+    fun loadUserDetail(
+        userIndex: Int,
+        knownUserId: String? = null,
+        explicitProvider: String? = null
+    ): kotlinx.coroutines.Job {
+        val currentProvider = explicitProvider ?: _selectedProvider.value
         val sanitizedUserId = knownUserId?.trim()?.takeIf {
             it.isNotBlank() && !it.equals("null", ignoreCase = true)
         }
@@ -557,7 +561,8 @@ class EarthlinkSearchViewModel(
                         return@launch
                     }
                     val accountProvider = identityOwner?.operationProvider
-                    val targetProvider = accountProvider
+                    val targetProvider = explicitProvider
+                        ?: accountProvider
                         ?: _selectedUser.value?.originProvider
                         ?: (if (userIndex > 0) com.example.core.model.SasProviders.EARTHLINK else null)
                         ?: currentProvider

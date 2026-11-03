@@ -461,7 +461,9 @@ fun SammSettingsSection(
                                 if (testResult == SammConnectionStatus.CONNECTED) {
                                     prefs.saveSammBaseUrl(normalizedUrl)
                                     prefs.saveSammToken(token)
-                                    prefs.setLastSelectedLoginProvider(com.example.core.model.SasProviders.ALAMIRY)
+                                    if (!prefs.isEarthlinkConfigured()) {
+                                        prefs.setLastSelectedLoginProvider(com.example.core.model.SasProviders.ALAMIRY)
+                                    }
                                     isConfigured = true
                                     showEditForm = false
                                     actionFeedback = if (isAr) "تم الاتصال وحفظ الإعدادات بنجاح" else "Connected and saved successfully"

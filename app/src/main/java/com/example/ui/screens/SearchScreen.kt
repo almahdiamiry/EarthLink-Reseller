@@ -67,6 +67,16 @@ fun SearchScreen(
     val users by viewModel.usersList.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
+    val selectedProvider by viewModel.selectedProvider.collectAsStateWithLifecycle()
+    val accessState by viewModel.prefs.providerAccessStateFlow.collectAsStateWithLifecycle(
+        initialValue = viewModel.prefs.getProviderAccessState()
+    )
+    val hasBoth = (accessState.hasEarthlink || viewModel.prefs.getDemoMode()) && accessState.hasSamm
+
+    val titleText = when (selectedProvider) {
+        SasProviders.ALAMIRY -> if (lang == "ar") "البحث في سيرفر سام" else "SAMM Server Search"
+        else -> if (lang == "ar") "البحث في سيرفر ايرثلنك" else "Earthlink Server Search"
+    }
 
     Column(
         modifier = Modifier
@@ -75,7 +85,58 @@ fun SearchScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(text = if (lang == "ar") "البحث في سيرفر ايرثلنك" else "Earthlink Server Search", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text(text = titleText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+
+        if (hasBoth) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    listOf(
+                        Pair(SasProviders.EARTHLINK, if (lang == "ar") "ايرثلنك" else "EarthLink"),
+                        Pair(SasProviders.ALAMIRY, if (lang == "ar") "سام" else "SAMM")
+                    ).forEach { (providerKey, label) ->
+                        val isSelected = selectedProvider == providerKey
+                        val activeColor = if (providerKey == SasProviders.EARTHLINK) Color(0xFF0A84FF) else Color(0xFF7C4DFF)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(9.dp))
+                                .background(if (isSelected) activeColor.copy(alpha = 0.22f) else Color.Transparent)
+                                .border(
+                                    width = 1.dp,
+                                    color = if (isSelected) activeColor.copy(alpha = 0.6f) else Color.Transparent,
+                                    shape = RoundedCornerShape(9.dp)
+                                )
+                                .clickable {
+                                    if (selectedProvider != providerKey) {
+                                        viewModel.setSelectedProvider(providerKey)
+                                        if (query.isNotBlank()) {
+                                            viewModel.search()
+                                        }
+                                    }
+                                }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
 
         Row(
             modifier = Modifier.fillMaxWidth(),

@@ -270,8 +270,14 @@ fun OperatorMainScreen(authViewModel: AuthViewModel) {
                             onUserClick = { userItem ->
                                 searchViewModel.clearErrorAndSuccess()
                                 searchViewModel.prepareUserDetail(userItem.userIndex, userItem)
-                                val idParam = userItem.userID.takeIf { it.isNotBlank() }?.let { "?userId=${android.net.Uri.encode(it)}" } ?: ""
-                                navController.navigate("user_detail/${userItem.userIndex}$idParam")
+                                val id = userItem.userID.takeIf { it.isNotBlank() }
+                                val prov = userItem.originProvider ?: searchViewModel.selectedProvider.value
+                                val queryParams = buildList {
+                                    if (id != null) add("userId=${android.net.Uri.encode(id)}")
+                                    if (!prov.isNullOrBlank()) add("provider=${android.net.Uri.encode(prov)}")
+                                }.joinToString("&")
+                                val navRoute = if (queryParams.isNotEmpty()) "user_detail/${userItem.userIndex}?$queryParams" else "user_detail/${userItem.userIndex}"
+                                navController.navigate(navRoute)
                             },
                             onPlusClick = {
                                 showCreateSheet = true
@@ -289,6 +295,9 @@ fun OperatorMainScreen(authViewModel: AuthViewModel) {
                             onBack = { navController.popBackStack() },
                             onCardClick = { filter, provider ->
                                 navController.navigate("status_subscribers/${filter.key}?provider=$provider")
+                            },
+                            onProviderChange = { prov ->
+                                searchViewModel.setSelectedProvider(prov)
                             }
                         )
                     }
@@ -316,8 +325,14 @@ fun OperatorMainScreen(authViewModel: AuthViewModel) {
                             onUserClick = { userItem ->
                                 searchViewModel.clearErrorAndSuccess()
                                 searchViewModel.prepareUserDetail(userItem.userIndex, userItem)
-                                val idParam = userItem.userID.takeIf { it.isNotBlank() }?.let { "?userId=${android.net.Uri.encode(it)}" } ?: ""
-                                navController.navigate("user_detail/${userItem.userIndex}$idParam")
+                                val id = userItem.userID.takeIf { it.isNotBlank() }
+                                val prov = userItem.originProvider ?: provider
+                                val queryParams = buildList {
+                                    if (id != null) add("userId=${android.net.Uri.encode(id)}")
+                                    if (!prov.isNullOrBlank()) add("provider=${android.net.Uri.encode(prov)}")
+                                }.joinToString("&")
+                                val navRoute = if (queryParams.isNotEmpty()) "user_detail/${userItem.userIndex}?$queryParams" else "user_detail/${userItem.userIndex}"
+                                navController.navigate(navRoute)
                             }
                         )
                     }
@@ -330,17 +345,24 @@ fun OperatorMainScreen(authViewModel: AuthViewModel) {
                             onUserSelect = { user ->
                                 searchViewModel.clearErrorAndSuccess()
                                 searchViewModel.prepareUserDetail(user.userIndex, user)
-                                val idParam = user.userID.takeIf { it.isNotBlank() }?.let { "?userId=${android.net.Uri.encode(it)}" } ?: ""
-                                navController.navigate("user_detail/${user.userIndex}$idParam")
+                                val id = user.userID.takeIf { it.isNotBlank() }
+                                val prov = user.originProvider ?: searchViewModel.selectedProvider.value
+                                val queryParams = buildList {
+                                    if (id != null) add("userId=${android.net.Uri.encode(id)}")
+                                    if (!prov.isNullOrBlank()) add("provider=${android.net.Uri.encode(prov)}")
+                                }.joinToString("&")
+                                val navRoute = if (queryParams.isNotEmpty()) "user_detail/${user.userIndex}?$queryParams" else "user_detail/${user.userIndex}"
+                                navController.navigate(navRoute)
                             }
                         )
                     }
                 }
                 composable(
-                    route = "user_detail/{userIndex}?userId={userId}",
+                    route = "user_detail/{userIndex}?userId={userId}&provider={provider}",
                     arguments = listOf(
                         navArgument("userIndex") { type = NavType.IntType },
-                        navArgument("userId") { type = NavType.StringType; nullable = true }
+                        navArgument("userId") { type = NavType.StringType; nullable = true; defaultValue = null },
+                        navArgument("provider") { type = NavType.StringType; nullable = true; defaultValue = null }
                     ),
                     enterTransition = {
                         slideIntoContainer(
@@ -364,9 +386,12 @@ fun OperatorMainScreen(authViewModel: AuthViewModel) {
                     val userIndex = backStackEntry.arguments?.getInt("userIndex") ?: 0
                     val rawUserId = backStackEntry.arguments?.getString("userId")
                     val userId = rawUserId?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
+                    val rawProvider = backStackEntry.arguments?.getString("provider")
+                    val provider = rawProvider?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
                     UserDetailScreenV2(
                         userIndex = userIndex,
                         userId = userId,
+                        provider = provider,
                         viewModel = searchViewModel,
                         lang = currentLang,
                         onBack = { navController.popBackStack() }

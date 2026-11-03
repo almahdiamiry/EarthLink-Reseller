@@ -307,6 +307,7 @@ object AccountMaterializationHelper {
 fun UserDetailScreenV2(
     userIndex: Int,
     userId: String? = null,
+    provider: String? = null,
     viewModel: EarthlinkSearchViewModel,
     lang: String = "ar",
     onBack: () -> Unit
@@ -320,7 +321,7 @@ fun UserDetailScreenV2(
     val success by viewModel.actionSuccess.collectAsStateWithLifecycle()
 
     val targetUsername = detail?.userID?.trim() ?: ""
-    val targetProvider = detail?.originProvider ?: viewModel.selectedProvider.value
+    val targetProvider = provider ?: detail?.originProvider ?: viewModel.selectedProvider.value
     val matchingAccountFlow = remember(userIndex, targetUsername, targetProvider) {
         if (targetUsername.isNotEmpty()) {
             viewModel.getAccountByUsernameOrId(targetUsername, targetProvider)
@@ -445,8 +446,8 @@ fun UserDetailScreenV2(
         }
     }
 
-    LaunchedEffect(userIndex, userId) {
-        viewModel.loadUserDetail(userIndex, userId)
+    LaunchedEffect(userIndex, userId, provider) {
+        viewModel.loadUserDetail(userIndex, userId, explicitProvider = provider)
     }
 
     if (showRefillDialog) {
@@ -2064,7 +2065,7 @@ if (showExtendDialog) {
                         }
                     },
                     actions = {
-                        IconButton(onClick = { viewModel.loadUserDetail(userIndex, userId) }) {
+                        IconButton(onClick = { viewModel.loadUserDetail(userIndex, userId, explicitProvider = provider) }) {
                             Icon(
                                 imageVector = Icons.Default.Refresh,
                                 contentDescription = if (currentLang == "ar") "تحديث" else "Refresh",
@@ -2753,7 +2754,7 @@ if (showExtendDialog) {
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 12.dp)
                     ) {
-                        val bannerIsSamm = (matchingAccount?.operationProvider ?: detail?.originProvider ?: viewModel.selectedProvider.value) == com.example.core.model.SasProviders.ALAMIRY
+                        val bannerIsSamm = (provider ?: matchingAccount?.operationProvider ?: detail?.originProvider ?: viewModel.selectedProvider.value) == com.example.core.model.SasProviders.ALAMIRY
                         val bannerTip = if (bannerIsSamm) {
                             if (currentLang == "ar") "مزود الخدمة: سام" else "Provider: SAMM"
                         } else {

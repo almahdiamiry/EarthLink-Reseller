@@ -29,6 +29,7 @@ import com.example.core.model.SasProviders
 fun DashboardStatusScreen(
     viewModel: DashboardViewModel,
     onBack: () -> Unit,
+    onProviderChange: ((String) -> Unit)? = null,
     onCardClick: (DashboardStatusFilter, String) -> Unit
 ) {
     val currentLang by viewModel.prefs.languageFlow.collectAsStateWithLifecycle(initialValue = viewModel.prefs.getLanguage())
@@ -162,7 +163,11 @@ fun DashboardStatusScreen(
                                         color = if (isSelected) activeColor.copy(alpha = 0.6f) else Color.Transparent,
                                         shape = RoundedCornerShape(9.dp)
                                     )
-                                    .clickable { selectedProvider = providerKey }
+                                    .clickable {
+                                        selectedProvider = providerKey
+                                        viewModel.prefs.setLastSelectedLoginProvider(providerKey)
+                                        onProviderChange?.invoke(providerKey)
+                                    }
                                     .padding(vertical = 10.dp),
                                 contentAlignment = Alignment.Center
                             ) {

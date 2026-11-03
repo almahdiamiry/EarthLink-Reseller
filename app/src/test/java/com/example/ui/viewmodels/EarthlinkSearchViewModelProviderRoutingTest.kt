@@ -672,6 +672,111 @@ class EarthlinkSearchViewModelProviderRoutingTest {
         assertEquals("Must dispatch to SAMM gateway", 1, fakeSammSasGateway.extendCalls.get())
     }
 
+    /**
+     * Claim: When explicitProvider = SasProviders.EARTHLINK is passed to loadUserDetail,
+     *        it routes exclusively to EarthLink gateway and sets originProvider = EARTHLINK,
+     *        even if viewModel.selectedProvider was ALAMIRY and identityOwner operationProvider was ALAMIRY.
+     * Seam: ROBOLECTRIC tier, EarthlinkSearchViewModel.loadUserDetail.
+     * Independent Oracle: fakeEarthlinkSasGateway.getSubscriberCalls == 1, fakeSammSasGateway.getSubscriberCalls == 0,
+     *                     userDetail.originProvider == SasProviders.EARTHLINK.
+     */
+    @Test
+    fun loadUserDetail_withExplicitEarthlink_routesToEarthlink_evenWhenSelectedProviderIsSamm() = runTest {
+        fakeEarthlinkSasGateway.subscriberDetailResult = SasSubscriberView(
+            subscriberId = "earth_detail_explicit",
+            username = "earth_explicit_user",
+            displayName = "EarthLink Explicit User",
+            status = "Active",
+            planId = "1",
+            planName = "EarthLink Plan"
+        )
+        fakeSammSasGateway.subscriberDetailResult = SasSubscriberView(
+            subscriberId = "samm_detail_ignored",
+            username = "earth_explicit_user",
+            displayName = "SAMM Ignored User",
+            status = "Active",
+            planId = "1",
+            planName = "SAMM Plan"
+        )
+
+        // Precondition: user selected SAMM globally or in search
+        viewModel.setSelectedProvider(SasProviders.ALAMIRY)
+
+        // Also insert a local account with operationProvider = ALAMIRY to test that explicitProvider takes precedence
+        val localAcc = LocalAccount(
+            id = "acc_explicit_test",
+            earthlinkUsername = "earth_explicit_user",
+            displayName = "Test User",
+            currentPriceIqd = 35_000.0,
+            debtIqd = 0.0,
+            operationProvider = SasProviders.ALAMIRY
+        )
+        db.localAccountDao().insert(localAcc)
+
+        // Action: Load user detail explicitly specifying EARTHLINK
+        viewModel.loadUserDetail(
+            userIndex = 555,
+            knownUserId = "earth_explicit_user",
+            explicitProvider = SasProviders.EARTHLINK
+        ).join()
+
+        assertEquals("EarthLink SAS gateway must receive exactly 1 call", 1, fakeEarthlinkSasGateway.getSubscriberCalls.get())
+        assertEquals("SAMM gateway must receive 0 calls", 0, fakeSammSasGateway.getSubscriberCalls.get())
+
+        val detail = viewModel.selectedUser.value
+        assertNotNull("User detail must not be null", detail)
+        assertEquals("earth_explicit_user", detail?.userID)
+        assertEquals("EarthLink Explicit User", detail?.customerFullName)
+        assertEquals(SasProviders.EARTHLINK, detail?.originProvider)
+    }
+
+    /**
+     * Claim: When explicitProvider = SasProviders.ALAMIRY is passed to loadUserDetail,
+     *        it routes exclusively to SAMM gateway and sets originProvider = ALAMIRY,
+     *        even if viewModel.selectedProvider was EARTHLINK.
+     * Seam: ROBOLECTRIC tier, EarthlinkSearchViewModel.loadUserDetail.
+     * Independent Oracle: fakeSammSasGateway.getSubscriberCalls == 1, fakeEarthlinkSasGateway.getSubscriberCalls == 0,
+     *                     userDetail.originProvider == SasProviders.ALAMIRY.
+     */
+    @Test
+    fun loadUserDetail_withExplicitSamm_routesToSamm_evenWhenSelectedProviderIsEarthlink() = runTest {
+        fakeSammSasGateway.subscriberDetailResult = SasSubscriberView(
+            subscriberId = "samm_detail_explicit",
+            username = "samm_explicit_user",
+            displayName = "SAMM Explicit User",
+            status = "Active",
+            planId = "1",
+            planName = "SAMM Plan"
+        )
+        fakeEarthlinkSasGateway.subscriberDetailResult = SasSubscriberView(
+            subscriberId = "earth_detail_ignored",
+            username = "samm_explicit_user",
+            displayName = "EarthLink Ignored User",
+            status = "Active",
+            planId = "1",
+            planName = "EarthLink Plan"
+        )
+
+        // Precondition: user selected EARTHLINK globally
+        viewModel.setSelectedProvider(SasProviders.EARTHLINK)
+
+        // Action: Load user detail explicitly specifying ALAMIRY
+        viewModel.loadUserDetail(
+            userIndex = 777,
+            knownUserId = "samm_explicit_user",
+            explicitProvider = SasProviders.ALAMIRY
+        ).join()
+
+        assertEquals("SAMM gateway must receive exactly 1 call", 1, fakeSammSasGateway.getSubscriberCalls.get())
+        assertEquals("EarthLink SAS gateway must receive 0 calls", 0, fakeEarthlinkSasGateway.getSubscriberCalls.get())
+
+        val detail = viewModel.selectedUser.value
+        assertNotNull("User detail must not be null", detail)
+        assertEquals("samm_explicit_user", detail?.userID)
+        assertEquals("SAMM Explicit User", detail?.customerFullName)
+        assertEquals(SasProviders.ALAMIRY, detail?.originProvider)
+    }
+
     // ========================================================================
     // Test Doubles
     // ========================================================================
