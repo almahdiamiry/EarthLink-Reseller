@@ -420,7 +420,7 @@ class DashboardViewModel(
                             val prov = item.originProvider ?: activeLoginProvider
                             val key = Pair(prov, item.userID.trim().lowercase(java.util.Locale.US))
                             if (key.second.isNotEmpty() && seenKeys.add(key)) {
-                                combined.add(item)
+                                combined.add(item.copy(originProvider = prov))
                             }
                         }
                         for (item in secondaryList) {
@@ -428,7 +428,7 @@ class DashboardViewModel(
                             val prov = item.originProvider ?: fallbackProv
                             val key = Pair(prov, item.userID.trim().lowercase(java.util.Locale.US))
                             if (key.second.isNotEmpty() && seenKeys.add(key)) {
-                                combined.add(item)
+                                combined.add(item.copy(originProvider = prov))
                             }
                         }
                         _subscribersList.value = combined

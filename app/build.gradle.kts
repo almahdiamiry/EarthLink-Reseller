@@ -47,8 +47,8 @@ android {
     applicationId = "com.alamiry.earthlinkreseller"
     minSdk = 24
     targetSdk = 36
-    versionCode = 71
-    versionName = "1.71.0"
+    versionCode = 72
+    versionName = "1.72.0"
     
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -109,7 +109,8 @@ android {
     unitTests {
       isIncludeAndroidResources = true
       all { testTask ->
-        testTask.maxHeapSize = "2048m"
+        testTask.maxHeapSize = "3072m"
+        testTask.forkEvery = 40
         // A wedged test must fail the build, not hang it. The full suite takes ~3 minutes, so
         // 30 minutes is far beyond normal and only trips on a genuinely blocked test (e.g. a
         // MockWebServer request read that never arrives).

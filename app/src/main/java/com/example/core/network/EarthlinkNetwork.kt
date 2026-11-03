@@ -236,8 +236,8 @@ class NetworkClient(private val context: Context) {
     private fun refreshEarthlinkToken(isGoogleUser: Boolean = true): String? {
         val testRefresher = tokenRefresherForTest
         if (testRefresher != null) return testRefresher.invoke()
-        val username = if (isGoogleUser) prefManager.getIspAdminUsername() else prefManager.getUsername()
-        val password = if (isGoogleUser) prefManager.getIspAdminPassword() else prefManager.getPassword()
+        val username = prefManager.getIspAdminUsername()?.takeIf { it.isNotBlank() } ?: prefManager.getUsername()
+        val password = prefManager.getIspAdminPassword()?.takeIf { it.isNotBlank() } ?: prefManager.getPassword()
         if (username.isNullOrEmpty() || password.isNullOrEmpty()) return null
         
         // Use a separate client without authInterceptor to avoid infinite recursion
@@ -272,9 +272,8 @@ class NetworkClient(private val context: Context) {
                     val loginResponse = adapter.fromJson(bodyString)
                     val token = loginResponse?.accessToken
                     if (token != null) {
-                        if (isGoogleUser) {
-                            prefManager.saveEarthlinkApiToken(token)
-                        } else {
+                        prefManager.saveEarthlinkApiToken(token)
+                        if (!isGoogleUser) {
                             prefManager.saveAuthToken(token)
                         }
                         token
@@ -300,7 +299,9 @@ class NetworkClient(private val context: Context) {
         val token = prefManager.getAuthToken()
         val isGoogleUser = token?.startsWith("google_oauth_session_") == true
         val hasIspCredentials = !prefManager.getIspAdminUsername().isNullOrBlank() && !prefManager.getIspAdminPassword().isNullOrBlank()
-        val usesIspAdminAuth = isGoogleUser || (token.isNullOrEmpty() && hasIspCredentials)
+        val usesIspAdminAuth = isGoogleUser || hasIspCredentials
+
+        if (!usesIspAdminAuth && prefManager.getUsername().isNullOrBlank()) return@Authenticator null
 
         synchronized(tokenLock) {
             val currentToken = if (usesIspAdminAuth) prefManager.getEarthlinkApiToken() else prefManager.getAuthToken()

@@ -2090,7 +2090,7 @@ val targetUserId = account?.earthlinkUsername ?: _selectedUser.value?.userID ?: 
                 } else {
                     updated.ispSubscriberId?.toIntOrNull() ?: 0
                 }
-                loadUserDetail(userIndexToUse, knownUserId = username)
+                loadUserDetail(userIndexToUse, knownUserId = username, explicitProvider = newProvider)
                 if (newProvider == com.example.core.model.SasProviders.EARTHLINK) {
                     loadPackages()
                 }

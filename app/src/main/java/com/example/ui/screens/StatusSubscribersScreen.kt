@@ -63,7 +63,7 @@ fun StatusSubscribersScreen(
 
     // Authoritative population: scoped strictly to the selected ISP passed from Dashboard
     val providerScoped = remember(subscribers, provider) {
-        subscribers.filter { it.originProvider == null || it.originProvider == provider }
+        subscribers.filter { (it.originProvider ?: com.example.core.model.SasProviders.EARTHLINK) == provider }
     }
     val ispSubscribers = remember(providerScoped, localAccountMatcher) {
         providerScoped.filter { sub ->

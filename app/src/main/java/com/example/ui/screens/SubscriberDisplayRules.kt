@@ -185,6 +185,9 @@ object SubscriberDisplayRules {
     ): List<com.example.core.model.UserListItem> {
         if (sessions.isEmpty()) return users
         return users.map { user ->
+            if (user.originProvider != null && user.originProvider != com.example.core.model.SasProviders.ALAMIRY) {
+                return@map user
+            }
             val session = sessions[user.userID.trim().lowercase()]
             if (session != null && session.isOnline) {
                 user.copy(
