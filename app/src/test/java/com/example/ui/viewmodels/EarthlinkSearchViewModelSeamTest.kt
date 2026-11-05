@@ -203,12 +203,15 @@ class EarthlinkSearchViewModelSeamTest {
     fun setup() {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val context = ApplicationProvider.getApplicationContext<Context>()
+        context.getSharedPreferences("reseller_prefs_fallback", Context.MODE_PRIVATE).edit().clear().commit()
+        context.getSharedPreferences("reseller_prefs", Context.MODE_PRIVATE).edit().clear().commit()
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
         prefs = PreferenceManager(context).apply {
             setDemoMode(false)
             saveIspAdminUsername("admin")
             saveIspAdminPassword("pass")
             setLanguage("ar")
+            setLastSelectedLoginProvider(com.example.core.model.SasProviders.EARTHLINK)
         }
         accountRepo = LocalAccountRepositoryImpl(db, db.localAccountDao(), db.syncOutboxDao())
         ledgerRepo = LocalLedgerRepositoryImpl(db, db.localLedgerEntryDao(), db.localAccountDao(), db.syncOutboxDao(), db.pendingExternalOperationDao())
@@ -223,6 +226,9 @@ class EarthlinkSearchViewModelSeamTest {
     fun tearDown() {
         Dispatchers.resetMain()
         db.close()
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.getSharedPreferences("reseller_prefs_fallback", Context.MODE_PRIVATE).edit().clear().commit()
+        context.getSharedPreferences("reseller_prefs", Context.MODE_PRIVATE).edit().clear().commit()
     }
 
     private fun createViewModel(

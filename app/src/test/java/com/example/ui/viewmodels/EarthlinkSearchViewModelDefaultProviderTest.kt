@@ -117,6 +117,9 @@ class EarthlinkSearchViewModelDefaultProviderTest {
     fun tearDown() {
         Dispatchers.resetMain()
         db.close()
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.getSharedPreferences("reseller_prefs_fallback", Context.MODE_PRIVATE).edit().clear().commit()
+        context.getSharedPreferences("reseller_prefs", Context.MODE_PRIVATE).edit().clear().commit()
     }
 
     private fun createViewModel(): EarthlinkSearchViewModel {

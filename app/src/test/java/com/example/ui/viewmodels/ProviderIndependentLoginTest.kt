@@ -35,8 +35,16 @@ class ProviderIndependentLoginTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
+        context.getSharedPreferences("reseller_prefs_fallback", Context.MODE_PRIVATE).edit().clear().commit()
+        context.getSharedPreferences("reseller_prefs", Context.MODE_PRIVATE).edit().clear().commit()
         preferenceManager = PreferenceManager(context)
         preferenceManager.clearCredentials()
+    }
+
+    @org.junit.After
+    fun tearDown() {
+        context.getSharedPreferences("reseller_prefs_fallback", Context.MODE_PRIVATE).edit().clear().commit()
+        context.getSharedPreferences("reseller_prefs", Context.MODE_PRIVATE).edit().clear().commit()
     }
 
     @Test

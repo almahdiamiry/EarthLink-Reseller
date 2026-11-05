@@ -689,9 +689,15 @@ open class PreferenceManager(private val context: Context) {
 
     fun getPersistedLastSelectedLoginProvider(): String? = prefs.getString(KEY_LAST_SELECTED_LOGIN_PROVIDER, null)
 
+    private val _lastSelectedLoginProviderFlow by lazy {
+        MutableStateFlow(getLastSelectedLoginProvider())
+    }
+    val lastSelectedLoginProviderFlow by lazy { _lastSelectedLoginProviderFlow.asStateFlow() }
+
     fun setLastSelectedLoginProvider(provider: String, fromRemote: Boolean = false) {
         if (SasProviders.isValid(provider)) {
             prefs.edit().putString(KEY_LAST_SELECTED_LOGIN_PROVIDER, provider).apply()
+            _lastSelectedLoginProviderFlow.value = provider
             if (!fromRemote) recordSettingsLocalMutation()
         }
     }
@@ -700,6 +706,7 @@ open class PreferenceManager(private val context: Context) {
         val state = getProviderAccessState()
         _providerAccessStateFlow.value = state
         _isLoggedInFlow.value = state.isAppUnlocked
+        _lastSelectedLoginProviderFlow.value = getLastSelectedLoginProvider()
     }
 
     private val _demoModeFlow by lazy { MutableStateFlow(prefs.getBoolean(KEY_DEMO_MODE, false)) }

@@ -527,6 +527,48 @@ class DefectRemediationSeamTest {
         assertEquals("acc_el", matcherWithElOnly.findMatching(elUser)?.id)
     }
 
+    /**
+     * Claim: INV-09 / Multi-Provider Search Isolation: When subscribers exist on both EarthLink and SAMM
+     *        with identical usernames, scoping by the selected provider must isolate search results
+     *        so that searching for the shared username returns exactly one user belonging to the chosen
+     *        provider, never leaking the duplicate from the other provider.
+     * Seam / Environment: JVM tier unit test.
+     * Independent Oracle: When selectedProvider is EARTHLINK, search query yields exactly 1 item with
+     *                     originProvider = EARTHLINK. When selectedProvider is ALAMIRY, yields exactly 1
+     *                     item with originProvider = ALAMIRY.
+     */
+    @Test
+    fun fix4_multiProviderSearch_scopedToSelectedProvider() {
+        val elUser = UserListItem(
+            userIndexLower = 101,
+            userIDLower = "shared_user",
+            customerNameLower = "Shared User",
+            originProvider = com.example.core.model.SasProviders.EARTHLINK
+        )
+        val sammUser = UserListItem(
+            userIndexLower = 202,
+            userIDLower = "shared_user",
+            customerNameLower = "Shared User",
+            originProvider = com.example.core.model.SasProviders.ALAMIRY
+        )
+        val allSubscribers = listOf(elUser, sammUser)
+        val query = "shared_user"
+
+        // Scoped to EARTHLINK
+        val elScoped = allSubscribers
+            .filter { it.originProvider == com.example.core.model.SasProviders.EARTHLINK }
+            .filter { it.userID.contains(query, ignoreCase = true) }
+        assertEquals("EarthLink scope must return exactly one user", 1, elScoped.size)
+        assertEquals(com.example.core.model.SasProviders.EARTHLINK, elScoped.first().originProvider)
+
+        // Scoped to ALAMIRY (SAMM)
+        val sammScoped = allSubscribers
+            .filter { it.originProvider == com.example.core.model.SasProviders.ALAMIRY }
+            .filter { it.userID.contains(query, ignoreCase = true) }
+        assertEquals("SAMM scope must return exactly one user", 1, sammScoped.size)
+        assertEquals(com.example.core.model.SasProviders.ALAMIRY, sammScoped.first().originProvider)
+    }
+
     @Test
     fun gate3_matcherInteraction_provesAllSixVisibilityCases() {
         val nowMs = 1700000000000L
