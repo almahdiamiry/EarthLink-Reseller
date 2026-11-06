@@ -83,7 +83,7 @@ import kotlinx.coroutines.launch
  * row therefore stays pickable and carries an explicit "could not verify" notice instead.
  */
 internal fun isProviderRowSelectable(isConfigured: Boolean, presence: SasSubscriberPresence?): Boolean =
-    isConfigured && presence != SasSubscriberPresence.ABSENT
+    isConfigured
 
 /**
  * The trailing notice on a provider row, or null when there is nothing to report.
@@ -321,7 +321,7 @@ fun UserDetailScreenV2(
     val success by viewModel.actionSuccess.collectAsStateWithLifecycle()
 
     val targetUsername = detail?.userID?.trim() ?: ""
-    val targetProvider = provider ?: detail?.originProvider ?: viewModel.selectedProvider.value
+    val targetProvider = detail?.originProvider ?: provider ?: viewModel.selectedProvider.value
     val matchingAccountFlow = remember(userIndex, targetUsername, targetProvider) {
         if (targetUsername.isNotEmpty()) {
             viewModel.getAccountByUsernameOrId(targetUsername, targetProvider)
@@ -2065,7 +2065,7 @@ if (showExtendDialog) {
                         }
                     },
                     actions = {
-                        IconButton(onClick = { viewModel.loadUserDetail(userIndex, userId, explicitProvider = provider) }) {
+                        IconButton(onClick = { viewModel.loadUserDetail(userIndex, userId, explicitProvider = matchingAccount?.operationProvider ?: detail?.originProvider ?: provider) }) {
                             Icon(
                                 imageVector = Icons.Default.Refresh,
                                 contentDescription = if (currentLang == "ar") "تحديث" else "Refresh",
@@ -2754,7 +2754,7 @@ if (showExtendDialog) {
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 12.dp)
                     ) {
-                        val bannerIsSamm = (provider ?: matchingAccount?.operationProvider ?: detail?.originProvider ?: viewModel.selectedProvider.value) == com.example.core.model.SasProviders.ALAMIRY
+                        val bannerIsSamm = (matchingAccount?.operationProvider ?: detail?.originProvider ?: provider ?: viewModel.selectedProvider.value) == com.example.core.model.SasProviders.ALAMIRY
                         val bannerTip = if (bannerIsSamm) {
                             if (currentLang == "ar") "مزود الخدمة: سام" else "Provider: SAMM"
                         } else {

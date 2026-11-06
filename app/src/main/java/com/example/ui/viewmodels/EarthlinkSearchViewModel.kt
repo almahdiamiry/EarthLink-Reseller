@@ -721,62 +721,19 @@ class EarthlinkSearchViewModel(
                             }
                         }
                     } else if (!transportFailed) {
-                        // The target provider authoritatively holds no record for this subscriber.
+                        // The target provider authoritatively holds no live record for this subscriber.
+                        // Keep the local container active and display stored local info without destroying the account.
                         val still = _selectedUser.value
-                        val isCrossProviderSwitch = still?.originProvider != null && still.originProvider != targetProvider
-                        if (isCrossProviderSwitch) {
-                            // Cross-provider switch: retire the previous provider's plan/status/expiry
-                            // instead of presenting them under the newly selected provider.
-                            if (still != null &&
-                                (still.userIndex == userIndex || still.userID.equals(currentUserId, ignoreCase = true))
-                            ) {
-                                _selectedUser.value = still.copy(
-                                    packageNameLower = null,
-                                    accountIndexLower = null,
-                                    accountStatusLower = null,
-                                    expirationDateLower = null,
-                                    accountExpirationDateLower = null,
-                                    activeDaysLeftLower = null,
-                                    originProvider = targetProvider
-                                )
-                            }
-                        } else {
-                            val flipCandidate = identityOwner?.takeIf {
-                                it.operationProvider == targetProvider && !it.isHistoryOnlySubscriber
-                            }
-                            if (flipCandidate != null) {
-                                // A local container owns this identity and its OWN provider just
-                                // authoritatively denied the subscriber under the exact username key:
-                                // the same absence evidence the roster reconcile pass acts on, applied
-                                // row-scoped. Flip to history-only and keep the stored snapshot
-                                // displayed — the seeded package/status/expiry is the reseller's own
-                                // data and must never be clobbered by the ISP's "no record" answer.
-                                // If the answer was wrong (e.g. renamed username), the next trusted
-                                // roster reconcile restores the row (ISP_SUBSCRIBER_RESTORED).
-                                try {
-                                    localAccountRepository.markIspSubscriberDeleted(flipCandidate.id, targetProvider)
-                                } catch (e: kotlinx.coroutines.CancellationException) { throw e
-                                } catch (e: Exception) {
-                                    Log.w("EarthlinkSearchVM", "Row-scoped history-only flip failed: ${e.message}")
-                                }
-                            } else {
-                                // No local container owns this identity: retire the previous
-                                // provider's plan/status/expiry instead of presenting them under
-                                // the newly selected provider.
-                                if (still != null &&
-                                    (still.userIndex == userIndex || still.userID.equals(currentUserId, ignoreCase = true))
-                                ) {
-                                    _selectedUser.value = still.copy(
-                                        packageNameLower = null,
-                                        accountIndexLower = null,
-                                        accountStatusLower = null,
-                                        expirationDateLower = null,
-                                        accountExpirationDateLower = null,
-                                        activeDaysLeftLower = null,
-                                        originProvider = targetProvider
-                                    )
-                                }
-                            }
+                        if (still != null && (still.userIndex == userIndex || still.userID.equals(currentUserId, ignoreCase = true))) {
+                            _selectedUser.value = still.copy(
+                                packageNameLower = foundLocal?.packageName,
+                                accountIndexLower = null,
+                                accountStatusLower = if (foundLocal?.expiresAt != null) "Active" else null,
+                                expirationDateLower = foundLocal?.expiresAt,
+                                accountExpirationDateLower = foundLocal?.expiresAt,
+                                activeDaysLeftLower = null,
+                                originProvider = targetProvider
+                            )
                         }
                     }
                 } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e;
@@ -2059,6 +2016,7 @@ val targetUserId = account?.earthlinkUsername ?: _selectedUser.value?.userID ?: 
             val isProviderChanged = account.operationProvider != newProvider
             val updated = account.copy(
                 operationProvider = newProvider,
+                isHistoryOnlySubscriber = false,
                 packageName = if (isProviderChanged) null else account.packageName,
                 updatedAt = System.currentTimeMillis()
             )
@@ -2066,13 +2024,7 @@ val targetUserId = account?.earthlinkUsername ?: _selectedUser.value?.userID ?: 
                 localAccountRepository.saveAccount(updated)
             }
             _selectedProvider.value = newProvider
-            // If the provider didn't actually change, update originProvider immediately.
-            // If it DID change, preserve the previous originProvider on the displayed snapshot
-            // so loadUserDetail recognizes the cross-provider transition and retires stale fields
-            // on an authoritative 404 from the new provider.
-            if (!isProviderChanged) {
-                _selectedUser.value = _selectedUser.value?.copy(originProvider = newProvider)
-            }
+            _selectedUser.value = _selectedUser.value?.copy(originProvider = newProvider)
             // The plan picker must offer the NEW provider's plans, not the old provider's list.
             loadPackages()
 
