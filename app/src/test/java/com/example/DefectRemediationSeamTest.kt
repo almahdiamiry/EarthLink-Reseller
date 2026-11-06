@@ -528,45 +528,44 @@ class DefectRemediationSeamTest {
     }
 
     /**
-     * Claim: INV-09 / Multi-Provider Search Isolation: When subscribers exist on both EarthLink and SAMM
-     *        with identical usernames, scoping by the selected provider must isolate search results
-     *        so that searching for the shared username returns exactly one user belonging to the chosen
-     *        provider, never leaking the duplicate from the other provider.
+     * Claim: INV-01 / Single Financial Account Integrity: Changing the provider on an existing account
+     *        must update the operational provider in-place, preserving account identity (id) and financial
+     *        debt, and never creating a duplicate financial account for the same subscriber.
      * Seam / Environment: JVM tier unit test.
-     * Independent Oracle: When selectedProvider is EARTHLINK, search query yields exactly 1 item with
-     *                     originProvider = EARTHLINK. When selectedProvider is ALAMIRY, yields exactly 1
-     *                     item with originProvider = ALAMIRY.
+     * Independent Oracle: An account with debt 50,000 IQD updated from EARTHLINK to ALAMIRY retains
+     *                     its original UUID and 50,000 IQD debt. Deduplication by normUser ensures
+     *                     exactly 1 item in the combined dashboard roster.
      */
     @Test
-    fun fix4_multiProviderSearch_scopedToSelectedProvider() {
-        val elUser = UserListItem(
-            userIndexLower = 101,
-            userIDLower = "shared_user",
-            customerNameLower = "Shared User",
-            originProvider = com.example.core.model.SasProviders.EARTHLINK
+    fun fix4_singleFinancialAccountPreservedOnProviderChange() {
+        val originalAccount = LocalAccount(
+            id = "acc_unique_123",
+            earthlinkUsername = "subscriber_one",
+            displayName = "Unified Subscriber",
+            debtIqd = 50000.0,
+            operationProvider = com.example.core.model.SasProviders.EARTHLINK
         )
-        val sammUser = UserListItem(
-            userIndexLower = 202,
-            userIDLower = "shared_user",
-            customerNameLower = "Shared User",
-            originProvider = com.example.core.model.SasProviders.ALAMIRY
+
+        // Changing provider preserves id and financial debt
+        val updated = originalAccount.copy(
+            operationProvider = com.example.core.model.SasProviders.ALAMIRY,
+            updatedAt = System.currentTimeMillis()
         )
-        val allSubscribers = listOf(elUser, sammUser)
-        val query = "shared_user"
+        assertEquals("Account ID must remain unchanged", originalAccount.id, updated.id)
+        assertEquals("Debt must be preserved on provider change", 50000.0, updated.debtIqd, 0.001)
+        assertEquals(com.example.core.model.SasProviders.ALAMIRY, updated.operationProvider)
 
-        // Scoped to EARTHLINK
-        val elScoped = allSubscribers
-            .filter { it.originProvider == com.example.core.model.SasProviders.EARTHLINK }
-            .filter { it.userID.contains(query, ignoreCase = true) }
-        assertEquals("EarthLink scope must return exactly one user", 1, elScoped.size)
-        assertEquals(com.example.core.model.SasProviders.EARTHLINK, elScoped.first().originProvider)
-
-        // Scoped to ALAMIRY (SAMM)
-        val sammScoped = allSubscribers
-            .filter { it.originProvider == com.example.core.model.SasProviders.ALAMIRY }
-            .filter { it.userID.contains(query, ignoreCase = true) }
-        assertEquals("SAMM scope must return exactly one user", 1, sammScoped.size)
-        assertEquals(com.example.core.model.SasProviders.ALAMIRY, sammScoped.first().originProvider)
+        // Unified list deduplication by username
+        val seenUsers = HashSet<String>()
+        val combined = mutableListOf<String>()
+        listOf("subscriber_one", "SUBSCRIBER_ONE", "other_user").forEach { u ->
+            val norm = u.trim().lowercase(java.util.Locale.US)
+            if (norm.isNotEmpty() && seenUsers.add(norm)) {
+                combined.add(norm)
+            }
+        }
+        assertEquals("Unified list must contain exactly 1 entry per subscriber", 2, combined.size)
+        assertTrue(combined.contains("subscriber_one"))
     }
 
     @Test

@@ -237,7 +237,7 @@ class EarthlinkSearchViewModel(
                     val q = _searchQuery.value.trim().lowercase()
                     val filtered = withContext(Dispatchers.IO) {
                         localAccountRepository.searchAccounts(q, limit = 200, offset = 0)
-                    }.filter { it.operationProvider == currentProvider }
+                    }
                     _usersList.value = filtered.map { acc ->
                         com.example.core.model.UserListItem(
                             userIndexLower = acc.id.hashCode(),
@@ -325,7 +325,7 @@ class EarthlinkSearchViewModel(
                         val q = _searchQuery.value.trim().lowercase()
                         val filtered = withContext(Dispatchers.IO) {
                             localAccountRepository.searchAccounts(q, limit = 200, offset = 0)
-                        }.filter { it.operationProvider == currentProvider }
+                        }
                         _usersList.value = filtered.map { acc ->
                             com.example.core.model.UserListItem(
                                 userIndexLower = acc.id.hashCode(),

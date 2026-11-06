@@ -3297,7 +3297,7 @@ if (showExtendDialog) {
                                         val currentOpProvider = matchingAccount?.operationProvider
                                             ?: user.originProvider
                                             ?: viewModel.selectedProvider.value
-                                        val finalAcc = (matchingAccount?.takeIf { it.operationProvider == currentOpProvider }) ?: com.example.core.model.LocalAccount(
+                                        val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
                                             earthlinkUsername = user.userID,
                                             displayName = displayNameToUse,
                                             phone1 = user.mobileNumber,
@@ -3365,7 +3365,7 @@ if (showExtendDialog) {
                                         val currentOpProvider = matchingAccount?.operationProvider
                                             ?: user.originProvider
                                             ?: viewModel.selectedProvider.value
-                                        val finalAcc = (matchingAccount?.takeIf { it.operationProvider == currentOpProvider }) ?: com.example.core.model.LocalAccount(
+                                        val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
                                             earthlinkUsername = user.userID,
                                             displayName = newName,
                                             phone1 = user.mobileNumber,
@@ -3398,11 +3398,7 @@ if (showExtendDialog) {
 
                 if (showEditProviderDialog) {
                     val acc = matchingAccount
-                    val currentOpProvider = if (acc != null && (user.originProvider == null || acc.operationProvider == user.originProvider)) {
-                        acc.operationProvider
-                    } else {
-                        user.originProvider ?: targetProvider
-                    }
+                    val currentOpProvider = acc?.operationProvider ?: user.originProvider ?: viewModel.selectedProvider.value
                     var targetProvider by remember(showEditProviderDialog, currentOpProvider) { mutableStateOf(currentOpProvider) }
                     var providerChangeError by remember { mutableStateOf<String?>(null) }
                     var isCheckingInFlight by remember { mutableStateOf(false) }
@@ -3550,13 +3546,13 @@ val access = prefs.getProviderAccessState()
                         confirmButton = {
                             Button(
                                 onClick = {
-                                    val finalAcc = (matchingAccount?.takeIf { it.operationProvider == currentOpProvider }) ?: com.example.core.model.LocalAccount(
+                                    val finalAcc = matchingAccount ?: com.example.core.model.LocalAccount(
                                         earthlinkUsername = user.userID,
                                         displayName = displayNameToUse.takeIf { it != "N/A" } ?: (user.customerFullName ?: user.userID),
                                         phone1 = user.mobileNumber,
                                         packageName = user.packageName ?: "Default",
-                                        currentPriceIqd = matchingAccount?.currentPriceIqd ?: 40000.0,
-                                        operationProvider = currentOpProvider,
+                                        currentPriceIqd = 40000.0,
+                                        operationProvider = targetProvider,
                                         createdAt = System.currentTimeMillis()
                                     )
                                     isCheckingInFlight = true

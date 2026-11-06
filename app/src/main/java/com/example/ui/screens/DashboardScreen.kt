@@ -188,8 +188,6 @@ fun DashboardScreen(
     val prefs = remember { viewModel.prefs }
     val isDemoOn by prefs.demoModeFlow.collectAsStateWithLifecycle()
     val providerAccessState by prefs.providerAccessStateFlow.collectAsStateWithLifecycle()
-    val selectedProvider by prefs.lastSelectedLoginProviderFlow.collectAsStateWithLifecycle()
-    val hasBoth = (providerAccessState.hasEarthlink || isDemoOn) && providerAccessState.hasSamm
 
     LaunchedEffect(isDemoOn) {
         viewModel.loadDashboardData()
@@ -219,10 +217,8 @@ fun DashboardScreen(
 
     // Sorting & Filtering State
     var showFinancialSummarySheet by rememberSaveable { mutableStateOf(false) }
-    val totalDebt = remember(localAccounts, selectedProvider, hasBoth) {
-        localAccounts
-            .filter { !hasBoth || it.operationProvider == selectedProvider }
-            .sumOf { it.debtIqd }
+    val totalDebt = remember(localAccounts) {
+        localAccounts.sumOf { it.debtIqd }
     }
     var showSortSheet by rememberSaveable { mutableStateOf(false) }
     var pendingSortOpen by rememberSaveable { mutableStateOf(false) }
@@ -262,49 +258,44 @@ fun DashboardScreen(
     }
 
     // 1. FILTERING & SORTING VIA DERIVED STATE: Merge Live ISP Subscribers + Local/Legacy Accounts
-    val filteredList by remember(subscribers, localAccounts, localAccountMatcher, selectedStatusFilter, selectedSort, isSearchActive, searchQuery, selectedProvider, hasBoth) {
+    val filteredList by remember(subscribers, localAccounts, localAccountMatcher, selectedStatusFilter, selectedSort, isSearchActive, searchQuery) {
         derivedStateOf {
             val mergedList = ArrayList<com.example.core.model.UserListItem>(subscribers.size + localAccounts.size)
-            val seenKeys = HashSet<Pair<String, String>>()
+            val seenUsers = HashSet<String>()
             val seenAccountIds = HashSet<String>()
 
             // 1. Add live ISP / demo subscribers
             for (sub in subscribers) {
-                val prov = sub.originProvider ?: com.example.core.model.SasProviders.EARTHLINK
-                if (hasBoth && prov != selectedProvider) continue
                 val normUser = sub.userID?.trim()?.lowercase(Locale.US)
-                val key = if (!normUser.isNullOrBlank()) Pair(prov, normUser) else null
-                if (key != null && seenKeys.contains(key)) {
+                if (!normUser.isNullOrBlank() && !seenUsers.add(normUser)) {
                     continue
                 }
                 val matchingAccount = localAccountMatcher.findMatching(sub)
                 // Archived rows are shown, never hidden (user decision): if the ISP still lists
                 // the subscriber, the live copy wins (stale archive flag), so no skip here.
                 mergedList.add(sub)
-                if (key != null) seenKeys.add(key)
                 matchingAccount?.let { acc ->
                     seenAccountIds.add(acc.id)
                     acc.earthlinkUsername?.let {
-                        if (it.isNotBlank()) seenKeys.add(Pair(acc.operationProvider, it.trim().lowercase(Locale.US)))
+                        if (it.isNotBlank()) seenUsers.add(it.trim().lowercase(Locale.US))
                     }
                 }
             }
 
             // 2. Append all Local / Legacy Accounts (uTower + local) not represented in live subscribers
             for (acc in localAccounts) {
-                if (hasBoth && acc.operationProvider != selectedProvider) continue
                 if (seenAccountIds.contains(acc.id)) continue
+                val accUserLower = acc.earthlinkUsername?.trim()?.lowercase(Locale.US)
+                if (!accUserLower.isNullOrBlank() && !seenUsers.add(accUserLower)) {
+                    continue
+                }
+                seenAccountIds.add(acc.id)
                 // Idle history-only rows (archived, nothing owed, no pre-paid credit) are
                 // display noise while browsing and drop out of the list; during an active
                 // search they merge back in, so their payment history stays reachable.
                 val isIdleHistoryOnly = acc.isHistoryOnlySubscriber &&
                     acc.debtIqd == 0.0 && acc.advanceIqd == 0.0
                 if (isIdleHistoryOnly && searchQuery.isBlank()) continue
-                val accUserLower = acc.earthlinkUsername?.trim()?.lowercase(Locale.US)
-                val accKey = if (!accUserLower.isNullOrBlank()) Pair(acc.operationProvider, accUserLower) else null
-                if (accKey != null && seenKeys.contains(accKey)) {
-                    continue
-                }
 
                 val item = com.example.core.model.UserListItem(
                     userIndexLower = acc.id.hashCode(),
@@ -322,8 +313,6 @@ fun DashboardScreen(
                     isHistoryOnly = acc.isHistoryOnlySubscriber
                 )
                 mergedList.add(item)
-                seenAccountIds.add(acc.id)
-                if (accKey != null) seenKeys.add(accKey)
             }
 
             val baseList = mergedList
@@ -544,7 +533,7 @@ fun DashboardScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             // Remaining Balance Capsule Promoted to Header (Clickable for Financial Breakdown, EarthLink only)
-                            if (providerAccessState.hasEarthlink && (!hasBoth || selectedProvider == com.example.core.model.SasProviders.EARTHLINK)) {
+                            if (providerAccessState.hasEarthlink) {
                                 Surface(
                                     color = Color(0xFF141922),
                                     shape = RoundedCornerShape(10.dp),
@@ -640,55 +629,6 @@ fun DashboardScreen(
                         }
                     }
 
-                    // Provider Switcher Tab (Rendered when both providers are active)
-                    if (hasBoth) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            color = Color(0xFF141922),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                listOf(
-                                    Pair(com.example.core.model.SasProviders.EARTHLINK, if (lang == "ar") "ايرثلنك" else "EarthLink"),
-                                    Pair(com.example.core.model.SasProviders.ALAMIRY, if (lang == "ar") "سام" else "SAMM")
-                                ).forEach { (providerKey, label) ->
-                                    val isSelected = selectedProvider == providerKey
-                                    val activeColor = if (providerKey == com.example.core.model.SasProviders.EARTHLINK) Color(0xFF0A84FF) else Color(0xFF7C4DFF)
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(9.dp))
-                                            .background(if (isSelected) activeColor.copy(alpha = 0.22f) else Color.Transparent)
-                                            .border(
-                                                width = 1.dp,
-                                                color = if (isSelected) activeColor.copy(alpha = 0.6f) else Color.Transparent,
-                                                shape = RoundedCornerShape(9.dp)
-                                            )
-                                            .clickable {
-                                                if (selectedProvider != providerKey) {
-                                                    prefs.setLastSelectedLoginProvider(providerKey)
-                                                }
-                                            }
-                                            .padding(vertical = 8.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = label,
-                                            color = if (isSelected) Color.White else Color(0xFF8E8E93),
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                            fontSize = 13.sp
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
 
                     // Network/Offline Alert Banner if applicable (Apple Inset Card)
                     if (syncState == SyncStatusState.OFFLINE || syncState == SyncStatusState.ERROR) {

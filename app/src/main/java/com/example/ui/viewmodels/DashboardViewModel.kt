@@ -414,20 +414,20 @@ class DashboardViewModel(
                         val secondaryList = if (activeLoginProvider == com.example.core.model.SasProviders.ALAMIRY) effectiveEl else effectiveSamm
 
                         val combined = ArrayList<com.example.core.model.UserListItem>(primaryList.size + secondaryList.size)
-                        val seenKeys = HashSet<Pair<String, String>>()
+                        val seenUsers = HashSet<String>()
 
                         for (item in primaryList) {
                             val prov = item.originProvider ?: activeLoginProvider
-                            val key = Pair(prov, item.userID.trim().lowercase(java.util.Locale.US))
-                            if (key.second.isNotEmpty() && seenKeys.add(key)) {
+                            val normUser = item.userID.trim().lowercase(java.util.Locale.US)
+                            if (normUser.isNotEmpty() && seenUsers.add(normUser)) {
                                 combined.add(item.copy(originProvider = prov))
                             }
                         }
                         for (item in secondaryList) {
                             val fallbackProv = if (activeLoginProvider == com.example.core.model.SasProviders.ALAMIRY) com.example.core.model.SasProviders.EARTHLINK else com.example.core.model.SasProviders.ALAMIRY
                             val prov = item.originProvider ?: fallbackProv
-                            val key = Pair(prov, item.userID.trim().lowercase(java.util.Locale.US))
-                            if (key.second.isNotEmpty() && seenKeys.add(key)) {
+                            val normUser = item.userID.trim().lowercase(java.util.Locale.US)
+                            if (normUser.isNotEmpty() && seenUsers.add(normUser)) {
                                 combined.add(item.copy(originProvider = prov))
                             }
                         }
